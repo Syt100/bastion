@@ -1008,19 +1008,19 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(logout))
         .route("/api/session", get(session))
         .route("/api/agents", get(list_agents))
-        .route("/api/agents/:id/revoke", post(revoke_agent))
+        .route("/api/agents/{id}/revoke", post(revoke_agent))
         .route(
             "/api/agents/enrollment-tokens",
             post(create_enrollment_token),
         )
         .route("/api/jobs", get(list_jobs).post(create_job))
         .route(
-            "/api/jobs/:id",
+            "/api/jobs/{id}",
             get(get_job).put(update_job).delete(delete_job),
         )
-        .route("/api/jobs/:id/run", post(trigger_job_run))
-        .route("/api/jobs/:id/runs", get(list_job_runs))
-        .route("/api/runs/:id/events", get(list_run_events))
+        .route("/api/jobs/{id}/run", post(trigger_job_run))
+        .route("/api/jobs/{id}/runs", get(list_job_runs))
+        .route("/api/runs/{id}/events", get(list_run_events))
         .route("/agent/enroll", post(agent_enroll))
         .route("/agent/ws", get(agent_ws))
         .layer(axum::middleware::from_fn_with_state(
