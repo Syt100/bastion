@@ -20,6 +20,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import type { SupportedLocale } from '@/i18n'
+import { useSystemStore } from '@/stores/system'
+import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -28,6 +30,7 @@ const { t } = useI18n()
 
 const ui = useUiStore()
 const auth = useAuthStore()
+const system = useSystemStore()
 
 const activeKey = computed(() => route.path)
 
@@ -90,6 +93,7 @@ async function onLogout(): Promise<void> {
         />
       </n-layout-sider>
       <n-layout content-style="padding: 16px">
+        <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
         <router-view />
       </n-layout>
     </n-layout>

@@ -29,6 +29,10 @@ const messages = {
   placeholder: {
     comingSoon: 'Coming soon.',
   },
+  warnings: {
+    insecureHttpTitle: 'Insecure HTTP mode',
+    insecureHttpBody: 'Traffic and tokens are not protected by TLS. Use HTTPS via a reverse proxy, or only in a trusted network.',
+  },
   auth: {
     signIn: 'Sign in',
     username: 'Username',

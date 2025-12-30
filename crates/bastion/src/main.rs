@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let pool = db::init(&config.data_dir).await?;
     let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
 
-    scheduler::spawn(pool.clone(), 180);
+    scheduler::spawn(pool.clone(), config.run_retention_days);
 
     let app = http::router(AppState {
         config: config.clone(),
