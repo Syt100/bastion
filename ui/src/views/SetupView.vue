@@ -5,10 +5,13 @@ import { NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { apiFetch } from '@/lib/api'
+import { useSystemStore } from '@/stores/system'
+import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 
 const router = useRouter()
 const message = useMessage()
 const { t } = useI18n()
+const system = useSystemStore()
 
 const username = ref('admin')
 const password = ref('')
@@ -44,6 +47,7 @@ async function onSubmit(): Promise<void> {
 <template>
   <div class="min-h-screen flex items-center justify-center p-6">
     <n-card class="w-full max-w-md" :title="t('auth.initTitle')">
+      <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
       <n-form @submit.prevent="onSubmit">
         <n-form-item :label="t('auth.username')">
           <n-input v-model:value="username" autocomplete="username" />

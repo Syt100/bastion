@@ -3,8 +3,10 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::extract::Path;
+use axum::extract::Request;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -38,6 +40,47 @@ struct HealthResponse {
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { ok: true })
+}
+
+#[derive(Debug, Serialize)]
+struct SystemStatusResponse {
+    version: &'static str,
+    insecure_http: bool,
+}
+
+async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStatusResponse> {
+    Json(SystemStatusResponse {
+        version: env!("CARGO_PKG_VERSION"),
+        insecure_http: state.config.insecure_http,
+    })
+}
+
+async fn require_secure_middleware(
+    state: axum::extract::State<AppState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let path = req.uri().path();
+    let should_enforce = path.starts_with("/api/") || path.starts_with("/agent/");
+    let allow_insecure = matches!(path, "/api/health" | "/api/system" | "/api/setup/status");
+
+    if !should_enforce || allow_insecure {
+        return next.run(req).await;
+    }
+
+    let peer_ip = peer.ip();
+    let https = request_is_https(&state, req.headers(), peer_ip);
+    let allow = https || state.config.insecure_http || peer_ip.is_loopback();
+    if allow {
+        return next.run(req).await;
+    }
+
+    AppError::bad_request(
+        "insecure_not_allowed",
+        "HTTPS required (reverse proxy) or start with --insecure-http",
+    )
+    .into_response()
 }
 
 #[derive(Debug, Serialize)]
@@ -958,6 +1001,7 @@ impl axum::response::IntoResponse for AppError {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/system", get(system_status))
         .route("/api/setup/status", get(setup_status))
         .route("/api/setup/initialize", post(setup_initialize))
         .route("/api/auth/login", post(login))
@@ -979,6 +1023,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs/:id/events", get(list_run_events))
         .route("/agent/enroll", post(agent_enroll))
         .route("/agent/ws", get(agent_ws))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_secure_middleware,
+        ))
         .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)

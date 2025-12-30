@@ -29,6 +29,10 @@ const messages = {
   placeholder: {
     comingSoon: '即将支持。',
   },
+  warnings: {
+    insecureHttpTitle: '当前为不安全的 HTTP 模式',
+    insecureHttpBody: '流量与令牌未受 TLS 保护。建议通过反向代理启用 HTTPS，或仅在可信内网使用。',
+  },
   auth: {
     signIn: '登录',
     username: '用户名',
