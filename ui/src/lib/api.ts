@@ -1,0 +1,50 @@
+export type ApiErrorBody = {
+  error: string
+  message?: string
+  details?: unknown
+}
+
+export class ApiError extends Error {
+  status: number
+  body?: ApiErrorBody
+
+  constructor(status: number, message: string, body?: ApiErrorBody) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
+export async function apiFetch<T>(
+  input: RequestInfo | URL,
+  init: RequestInit & { expectedStatus?: number } = {},
+): Promise<T> {
+  const expectedStatus = init.expectedStatus ?? 200
+
+  const response = await fetch(input, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      ...(init.headers ?? {}),
+      Accept: 'application/json',
+    },
+  })
+
+  if (response.status !== expectedStatus) {
+    let body: ApiErrorBody | undefined
+    try {
+      body = (await response.json()) as ApiErrorBody
+    } catch {
+      // ignore
+    }
+    throw new ApiError(response.status, body?.message ?? `HTTP ${response.status}`, body)
+  }
+
+  if (expectedStatus === 204) {
+    return undefined as T
+  }
+
+  return (await response.json()) as T
+}
+

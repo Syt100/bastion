@@ -1,0 +1,10 @@
+/target
+.DS_Store
+
+# app data
+/data
+
+# node
+/ui/node_modules
+/ui/dist
+

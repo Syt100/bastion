@@ -1,0 +1,628 @@
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::extract::ConnectInfo;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
+use sqlx::SqlitePool;
+use tower_cookies::CookieManagerLayer;
+use tower_cookies::Cookies;
+use tower_cookies::cookie::{Cookie, SameSite};
+use tower_http::trace::TraceLayer;
+
+use crate::agent;
+use crate::auth;
+use crate::config::Config;
+use crate::secrets::SecretsCrypto;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub config: Arc<Config>,
+    pub db: SqlitePool,
+    pub secrets: Arc<SecretsCrypto>,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthResponse {
+    ok: bool,
+}
+
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse { ok: true })
+}
+
+#[derive(Debug, Serialize)]
+struct SetupStatusResponse {
+    needs_setup: bool,
+}
+
+async fn setup_status(
+    state: axum::extract::State<AppState>,
+) -> Result<Json<SetupStatusResponse>, AppError> {
+    let count = auth::users_count(&state.db).await?;
+    Ok(Json(SetupStatusResponse {
+        needs_setup: count == 0,
+    }))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SetupInitializeRequest {
+    username: String,
+    password: String,
+}
+
+async fn setup_initialize(
+    state: axum::extract::State<AppState>,
+    Json(req): Json<SetupInitializeRequest>,
+) -> Result<StatusCode, AppError> {
+    let count = auth::users_count(&state.db).await?;
+    if count != 0 {
+        return Err(AppError::conflict(
+            "already_initialized",
+            "Setup is already complete",
+        ));
+    }
+
+    auth::create_user(&state.db, &req.username, &req.password).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LoginResponse {
+    csrf_token: String,
+}
+
+async fn login(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let Some(user) = auth::find_user_by_username(&state.db, &req.username).await? else {
+        return Err(AppError::unauthorized(
+            "invalid_credentials",
+            "Invalid credentials",
+        ));
+    };
+
+    if !auth::verify_password(&user.password_hash, &req.password)? {
+        return Err(AppError::unauthorized(
+            "invalid_credentials",
+            "Invalid credentials",
+        ));
+    }
+
+    let session = auth::create_session(&state.db, user.id).await?;
+    set_session_cookie(&state, &headers, peer.ip(), &cookies, &session.id)?;
+
+    Ok(Json(LoginResponse {
+        csrf_token: session.csrf_token,
+    }))
+}
+
+async fn logout(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+) -> Result<StatusCode, AppError> {
+    let session_id = cookies
+        .get(SESSION_COOKIE_NAME)
+        .map(|c| c.value().to_string());
+
+    let Some(session_id) = session_id else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+
+    let session = auth::get_session(&state.db, &session_id).await?;
+    let Some(session) = session else {
+        let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
+        cookie.set_path("/");
+        cookies.remove(cookie);
+        return Ok(StatusCode::NO_CONTENT);
+    };
+
+    let csrf = headers
+        .get(CSRF_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if csrf != session.csrf_token {
+        return Err(AppError::unauthorized("invalid_csrf", "Invalid CSRF token"));
+    }
+
+    auth::delete_session(&state.db, &session_id).await?;
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
+    cookie.set_path("/");
+    cookies.remove(cookie);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize)]
+struct SessionResponse {
+    authenticated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    csrf_token: Option<String>,
+}
+
+async fn session(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+) -> Result<Json<SessionResponse>, AppError> {
+    let session_id = cookies
+        .get(SESSION_COOKIE_NAME)
+        .map(|c| c.value().to_string());
+
+    let Some(session_id) = session_id else {
+        return Ok(Json(SessionResponse {
+            authenticated: false,
+            csrf_token: None,
+        }));
+    };
+
+    let session = auth::get_session(&state.db, &session_id).await?;
+    let Some(session) = session else {
+        return Ok(Json(SessionResponse {
+            authenticated: false,
+            csrf_token: None,
+        }));
+    };
+
+    Ok(Json(SessionResponse {
+        authenticated: true,
+        csrf_token: Some(session.csrf_token),
+    }))
+}
+
+const SESSION_COOKIE_NAME: &str = "bastion_session";
+const CSRF_HEADER: &str = "x-csrf-token";
+
+async fn require_session(
+    state: &AppState,
+    cookies: &Cookies,
+) -> Result<auth::SessionRow, AppError> {
+    let session_id = cookies
+        .get(SESSION_COOKIE_NAME)
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| AppError::unauthorized("unauthorized", "Unauthorized"))?;
+
+    let session = auth::get_session(&state.db, &session_id).await?;
+    let Some(session) = session else {
+        return Err(AppError::unauthorized("unauthorized", "Unauthorized"));
+    };
+    Ok(session)
+}
+
+fn require_csrf(headers: &HeaderMap, session: &auth::SessionRow) -> Result<(), AppError> {
+    let csrf = headers
+        .get(CSRF_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if csrf != session.csrf_token {
+        return Err(AppError::unauthorized("invalid_csrf", "Invalid CSRF token"));
+    }
+    Ok(())
+}
+
+fn set_session_cookie(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    cookies: &Cookies,
+    session_id: &str,
+) -> Result<(), anyhow::Error> {
+    let is_secure = request_is_https(state, headers, peer_ip);
+
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, session_id.to_string());
+    cookie.set_http_only(true);
+    cookie.set_same_site(SameSite::Lax);
+    cookie.set_path("/");
+    cookie.set_secure(is_secure);
+
+    cookies.add(cookie);
+    Ok(())
+}
+
+fn request_is_https(state: &AppState, headers: &HeaderMap, peer_ip: std::net::IpAddr) -> bool {
+    if state.config.insecure_http {
+        return false;
+    }
+
+    let trusted = state
+        .config
+        .trusted_proxies
+        .iter()
+        .any(|net| net.contains(&peer_ip));
+    if !trusted {
+        return false;
+    }
+
+    let Some(proto) = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+
+    proto.eq_ignore_ascii_case("https")
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateEnrollmentTokenRequest {
+    #[serde(default = "default_enroll_ttl_seconds")]
+    ttl_seconds: i64,
+    remaining_uses: Option<i64>,
+}
+
+fn default_enroll_ttl_seconds() -> i64 {
+    60 * 60
+}
+
+#[derive(Debug, Serialize)]
+struct CreateEnrollmentTokenResponse {
+    token: String,
+    expires_at: i64,
+    remaining_uses: Option<i64>,
+}
+
+async fn create_enrollment_token(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Json(req): Json<CreateEnrollmentTokenRequest>,
+) -> Result<Json<CreateEnrollmentTokenResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let token = agent::generate_token_b64_urlsafe(32);
+    let token_hash = agent::sha256_urlsafe_token(&token)?;
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let expires_at = now + req.ttl_seconds;
+
+    sqlx::query(
+        "INSERT INTO enrollment_tokens (token_hash, created_at, expires_at, remaining_uses) VALUES (?, ?, ?, ?)",
+    )
+    .bind(token_hash)
+    .bind(now)
+    .bind(expires_at)
+    .bind(req.remaining_uses)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(CreateEnrollmentTokenResponse {
+        token,
+        expires_at,
+        remaining_uses: req.remaining_uses,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+struct AgentListItem {
+    id: String,
+    name: Option<String>,
+    revoked: bool,
+    last_seen_at: Option<i64>,
+}
+
+async fn list_agents(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+) -> Result<Json<Vec<AgentListItem>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let rows = sqlx::query(
+        "SELECT id, name, revoked_at, last_seen_at FROM agents ORDER BY created_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let agents = rows
+        .into_iter()
+        .map(|r| AgentListItem {
+            id: r.get::<String, _>("id"),
+            name: r.get::<Option<String>, _>("name"),
+            revoked: r.get::<Option<i64>, _>("revoked_at").is_some(),
+            last_seen_at: r.get::<Option<i64>, _>("last_seen_at"),
+        })
+        .collect();
+
+    Ok(Json(agents))
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentEnrollRequest {
+    token: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AgentEnrollResponse {
+    agent_id: String,
+    agent_key: String,
+}
+
+async fn agent_enroll(
+    state: axum::extract::State<AppState>,
+    Json(req): Json<AgentEnrollRequest>,
+) -> Result<Json<AgentEnrollResponse>, AppError> {
+    let token_hash = agent::sha256_urlsafe_token(&req.token)?;
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    let mut tx = state.db.begin().await?;
+    let row = sqlx::query(
+        "SELECT expires_at, remaining_uses FROM enrollment_tokens WHERE token_hash = ? LIMIT 1",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some(row) = row else {
+        return Err(AppError::unauthorized(
+            "invalid_token",
+            "Invalid enrollment token",
+        ));
+    };
+
+    let expires_at = row.get::<i64, _>("expires_at");
+    let remaining_uses = row.get::<Option<i64>, _>("remaining_uses");
+
+    if expires_at <= now {
+        sqlx::query("DELETE FROM enrollment_tokens WHERE token_hash = ?")
+            .bind(&token_hash)
+            .execute(&mut *tx)
+            .await?;
+        return Err(AppError::unauthorized(
+            "expired_token",
+            "Enrollment token expired",
+        ));
+    }
+
+    if let Some(uses) = remaining_uses {
+        if uses <= 0 {
+            return Err(AppError::unauthorized(
+                "invalid_token",
+                "Invalid enrollment token",
+            ));
+        }
+        let new_uses = uses - 1;
+        if new_uses == 0 {
+            sqlx::query("DELETE FROM enrollment_tokens WHERE token_hash = ?")
+                .bind(&token_hash)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            sqlx::query("UPDATE enrollment_tokens SET remaining_uses = ? WHERE token_hash = ?")
+                .bind(new_uses)
+                .bind(&token_hash)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
+    let agent_id = uuid::Uuid::new_v4().to_string();
+    let agent_key = agent::generate_token_b64_urlsafe(32);
+    let agent_key_hash = agent::sha256_urlsafe_token(&agent_key)?;
+
+    sqlx::query("INSERT INTO agents (id, name, key_hash, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&agent_id)
+        .bind(req.name)
+        .bind(agent_key_hash)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(AgentEnrollResponse {
+        agent_id,
+        agent_key,
+    }))
+}
+
+async fn agent_ws(
+    state: axum::extract::State<AppState>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    ws: WebSocketUpgrade,
+) -> Result<Response, AppError> {
+    let agent_key = bearer_token(&headers)
+        .ok_or_else(|| AppError::unauthorized("unauthorized", "Unauthorized"))?;
+    let key_hash = agent::sha256_urlsafe_token(&agent_key)?;
+
+    let row = sqlx::query("SELECT id, revoked_at FROM agents WHERE key_hash = ? LIMIT 1")
+        .bind(key_hash)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let Some(row) = row else {
+        return Err(AppError::unauthorized("unauthorized", "Unauthorized"));
+    };
+    if row.get::<Option<i64>, _>("revoked_at").is_some() {
+        return Err(AppError::unauthorized("revoked", "Agent revoked"));
+    }
+
+    let agent_id = row.get::<String, _>("id");
+
+    let db = state.db.clone();
+    Ok(ws.on_upgrade(move |socket| handle_agent_socket(db, agent_id, peer.ip(), socket)))
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    let header = headers.get("authorization")?.to_str().ok()?;
+    let token = header.strip_prefix("Bearer ")?;
+    Some(token.trim().to_string())
+}
+
+async fn handle_agent_socket(
+    db: SqlitePool,
+    agent_id: String,
+    peer_ip: std::net::IpAddr,
+    mut socket: WebSocket,
+) {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    if let Err(error) = sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(&agent_id)
+        .execute(&db)
+        .await
+    {
+        tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent last_seen_at");
+    }
+
+    tracing::info!(agent_id = %agent_id, peer_ip = %peer_ip, "agent connected");
+
+    while let Some(Ok(msg)) = socket.recv().await {
+        match msg {
+            Message::Text(text) => {
+                let text = text.to_string();
+                if let Err(error) = sqlx::query(
+                    "UPDATE agents SET capabilities_json = ?, last_seen_at = ? WHERE id = ?",
+                )
+                .bind(text.clone())
+                .bind(time::OffsetDateTime::now_utc().unix_timestamp())
+                .bind(&agent_id)
+                .execute(&db)
+                .await
+                {
+                    tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent capabilities");
+                }
+
+                let _ = socket
+                    .send(Message::Text(r#"{"v":1,"type":"ack"}"#.into()))
+                    .await;
+            }
+            Message::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    tracing::info!(agent_id = %agent_id, "agent disconnected");
+}
+
+#[derive(Debug)]
+struct AppError {
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+}
+
+impl AppError {
+    fn unauthorized(code: &'static str, message: &'static str) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            code,
+            message: message.to_string(),
+        }
+    }
+
+    fn conflict(code: &'static str, message: &'static str) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code,
+            message: message.to_string(),
+        }
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(error: E) -> Self {
+        let error: anyhow::Error = error.into();
+        tracing::error!(error = %error, "request failed");
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: "internal_error",
+            message: "Internal server error".to_string(),
+        }
+    }
+}
+
+impl axum::response::IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            error: &'a str,
+            message: &'a str,
+        }
+
+        let body = Json(Body {
+            error: self.code,
+            message: &self.message,
+        });
+        (self.status, body).into_response()
+    }
+}
+
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        .route("/api/health", get(health))
+        .route("/api/setup/status", get(setup_status))
+        .route("/api/setup/initialize", post(setup_initialize))
+        .route("/api/auth/login", post(login))
+        .route("/api/auth/logout", post(logout))
+        .route("/api/session", get(session))
+        .route("/api/agents", get(list_agents))
+        .route(
+            "/api/agents/enrollment-tokens",
+            post(create_enrollment_token),
+        )
+        .route("/agent/enroll", post(agent_enroll))
+        .route("/agent/ws", get(agent_ws))
+        .layer(CookieManagerLayer::new())
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+        .fallback(ui_fallback)
+}
+
+async fn ui_fallback(method: Method, uri: Uri) -> Response {
+    if method != Method::GET && method != Method::HEAD {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    let bytes = match load_ui_asset(path).or_else(|| load_ui_asset("index.html")) {
+        Some(bytes) => bytes,
+        None => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, mime.as_ref())
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+#[cfg(feature = "embed-ui")]
+fn load_ui_asset(path: &str) -> Option<Vec<u8>> {
+    static UI_DIST: include_dir::Dir<'static> =
+        include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../ui/dist");
+    let file = UI_DIST.get_file(path)?;
+    Some(file.contents().to_vec())
+}
+
+#[cfg(not(feature = "embed-ui"))]
+fn load_ui_asset(path: &str) -> Option<Vec<u8>> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let base = std::env::var("BASTION_UI_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("ui/dist"));
+    fs::read(base.join(path)).ok()
+}
