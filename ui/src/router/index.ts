@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from '@/layouts/AppShell.vue'
 import AgentsView from '@/views/AgentsView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import JobsView from '@/views/JobsView.vue'
 import LoginView from '@/views/LoginView.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 import SetupView from '@/views/SetupView.vue'
@@ -20,7 +21,7 @@ const router = createRouter({
       component: AppShell,
       children: [
         { path: '', component: DashboardView },
-        { path: 'jobs', component: PlaceholderView, props: { title: 'Jobs' } },
+        { path: 'jobs', component: JobsView },
         { path: 'agents', component: AgentsView },
         { path: 'settings', component: PlaceholderView, props: { title: 'Settings' } },
       ],

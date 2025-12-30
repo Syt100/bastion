@@ -9,6 +9,7 @@ pub async fn init(data_dir: &Path) -> Result<SqlitePool, anyhow::Error> {
     let options = SqliteConnectOptions::new()
         .filename(&db_path)
         .create_if_missing(true)
+        .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal);
 

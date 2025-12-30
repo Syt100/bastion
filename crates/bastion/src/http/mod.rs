@@ -19,6 +19,9 @@ use tower_http::trace::TraceLayer;
 use crate::agent;
 use crate::auth;
 use crate::config::Config;
+use crate::jobs_repo;
+use crate::runs_repo;
+use crate::scheduler;
 use crate::secrets::SecretsCrypto;
 
 #[derive(Clone)]
@@ -404,6 +407,312 @@ async fn revoke_agent(
     Ok(StatusCode::NO_CONTENT)
 }
 
+fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
+    let Some(obj) = spec.as_object() else {
+        return Err(AppError::bad_request(
+            "invalid_spec",
+            "Job spec must be an object",
+        ));
+    };
+
+    let v = obj
+        .get("v")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| AppError::bad_request("invalid_spec", "Job spec must include integer v"))?;
+    if v != 1 {
+        return Err(AppError::bad_request(
+            "invalid_spec",
+            "Unsupported job spec version",
+        ));
+    }
+
+    let ty = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| {
+        AppError::bad_request("invalid_spec", "Job spec must include string type")
+    })?;
+    if !matches!(ty, "filesystem" | "sqlite" | "vaultwarden") {
+        return Err(AppError::bad_request(
+            "invalid_spec",
+            "Unsupported job spec type",
+        ));
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateJobRequest {
+    name: String,
+    schedule: Option<String>,
+    overlap_policy: jobs_repo::OverlapPolicy,
+    spec: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateJobRequest {
+    name: String,
+    schedule: Option<String>,
+    overlap_policy: jobs_repo::OverlapPolicy,
+    spec: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+struct JobListItem {
+    id: String,
+    name: String,
+    schedule: Option<String>,
+    overlap_policy: jobs_repo::OverlapPolicy,
+    created_at: i64,
+    updated_at: i64,
+}
+
+async fn list_jobs(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+) -> Result<Json<Vec<JobListItem>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let jobs = jobs_repo::list_jobs(&state.db).await?;
+
+    Ok(Json(
+        jobs.into_iter()
+            .map(|j| JobListItem {
+                id: j.id,
+                name: j.name,
+                schedule: j.schedule,
+                overlap_policy: j.overlap_policy,
+                created_at: j.created_at,
+                updated_at: j.updated_at,
+            })
+            .collect(),
+    ))
+}
+
+async fn create_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Json(req): Json<CreateJobRequest>,
+) -> Result<Json<jobs_repo::Job>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    if req.name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_name",
+            "Job name is required",
+        ));
+    }
+
+    let schedule = req
+        .schedule
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+
+    validate_job_spec(&req.spec)?;
+
+    if let Some(schedule) = schedule.as_deref() {
+        scheduler::validate_cron(schedule)
+            .map_err(|_| AppError::bad_request("invalid_schedule", "Invalid cron schedule"))?;
+    }
+
+    let job = jobs_repo::create_job(
+        &state.db,
+        req.name.trim(),
+        schedule.as_deref(),
+        req.overlap_policy,
+        req.spec,
+    )
+    .await?;
+
+    Ok(Json(job))
+}
+
+async fn get_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(job_id): Path<String>,
+) -> Result<Json<jobs_repo::Job>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    Ok(Json(job))
+}
+
+async fn update_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+    Json(req): Json<UpdateJobRequest>,
+) -> Result<Json<jobs_repo::Job>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    if req.name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_name",
+            "Job name is required",
+        ));
+    }
+
+    let schedule = req
+        .schedule
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+
+    validate_job_spec(&req.spec)?;
+
+    if let Some(schedule) = schedule.as_deref() {
+        scheduler::validate_cron(schedule)
+            .map_err(|_| AppError::bad_request("invalid_schedule", "Invalid cron schedule"))?;
+    }
+
+    let updated = jobs_repo::update_job(
+        &state.db,
+        &job_id,
+        req.name.trim(),
+        schedule.as_deref(),
+        req.overlap_policy,
+        req.spec,
+    )
+    .await?;
+    if !updated {
+        return Err(AppError::not_found("job_not_found", "Job not found"));
+    }
+
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    Ok(Json(job))
+}
+
+async fn delete_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let deleted = jobs_repo::delete_job(&state.db, &job_id).await?;
+    if !deleted {
+        return Err(AppError::not_found("job_not_found", "Job not found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize)]
+struct TriggerRunResponse {
+    run_id: String,
+    status: runs_repo::RunStatus,
+}
+
+async fn trigger_job_run(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Result<Json<TriggerRunResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+
+    let running_count = sqlx::query(
+        "SELECT COUNT(1) AS n FROM runs WHERE job_id = ? AND status IN ('running', 'queued')",
+    )
+    .bind(&job.id)
+    .fetch_one(&state.db)
+    .await?
+    .get::<i64, _>("n");
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let (status, ended_at, error) =
+        if job.overlap_policy == jobs_repo::OverlapPolicy::Reject && running_count > 0 {
+            (
+                runs_repo::RunStatus::Rejected,
+                Some(now),
+                Some("overlap_rejected"),
+            )
+        } else {
+            (runs_repo::RunStatus::Queued, None, None)
+        };
+
+    let run = runs_repo::create_run(&state.db, &job.id, status, now, ended_at, None, error).await?;
+
+    let event_kind = match status {
+        runs_repo::RunStatus::Rejected => "rejected",
+        runs_repo::RunStatus::Queued => "queued",
+        _ => "unknown",
+    };
+    runs_repo::append_run_event(
+        &state.db,
+        &run.id,
+        "info",
+        event_kind,
+        event_kind,
+        Some(serde_json::json!({ "source": "manual" })),
+    )
+    .await?;
+
+    Ok(Json(TriggerRunResponse {
+        run_id: run.id,
+        status: run.status,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+struct RunListItem {
+    id: String,
+    status: runs_repo::RunStatus,
+    started_at: i64,
+    ended_at: Option<i64>,
+    error: Option<String>,
+}
+
+async fn list_job_runs(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(job_id): Path<String>,
+) -> Result<Json<Vec<RunListItem>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let job_exists = jobs_repo::get_job(&state.db, &job_id).await?.is_some();
+    if !job_exists {
+        return Err(AppError::not_found("job_not_found", "Job not found"));
+    }
+
+    let runs = runs_repo::list_runs_for_job(&state.db, &job_id, 50).await?;
+    Ok(Json(
+        runs.into_iter()
+            .map(|r| RunListItem {
+                id: r.id,
+                status: r.status,
+                started_at: r.started_at,
+                ended_at: r.ended_at,
+                error: r.error,
+            })
+            .collect(),
+    ))
+}
+
+async fn list_run_events(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(run_id): Path<String>,
+) -> Result<Json<Vec<runs_repo::RunEvent>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let events = runs_repo::list_run_events(&state.db, &run_id, 500).await?;
+    Ok(Json(events))
+}
+
 #[derive(Debug, Deserialize)]
 struct AgentEnrollRequest {
     token: String,
@@ -582,6 +891,14 @@ struct AppError {
 }
 
 impl AppError {
+    fn bad_request(code: &'static str, message: &'static str) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code,
+            message: message.to_string(),
+        }
+    }
+
     fn unauthorized(code: &'static str, message: &'static str) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
@@ -593,6 +910,14 @@ impl AppError {
     fn conflict(code: &'static str, message: &'static str) -> Self {
         Self {
             status: StatusCode::CONFLICT,
+            code,
+            message: message.to_string(),
+        }
+    }
+
+    fn not_found(code: &'static str, message: &'static str) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
             code,
             message: message.to_string(),
         }
@@ -644,6 +969,14 @@ pub fn router(state: AppState) -> Router {
             "/api/agents/enrollment-tokens",
             post(create_enrollment_token),
         )
+        .route("/api/jobs", get(list_jobs).post(create_job))
+        .route(
+            "/api/jobs/:id",
+            get(get_job).put(update_job).delete(delete_job),
+        )
+        .route("/api/jobs/:id/run", post(trigger_job_run))
+        .route("/api/jobs/:id/runs", get(list_job_runs))
+        .route("/api/runs/:id/events", get(list_run_events))
         .route("/agent/enroll", post(agent_enroll))
         .route("/agent/ws", get(agent_ws))
         .layer(CookieManagerLayer::new())
