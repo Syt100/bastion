@@ -7,6 +7,7 @@ import {
   NForm,
   NFormItem,
   NInput,
+  NInputNumber,
   NModal,
   NPopconfirm,
   NSelect,
@@ -18,6 +19,7 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type JobType, type OverlapPolicy, type RunListItem } from '@/stores/jobs'
+import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 
 const { t } = useI18n()
@@ -25,6 +27,7 @@ const message = useMessage()
 
 const ui = useUiStore()
 const jobs = useJobsStore()
+const secrets = useSecretsStore()
 
 const editorOpen = ref<boolean>(false)
 const editorMode = ref<'create' | 'edit'>('create')
@@ -41,12 +44,24 @@ const form = reactive<{
   schedule: string
   overlapPolicy: OverlapPolicy
   jobType: JobType
+  fsRoot: string
+  sqlitePath: string
+  vaultwardenDataDir: string
+  webdavBaseUrl: string
+  webdavSecretName: string
+  partSizeMiB: number
 }>({
   id: null,
   name: '',
   schedule: '',
   overlapPolicy: 'queue',
   jobType: 'filesystem',
+  fsRoot: '',
+  sqlitePath: '',
+  vaultwardenDataDir: '',
+  webdavBaseUrl: '',
+  webdavSecretName: '',
+  partSizeMiB: 256,
 })
 
 const dateFormatter = computed(
@@ -69,6 +84,12 @@ function openCreate(): void {
   form.schedule = ''
   form.overlapPolicy = 'queue'
   form.jobType = 'filesystem'
+  form.fsRoot = ''
+  form.sqlitePath = ''
+  form.vaultwardenDataDir = ''
+  form.webdavBaseUrl = ''
+  form.webdavSecretName = ''
+  form.partSizeMiB = 256
   editorOpen.value = true
 }
 
@@ -83,6 +104,19 @@ async function openEdit(jobId: string): Promise<void> {
     form.schedule = job.schedule ?? ''
     form.overlapPolicy = job.overlap_policy
     form.jobType = job.spec.type
+
+    const target = (job.spec as Record<string, unknown>).target as Record<string, unknown> | undefined
+    form.webdavBaseUrl = typeof target?.base_url === 'string' ? target.base_url : ''
+    form.webdavSecretName = typeof target?.secret_name === 'string' ? target.secret_name : ''
+    form.partSizeMiB =
+      typeof target?.part_size_bytes === 'number' && target.part_size_bytes > 0
+        ? Math.max(1, Math.round(target.part_size_bytes / (1024 * 1024)))
+        : 256
+
+    const source = (job.spec as Record<string, unknown>).source as Record<string, unknown> | undefined
+    form.fsRoot = typeof source?.root === 'string' ? source.root : ''
+    form.sqlitePath = typeof source?.path === 'string' ? source.path : ''
+    form.vaultwardenDataDir = typeof source?.data_dir === 'string' ? source.data_dir : ''
   } catch {
     message.error(t('errors.fetchJobFailed'))
     editorOpen.value = false
@@ -98,13 +132,57 @@ async function save(): Promise<void> {
     return
   }
 
+  const webdavBaseUrl = form.webdavBaseUrl.trim()
+  if (!webdavBaseUrl) {
+    message.error(t('errors.webdavBaseUrlRequired'))
+    return
+  }
+  const webdavSecretName = form.webdavSecretName.trim()
+  if (!webdavSecretName) {
+    message.error(t('errors.webdavSecretRequired'))
+    return
+  }
+
+  const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB))
+  const partSizeBytes = partSizeMiB * 1024 * 1024
+
+  const source =
+    form.jobType === 'filesystem'
+      ? { root: form.fsRoot.trim(), include: [], exclude: [] }
+      : form.jobType === 'sqlite'
+        ? { path: form.sqlitePath.trim(), integrity_check: false }
+        : { data_dir: form.vaultwardenDataDir.trim() }
+
+  if (form.jobType === 'filesystem' && !source.root) {
+    message.error(t('errors.sourceRootRequired'))
+    return
+  }
+  if (form.jobType === 'sqlite' && !source.path) {
+    message.error(t('errors.sqlitePathRequired'))
+    return
+  }
+  if (form.jobType === 'vaultwarden' && !source.data_dir) {
+    message.error(t('errors.vaultwardenDataDirRequired'))
+    return
+  }
+
   editorSaving.value = true
   try {
     const payload = {
       name,
       schedule: form.schedule.trim() ? form.schedule.trim() : null,
       overlap_policy: form.overlapPolicy,
-      spec: { v: 1 as const, type: form.jobType },
+      spec: {
+        v: 1 as const,
+        type: form.jobType,
+        source,
+        target: {
+          type: 'webdav' as const,
+          base_url: webdavBaseUrl,
+          secret_name: webdavSecretName,
+          part_size_bytes: partSizeBytes,
+        },
+      },
     }
 
     if (editorMode.value === 'create') {
@@ -263,7 +341,18 @@ const runColumns = computed<DataTableColumns<RunListItem>>(() => [
   { title: t('runs.columns.error'), key: 'error', render: (row) => row.error ?? '-' },
 ])
 
-onMounted(refresh)
+const webdavSecretOptions = computed(() =>
+  secrets.webdav.map((s) => ({ label: s.name, value: s.name })),
+)
+
+onMounted(async () => {
+  await refresh()
+  try {
+    await secrets.refreshWebdav()
+  } catch {
+    message.error(t('errors.fetchWebdavSecretsFailed'))
+  }
+})
 </script>
 
 <template>
@@ -298,6 +387,27 @@ onMounted(refresh)
           </n-form-item>
           <n-form-item :label="t('jobs.fields.type')">
             <n-select v-model:value="form.jobType" :options="jobTypeOptions" />
+          </n-form-item>
+
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.sourceRoot')">
+            <n-input v-model:value="form.fsRoot" :placeholder="t('jobs.fields.sourceRootPlaceholder')" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqlitePath')">
+            <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'vaultwarden'" :label="t('jobs.fields.vaultwardenDataDir')">
+            <n-input v-model:value="form.vaultwardenDataDir" :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')" />
+          </n-form-item>
+
+          <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
+            <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
+          </n-form-item>
+          <n-form-item :label="t('jobs.fields.webdavSecret')">
+            <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
+          </n-form-item>
+          <n-form-item :label="t('jobs.fields.partSizeMiB')">
+            <n-input-number v-model:value="form.partSizeMiB" :min="1" class="w-full" />
+            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
           </n-form-item>
         </n-form>
 

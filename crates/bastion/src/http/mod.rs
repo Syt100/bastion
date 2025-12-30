@@ -21,6 +21,7 @@ use tower_http::trace::TraceLayer;
 use crate::agent;
 use crate::auth;
 use crate::config::Config;
+use crate::job_spec;
 use crate::jobs_repo;
 use crate::runs_repo;
 use crate::scheduler;
@@ -562,35 +563,9 @@ async fn revoke_agent(
 }
 
 fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
-    let Some(obj) = spec.as_object() else {
-        return Err(AppError::bad_request(
-            "invalid_spec",
-            "Job spec must be an object",
-        ));
-    };
-
-    let v = obj
-        .get("v")
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| AppError::bad_request("invalid_spec", "Job spec must include integer v"))?;
-    if v != 1 {
-        return Err(AppError::bad_request(
-            "invalid_spec",
-            "Unsupported job spec version",
-        ));
-    }
-
-    let ty = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| {
-        AppError::bad_request("invalid_spec", "Job spec must include string type")
-    })?;
-    if !matches!(ty, "filesystem" | "sqlite" | "vaultwarden") {
-        return Err(AppError::bad_request(
-            "invalid_spec",
-            "Unsupported job spec type",
-        ));
-    }
-
-    Ok(())
+    job_spec::validate_value(spec).map_err(|error| {
+        AppError::bad_request("invalid_spec", format!("Invalid job spec: {error}"))
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1045,35 +1020,35 @@ struct AppError {
 }
 
 impl AppError {
-    fn bad_request(code: &'static str, message: &'static str) -> Self {
+    fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
             code,
-            message: message.to_string(),
+            message: message.into(),
         }
     }
 
-    fn unauthorized(code: &'static str, message: &'static str) -> Self {
+    fn unauthorized(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
             code,
-            message: message.to_string(),
+            message: message.into(),
         }
     }
 
-    fn conflict(code: &'static str, message: &'static str) -> Self {
+    fn conflict(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
             code,
-            message: message.to_string(),
+            message: message.into(),
         }
     }
 
-    fn not_found(code: &'static str, message: &'static str) -> Self {
+    fn not_found(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
             code,
-            message: message.to_string(),
+            message: message.into(),
         }
     }
 }
