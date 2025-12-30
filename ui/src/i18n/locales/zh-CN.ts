@@ -96,6 +96,7 @@ const messages = {
       sqliteIntegrityCheckHelp: '执行 PRAGMA integrity_check（可能增加耗时）。',
       vaultwardenDataDir: 'Vaultwarden data 目录（Vaultwarden）',
       vaultwardenDataDirPlaceholder: '/path/to/vaultwarden/data',
+      vaultwardenDataDirHelp: '默认在该目录下查找 db.sqlite3 并进行在线备份（无需停机）。',
       webdavBaseUrl: 'WebDAV 目标 URL',
       webdavBaseUrlPlaceholder: 'https://dav.example.com/backup',
       webdavSecret: 'WebDAV 凭据（名称）',

@@ -84,7 +84,10 @@ fn snapshot_name(source_path: &str) -> String {
         .to_string()
 }
 
-fn create_snapshot(source_path: &str, snapshot_path: &Path) -> Result<(), anyhow::Error> {
+pub(crate) fn create_snapshot(
+    source_path: &str,
+    snapshot_path: &Path,
+) -> Result<(), anyhow::Error> {
     let src = Connection::open_with_flags(
         source_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,

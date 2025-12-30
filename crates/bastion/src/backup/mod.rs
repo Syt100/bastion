@@ -1,5 +1,6 @@
 pub mod filesystem;
 pub mod sqlite;
+pub mod vaultwarden;
 
 use std::fs::File;
 use std::io::{self, Write};

@@ -407,7 +407,10 @@ onMounted(async () => {
             </div>
           </n-form-item>
           <n-form-item v-if="form.jobType === 'vaultwarden'" :label="t('jobs.fields.vaultwardenDataDir')">
-            <n-input v-model:value="form.vaultwardenDataDir" :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')" />
+            <div class="space-y-1">
+              <n-input v-model:value="form.vaultwardenDataDir" :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.vaultwardenDataDirHelp') }}</div>
+            </div>
           </n-form-item>
 
           <n-form-item :label="t('jobs.fields.webdavBaseUrl')">

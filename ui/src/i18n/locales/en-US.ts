@@ -96,6 +96,7 @@ const messages = {
       sqliteIntegrityCheckHelp: 'Runs PRAGMA integrity_check (may take longer).',
       vaultwardenDataDir: 'Vaultwarden data dir (Vaultwarden)',
       vaultwardenDataDirPlaceholder: '/path/to/vaultwarden/data',
+      vaultwardenDataDirHelp: 'Looks for db.sqlite3 under this directory and snapshots it online (no downtime).',
       webdavBaseUrl: 'WebDAV target URL',
       webdavBaseUrlPlaceholder: 'https://dav.example.com/backup',
       webdavSecret: 'WebDAV credential (name)',

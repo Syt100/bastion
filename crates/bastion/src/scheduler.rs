@@ -384,8 +384,42 @@ async fn execute_run(
                 }
             }))
         }
-        job_spec::JobSpecV1::Vaultwarden { .. } => {
-            Err(anyhow::anyhow!("vaultwarden jobs not implemented yet"))
+        job_spec::JobSpecV1::Vaultwarden { source, target, .. } => {
+            runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
+
+            let data_dir = data_dir.to_path_buf();
+            let job_id = job.id.clone();
+            let run_id_owned = run_id.to_string();
+            let part_size = target.part_size_bytes;
+            let vw_data_dir = source.data_dir.clone();
+            let artifacts = tokio::task::spawn_blocking(move || {
+                backup::vaultwarden::build_vaultwarden_run(
+                    &data_dir,
+                    &job_id,
+                    &run_id_owned,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+            let run_url =
+                upload_run_artifacts_to_webdav(db, secrets, &job.id, run_id, &target, &artifacts)
+                    .await?;
+
+            let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+
+            Ok(serde_json::json!({
+                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "entries_count": artifacts.entries_count,
+                "parts": artifacts.parts.len(),
+                "vaultwarden": {
+                    "data_dir": vw_data_dir,
+                    "db": "db.sqlite3",
+                }
+            }))
         }
     }
 }
