@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
+use axum::extract::Path;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -313,6 +314,16 @@ struct AgentListItem {
     name: Option<String>,
     revoked: bool,
     last_seen_at: Option<i64>,
+    online: bool,
+}
+
+fn agent_online(revoked: bool, last_seen_at: Option<i64>, now: i64) -> bool {
+    if revoked {
+        return false;
+    }
+
+    let cutoff = now.saturating_sub(60);
+    last_seen_at.is_some_and(|ts| ts >= cutoff)
 }
 
 async fn list_agents(
@@ -320,6 +331,8 @@ async fn list_agents(
     cookies: Cookies,
 ) -> Result<Json<Vec<AgentListItem>>, AppError> {
     let _session = require_session(&state, &cookies).await?;
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
     let rows = sqlx::query(
         "SELECT id, name, revoked_at, last_seen_at FROM agents ORDER BY created_at DESC",
@@ -329,15 +342,66 @@ async fn list_agents(
 
     let agents = rows
         .into_iter()
-        .map(|r| AgentListItem {
-            id: r.get::<String, _>("id"),
-            name: r.get::<Option<String>, _>("name"),
-            revoked: r.get::<Option<i64>, _>("revoked_at").is_some(),
-            last_seen_at: r.get::<Option<i64>, _>("last_seen_at"),
+        .map(|r| {
+            let revoked = r.get::<Option<i64>, _>("revoked_at").is_some();
+            let last_seen_at = r.get::<Option<i64>, _>("last_seen_at");
+            let online = agent_online(revoked, last_seen_at, now);
+
+            AgentListItem {
+                id: r.get::<String, _>("id"),
+                name: r.get::<Option<String>, _>("name"),
+                revoked,
+                last_seen_at,
+                online,
+            }
         })
         .collect();
 
     Ok(Json(agents))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_online;
+
+    #[test]
+    fn agent_online_false_when_revoked() {
+        assert!(!agent_online(true, Some(1000), 1000));
+    }
+
+    #[test]
+    fn agent_online_false_when_never_seen() {
+        assert!(!agent_online(false, None, 1000));
+    }
+
+    #[test]
+    fn agent_online_false_when_stale() {
+        assert!(!agent_online(false, Some(900), 1000));
+    }
+
+    #[test]
+    fn agent_online_true_when_recent() {
+        assert!(agent_online(false, Some(950), 1000));
+    }
+}
+
+async fn revoke_agent(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    sqlx::query("UPDATE agents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
+        .bind(now)
+        .bind(agent_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Deserialize)]
@@ -575,6 +639,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(logout))
         .route("/api/session", get(session))
         .route("/api/agents", get(list_agents))
+        .route("/api/agents/:id/revoke", post(revoke_agent))
         .route(
             "/api/agents/enrollment-tokens",
             post(create_enrollment_token),
