@@ -14,6 +14,7 @@ const messages = {
     save: 'Save',
     edit: 'Edit',
     delete: 'Delete',
+    copy: 'Copy',
   },
   nav: {
     dashboard: 'Dashboard',
@@ -110,6 +111,26 @@ const messages = {
       runs: 'Runs',
     },
   },
+  settings: {
+    title: 'Settings',
+    subtitle: 'Credentials and global configuration.',
+    webdav: {
+      title: 'WebDAV credentials',
+      new: 'New',
+      editorTitle: 'Edit WebDAV credential',
+      deleteConfirm: 'Delete this credential?',
+      fields: {
+        name: 'Name',
+        username: 'Username',
+        password: 'Password',
+      },
+      columns: {
+        name: 'Name',
+        updatedAt: 'Updated',
+        actions: 'Actions',
+      },
+    },
+  },
   runs: {
     title: 'Runs',
     columns: {
@@ -129,6 +150,8 @@ const messages = {
     jobDeleted: 'Job deleted',
     runQueued: 'Run queued',
     runRejected: 'Rejected by overlap policy',
+    webdavSecretSaved: 'WebDAV credential saved',
+    webdavSecretDeleted: 'WebDAV credential deleted',
   },
   errors: {
     loginFailed: 'Login failed',
@@ -146,6 +169,11 @@ const messages = {
     runNowFailed: 'Failed to trigger run',
     fetchRunsFailed: 'Failed to fetch runs',
     jobNameRequired: 'Job name is required',
+    fetchWebdavSecretsFailed: 'Failed to fetch WebDAV credentials',
+    fetchWebdavSecretFailed: 'Failed to fetch WebDAV credential',
+    saveWebdavSecretFailed: 'Failed to save WebDAV credential',
+    deleteWebdavSecretFailed: 'Failed to delete WebDAV credential',
+    secretNameOrUsernameRequired: 'Name and username are required',
   },
 } as const
 

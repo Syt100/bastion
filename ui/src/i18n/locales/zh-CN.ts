@@ -14,6 +14,7 @@ const messages = {
     save: '保存',
     edit: '编辑',
     delete: '删除',
+    copy: '复制',
   },
   nav: {
     dashboard: '概览',
@@ -110,6 +111,26 @@ const messages = {
       runs: '运行记录',
     },
   },
+  settings: {
+    title: '设置',
+    subtitle: '凭据与全局配置。',
+    webdav: {
+      title: 'WebDAV 凭据',
+      new: '新增',
+      editorTitle: '编辑 WebDAV 凭据',
+      deleteConfirm: '确认删除该凭据？',
+      fields: {
+        name: '名称',
+        username: '用户名',
+        password: '密码',
+      },
+      columns: {
+        name: '名称',
+        updatedAt: '更新时间',
+        actions: '操作',
+      },
+    },
+  },
   runs: {
     title: '运行记录',
     columns: {
@@ -129,6 +150,8 @@ const messages = {
     jobDeleted: '任务已删除',
     runQueued: '已加入队列',
     runRejected: '因重叠策略被拒绝',
+    webdavSecretSaved: 'WebDAV 凭据已保存',
+    webdavSecretDeleted: 'WebDAV 凭据已删除',
   },
   errors: {
     loginFailed: '登录失败',
@@ -146,6 +169,11 @@ const messages = {
     runNowFailed: '触发运行失败',
     fetchRunsFailed: '获取运行记录失败',
     jobNameRequired: '任务名称不能为空',
+    fetchWebdavSecretsFailed: '获取 WebDAV 凭据列表失败',
+    fetchWebdavSecretFailed: '获取 WebDAV 凭据失败',
+    saveWebdavSecretFailed: '保存 WebDAV 凭据失败',
+    deleteWebdavSecretFailed: '删除 WebDAV 凭据失败',
+    secretNameOrUsernameRequired: '名称和用户名不能为空',
   },
 } as const
 
