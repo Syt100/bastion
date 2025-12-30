@@ -301,24 +301,9 @@ async fn execute_run(
             .await??;
 
             runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
-
-            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &target.secret_name)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", target.secret_name))?;
-            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-
-            let mut base_url = Url::parse(&target.base_url)?;
-            if !base_url.path().ends_with('/') {
-                base_url.set_path(&format!("{}/", base_url.path()));
-            }
-            let client = WebdavClient::new(base_url.clone(), credentials)?;
-
-            let job_url = base_url.join(&format!("{}/", job.id))?;
-            client.ensure_collection(&job_url).await?;
-            let run_url = job_url.join(&format!("{}/", run_id))?;
-            client.ensure_collection(&run_url).await?;
-
-            upload_artifacts(&client, &run_url, &artifacts).await?;
+            let run_url =
+                upload_run_artifacts_to_webdav(db, secrets, &job.id, run_id, &target, &artifacts)
+                    .await?;
 
             let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
@@ -328,13 +313,110 @@ async fn execute_run(
                 "parts": artifacts.parts.len(),
             }))
         }
-        job_spec::JobSpecV1::Sqlite { .. } => {
-            Err(anyhow::anyhow!("sqlite jobs not implemented yet"))
+        job_spec::JobSpecV1::Sqlite { source, target, .. } => {
+            runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
+
+            let sqlite_path = source.path.clone();
+            let data_dir = data_dir.to_path_buf();
+            let job_id = job.id.clone();
+            let run_id_owned = run_id.to_string();
+            let part_size = target.part_size_bytes;
+            let build = tokio::task::spawn_blocking(move || {
+                backup::sqlite::build_sqlite_run(
+                    &data_dir,
+                    &job_id,
+                    &run_id_owned,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            if let Some(check) = build.integrity_check.as_ref() {
+                let data = serde_json::json!({
+                    "ok": check.ok,
+                    "truncated": check.truncated,
+                    "lines": check.lines,
+                });
+                let _ = runs_repo::append_run_event(
+                    db,
+                    run_id,
+                    if check.ok { "info" } else { "error" },
+                    "integrity_check",
+                    "integrity_check",
+                    Some(data),
+                )
+                .await;
+
+                if !check.ok {
+                    let first = check.lines.first().cloned().unwrap_or_default();
+                    anyhow::bail!("sqlite integrity_check failed: {}", first);
+                }
+            }
+
+            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+            let run_url = upload_run_artifacts_to_webdav(
+                db,
+                secrets,
+                &job.id,
+                run_id,
+                &target,
+                &build.artifacts,
+            )
+            .await?;
+
+            let _ = tokio::fs::remove_dir_all(&build.artifacts.run_dir).await;
+
+            Ok(serde_json::json!({
+                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "entries_count": build.artifacts.entries_count,
+                "parts": build.artifacts.parts.len(),
+                "sqlite": {
+                    "path": sqlite_path,
+                    "snapshot_name": build.snapshot_name,
+                    "snapshot_size": build.snapshot_size,
+                    "integrity_check": build.integrity_check.map(|check| serde_json::json!({
+                        "ok": check.ok,
+                        "truncated": check.truncated,
+                        "lines": check.lines,
+                    })),
+                }
+            }))
         }
         job_spec::JobSpecV1::Vaultwarden { .. } => {
             Err(anyhow::anyhow!("vaultwarden jobs not implemented yet"))
         }
     }
+}
+
+async fn upload_run_artifacts_to_webdav(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    job_id: &str,
+    run_id: &str,
+    target: &job_spec::WebdavTarget,
+    artifacts: &backup::LocalRunArtifacts,
+) -> Result<Url, anyhow::Error> {
+    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &target.secret_name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", target.secret_name))?;
+    let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+
+    let mut base_url = Url::parse(&target.base_url)?;
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+    let client = WebdavClient::new(base_url.clone(), credentials)?;
+
+    let job_url = base_url.join(&format!("{job_id}/"))?;
+    client.ensure_collection(&job_url).await?;
+    let run_url = job_url.join(&format!("{run_id}/"))?;
+    client.ensure_collection(&run_url).await?;
+
+    upload_artifacts(&client, &run_url, artifacts).await?;
+
+    Ok(run_url)
 }
 
 async fn upload_artifacts(

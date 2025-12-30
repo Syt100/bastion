@@ -12,6 +12,7 @@ import {
   NPopconfirm,
   NSelect,
   NSpace,
+  NSwitch,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -46,6 +47,7 @@ const form = reactive<{
   jobType: JobType
   fsRoot: string
   sqlitePath: string
+  sqliteIntegrityCheck: boolean
   vaultwardenDataDir: string
   webdavBaseUrl: string
   webdavSecretName: string
@@ -58,6 +60,7 @@ const form = reactive<{
   jobType: 'filesystem',
   fsRoot: '',
   sqlitePath: '',
+  sqliteIntegrityCheck: false,
   vaultwardenDataDir: '',
   webdavBaseUrl: '',
   webdavSecretName: '',
@@ -86,6 +89,7 @@ function openCreate(): void {
   form.jobType = 'filesystem'
   form.fsRoot = ''
   form.sqlitePath = ''
+  form.sqliteIntegrityCheck = false
   form.vaultwardenDataDir = ''
   form.webdavBaseUrl = ''
   form.webdavSecretName = ''
@@ -116,6 +120,7 @@ async function openEdit(jobId: string): Promise<void> {
     const source = (job.spec as Record<string, unknown>).source as Record<string, unknown> | undefined
     form.fsRoot = typeof source?.root === 'string' ? source.root : ''
     form.sqlitePath = typeof source?.path === 'string' ? source.path : ''
+    form.sqliteIntegrityCheck = typeof source?.integrity_check === 'boolean' ? source.integrity_check : false
     form.vaultwardenDataDir = typeof source?.data_dir === 'string' ? source.data_dir : ''
   } catch {
     message.error(t('errors.fetchJobFailed'))
@@ -150,7 +155,7 @@ async function save(): Promise<void> {
     form.jobType === 'filesystem'
       ? { root: form.fsRoot.trim(), include: [], exclude: [] }
       : form.jobType === 'sqlite'
-        ? { path: form.sqlitePath.trim(), integrity_check: false }
+        ? { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
         : { data_dir: form.vaultwardenDataDir.trim() }
 
   if (form.jobType === 'filesystem' && !source.root) {
@@ -394,6 +399,12 @@ onMounted(async () => {
           </n-form-item>
           <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqlitePath')">
             <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqliteIntegrityCheck')">
+            <div class="space-y-1">
+              <n-switch v-model:value="form.sqliteIntegrityCheck" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
+            </div>
           </n-form-item>
           <n-form-item v-if="form.jobType === 'vaultwarden'" :label="t('jobs.fields.vaultwardenDataDir')">
             <n-input v-model:value="form.vaultwardenDataDir" :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')" />

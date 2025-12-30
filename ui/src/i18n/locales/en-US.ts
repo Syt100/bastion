@@ -77,7 +77,7 @@ const messages = {
   },
   jobs: {
     title: 'Jobs',
-    subtitle: 'Create and schedule jobs (noop executor for now).',
+    subtitle: 'Create and schedule jobs.',
     createTitle: 'Create job',
     editTitle: 'Edit job',
     deleteConfirm: 'Delete this job? Run history will be deleted as well.',
@@ -92,6 +92,8 @@ const messages = {
       sourceRootPlaceholder: '/path/to/data',
       sqlitePath: 'SQLite database path (SQLite)',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
+      sqliteIntegrityCheck: 'SQLite integrity check (optional)',
+      sqliteIntegrityCheckHelp: 'Runs PRAGMA integrity_check (may take longer).',
       vaultwardenDataDir: 'Vaultwarden data dir (Vaultwarden)',
       vaultwardenDataDirPlaceholder: '/path/to/vaultwarden/data',
       webdavBaseUrl: 'WebDAV target URL',

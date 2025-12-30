@@ -77,7 +77,7 @@ const messages = {
   },
   jobs: {
     title: '备份任务',
-    subtitle: '创建与调度备份任务（当前为占位执行器）。',
+    subtitle: '创建与调度备份任务。',
     createTitle: '创建任务',
     editTitle: '编辑任务',
     deleteConfirm: '确认删除该任务？相关运行记录也会被删除。',
@@ -92,6 +92,8 @@ const messages = {
       sourceRootPlaceholder: '/path/to/data',
       sqlitePath: 'SQLite 数据库路径（SQLite）',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
+      sqliteIntegrityCheck: 'SQLite 完整性校验（可选）',
+      sqliteIntegrityCheckHelp: '执行 PRAGMA integrity_check（可能增加耗时）。',
       vaultwardenDataDir: 'Vaultwarden data 目录（Vaultwarden）',
       vaultwardenDataDirPlaceholder: '/path/to/vaultwarden/data',
       webdavBaseUrl: 'WebDAV 目标 URL',
