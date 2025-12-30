@@ -25,6 +25,7 @@ use crate::jobs_repo;
 use crate::runs_repo;
 use crate::scheduler;
 use crate::secrets::SecretsCrypto;
+use crate::secrets_repo;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -53,6 +54,116 @@ async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStat
         version: env!("CARGO_PKG_VERSION"),
         insecure_http: state.config.insecure_http,
     })
+}
+
+#[derive(Debug, Serialize)]
+struct SecretListItem {
+    name: String,
+    updated_at: i64,
+}
+
+async fn list_webdav_secrets(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+) -> Result<Json<Vec<SecretListItem>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let secrets = secrets_repo::list_secrets(&state.db, "webdav").await?;
+    Ok(Json(
+        secrets
+            .into_iter()
+            .map(|s| SecretListItem {
+                name: s.name,
+                updated_at: s.updated_at,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertWebdavSecretRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WebdavSecretResponse {
+    name: String,
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WebdavSecretPayload {
+    username: String,
+    password: String,
+}
+
+async fn upsert_webdav_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(req): Json<UpsertWebdavSecretRequest>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    if name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_name",
+            "Secret name is required",
+        ));
+    }
+    if req.username.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_username",
+            "Username is required",
+        ));
+    }
+
+    let payload = WebdavSecretPayload {
+        username: req.username.trim().to_string(),
+        password: req.password,
+    };
+    let bytes = serde_json::to_vec(&payload)?;
+
+    secrets_repo::upsert_secret(&state.db, &state.secrets, "webdav", name.trim(), &bytes).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_webdav_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(name): Path<String>,
+) -> Result<Json<WebdavSecretResponse>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let bytes = secrets_repo::get_secret(&state.db, &state.secrets, "webdav", &name)
+        .await?
+        .ok_or_else(|| AppError::not_found("secret_not_found", "Secret not found"))?;
+
+    let payload: WebdavSecretPayload = serde_json::from_slice(&bytes)?;
+    Ok(Json(WebdavSecretResponse {
+        name,
+        username: payload.username,
+        password: payload.password,
+    }))
+}
+
+async fn delete_webdav_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let deleted = secrets_repo::delete_secret(&state.db, "webdav", &name).await?;
+    if !deleted {
+        return Err(AppError::not_found("secret_not_found", "Secret not found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn require_secure_middleware(
@@ -1007,6 +1118,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/session", get(session))
+        .route("/api/secrets/webdav", get(list_webdav_secrets))
+        .route(
+            "/api/secrets/webdav/{name}",
+            get(get_webdav_secret)
+                .put(upsert_webdav_secret)
+                .delete(delete_webdav_secret),
+        )
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{id}/revoke", post(revoke_agent))
         .route(

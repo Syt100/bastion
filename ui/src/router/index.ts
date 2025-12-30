@@ -5,7 +5,7 @@ import AgentsView from '@/views/AgentsView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import JobsView from '@/views/JobsView.vue'
 import LoginView from '@/views/LoginView.vue'
-import PlaceholderView from '@/views/PlaceholderView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 import SetupView from '@/views/SetupView.vue'
 
 import { pinia } from '@/pinia'
@@ -23,7 +23,7 @@ const router = createRouter({
         { path: '', component: DashboardView },
         { path: 'jobs', component: JobsView },
         { path: 'agents', component: AgentsView },
-        { path: 'settings', component: PlaceholderView, props: { title: 'Settings' } },
+        { path: 'settings', component: SettingsView },
       ],
       meta: { requiresAuth: true },
     },

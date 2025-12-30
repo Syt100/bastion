@@ -4,6 +4,12 @@ use uuid::Uuid;
 
 use crate::secrets::{EncryptedSecret, SecretsCrypto};
 
+#[derive(Debug, Clone)]
+pub struct SecretListItem {
+    pub name: String,
+    pub updated_at: i64,
+}
+
 pub async fn upsert_secret(
     db: &SqlitePool,
     crypto: &SecretsCrypto,
@@ -76,6 +82,33 @@ pub async fn get_secret(
     Ok(Some(plaintext))
 }
 
+pub async fn list_secrets(
+    db: &SqlitePool,
+    kind: &str,
+) -> Result<Vec<SecretListItem>, anyhow::Error> {
+    let rows = sqlx::query("SELECT name, updated_at FROM secrets WHERE kind = ? ORDER BY name ASC")
+        .bind(kind)
+        .fetch_all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| SecretListItem {
+            name: r.get::<String, _>("name"),
+            updated_at: r.get::<i64, _>("updated_at"),
+        })
+        .collect())
+}
+
+pub async fn delete_secret(db: &SqlitePool, kind: &str, name: &str) -> Result<bool, anyhow::Error> {
+    let result = sqlx::query("DELETE FROM secrets WHERE kind = ? AND name = ?")
+        .bind(kind)
+        .bind(name)
+        .execute(db)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
@@ -83,7 +116,7 @@ mod tests {
     use crate::db;
     use crate::secrets::SecretsCrypto;
 
-    use super::{get_secret, upsert_secret};
+    use super::{delete_secret, get_secret, list_secrets, upsert_secret};
 
     #[tokio::test]
     async fn secrets_round_trip() {
@@ -108,5 +141,19 @@ mod tests {
             .expect("get2")
             .expect("present2");
         assert_eq!(v, b"secret2");
+
+        let listed = list_secrets(&pool, "webdav").await.expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "primary");
+
+        let deleted = delete_secret(&pool, "webdav", "primary")
+            .await
+            .expect("delete");
+        assert!(deleted);
+
+        let missing = get_secret(&pool, &crypto, "webdav", "primary")
+            .await
+            .expect("get missing");
+        assert!(missing.is_none());
     }
 }
