@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use cron::Schedule;
@@ -6,13 +7,24 @@ use sqlx::Row;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use tracing::{debug, info, warn};
+use url::Url;
 
+use crate::backup;
+use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
 use crate::runs_repo::{self, RunStatus};
+use crate::secrets::SecretsCrypto;
+use crate::secrets_repo;
+use crate::webdav::{WebdavClient, WebdavCredentials};
 
-pub fn spawn(db: SqlitePool, run_retention_days: i64) {
+pub fn spawn(
+    db: SqlitePool,
+    data_dir: std::path::PathBuf,
+    secrets: Arc<SecretsCrypto>,
+    run_retention_days: i64,
+) {
     tokio::spawn(run_cron_loop(db.clone()));
-    tokio::spawn(run_worker_loop(db.clone()));
+    tokio::spawn(run_worker_loop(db.clone(), data_dir, secrets));
     tokio::spawn(run_retention_loop(db, run_retention_days));
 }
 
@@ -126,7 +138,11 @@ async fn run_cron_loop(db: SqlitePool) {
     }
 }
 
-async fn run_worker_loop(db: SqlitePool) {
+async fn run_worker_loop(
+    db: SqlitePool,
+    data_dir: std::path::PathBuf,
+    secrets: Arc<SecretsCrypto>,
+) {
     loop {
         let run = match runs_repo::claim_next_queued_run(&db).await {
             Ok(v) => v,
@@ -142,17 +158,10 @@ async fn run_worker_loop(db: SqlitePool) {
             continue;
         };
 
-        info!(run_id = %run.id, job_id = %run.job_id, "run started (noop executor)");
+        info!(run_id = %run.id, job_id = %run.job_id, "run started");
 
-        if let Err(error) = runs_repo::append_run_event(
-            &db,
-            &run.id,
-            "info",
-            "start",
-            "start",
-            Some(serde_json::json!({ "executor": "noop" })),
-        )
-        .await
+        if let Err(error) =
+            runs_repo::append_run_event(&db, &run.id, "info", "start", "start", None).await
         {
             warn!(run_id = %run.id, error = %error, "failed to write start event");
         }
@@ -184,34 +193,196 @@ async fn run_worker_loop(db: SqlitePool) {
             }
         };
 
-        let spec_type = job
-            .spec
-            .as_object()
-            .and_then(|o| o.get("type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let spec = match job_spec::parse_value(&job.spec) {
+            Ok(v) => v,
+            Err(error) => {
+                let message = format!("invalid spec: {error}");
+                let _ = runs_repo::append_run_event(
+                    &db,
+                    &run.id,
+                    "error",
+                    "invalid_spec",
+                    &message,
+                    None,
+                )
+                .await;
+                let _ = runs_repo::complete_run(
+                    &db,
+                    &run.id,
+                    RunStatus::Failed,
+                    None,
+                    Some("invalid_spec"),
+                )
+                .await;
+                continue;
+            }
+        };
 
-        let _ = runs_repo::append_run_event(
-            &db,
-            &run.id,
-            "info",
-            "noop",
-            "noop",
-            Some(serde_json::json!({ "job_type": spec_type })),
-        )
-        .await;
-
-        if let Err(error) =
-            runs_repo::complete_run(&db, &run.id, RunStatus::Success, None, None).await
-        {
-            warn!(run_id = %run.id, error = %error, "failed to complete run");
+        if let Err(error) = job_spec::validate(&spec) {
+            let message = format!("invalid spec: {error}");
+            let _ =
+                runs_repo::append_run_event(&db, &run.id, "error", "invalid_spec", &message, None)
+                    .await;
+            let _ = runs_repo::complete_run(
+                &db,
+                &run.id,
+                RunStatus::Failed,
+                None,
+                Some("invalid_spec"),
+            )
+            .await;
             continue;
         }
 
-        let _ =
-            runs_repo::append_run_event(&db, &run.id, "info", "complete", "complete", None).await;
-        info!(run_id = %run.id, "run completed");
+        let started_at = OffsetDateTime::from_unix_timestamp(run.started_at)
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+        match execute_run(&db, &secrets, &data_dir, &job, &run.id, started_at, spec).await {
+            Ok(summary) => {
+                if let Err(error) =
+                    runs_repo::complete_run(&db, &run.id, RunStatus::Success, Some(summary), None)
+                        .await
+                {
+                    warn!(run_id = %run.id, error = %error, "failed to complete run");
+                    continue;
+                }
+                let _ =
+                    runs_repo::append_run_event(&db, &run.id, "info", "complete", "complete", None)
+                        .await;
+                info!(run_id = %run.id, "run completed");
+            }
+            Err(error) => {
+                warn!(run_id = %run.id, error = %error, "run failed");
+                let message = format!("failed: {error}");
+                let _ =
+                    runs_repo::append_run_event(&db, &run.id, "error", "failed", &message, None)
+                        .await;
+
+                let _ = runs_repo::complete_run(
+                    &db,
+                    &run.id,
+                    RunStatus::Failed,
+                    None,
+                    Some("run_failed"),
+                )
+                .await;
+            }
+        }
     }
+}
+
+async fn execute_run(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    data_dir: &std::path::Path,
+    job: &jobs_repo::Job,
+    run_id: &str,
+    started_at: OffsetDateTime,
+    spec: job_spec::JobSpecV1,
+) -> Result<serde_json::Value, anyhow::Error> {
+    match spec {
+        job_spec::JobSpecV1::Filesystem { source, target, .. } => {
+            runs_repo::append_run_event(db, run_id, "info", "packaging", "packaging", None).await?;
+
+            let data_dir = data_dir.to_path_buf();
+            let job_id = job.id.clone();
+            let run_id_owned = run_id.to_string();
+            let part_size = target.part_size_bytes;
+            let artifacts = tokio::task::spawn_blocking(move || {
+                backup::filesystem::build_filesystem_run(
+                    &data_dir,
+                    &job_id,
+                    &run_id_owned,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+
+            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &target.secret_name)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", target.secret_name))?;
+            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+
+            let mut base_url = Url::parse(&target.base_url)?;
+            if !base_url.path().ends_with('/') {
+                base_url.set_path(&format!("{}/", base_url.path()));
+            }
+            let client = WebdavClient::new(base_url.clone(), credentials)?;
+
+            let job_url = base_url.join(&format!("{}/", job.id))?;
+            client.ensure_collection(&job_url).await?;
+            let run_url = job_url.join(&format!("{}/", run_id))?;
+            client.ensure_collection(&run_url).await?;
+
+            upload_artifacts(&client, &run_url, &artifacts).await?;
+
+            let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+
+            Ok(serde_json::json!({
+                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "entries_count": artifacts.entries_count,
+                "parts": artifacts.parts.len(),
+            }))
+        }
+        job_spec::JobSpecV1::Sqlite { .. } => {
+            Err(anyhow::anyhow!("sqlite jobs not implemented yet"))
+        }
+        job_spec::JobSpecV1::Vaultwarden { .. } => {
+            Err(anyhow::anyhow!("vaultwarden jobs not implemented yet"))
+        }
+    }
+}
+
+async fn upload_artifacts(
+    client: &WebdavClient,
+    run_url: &Url,
+    artifacts: &backup::LocalRunArtifacts,
+) -> Result<(), anyhow::Error> {
+    for part in &artifacts.parts {
+        let url = run_url.join(&part.name)?;
+        if let Some(existing) = client.head_size(&url).await? {
+            if existing == part.size {
+                continue;
+            }
+        }
+        client
+            .put_file_with_retries(&url, &part.path, part.size, 3)
+            .await?;
+    }
+
+    let entries_size = tokio::fs::metadata(&artifacts.entries_index_path)
+        .await?
+        .len();
+    let entries_url = run_url.join(backup::ENTRIES_INDEX_NAME)?;
+    if let Some(existing) = client.head_size(&entries_url).await? {
+        if existing != entries_size {
+            client
+                .put_file_with_retries(&entries_url, &artifacts.entries_index_path, entries_size, 3)
+                .await?;
+        }
+    } else {
+        client
+            .put_file_with_retries(&entries_url, &artifacts.entries_index_path, entries_size, 3)
+            .await?;
+    }
+
+    let manifest_size = tokio::fs::metadata(&artifacts.manifest_path).await?.len();
+    let manifest_url = run_url.join(backup::MANIFEST_NAME)?;
+    client
+        .put_file_with_retries(&manifest_url, &artifacts.manifest_path, manifest_size, 3)
+        .await?;
+
+    let complete_size = tokio::fs::metadata(&artifacts.complete_path).await?.len();
+    let complete_url = run_url.join(backup::COMPLETE_NAME)?;
+    client
+        .put_file_with_retries(&complete_url, &artifacts.complete_path, complete_size, 3)
+        .await?;
+
+    Ok(())
 }
 
 async fn run_retention_loop(db: SqlitePool, run_retention_days: i64) {

@@ -1,14 +1,17 @@
 mod agent;
 mod auth;
+mod backup;
 mod config;
 mod data_dir;
 mod db;
 mod http;
+mod job_spec;
 mod jobs_repo;
 mod runs_repo;
 mod scheduler;
 mod secrets;
 mod secrets_repo;
+mod webdav;
 
 use std::sync::Arc;
 
@@ -29,7 +32,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let pool = db::init(&config.data_dir).await?;
     let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
 
-    scheduler::spawn(pool.clone(), config.run_retention_days);
+    scheduler::spawn(
+        pool.clone(),
+        config.data_dir.clone(),
+        secrets.clone(),
+        config.run_retention_days,
+    );
 
     let app = http::router(AppState {
         config: config.clone(),
