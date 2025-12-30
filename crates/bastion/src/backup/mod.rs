@@ -1,4 +1,5 @@
 pub mod filesystem;
+pub mod sqlite;
 
 use std::fs::File;
 use std::io::{self, Write};
