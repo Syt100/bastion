@@ -22,6 +22,7 @@ mod runs_repo;
 mod scheduler;
 mod secrets;
 mod secrets_repo;
+mod smtp;
 mod targets;
 mod webdav;
 mod wecom;

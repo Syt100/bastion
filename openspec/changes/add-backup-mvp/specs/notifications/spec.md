@@ -7,6 +7,13 @@ The system SHALL support email notifications on backup completion (success or fa
 - **WHEN** sending a failure email fails temporarily
 - **THEN** the system retries sending according to configured policy
 
+### Requirement: SMTP Secrets Storage
+The system SHALL store SMTP configuration (host/port/credentials/sender/recipients) as encrypted secrets and SHALL allow the user to view and update them via the Web UI.
+
+#### Scenario: SMTP secret is stored securely
+- **WHEN** a user configures an SMTP destination
+- **THEN** it is stored encrypted at rest (protected by `data/master.key`)
+
 ### Requirement: WeCom Group Bot Notifications
 The system SHALL support WeCom group bot webhook notifications on backup completion (success or failure) and SHALL support retry with backoff.
 

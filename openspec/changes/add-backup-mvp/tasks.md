@@ -38,7 +38,7 @@
 - [ ] Incomplete-run cleanup (no `complete.json` older than N days)
 
 ## 7. Notifications
-- [ ] Email notifications (SMTP) with retry/backoff and dedupe per run
+- [x] Email notifications (SMTP) with retry/backoff and dedupe per run
 - [x] WeCom group bot webhook notifications with retry/backoff and dedupe per run
 
 ## 8. Web UI
