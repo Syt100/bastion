@@ -138,29 +138,34 @@ describe('JobsView run events', () => {
     const wrapper = mount(JobsView)
     await Promise.resolve()
 
-    await wrapper.vm.openRunEvents('run1')
+    const vm = wrapper.vm as unknown as {
+      openRunEvents: (runId: string) => Promise<void>
+      runEvents: unknown[]
+      runEventsWsStatus: string
+    }
 
-    expect(wrapper.vm.runEvents).toHaveLength(1)
+    await vm.openRunEvents('run1')
+
+    expect(vm.runEvents).toHaveLength(1)
     expect(scroll.scrollTop).toBe(123)
 
     expect(MockWebSocket.instances).toHaveLength(1)
     const sock = MockWebSocket.instances[0]!
     sock.triggerOpen()
-    expect(wrapper.vm.runEventsWsStatus).toBe('connected')
+    expect(vm.runEventsWsStatus).toBe('connected')
 
     // Duplicate seq should be ignored.
     sock.triggerMessage(JSON.stringify({ run_id: 'run1', seq: 1, ts: 2, level: 'info', kind: 'dup', message: 'dup', fields: null }))
     await Promise.resolve()
-    expect(wrapper.vm.runEvents).toHaveLength(1)
+    expect(vm.runEvents).toHaveLength(1)
 
     // New seq appended.
     sock.triggerMessage(JSON.stringify({ run_id: 'run1', seq: 2, ts: 2, level: 'info', kind: 'next', message: 'next', fields: null }))
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.vm.runEvents).toHaveLength(2)
+    expect(vm.runEvents).toHaveLength(2)
     expect(scroll.scrollTop).toBe(123)
 
     document.body.removeChild(scroll)
   })
 })
-
