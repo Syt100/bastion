@@ -175,7 +175,47 @@ const messages = {
       startedAt: '开始时间',
       endedAt: '结束时间',
       error: '错误',
+      actions: '操作',
     },
+    actions: {
+      restore: '恢复',
+      verify: '恢复演练',
+    },
+  },
+  restore: {
+    title: '恢复',
+    fields: {
+      destinationDir: '目标目录',
+      destinationDirPlaceholder: '/path/to/restore',
+      destinationDirHelp: '将备份内容恢复到该目录下。',
+      conflictPolicy: '冲突策略',
+    },
+    conflict: {
+      overwrite: '覆盖',
+      skip: '跳过',
+      fail: '失败并中止',
+    },
+    actions: {
+      start: '开始恢复',
+    },
+  },
+  verify: {
+    title: '恢复演练',
+    helpTitle: '将执行完整恢复流程进行验证',
+    helpBody: '系统会下载备份、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check。',
+    actions: {
+      start: '开始演练',
+    },
+  },
+  operations: {
+    title: '操作',
+    kind: '类型',
+    startedAt: '开始时间',
+    endedAt: '结束时间',
+    summary: '摘要',
+    events: '事件',
+    noEvents: '暂无事件',
+    errorTitle: '操作失败',
   },
   messages: {
     initializedPleaseSignIn: '初始化完成，请登录。',
@@ -224,6 +264,9 @@ const messages = {
     sourceRootRequired: '源目录不能为空',
     sqlitePathRequired: 'SQLite 路径不能为空',
     vaultwardenDataDirRequired: 'Vaultwarden data 目录不能为空',
+    restoreDestinationRequired: '目标目录不能为空',
+    restoreStartFailed: '开始恢复失败',
+    verifyStartFailed: '开始恢复演练失败',
   },
 } as const
 
