@@ -103,9 +103,7 @@ pub async fn spawn_verify_operation(
     run_id: String,
 ) {
     tokio::spawn(async move {
-        if let Err(error) =
-            verify_operation(&db, &secrets, &data_dir, &op_id, &run_id).await
-        {
+        if let Err(error) = verify_operation(&db, &secrets, &data_dir, &op_id, &run_id).await {
             let msg = format!("{error:#}");
             let _ = operations_repo::append_event(&db, &op_id, "error", "failed", &msg, None).await;
             let _ = operations_repo::complete_operation(
@@ -262,7 +260,11 @@ async fn verify_operation(
     operations_repo::append_event(
         db,
         op_id,
-        if verify.ok && sqlite_results.ok { "info" } else { "error" },
+        if verify.ok && sqlite_results.ok {
+            "info"
+        } else {
+            "error"
+        },
         "verify",
         "verify",
         Some(serde_json::json!({
@@ -374,7 +376,9 @@ async fn read_manifest(access: &TargetAccess) -> Result<ManifestV1, anyhow::Erro
             let url = run_url.join(crate::backup::MANIFEST_NAME)?;
             client.get_bytes(&url).await?
         }
-        TargetAccess::LocalDir { run_dir } => tokio::fs::read(run_dir.join(crate::backup::MANIFEST_NAME)).await?,
+        TargetAccess::LocalDir { run_dir } => {
+            tokio::fs::read(run_dir.join(crate::backup::MANIFEST_NAME)).await?
+        }
     };
 
     Ok(serde_json::from_slice::<ManifestV1>(&bytes)?)
@@ -437,8 +441,7 @@ async fn fetch_parts(
         .map(|p| (p.size, p.hash_alg.clone(), p.hash.clone()))
         .collect::<Vec<_>>();
     let parts_clone = parts.clone();
-    tokio::task::spawn_blocking(move || verify_parts(&parts_clone, &expected))
-        .await??;
+    tokio::task::spawn_blocking(move || verify_parts(&parts_clone, &expected)).await??;
 
     Ok(parts)
 }
@@ -804,7 +807,8 @@ mod tests {
             let mut tar = tar::Builder::new(&mut encoder);
             let src = tmp.path().join("hello.txt");
             std::fs::write(&src, b"hi").unwrap();
-            tar.append_path_with_name(&src, Path::new("hello.txt")).unwrap();
+            tar.append_path_with_name(&src, Path::new("hello.txt"))
+                .unwrap();
             tar.finish().unwrap();
         }
         encoder.finish().unwrap();

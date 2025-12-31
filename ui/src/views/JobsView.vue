@@ -24,6 +24,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type JobType, type OverlapPolicy, type RunEvent, type RunListItem } from '@/stores/jobs'
 import { useOperationsStore, type ConflictPolicy, type Operation, type OperationEvent } from '@/stores/operations'
+import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 
@@ -33,6 +34,7 @@ const message = useMessage()
 const ui = useUiStore()
 const jobs = useJobsStore()
 const operations = useOperationsStore()
+const agents = useAgentsStore()
 const secrets = useSecretsStore()
 
 const editorOpen = ref<boolean>(false)
@@ -72,6 +74,7 @@ let opPollTimer: number | null = null
 const form = reactive<{
   id: string | null
   name: string
+  node: 'hub' | string
   schedule: string
   overlapPolicy: OverlapPolicy
   jobType: JobType
@@ -87,6 +90,7 @@ const form = reactive<{
 }>({
   id: null,
   name: '',
+  node: 'hub',
   schedule: '',
   overlapPolicy: 'queue',
   jobType: 'filesystem',
@@ -131,6 +135,7 @@ function openCreate(): void {
   editorMode.value = 'create'
   form.id = null
   form.name = ''
+  form.node = 'hub'
   form.schedule = ''
   form.overlapPolicy = 'queue'
   form.jobType = 'filesystem'
@@ -154,6 +159,7 @@ async function openEdit(jobId: string): Promise<void> {
     const job = await jobs.getJob(jobId)
     form.id = job.id
     form.name = job.name
+    form.node = job.agent_id ? job.agent_id : 'hub'
     form.schedule = job.schedule ?? ''
     form.overlapPolicy = job.overlap_policy
     form.jobType = job.spec.type
@@ -188,6 +194,8 @@ async function save(): Promise<void> {
     message.error(t('errors.jobNameRequired'))
     return
   }
+
+  const agentId = form.node === 'hub' ? null : form.node
 
   const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB))
   const partSizeBytes = partSizeMiB * 1024 * 1024
@@ -251,6 +259,7 @@ async function save(): Promise<void> {
 
     const payload = {
       name,
+      agent_id: agentId,
       schedule: form.schedule.trim() ? form.schedule.trim() : null,
       overlap_policy: form.overlapPolicy,
       spec: {
@@ -505,6 +514,14 @@ const overlapOptions = computed(() => [
   { label: t('jobs.overlap.reject'), value: 'reject' },
 ])
 
+const nodeOptions = computed(() => [
+  { label: t('jobs.nodes.hub'), value: 'hub' },
+  ...agents.items.map((a) => ({
+    label: a.name ? `${a.name} (${a.id.slice(0, 8)}…)` : a.id,
+    value: a.id,
+  })),
+])
+
 const targetTypeOptions = computed(() => [
   { label: t('jobs.targets.webdav'), value: 'webdav' },
   { label: t('jobs.targets.localDir'), value: 'local_dir' },
@@ -539,6 +556,15 @@ function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 
 
 const columns = computed<DataTableColumns<JobListItem>>(() => [
   { title: t('jobs.columns.name'), key: 'name' },
+  {
+    title: t('jobs.columns.node'),
+    key: 'agent_id',
+    render: (row) => {
+      if (!row.agent_id) return t('jobs.nodes.hub')
+      const agent = agents.items.find((a) => a.id === row.agent_id)
+      return agent?.name ?? row.agent_id
+    },
+  },
   {
     title: t('jobs.columns.schedule'),
     key: 'schedule',
@@ -640,6 +666,11 @@ const webdavSecretOptions = computed(() =>
 onMounted(async () => {
   await refresh()
   try {
+    await agents.refresh()
+  } catch {
+    message.error(t('errors.fetchAgentsFailed'))
+  }
+  try {
     await secrets.refreshWebdav()
   } catch {
     message.error(t('errors.fetchWebdavSecretsFailed'))
@@ -686,6 +717,9 @@ onBeforeUnmount(() => {
         <n-form label-placement="top">
           <n-form-item :label="t('jobs.fields.name')">
             <n-input v-model:value="form.name" />
+          </n-form-item>
+          <n-form-item :label="t('jobs.fields.node')">
+            <n-select v-model:value="form.node" :options="nodeOptions" filterable />
           </n-form-item>
           <n-form-item :label="t('jobs.fields.schedule')">
             <n-input v-model:value="form.schedule" :placeholder="t('jobs.fields.schedulePlaceholder')" />

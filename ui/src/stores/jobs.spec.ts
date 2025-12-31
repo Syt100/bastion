@@ -17,6 +17,7 @@ describe('useJobsStore', () => {
           {
             id: 'j1',
             name: 'job1',
+            agent_id: null,
             schedule: null,
             overlap_policy: 'queue',
             created_at: 1,
@@ -44,6 +45,7 @@ describe('useJobsStore', () => {
         JSON.stringify({
           id: 'j1',
           name: 'job1',
+          agent_id: null,
           schedule: null,
           overlap_policy: 'queue',
           spec: { v: 1, type: 'filesystem' },
@@ -62,6 +64,7 @@ describe('useJobsStore', () => {
     const jobs = useJobsStore()
     await jobs.createJob({
       name: 'job1',
+      agent_id: null,
       schedule: null,
       overlap_policy: 'queue',
       spec: { v: 1, type: 'filesystem' },

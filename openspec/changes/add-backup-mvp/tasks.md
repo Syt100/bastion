@@ -1,58 +1,58 @@
 ## 1. Spec & Design
-- [ ] Write and validate spec deltas under `openspec/changes/add-backup-mvp/specs/`
-- [ ] Finalize manifest/entries schema and repository layout
-- [ ] Define Hub/Agent JSON message schema and versioning rules
+- [x] Write and validate spec deltas under `openspec/changes/add-backup-mvp/specs/`
+- [x] Finalize manifest/entries schema and repository layout
+- [x] Define Hub/Agent JSON message schema and versioning rules
 
 ## 2. Project Scaffolding (Official Tooling)
-- [ ] Create Rust workspace via `cargo new`/`cargo init`
-- [ ] Create Vue 3 app via `npm create vue@latest` (TypeScript + Router + Pinia + ESLint + Vitest)
-- [ ] Add Naive UI + Tailwind + ECharts to the Vue project
-- [ ] Embed built UI assets into the Rust binary (single-file deployment)
+- [x] Create Rust workspace via `cargo new`/`cargo init`
+- [x] Create Vue 3 app via `npm create vue@latest` (TypeScript + Router + Pinia + ESLint + Vitest)
+- [x] Add Naive UI + Tailwind + ECharts to the Vue project
+- [x] Embed built UI assets into the Rust binary (single-file deployment)
 
 ## 3. Backend: Control Plane (Hub)
-- [ ] HTTP server (bind `127.0.0.1:9876` by default; configurable host/port)
-- [ ] Public access auth: reverse-proxy-safe cookie sessions + CSRF + login throttling + HTTPS enforcement
-- [ ] Secrets store: `data/master.key`, encrypted secrets in SQLite
+- [x] HTTP server (bind `127.0.0.1:9876` by default; configurable host/port)
+- [x] Public access auth: reverse-proxy-safe cookie sessions + CSRF + login throttling + HTTPS enforcement
+- [x] Secrets store: `data/master.key`, encrypted secrets in SQLite
 - [ ] Keypack export/import + key rotation workflow
-- [ ] Jobs CRUD + scheduler (cron) + overlap policy (reject/queue)
-- [ ] Runs/history + structured events/logs stored in SQLite (retention default 180 days, configurable)
+- [x] Jobs CRUD + scheduler (cron) + overlap policy (reject/queue)
+- [x] Runs/history + structured events/logs stored in SQLite (retention default 180 days, configurable)
 
 ## 4. Agent & Hub/Agent Protocol
-- [ ] Enrollment token generation (TTL + usage limits)
+- [x] Enrollment token generation (TTL + usage limits)
 - [ ] Agent registration to obtain `agent_id` + `agent_key` (Hub stores hash; supports revoke/rotate)
-- [ ] Agent-initiated WebSocket connection + hello/capabilities
-- [ ] Task dispatch + ACK/sequence + reconnect handling
-- [ ] Explicit insecure mode (`--insecure-http`) with persistent UI warnings
+- [x] Agent-initiated WebSocket connection + hello/capabilities
+- [x] Task dispatch + ACK/sequence + reconnect handling
+- [x] Explicit insecure mode (`--insecure-http`) with persistent UI warnings
 
 ## 5. Backup Engine
 - [ ] Filesystem source (include/exclude patterns; symlinks/hardlinks handling; error policy)
-- [ ] SQLite source using online backup API (no downtime) + optional `PRAGMA integrity_check`
+- [x] SQLite source using online backup API (no downtime) + optional `PRAGMA integrity_check`
 - [ ] Packaging pipeline: tar(PAX) → zstd(level=3, threads=auto) → optional age → split parts
-- [ ] Manifest v1 + entries index + atomic completion marker
-- [ ] Restore flow (concatenate parts → decrypt → decompress → untar)
-- [ ] Restore drill verification (download → restore to temp dir → compare hashes + SQLite integrity checks)
+- [x] Manifest v1 + entries index + atomic completion marker
+- [x] Restore flow (concatenate parts → decrypt → decompress → untar)
+- [x] Restore drill verification (download → restore to temp dir → compare hashes + SQLite integrity checks)
 
 ## 6. Targets
-- [ ] WebDAV target with split-part upload, retries, and resume by existing part size
-- [ ] Local directory target (store runs under `<base_dir>/<job_id>/<run_id>/`)
+- [x] WebDAV target with split-part upload, retries, and resume by existing part size
+- [x] Local directory target (store runs under `<base_dir>/<job_id>/<run_id>/`)
 - [ ] Incomplete-run cleanup (no `complete.json` older than N days)
 
 ## 7. Notifications
 - [ ] Email notifications (SMTP) with retry/backoff and dedupe per run
-- [ ] WeCom group bot webhook notifications with retry/backoff and dedupe per run
+- [x] WeCom group bot webhook notifications with retry/backoff and dedupe per run
 
 ## 8. Web UI
-- [ ] Modern layout (sidebar/topbar), responsive + dark mode
-- [ ] i18n: default `zh-CN`, support `zh-CN` + `en-US`, user switch + persistence
-- [ ] Login flow + session handling
-- [ ] Agents page (status, enroll, revoke)
-- [ ] Jobs pages (list/create/edit/run now)
-- [ ] Run history + live logs/events viewer
-- [ ] Restore wizard (select run, destination, conflict strategy)
-- [ ] Verify drill wizard + results
+- [x] Modern layout (sidebar/topbar), responsive + dark mode
+- [x] i18n: default `zh-CN`, support `zh-CN` + `en-US`, user switch + persistence
+- [x] Login flow + session handling
+- [x] Agents page (status, enroll, revoke)
+- [x] Jobs pages (list/create/edit/run now)
+- [x] Run history + live logs/events viewer
+- [x] Restore wizard (select run, destination, conflict strategy)
+- [x] Verify drill wizard + results
 
 ## 9. Testing & Quality
-- [ ] Commit policy: commit after each milestone feature and each bug fix (see `specs/development-workflow/spec.md`)
+- [x] Commit policy: commit after each milestone feature and each bug fix (see `specs/development-workflow/spec.md`)
 - [ ] Rust unit tests for: manifest/entries, secrets crypto, WebDAV resume logic, scheduler policies
 - [ ] Vue unit tests for: core views, forms validation, run log viewer components
 - [ ] CI scripts: `cargo fmt`, `cargo clippy`, `cargo test`, `npm test`

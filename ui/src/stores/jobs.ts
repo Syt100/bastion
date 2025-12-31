@@ -11,6 +11,7 @@ export type RunStatus = 'queued' | 'running' | 'success' | 'failed' | 'rejected'
 export type JobListItem = {
   id: string
   name: string
+  agent_id: string | null
   schedule: string | null
   overlap_policy: OverlapPolicy
   created_at: number
@@ -23,6 +24,7 @@ export type JobDetail = JobListItem & {
 
 export type CreateOrUpdateJobRequest = {
   name: string
+  agent_id: string | null
   schedule: string | null
   overlap_policy: OverlapPolicy
   spec: { v: 1; type: JobType } & Record<string, unknown>

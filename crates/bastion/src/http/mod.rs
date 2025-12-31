@@ -10,6 +10,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use sqlx::SqlitePool;
@@ -19,6 +20,9 @@ use tower_cookies::cookie::{Cookie, SameSite};
 use tower_http::trace::TraceLayer;
 
 use crate::agent;
+use crate::agent_manager::AgentManager;
+use crate::agent_protocol::{AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION};
+use crate::agent_tasks_repo;
 use crate::auth;
 use crate::config::Config;
 use crate::job_spec;
@@ -35,6 +39,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub db: SqlitePool,
     pub secrets: Arc<SecretsCrypto>,
+    pub agent_manager: AgentManager,
 }
 
 #[derive(Debug, Serialize)]
@@ -718,6 +723,7 @@ fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
 #[derive(Debug, Deserialize)]
 struct CreateJobRequest {
     name: String,
+    agent_id: Option<String>,
     schedule: Option<String>,
     overlap_policy: jobs_repo::OverlapPolicy,
     spec: serde_json::Value,
@@ -726,6 +732,7 @@ struct CreateJobRequest {
 #[derive(Debug, Deserialize)]
 struct UpdateJobRequest {
     name: String,
+    agent_id: Option<String>,
     schedule: Option<String>,
     overlap_policy: jobs_repo::OverlapPolicy,
     spec: serde_json::Value,
@@ -735,6 +742,7 @@ struct UpdateJobRequest {
 struct JobListItem {
     id: String,
     name: String,
+    agent_id: Option<String>,
     schedule: Option<String>,
     overlap_policy: jobs_repo::OverlapPolicy,
     created_at: i64,
@@ -753,6 +761,7 @@ async fn list_jobs(
             .map(|j| JobListItem {
                 id: j.id,
                 name: j.name,
+                agent_id: j.agent_id,
                 schedule: j.schedule,
                 overlap_policy: j.overlap_policy,
                 created_at: j.created_at,
@@ -785,6 +794,28 @@ async fn create_job(
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string());
 
+    let agent_id = req
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    if let Some(agent_id) = agent_id {
+        let row = sqlx::query("SELECT revoked_at FROM agents WHERE id = ? LIMIT 1")
+            .bind(agent_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+        let Some(row) = row else {
+            return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
+        };
+        if row.get::<Option<i64>, _>("revoked_at").is_some() {
+            return Err(AppError::bad_request(
+                "invalid_agent_id",
+                "Agent is revoked",
+            ));
+        }
+    }
+
     validate_job_spec(&req.spec)?;
 
     if let Some(schedule) = schedule.as_deref() {
@@ -795,6 +826,7 @@ async fn create_job(
     let job = jobs_repo::create_job(
         &state.db,
         req.name.trim(),
+        agent_id,
         schedule.as_deref(),
         req.overlap_policy,
         req.spec,
@@ -840,6 +872,28 @@ async fn update_job(
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string());
 
+    let agent_id = req
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    if let Some(agent_id) = agent_id {
+        let row = sqlx::query("SELECT revoked_at FROM agents WHERE id = ? LIMIT 1")
+            .bind(agent_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+        let Some(row) = row else {
+            return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
+        };
+        if row.get::<Option<i64>, _>("revoked_at").is_some() {
+            return Err(AppError::bad_request(
+                "invalid_agent_id",
+                "Agent is revoked",
+            ));
+        }
+    }
+
     validate_job_spec(&req.spec)?;
 
     if let Some(schedule) = schedule.as_deref() {
@@ -851,6 +905,7 @@ async fn update_job(
         &state.db,
         &job_id,
         req.name.trim(),
+        agent_id,
         schedule.as_deref(),
         req.overlap_policy,
         req.spec,
@@ -1386,7 +1441,10 @@ async fn agent_ws(
     let agent_id = row.get::<String, _>("id");
 
     let db = state.db.clone();
-    Ok(ws.on_upgrade(move |socket| handle_agent_socket(db, agent_id, peer.ip(), socket)))
+    let agent_manager = state.agent_manager.clone();
+    Ok(ws.on_upgrade(move |socket| {
+        handle_agent_socket(db, agent_id, peer.ip(), agent_manager, socket)
+    }))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
@@ -1399,7 +1457,8 @@ async fn handle_agent_socket(
     db: SqlitePool,
     agent_id: String,
     peer_ip: std::net::IpAddr,
-    mut socket: WebSocket,
+    agent_manager: AgentManager,
+    socket: WebSocket,
 ) {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     if let Err(error) = sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
@@ -1413,54 +1472,147 @@ async fn handle_agent_socket(
 
     tracing::info!(agent_id = %agent_id, peer_ip = %peer_ip, "agent connected");
 
-    while let Some(Ok(msg)) = socket.recv().await {
+    let (mut sender, mut receiver) = socket.split();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    agent_manager.register(agent_id.clone(), tx).await;
+
+    // Send any pending tasks for this agent (reconnect-safe).
+    match agent_tasks_repo::list_open_tasks_for_agent(&db, &agent_id, 100).await {
+        Ok(tasks) => {
+            for task in tasks {
+                if let Ok(text) = serde_json::to_string(&task.payload) {
+                    let _ = agent_manager
+                        .send(&agent_id, Message::Text(text.into()))
+                        .await;
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(agent_id = %agent_id, error = %error, "failed to list pending tasks");
+        }
+    }
+
+    let agent_id_send = agent_id.clone();
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
                 let text = text.to_string();
                 let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
-                let msg_type = serde_json::from_str::<serde_json::Value>(&text)
-                    .ok()
-                    .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()));
+                let _ = sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
+                    .bind(now)
+                    .bind(&agent_id)
+                    .execute(&db)
+                    .await;
 
-                match msg_type.as_deref() {
-                    Some("ping") => {
-                        if let Err(error) =
-                            sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
-                                .bind(now)
-                                .bind(&agent_id)
-                                .execute(&db)
-                                .await
-                        {
-                            tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent last_seen_at");
-                        }
-                        let _ = socket
-                            .send(Message::Text(r#"{"v":1,"type":"pong"}"#.into()))
+                match serde_json::from_str::<AgentToHubMessageV1>(&text) {
+                    Ok(AgentToHubMessageV1::Ping { v }) if v == PROTOCOL_VERSION => {
+                        let _ = agent_manager
+                            .send_json(&agent_id, &HubToAgentMessageV1::Pong { v })
                             .await;
                     }
-                    _ => {
-                        if let Err(error) = sqlx::query(
+                    Ok(AgentToHubMessageV1::Hello { v, .. }) if v == PROTOCOL_VERSION => {
+                        // Store full hello payload for debugging/capabilities display.
+                        let _ = sqlx::query(
                             "UPDATE agents SET capabilities_json = ?, last_seen_at = ? WHERE id = ?",
                         )
-                        .bind(text)
+                        .bind(&text)
                         .bind(now)
                         .bind(&agent_id)
                         .execute(&db)
-                        .await
-                        {
-                            tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent capabilities");
+                        .await;
+                    }
+                    Ok(AgentToHubMessageV1::Ack { v, task_id }) if v == PROTOCOL_VERSION => {
+                        let _ = agent_tasks_repo::ack_task(&db, &task_id).await;
+                    }
+                    Ok(AgentToHubMessageV1::RunEvent {
+                        v,
+                        run_id,
+                        level,
+                        kind,
+                        message,
+                        fields,
+                    }) if v == PROTOCOL_VERSION => {
+                        let _ = runs_repo::append_run_event(
+                            &db, &run_id, &level, &kind, &message, fields,
+                        )
+                        .await;
+                    }
+                    Ok(AgentToHubMessageV1::TaskResult {
+                        v,
+                        task_id,
+                        run_id,
+                        status,
+                        summary,
+                        error,
+                    }) if v == PROTOCOL_VERSION => {
+                        let run = runs_repo::get_run(&db, &run_id).await.ok().flatten();
+                        if let Some(run) = run {
+                            if run.status == runs_repo::RunStatus::Running {
+                                let (run_status, err_code) = if status == "success" {
+                                    (runs_repo::RunStatus::Success, None)
+                                } else {
+                                    (runs_repo::RunStatus::Failed, Some("agent_failed"))
+                                };
+
+                                let _ = runs_repo::complete_run(
+                                    &db,
+                                    &run_id,
+                                    run_status,
+                                    summary.clone(),
+                                    err_code,
+                                )
+                                .await;
+                                let _ = runs_repo::append_run_event(
+                                    &db,
+                                    &run_id,
+                                    if run_status == runs_repo::RunStatus::Success {
+                                        "info"
+                                    } else {
+                                        "error"
+                                    },
+                                    if run_status == runs_repo::RunStatus::Success {
+                                        "complete"
+                                    } else {
+                                        "failed"
+                                    },
+                                    if run_status == runs_repo::RunStatus::Success {
+                                        "complete"
+                                    } else {
+                                        "failed"
+                                    },
+                                    Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                                )
+                                .await;
+                            }
                         }
 
-                        let _ = socket
-                            .send(Message::Text(r#"{"v":1,"type":"ack"}"#.into()))
-                            .await;
+                        let _ = agent_tasks_repo::complete_task(
+                            &db,
+                            &task_id,
+                            summary.as_ref(),
+                            error.as_deref(),
+                        )
+                        .await;
                     }
+                    _ => {}
                 }
             }
             Message::Close(_) => break,
             _ => {}
         }
     }
+
+    agent_manager.unregister(&agent_id_send).await;
+    send_task.abort();
 
     tracing::info!(agent_id = %agent_id, "agent disconnected");
 }

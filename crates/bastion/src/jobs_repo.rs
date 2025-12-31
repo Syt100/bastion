@@ -35,6 +35,7 @@ impl std::str::FromStr for OverlapPolicy {
 pub struct Job {
     pub id: String,
     pub name: String,
+    pub agent_id: Option<String>,
     pub schedule: Option<String>,
     pub overlap_policy: OverlapPolicy,
     pub spec: serde_json::Value,
@@ -45,6 +46,7 @@ pub struct Job {
 pub async fn create_job(
     db: &SqlitePool,
     name: &str,
+    agent_id: Option<&str>,
     schedule: Option<&str>,
     overlap_policy: OverlapPolicy,
     spec: serde_json::Value,
@@ -55,12 +57,13 @@ pub async fn create_job(
 
     sqlx::query(
         r#"
-        INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO jobs (id, name, agent_id, schedule, overlap_policy, spec_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(name)
+    .bind(agent_id)
     .bind(schedule)
     .bind(overlap_policy.as_str())
     .bind(spec_json)
@@ -72,6 +75,7 @@ pub async fn create_job(
     Ok(Job {
         id,
         name: name.to_string(),
+        agent_id: agent_id.map(|s| s.to_string()),
         schedule: schedule.map(|s| s.to_string()),
         overlap_policy,
         spec,
@@ -82,7 +86,7 @@ pub async fn create_job(
 
 pub async fn get_job(db: &SqlitePool, job_id: &str) -> Result<Option<Job>, anyhow::Error> {
     let row = sqlx::query(
-        "SELECT id, name, schedule, overlap_policy, spec_json, created_at, updated_at FROM jobs WHERE id = ? LIMIT 1",
+        "SELECT id, name, agent_id, schedule, overlap_policy, spec_json, created_at, updated_at FROM jobs WHERE id = ? LIMIT 1",
     )
     .bind(job_id)
     .fetch_optional(db)
@@ -101,6 +105,7 @@ pub async fn get_job(db: &SqlitePool, job_id: &str) -> Result<Option<Job>, anyho
     Ok(Some(Job {
         id: row.get::<String, _>("id"),
         name: row.get::<String, _>("name"),
+        agent_id: row.get::<Option<String>, _>("agent_id"),
         schedule: row.get::<Option<String>, _>("schedule"),
         overlap_policy,
         spec,
@@ -111,7 +116,7 @@ pub async fn get_job(db: &SqlitePool, job_id: &str) -> Result<Option<Job>, anyho
 
 pub async fn list_jobs(db: &SqlitePool) -> Result<Vec<Job>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, name, schedule, overlap_policy, spec_json, created_at, updated_at FROM jobs ORDER BY created_at DESC",
+        "SELECT id, name, agent_id, schedule, overlap_policy, spec_json, created_at, updated_at FROM jobs ORDER BY created_at DESC",
     )
     .fetch_all(db)
     .await?;
@@ -127,6 +132,7 @@ pub async fn list_jobs(db: &SqlitePool) -> Result<Vec<Job>, anyhow::Error> {
         jobs.push(Job {
             id: row.get::<String, _>("id"),
             name: row.get::<String, _>("name"),
+            agent_id: row.get::<Option<String>, _>("agent_id"),
             schedule: row.get::<Option<String>, _>("schedule"),
             overlap_policy,
             spec,
@@ -142,6 +148,7 @@ pub async fn update_job(
     db: &SqlitePool,
     job_id: &str,
     name: &str,
+    agent_id: Option<&str>,
     schedule: Option<&str>,
     overlap_policy: OverlapPolicy,
     spec: serde_json::Value,
@@ -152,11 +159,12 @@ pub async fn update_job(
     let result = sqlx::query(
         r#"
         UPDATE jobs
-        SET name = ?, schedule = ?, overlap_policy = ?, spec_json = ?, updated_at = ?
+        SET name = ?, agent_id = ?, schedule = ?, overlap_policy = ?, spec_json = ?, updated_at = ?
         WHERE id = ?
         "#,
     )
     .bind(name)
+    .bind(agent_id)
     .bind(schedule)
     .bind(overlap_policy.as_str())
     .bind(spec_json)
@@ -193,6 +201,7 @@ mod tests {
         let job = create_job(
             &pool,
             "job1",
+            None,
             Some("0 */6 * * *"),
             OverlapPolicy::Queue,
             spec,
@@ -215,6 +224,7 @@ mod tests {
             &pool,
             &job.id,
             "job2",
+            Some("agent-1"),
             None,
             OverlapPolicy::Reject,
             updated_spec,
@@ -228,6 +238,7 @@ mod tests {
             .expect("get2")
             .expect("present2");
         assert_eq!(fetched.name, "job2");
+        assert_eq!(fetched.agent_id.as_deref(), Some("agent-1"));
         assert_eq!(fetched.overlap_policy, OverlapPolicy::Reject);
         assert!(fetched.schedule.is_none());
     }

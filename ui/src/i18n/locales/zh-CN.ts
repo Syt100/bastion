@@ -83,6 +83,7 @@ const messages = {
     deleteConfirm: '确认删除该任务？相关运行记录也会被删除。',
     fields: {
       name: '名称',
+      node: '执行节点',
       schedule: 'Cron 计划（可选）',
       schedulePlaceholder: '0 0 * * *',
       scheduleHelp: '支持标准 5 段 Cron（分 时 日 月 周），留空表示仅手动运行。',
@@ -107,6 +108,9 @@ const messages = {
       partSizeMiB: '分卷大小（MiB）',
       partSizeMiBHelp: '用于大文件分块上传与断点续传。',
     },
+    nodes: {
+      hub: 'Hub（本机）',
+    },
     targets: {
       webdav: 'WebDAV',
       localDir: '本地目录',
@@ -122,6 +126,7 @@ const messages = {
     },
     columns: {
       name: '名称',
+      node: '节点',
       schedule: '计划',
       overlap: '重叠',
       updatedAt: '更新时间',

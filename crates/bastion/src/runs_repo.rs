@@ -350,6 +350,20 @@ pub async fn complete_run(
     Ok(())
 }
 
+pub async fn requeue_run(db: &SqlitePool, run_id: &str) -> Result<(), anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+
+    sqlx::query(
+        "UPDATE runs SET status = 'queued', started_at = ?, ended_at = NULL, summary_json = NULL, error = NULL WHERE id = ?",
+    )
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn prune_runs_ended_before(
     db: &SqlitePool,
     cutoff_ts: i64,
@@ -369,7 +383,7 @@ mod tests {
 
     use super::{
         RunStatus, append_run_event, claim_next_queued_run, complete_run, create_run,
-        list_run_events, list_runs_for_job, prune_runs_ended_before,
+        list_run_events, list_runs_for_job, prune_runs_ended_before, requeue_run,
     };
 
     #[tokio::test]
@@ -413,6 +427,13 @@ mod tests {
             .expect("claim")
             .expect("claimed");
         assert_eq!(claimed.status, RunStatus::Running);
+
+        requeue_run(&pool, &claimed.id).await.expect("requeue");
+        let claimed2 = claim_next_queued_run(&pool)
+            .await
+            .expect("claim2")
+            .expect("claimed2");
+        assert_eq!(claimed2.id, claimed.id);
 
         complete_run(&pool, &claimed.id, RunStatus::Success, None, None)
             .await

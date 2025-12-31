@@ -1,5 +1,5 @@
 use globset::Glob;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 pub const JOB_SPEC_VERSION: u32 = 1;
@@ -8,7 +8,7 @@ fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilesystemSource {
     pub root: String,
     #[serde(default)]
@@ -17,19 +17,19 @@ pub struct FilesystemSource {
     pub exclude: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SqliteSource {
     pub path: String,
     #[serde(default)]
     pub integrity_check: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VaultwardenSource {
     pub data_dir: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TargetV1 {
     Webdav {
@@ -58,7 +58,7 @@ impl TargetV1 {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JobSpecV1 {
     Filesystem {
