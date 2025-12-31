@@ -868,9 +868,6 @@ async fn run_incomplete_cleanup_loop(
 
                 match extract_target(&spec) {
                     job_spec::TargetV1::LocalDir { base_dir, .. } => {
-                        if job.agent_id.is_some() {
-                            continue;
-                        }
                         let base_dir = base_dir.clone();
                         let job_id = job.id.clone();
                         let run_id = run.id.clone();
