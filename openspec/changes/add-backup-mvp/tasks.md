@@ -13,7 +13,7 @@
 - [x] HTTP server (bind `127.0.0.1:9876` by default; configurable host/port)
 - [x] Public access auth: reverse-proxy-safe cookie sessions + CSRF + login throttling + HTTPS enforcement
 - [x] Secrets store: `data/master.key`, encrypted secrets in SQLite
-- [ ] Keypack export/import + key rotation workflow
+- [x] Keypack export/import + key rotation workflow
 - [x] Jobs CRUD + scheduler (cron) + overlap policy (reject/queue)
 - [x] Runs/history + structured events/logs stored in SQLite (retention default 180 days, configurable)
 

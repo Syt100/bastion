@@ -28,6 +28,10 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Agent(AgentArgs),
+    Keypack {
+        #[command(subcommand)]
+        command: KeypackCommand,
+    },
 }
 
 #[derive(Debug, Args, Clone)]
@@ -81,6 +85,50 @@ pub struct AgentArgs {
     #[arg(long, default_value_t = 15, env = "BASTION_AGENT_HEARTBEAT_SECONDS")]
     pub heartbeat_seconds: u64,
 }
+
+#[derive(Debug, Subcommand)]
+pub enum KeypackCommand {
+    Export(KeypackExportArgs),
+    Import(KeypackImportArgs),
+    Rotate(KeypackRotateArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct KeypackExportArgs {
+    /// Output path for the password-encrypted keypack.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Keypack password (not recommended to pass via CLI args; prefer --password-stdin).
+    #[arg(long, env = "BASTION_KEYPACK_PASSWORD", hide_env_values = true)]
+    pub password: Option<String>,
+
+    /// Read the keypack password from stdin (trailing newline is trimmed).
+    #[arg(long)]
+    pub password_stdin: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct KeypackImportArgs {
+    /// Input path of the password-encrypted keypack.
+    #[arg(long)]
+    pub r#in: PathBuf,
+
+    /// Overwrite existing data_dir/master.key.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Keypack password (not recommended to pass via CLI args; prefer --password-stdin).
+    #[arg(long, env = "BASTION_KEYPACK_PASSWORD", hide_env_values = true)]
+    pub password: Option<String>,
+
+    /// Read the keypack password from stdin (trailing newline is trimmed).
+    #[arg(long)]
+    pub password_stdin: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct KeypackRotateArgs {}
 
 impl HubArgs {
     pub fn into_config(self) -> Result<Config, anyhow::Error> {
