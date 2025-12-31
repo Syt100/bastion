@@ -48,6 +48,7 @@ const messages = {
     subtitle: 'Manage agents connected to the Hub.',
     newToken: 'Create enrollment token',
     revokeConfirm: 'Revoke this agent? It must re-enroll to connect again.',
+    rotateConfirm: 'Rotate this agent key? The old key will be invalid immediately.',
     status: {
       online: 'Online',
       offline: 'Offline',
@@ -63,7 +64,9 @@ const messages = {
     actions: {
       copy: 'Copy',
       copyToken: 'Copy token',
+      copyKey: 'Copy key',
       revoke: 'Revoke',
+      rotateKey: 'Rotate key',
     },
     tokenModal: {
       title: 'Create enrollment token',
@@ -73,6 +76,11 @@ const messages = {
       help: 'Paste the token into the agent enrollment step to bind it.',
       token: 'Token',
       expiresAt: 'Expires at',
+    },
+    rotateModal: {
+      title: 'Rotate agent key',
+      help: 'Save this key (shown once) and update the agent configuration, then restart the agent process.',
+      agentKey: 'New agent key',
     },
   },
   jobs: {
@@ -238,6 +246,7 @@ const messages = {
     enrollmentTokenCreated: 'Enrollment token created',
     copied: 'Copied',
     agentRevoked: 'Agent revoked',
+    agentKeyRotated: 'Agent key rotated',
     jobCreated: 'Job created',
     jobUpdated: 'Job updated',
     jobDeleted: 'Job deleted',
@@ -256,6 +265,7 @@ const messages = {
     fetchAgentsFailed: 'Failed to fetch agents',
     createEnrollmentTokenFailed: 'Failed to create enrollment token',
     revokeAgentFailed: 'Failed to revoke agent',
+    rotateAgentKeyFailed: 'Failed to rotate agent key',
     copyFailed: 'Copy failed',
     fetchJobsFailed: 'Failed to fetch jobs',
     fetchJobFailed: 'Failed to fetch job',

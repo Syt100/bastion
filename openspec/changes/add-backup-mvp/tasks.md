@@ -19,7 +19,7 @@
 
 ## 4. Agent & Hub/Agent Protocol
 - [x] Enrollment token generation (TTL + usage limits)
-- [ ] Agent registration to obtain `agent_id` + `agent_key` (Hub stores hash; supports revoke/rotate)
+- [x] Agent registration to obtain `agent_id` + `agent_key` (Hub stores hash; supports revoke/rotate)
 - [x] Agent-initiated WebSocket connection + hello/capabilities
 - [x] Task dispatch + ACK/sequence + reconnect handling
 - [x] Explicit insecure mode (`--insecure-http`) with persistent UI warnings

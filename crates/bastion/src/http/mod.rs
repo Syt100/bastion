@@ -23,6 +23,7 @@ use crate::agent;
 use crate::agent_manager::AgentManager;
 use crate::agent_protocol::{AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION};
 use crate::agent_tasks_repo;
+use crate::agents_repo;
 use crate::auth;
 use crate::config::Config;
 use crate::job_spec;
@@ -712,6 +713,31 @@ async fn revoke_agent(
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize)]
+struct RotateAgentKeyResponse {
+    agent_id: String,
+    agent_key: String,
+}
+
+async fn rotate_agent_key(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<RotateAgentKeyResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let agent_key = agents_repo::rotate_agent_key(&state.db, &agent_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("agent_not_found", "Agent not found"))?;
+
+    Ok(Json(RotateAgentKeyResponse {
+        agent_id,
+        agent_key,
+    }))
 }
 
 fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
@@ -1722,6 +1748,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{id}/revoke", post(revoke_agent))
+        .route("/api/agents/{id}/rotate-key", post(rotate_agent_key))
         .route(
             "/api/agents/enrollment-tokens",
             post(create_enrollment_token),
