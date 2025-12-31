@@ -178,8 +178,19 @@ const messages = {
       actions: '操作',
     },
     actions: {
+      events: '事件',
       restore: '恢复',
       verify: '恢复演练',
+    },
+  },
+  runEvents: {
+    title: '运行事件',
+    noEvents: '暂无事件',
+    ws: {
+      disconnected: '未连接',
+      connecting: '连接中',
+      connected: '已连接',
+      error: '错误',
     },
   },
   restore: {
@@ -267,6 +278,7 @@ const messages = {
     restoreDestinationRequired: '目标目录不能为空',
     restoreStartFailed: '开始恢复失败',
     verifyStartFailed: '开始恢复演练失败',
+    fetchRunEventsFailed: '获取运行事件失败',
   },
 } as const
 

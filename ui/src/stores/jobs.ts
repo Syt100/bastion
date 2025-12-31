@@ -41,6 +41,16 @@ export type RunListItem = {
   error: string | null
 }
 
+export type RunEvent = {
+  run_id: string
+  seq: number
+  ts: number
+  level: string
+  kind: string
+  message: string
+  fields: unknown | null
+}
+
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
@@ -115,6 +125,9 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<RunListItem[]>(`/api/jobs/${encodeURIComponent(jobId)}/runs`)
   }
 
-  return { items, loading, refresh, getJob, createJob, updateJob, deleteJob, runNow, listRuns }
-})
+  async function listRunEvents(runId: string): Promise<RunEvent[]> {
+    return await apiFetch<RunEvent[]>(`/api/runs/${encodeURIComponent(runId)}/events`)
+  }
 
+  return { items, loading, refresh, getJob, createJob, updateJob, deleteJob, runNow, listRuns, listRunEvents }
+})

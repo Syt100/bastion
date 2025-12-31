@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -22,7 +22,7 @@ import {
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import { useJobsStore, type JobListItem, type JobType, type OverlapPolicy, type RunListItem } from '@/stores/jobs'
+import { useJobsStore, type JobListItem, type JobType, type OverlapPolicy, type RunEvent, type RunListItem } from '@/stores/jobs'
 import { useOperationsStore, type ConflictPolicy, type Operation, type OperationEvent } from '@/stores/operations'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
@@ -43,6 +43,14 @@ const runsOpen = ref<boolean>(false)
 const runsLoading = ref<boolean>(false)
 const runsJobId = ref<string | null>(null)
 const runs = ref<RunListItem[]>([])
+
+const runEventsOpen = ref<boolean>(false)
+const runEventsLoading = ref<boolean>(false)
+const runEventsRunId = ref<string | null>(null)
+const runEvents = ref<RunEvent[]>([])
+const runEventsWsStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
+let runEventsLastSeq = 0
+let runEventsSocket: WebSocket | null = null
 
 const restoreOpen = ref<boolean>(false)
 const restoreStarting = ref<boolean>(false)
@@ -104,6 +112,11 @@ const dateFormatter = computed(
 function formatUnixSeconds(ts: number | null): string {
   if (!ts) return '-'
   return dateFormatter.value.format(new Date(ts * 1000))
+}
+
+function wsUrl(path: string): string {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}${path}`
 }
 
 function formatJson(value: unknown): string {
@@ -314,6 +327,76 @@ async function openRuns(jobId: string): Promise<void> {
   }
 }
 
+function closeRunEventsSocket(): void {
+  if (runEventsSocket) {
+    runEventsSocket.close()
+    runEventsSocket = null
+  }
+  runEventsWsStatus.value = 'disconnected'
+}
+
+function connectRunEventsWs(runId: string): void {
+  closeRunEventsSocket()
+  runEventsWsStatus.value = 'connecting'
+
+  const socket = new WebSocket(wsUrl(`/api/runs/${encodeURIComponent(runId)}/events/ws`))
+  runEventsSocket = socket
+
+  socket.onopen = () => {
+    runEventsWsStatus.value = 'connected'
+  }
+
+  socket.onmessage = async (evt: MessageEvent) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(String(evt.data)) as unknown
+    } catch {
+      return
+    }
+
+    if (!parsed || typeof parsed !== 'object') return
+    const e = parsed as RunEvent
+    if (typeof e.seq !== 'number' || typeof e.ts !== 'number') return
+    if (e.seq <= runEventsLastSeq) return
+
+    runEventsLastSeq = e.seq
+    runEvents.value.push(e)
+    await nextTick()
+    const el = document.getElementById('run-events-scroll')
+    if (el) el.scrollTop = el.scrollHeight
+  }
+
+  socket.onerror = () => {
+    runEventsWsStatus.value = 'error'
+  }
+
+  socket.onclose = () => {
+    runEventsWsStatus.value = 'disconnected'
+  }
+}
+
+async function openRunEvents(runId: string): Promise<void> {
+  runEventsOpen.value = true
+  runEventsRunId.value = runId
+  runEventsLoading.value = true
+  runEvents.value = []
+  runEventsLastSeq = 0
+  try {
+    const events = await jobs.listRunEvents(runId)
+    runEvents.value = events
+    runEventsLastSeq = events.reduce((m, e) => Math.max(m, e.seq), 0)
+    await nextTick()
+    const el = document.getElementById('run-events-scroll')
+    if (el) el.scrollTop = el.scrollHeight
+  } catch {
+    message.error(t('errors.fetchRunEventsFailed'))
+  } finally {
+    runEventsLoading.value = false
+  }
+
+  connectRunEventsWs(runId)
+}
+
 function openRestoreWizard(runId: string): void {
   restoreRunId.value = runId
   restoreDestinationDir.value = ''
@@ -447,6 +530,13 @@ function opStatusTagType(status: Operation['status']): 'success' | 'error' | 'wa
   return 'default'
 }
 
+function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 'default' {
+  if (level === 'error') return 'error'
+  if (level === 'warn' || level === 'warning') return 'warning'
+  if (level === 'info') return 'success'
+  return 'default'
+}
+
 const columns = computed<DataTableColumns<JobListItem>>(() => [
   { title: t('jobs.columns.name'), key: 'name' },
   {
@@ -526,6 +616,7 @@ const runColumns = computed<DataTableColumns<RunListItem>>(() => [
         { size: 8 },
         {
           default: () => [
+            h(NButton, { size: 'small', onClick: () => openRunEvents(row.id) }, { default: () => t('runs.actions.events') }),
             h(
               NButton,
               { size: 'small', disabled: row.status !== 'success', onClick: () => openRestoreWizard(row.id) },
@@ -561,8 +652,15 @@ watch(opOpen, (open) => {
   }
 })
 
+watch(runEventsOpen, (open) => {
+  if (!open) {
+    closeRunEventsSocket()
+  }
+})
+
 onBeforeUnmount(() => {
   stopOpPolling()
+  closeRunEventsSocket()
 })
 </script>
 
@@ -660,6 +758,36 @@ onBeforeUnmount(() => {
         <n-data-table :loading="runsLoading" :columns="runColumns" :data="runs" />
         <n-space justify="end">
           <n-button @click="runsOpen = false">{{ t('common.close') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="runEventsOpen" preset="card" :title="t('runEvents.title')">
+      <div class="space-y-3">
+        <div class="text-sm opacity-70 flex items-center gap-2">
+          <span>{{ runEventsRunId }}</span>
+          <n-tag size="small" :type="runEventsWsStatus === 'connected' ? 'success' : runEventsWsStatus === 'error' ? 'error' : 'default'">
+            {{ t(`runEvents.ws.${runEventsWsStatus}`) }}
+          </n-tag>
+        </div>
+
+        <n-spin v-if="runEventsLoading" size="small" />
+
+        <div id="run-events-scroll" class="max-h-96 overflow-auto border rounded-md p-2 bg-[var(--n-color)]">
+          <div v-if="runEvents.length === 0" class="text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
+          <div v-for="e in runEvents" :key="e.seq" class="font-mono text-xs py-1 border-b last:border-b-0 opacity-90">
+            <div class="flex flex-wrap gap-2 items-center">
+              <span class="opacity-70">{{ formatUnixSeconds(e.ts) }}</span>
+              <n-tag size="tiny" :type="runEventLevelTagType(e.level)">{{ e.level }}</n-tag>
+              <span class="opacity-70">{{ e.kind }}</span>
+              <span>{{ e.message }}</span>
+            </div>
+            <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
+          </div>
+        </div>
+
+        <n-space justify="end">
+          <n-button @click="runEventsOpen = false">{{ t('common.close') }}</n-button>
         </n-space>
       </div>
     </n-modal>
