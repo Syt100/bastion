@@ -8,6 +8,7 @@ use serde::Serialize;
 use tar::{EntryType, Header, HeaderMode};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tracing::info;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -67,6 +68,20 @@ pub fn build_filesystem_run(
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        root = %source.root,
+        include_rules = source.include.len(),
+        exclude_rules = source.exclude.len(),
+        symlink_policy = ?source.symlink_policy,
+        hardlink_policy = ?source.hardlink_policy,
+        error_policy = ?source.error_policy,
+        encryption = ?encryption,
+        part_size_bytes,
+        "building filesystem backup artifacts"
+    );
+
     let stage = stage_dir(data_dir, run_id);
     std::fs::create_dir_all(&stage)?;
 
@@ -136,6 +151,19 @@ pub fn build_filesystem_run(
 
     write_json(&manifest_path, &manifest)?;
     write_json(&complete_path, &serde_json::json!({}))?;
+
+    let parts_count = parts.len();
+    let parts_bytes: u64 = parts.iter().map(|p| p.size).sum();
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        entries_count,
+        parts_count,
+        parts_bytes,
+        warnings_total = issues.warnings_total,
+        errors_total = issues.errors_total,
+        "built filesystem backup artifacts"
+    );
 
     Ok(FilesystemRunBuild {
         artifacts: LocalRunArtifacts {

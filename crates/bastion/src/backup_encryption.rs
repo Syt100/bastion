@@ -1,5 +1,6 @@
 use age::secrecy::ExposeSecret as _;
 use sqlx::SqlitePool;
+use tracing::{debug, info};
 
 use crate::backup::PayloadEncryption;
 use crate::job_spec;
@@ -42,6 +43,7 @@ pub async fn ensure_age_identity(
     }
 
     if let Some(existing) = get_age_identity(db, secrets, key_name).await? {
+        debug!(key_name = %key_name, "using existing backup age identity");
         return Ok(existing);
     }
 
@@ -56,6 +58,7 @@ pub async fn ensure_age_identity(
     )
     .await?;
 
+    info!(key_name = %key_name, "created backup age identity");
     Ok(identity_str.expose_secret().to_string())
 }
 
@@ -73,6 +76,7 @@ pub async fn ensure_payload_encryption(
             let identity = age::x25519::Identity::from_str(identity_str.trim())
                 .map_err(|e| anyhow::anyhow!(e))?;
             let recipient = identity.to_public().to_string();
+            debug!(key_name = %key_name.trim(), "resolved payload encryption");
             Ok(PayloadEncryption::AgeX25519 {
                 recipient,
                 key_name: key_name.trim().to_string(),

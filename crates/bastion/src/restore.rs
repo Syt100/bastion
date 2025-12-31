@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use tracing::{debug, info, warn};
 use url::Url;
 
 use crate::job_spec;
@@ -13,6 +14,15 @@ use crate::runs_repo;
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
 use crate::webdav::{WebdavClient, WebdavCredentials};
+
+fn redact_url(url: &Url) -> String {
+    let mut redacted = url.clone();
+    let _ = redacted.set_username("");
+    let _ = redacted.set_password(None);
+    redacted.set_query(None);
+    redacted.set_fragment(None);
+    redacted.to_string()
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConflictPolicy {
@@ -111,6 +121,13 @@ pub async fn spawn_restore_operation(
         )
         .await
         {
+            warn!(
+                op_id = %op_id,
+                run_id = %run_id,
+                destination_dir = %destination_dir.display(),
+                error = %error,
+                "restore operation failed"
+            );
             let msg = format!("{error:#}");
             let _ = operations_repo::append_event(&db, &op_id, "error", "failed", &msg, None).await;
             let _ = operations_repo::complete_operation(
@@ -135,6 +152,7 @@ pub async fn spawn_verify_operation(
 ) {
     tokio::spawn(async move {
         if let Err(error) = verify_operation(&db, &secrets, &data_dir, &op_id, &run_id).await {
+            warn!(op_id = %op_id, run_id = %run_id, error = %error, "verify operation failed");
             let msg = format!("{error:#}");
             let _ = operations_repo::append_event(&db, &op_id, "error", "failed", &msg, None).await;
             let _ = operations_repo::complete_operation(
@@ -159,6 +177,13 @@ async fn restore_operation(
     destination_dir: &Path,
     conflict: ConflictPolicy,
 ) -> Result<(), anyhow::Error> {
+    info!(
+        op_id = %op_id,
+        run_id = %run_id,
+        destination_dir = %destination_dir.display(),
+        conflict = %conflict.as_str(),
+        "restore operation started"
+    );
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
 
     let run = runs_repo::get_run(db, run_id)
@@ -198,6 +223,13 @@ async fn restore_operation(
 
     let staging_dir = op_dir.join("staging");
     let parts = fetch_parts(&access, &manifest, &staging_dir).await?;
+    info!(
+        op_id = %op_id,
+        run_id = %run_id,
+        parts_count = parts.len(),
+        total_bytes = manifest.artifacts.iter().map(|p| p.size).sum::<u64>(),
+        "backup parts ready for restore"
+    );
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let dest = destination_dir.to_path_buf();
@@ -222,6 +254,7 @@ async fn restore_operation(
 
     let _ = tokio::fs::remove_dir_all(&op_dir).await;
 
+    info!(op_id = %op_id, run_id = %run_id, "restore operation completed");
     Ok(())
 }
 
@@ -232,6 +265,7 @@ async fn verify_operation(
     op_id: &str,
     run_id: &str,
 ) -> Result<(), anyhow::Error> {
+    info!(op_id = %op_id, run_id = %run_id, "verify operation started");
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
 
     let run = runs_repo::get_run(db, run_id)
@@ -272,6 +306,13 @@ async fn verify_operation(
 
     let entries_path = fetch_entries_index(&access, &staging_dir).await?;
     let parts = fetch_parts(&access, &manifest, &staging_dir).await?;
+    info!(
+        op_id = %op_id,
+        run_id = %run_id,
+        parts_count = parts.len(),
+        total_bytes = manifest.artifacts.iter().map(|p| p.size).sum::<u64>(),
+        "backup parts ready for verify"
+    );
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let temp_restore_dir = op_dir.join("restore");
@@ -341,6 +382,12 @@ async fn verify_operation(
 
     let _ = tokio::fs::remove_dir_all(&op_dir).await;
 
+    info!(
+        op_id = %op_id,
+        run_id = %run_id,
+        ok = verify.ok && sqlite_results.ok,
+        "verify operation completed"
+    );
     Ok(())
 }
 
@@ -382,10 +429,25 @@ async fn open_target_access(
 
             let job_url = base_url.join(&format!("{job_id}/"))?;
             let run_url = job_url.join(&format!("{run_id}/"))?;
+            debug!(
+                job_id = %job_id,
+                run_id = %run_id,
+                target = "webdav",
+                base_url = %redact_url(&base_url),
+                run_url = %redact_url(&run_url),
+                "resolved restore target access"
+            );
             Ok(TargetAccess::Webdav { client, run_url })
         }
         job_spec::TargetV1::LocalDir { base_dir, .. } => {
             let run_dir = PathBuf::from(base_dir.trim()).join(job_id).join(run_id);
+            debug!(
+                job_id = %job_id,
+                run_id = %run_id,
+                target = "local_dir",
+                run_dir = %run_dir.display(),
+                "resolved restore target access"
+            );
             Ok(TargetAccess::LocalDir { run_dir })
         }
     }

@@ -13,6 +13,7 @@ mod db;
 mod http;
 mod job_spec;
 mod jobs_repo;
+mod logging;
 mod notifications;
 mod notifications_repo;
 mod operations_repo;
@@ -37,11 +38,20 @@ use crate::http::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let Cli { command, hub } = Cli::parse();
+    let Cli {
+        command,
+        hub,
+        logging: logging_args,
+    } = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let _logging_guard = logging::init(&logging_args)?;
+
+    info!(
+        log_file = ?logging_args.log_file,
+        log_rotation = ?logging_args.log_rotation,
+        log_keep_files = logging_args.log_keep_files,
+        "logging initialized"
+    );
 
     if let Some(command) = command {
         match command {

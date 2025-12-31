@@ -211,6 +211,7 @@ async fn upsert_webdav_secret(
     let bytes = serde_json::to_vec(&payload)?;
 
     secrets_repo::upsert_secret(&state.db, &state.secrets, "webdav", name.trim(), &bytes).await?;
+    tracing::info!(secret_kind = "webdav", secret_name = %name.trim(), "secret upserted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -246,6 +247,7 @@ async fn delete_webdav_secret(
     if !deleted {
         return Err(AppError::not_found("secret_not_found", "Secret not found"));
     }
+    tracing::info!(secret_kind = "webdav", secret_name = %name, "secret deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -288,6 +290,11 @@ async fn upsert_wecom_bot_secret(
 
     secrets_repo::upsert_secret(&state.db, &state.secrets, "wecom_bot", name.trim(), &bytes)
         .await?;
+    tracing::info!(
+        secret_kind = "wecom_bot",
+        secret_name = %name.trim(),
+        "secret upserted"
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -322,6 +329,7 @@ async fn delete_wecom_bot_secret(
     if !deleted {
         return Err(AppError::not_found("secret_not_found", "Secret not found"));
     }
+    tracing::info!(secret_kind = "wecom_bot", secret_name = %name, "secret deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -398,6 +406,7 @@ async fn upsert_smtp_secret(
     let bytes = serde_json::to_vec(&payload)?;
 
     secrets_repo::upsert_secret(&state.db, &state.secrets, "smtp", name.trim(), &bytes).await?;
+    tracing::info!(secret_kind = "smtp", secret_name = %name.trim(), "secret upserted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -438,6 +447,7 @@ async fn delete_smtp_secret(
     if !deleted {
         return Err(AppError::not_found("secret_not_found", "Secret not found"));
     }
+    tracing::info!(secret_kind = "smtp", secret_name = %name, "secret deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -501,6 +511,7 @@ async fn setup_initialize(
     }
 
     auth::create_user(&state.db, &req.username, &req.password).await?;
+    tracing::info!("setup initialized");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -529,6 +540,11 @@ async fn login(
     if let Some(retry_after) =
         auth::login_throttle_retry_after_seconds(&state.db, &client_ip_str, now).await?
     {
+        tracing::warn!(
+            client_ip = %client_ip,
+            retry_after,
+            "login rate limited"
+        );
         return Err(AppError::too_many_requests(
             "rate_limited",
             format!("Too many login attempts. Retry after {retry_after}s."),
@@ -537,6 +553,7 @@ async fn login(
 
     let Some(user) = auth::find_user_by_username(&state.db, &req.username).await? else {
         let _ = auth::record_login_failure(&state.db, &client_ip_str, now).await;
+        tracing::debug!(client_ip = %client_ip, "login failed: user not found");
         return Err(AppError::unauthorized(
             "invalid_credentials",
             "Invalid credentials",
@@ -545,6 +562,7 @@ async fn login(
 
     if !auth::verify_password(&user.password_hash, &req.password)? {
         let _ = auth::record_login_failure(&state.db, &client_ip_str, now).await;
+        tracing::debug!(client_ip = %client_ip, user_id = user.id, "login failed: bad password");
         return Err(AppError::unauthorized(
             "invalid_credentials",
             "Invalid credentials",
@@ -556,6 +574,7 @@ async fn login(
     let session = auth::create_session(&state.db, user.id).await?;
     set_session_cookie(&state, &headers, peer.ip(), &cookies, &session.id)?;
 
+    tracing::info!(client_ip = %client_ip, user_id = user.id, "login succeeded");
     Ok(Json(LoginResponse {
         csrf_token: session.csrf_token,
     }))
@@ -1016,6 +1035,14 @@ async fn create_job(
     )
     .await?;
 
+    tracing::info!(
+        job_id = %job.id,
+        name = %job.name,
+        agent_id = ?job.agent_id,
+        schedule = ?job.schedule,
+        overlap_policy = ?job.overlap_policy,
+        "job created"
+    );
     Ok(Json(job))
 }
 
@@ -1101,6 +1128,15 @@ async fn update_job(
     let job = jobs_repo::get_job(&state.db, &job_id)
         .await?
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+
+    tracing::info!(
+        job_id = %job.id,
+        name = %job.name,
+        agent_id = ?job.agent_id,
+        schedule = ?job.schedule,
+        overlap_policy = ?job.overlap_policy,
+        "job updated"
+    );
     Ok(Json(job))
 }
 
@@ -1117,6 +1153,7 @@ async fn delete_job(
     if !deleted {
         return Err(AppError::not_found("job_not_found", "Job not found"));
     }
+    tracing::info!(job_id = %job_id, "job deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1176,6 +1213,12 @@ async fn trigger_job_run(
     )
     .await?;
 
+    tracing::info!(
+        job_id = %job.id,
+        run_id = %run.id,
+        status = ?run.status,
+        "manual run triggered"
+    );
     Ok(Json(TriggerRunResponse {
         run_id: run.id,
         status: run.status,
@@ -1402,7 +1445,7 @@ async fn start_restore(
         "requested",
         "requested",
         Some(serde_json::json!({
-            "run_id": run_id,
+            "run_id": run_id.clone(),
             "destination_dir": destination_dir,
             "conflict_policy": conflict.as_str(),
         })),
@@ -1414,12 +1457,19 @@ async fn start_restore(
         state.secrets.clone(),
         state.config.data_dir.clone(),
         op.id.clone(),
-        run_id,
+        run_id.clone(),
         std::path::PathBuf::from(destination_dir),
         conflict,
     )
     .await;
 
+    tracing::info!(
+        op_id = %op.id,
+        run_id = %run_id,
+        destination_dir = %destination_dir,
+        conflict = %conflict.as_str(),
+        "restore requested"
+    );
     Ok(Json(StartOperationResponse { op_id: op.id }))
 }
 
@@ -1450,7 +1500,7 @@ async fn start_verify(
         "info",
         "requested",
         "requested",
-        Some(serde_json::json!({ "run_id": run_id })),
+        Some(serde_json::json!({ "run_id": run_id.clone() })),
     )
     .await;
 
@@ -1459,10 +1509,11 @@ async fn start_verify(
         state.secrets.clone(),
         state.config.data_dir.clone(),
         op.id.clone(),
-        run_id,
+        run_id.clone(),
     )
     .await;
 
+    tracing::info!(op_id = %op.id, run_id = %run_id, "verify requested");
     Ok(Json(StartOperationResponse { op_id: op.id }))
 }
 

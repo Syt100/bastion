@@ -8,6 +8,15 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use url::Url;
 
+fn redact_url(url: &Url) -> String {
+    let mut redacted = url.clone();
+    let _ = redacted.set_username("");
+    let _ = redacted.set_password(None);
+    redacted.set_query(None);
+    redacted.set_fragment(None);
+    redacted.to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct WebdavCredentials {
     pub username: String,
@@ -54,6 +63,7 @@ impl WebdavClient {
     }
 
     pub async fn ensure_collection(&self, url: &Url) -> Result<(), anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), "webdav mkcol");
         let res = self
             .http
             .request(Method::from_bytes(b"MKCOL")?, url.clone())
@@ -71,6 +81,7 @@ impl WebdavClient {
     }
 
     pub async fn head_size(&self, url: &Url) -> Result<Option<u64>, anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), "webdav head");
         let res = self
             .http
             .head(url.clone())
@@ -97,6 +108,12 @@ impl WebdavClient {
     }
 
     pub async fn put_file(&self, url: &Url, path: &Path, size: u64) -> Result<(), anyhow::Error> {
+        tracing::debug!(
+            url = %redact_url(url),
+            path = %path.display(),
+            size,
+            "webdav put"
+        );
         let file = tokio::fs::File::open(path).await?;
         let stream = ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
@@ -133,6 +150,14 @@ impl WebdavClient {
             match self.put_file(url, path, size).await {
                 Ok(()) => return Ok(()),
                 Err(error) if attempt < max_attempts => {
+                    tracing::debug!(
+                        url = %redact_url(url),
+                        attempt,
+                        max_attempts,
+                        backoff_seconds = backoff.as_secs(),
+                        error = %error,
+                        "webdav put failed; retrying"
+                    );
                     tokio::time::sleep(backoff).await;
                     backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     attempt += 1;
@@ -144,6 +169,7 @@ impl WebdavClient {
     }
 
     pub async fn get_bytes(&self, url: &Url) -> Result<Vec<u8>, anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), "webdav get bytes");
         let res = self
             .http
             .get(url.clone())
@@ -162,6 +188,7 @@ impl WebdavClient {
     }
 
     pub async fn delete(&self, url: &Url) -> Result<bool, anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), "webdav delete");
         let res = self
             .http
             .delete(url.clone())
@@ -192,6 +219,15 @@ impl WebdavClient {
             match self.get_to_file_once(url, dest, expected_size).await {
                 Ok(n) => return Ok(n),
                 Err(error) if attempt < max_attempts => {
+                    tracing::debug!(
+                        url = %redact_url(url),
+                        dest = %dest.display(),
+                        attempt,
+                        max_attempts,
+                        backoff_seconds = backoff.as_secs(),
+                        error = %error,
+                        "webdav get failed; retrying"
+                    );
                     tokio::time::sleep(backoff).await;
                     backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     attempt += 1;
@@ -208,6 +244,7 @@ impl WebdavClient {
         dest: &Path,
         expected_size: Option<u64>,
     ) -> Result<u64, anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), dest = %dest.display(), "webdav get to file");
         let res = self
             .http
             .get(url.clone())
