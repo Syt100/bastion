@@ -995,3 +995,89 @@ async fn cleanup_webdav_run(
 
     Ok(client.delete(&run_url).await?)
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use crate::db;
+    use crate::jobs_repo::{self, OverlapPolicy};
+    use crate::runs_repo::{self, RunStatus};
+
+    use super::enqueue_run;
+
+    #[tokio::test]
+    async fn overlap_policy_reject_inserts_rejected_run() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job1",
+            None,
+            None,
+            OverlapPolicy::Reject,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .expect("create job");
+
+        // Existing running run triggers rejection.
+        let _existing =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Running, 1, None, None, None)
+                .await
+                .expect("existing run");
+
+        enqueue_run(&pool, &job, "cron").await.expect("enqueue");
+
+        let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
+            .await
+            .expect("list runs");
+        let newest = &runs[0];
+        assert_eq!(newest.status, RunStatus::Rejected);
+        assert!(newest.ended_at.is_some());
+        assert_eq!(newest.error.as_deref(), Some("overlap_rejected"));
+    }
+
+    #[tokio::test]
+    async fn overlap_policy_queue_inserts_queued_run() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job1",
+            None,
+            None,
+            OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .expect("create job");
+
+        let _existing =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Running, 1, None, None, None)
+                .await
+                .expect("existing run");
+
+        enqueue_run(&pool, &job, "cron").await.expect("enqueue");
+
+        let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
+            .await
+            .expect("list runs");
+        let newest = &runs[0];
+        assert_eq!(newest.status, RunStatus::Queued);
+        assert!(newest.ended_at.is_none());
+        assert!(newest.error.is_none());
+    }
+}
