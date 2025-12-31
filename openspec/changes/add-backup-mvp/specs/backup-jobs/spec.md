@@ -7,6 +7,17 @@ The system SHALL support defining jobs for file backups and SQLite backups, and 
 - **WHEN** a user creates a job with a filesystem source and WebDAV target
 - **THEN** the job is stored and becomes runnable
 
+### Requirement: Optional Encryption Per Job
+The system SHALL allow configuring optional encryption per job and SHALL default to no encryption when not specified.
+
+#### Scenario: Default encryption is disabled
+- **WHEN** a job is created without an explicit encryption configuration
+- **THEN** runs for that job execute with encryption disabled
+
+#### Scenario: Age encryption is enabled
+- **WHEN** a job is configured with age encryption and key name `K`
+- **THEN** runs for that job execute with age encryption and record `K` in the manifest
+
 ### Requirement: Execution Node (Hub or Agent)
 The system SHALL allow selecting an execution node for a job: the local Hub node or a specific enrolled Agent node.
 
@@ -24,6 +35,13 @@ For jobs assigned to an Agent, the Hub SHALL dispatch run execution to that Agen
 #### Scenario: Run executes on Agent
 - **WHEN** a user triggers a run for an Agent-assigned job
 - **THEN** the Hub dispatches a task to the Agent and the run completes with events visible in the UI
+
+### Requirement: Agent Receives Resolved Encryption Parameters
+For encrypted jobs executed on an Agent, the Hub SHALL provide the Agent sufficient resolved encryption parameters to produce the encrypted artifact stream (e.g., an age recipient).
+
+#### Scenario: Hub sends age recipient
+- **WHEN** an Agent-assigned job runs with age encryption enabled using key name `K`
+- **THEN** the dispatched task includes the age recipient and key name `K`
 
 ### Requirement: Built-In Scheduler
 The system SHALL provide a built-in scheduler to execute jobs based on cron expressions.

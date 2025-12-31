@@ -27,7 +27,7 @@
 ## 5. Backup Engine
 - [x] Filesystem source (include/exclude patterns; symlinks/hardlinks handling; error policy)
 - [x] SQLite source using online backup API (no downtime) + optional `PRAGMA integrity_check`
-- [ ] Packaging pipeline: tar(PAX) → zstd(level=3, threads=auto) → optional age → split parts
+- [x] Packaging pipeline: tar(PAX) → zstd(level=3, threads=auto) → optional age → split parts
 - [x] Manifest v1 + entries index + atomic completion marker
 - [x] Restore flow (concatenate parts → decrypt → decompress → untar)
 - [x] Restore drill verification (download → restore to temp dir → compare hashes + SQLite integrity checks)

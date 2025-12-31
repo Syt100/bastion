@@ -4,7 +4,7 @@ use std::time::Duration;
 use rusqlite::{Connection, OpenFlags};
 use time::OffsetDateTime;
 
-use crate::backup::LocalRunArtifacts;
+use crate::backup::{LocalRunArtifacts, PayloadEncryption};
 use crate::job_spec::{
     FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, SqliteSource,
 };
@@ -35,6 +35,7 @@ pub fn build_sqlite_run(
     run_id: &str,
     started_at: OffsetDateTime,
     source: &SqliteSource,
+    encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<SqliteRunArtifacts, anyhow::Error> {
     let run_dir = crate::backup::run_dir(data_dir, run_id);
@@ -68,6 +69,7 @@ pub fn build_sqlite_run(
         run_id,
         started_at,
         &fs_source,
+        encryption,
         part_size_bytes,
     )?;
     if build.issues.errors_total > 0 {
@@ -141,6 +143,7 @@ fn integrity_check(snapshot_path: &Path) -> Result<IntegrityCheck, anyhow::Error
 #[cfg(test)]
 mod tests {
     use super::{build_sqlite_run, integrity_check};
+    use crate::backup::PayloadEncryption;
     use crate::job_spec::SqliteSource;
     use rusqlite::Connection;
     use tempfile::tempdir;
@@ -180,12 +183,14 @@ mod tests {
             integrity_check: true,
         };
 
+        let encryption = PayloadEncryption::None;
         let result = build_sqlite_run(
             &data_dir,
             &job_id,
             &run_id,
             OffsetDateTime::now_utc(),
             &source,
+            &encryption,
             4 * 1024 * 1024,
         )
         .unwrap();

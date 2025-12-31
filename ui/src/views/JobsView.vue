@@ -82,6 +82,8 @@ const form = reactive<{
   schedule: string
   overlapPolicy: OverlapPolicy
   jobType: JobType
+  encryptionEnabled: boolean
+  encryptionKeyName: string
   fsRoot: string
   fsInclude: string
   fsExclude: string
@@ -103,6 +105,8 @@ const form = reactive<{
   schedule: '',
   overlapPolicy: 'queue',
   jobType: 'filesystem',
+  encryptionEnabled: false,
+  encryptionKeyName: 'default',
   fsRoot: '',
   fsInclude: '',
   fsExclude: '',
@@ -182,6 +186,8 @@ function openCreate(): void {
   form.schedule = ''
   form.overlapPolicy = 'queue'
   form.jobType = 'filesystem'
+  form.encryptionEnabled = false
+  form.encryptionKeyName = 'default'
   form.fsRoot = ''
   form.fsInclude = ''
   form.fsExclude = ''
@@ -211,6 +217,17 @@ async function openEdit(jobId: string): Promise<void> {
     form.schedule = job.schedule ?? ''
     form.overlapPolicy = job.overlap_policy
     form.jobType = job.spec.type
+
+    const pipeline = (job.spec as Record<string, unknown>).pipeline as Record<string, unknown> | undefined
+    const enc = pipeline?.encryption as Record<string, unknown> | undefined
+    const encType = typeof enc?.type === 'string' ? enc.type : 'none'
+    if (encType === 'age_x25519') {
+      form.encryptionEnabled = true
+      form.encryptionKeyName = typeof enc?.key_name === 'string' ? enc.key_name : 'default'
+    } else {
+      form.encryptionEnabled = false
+      form.encryptionKeyName = 'default'
+    }
 
     const target = (job.spec as Record<string, unknown>).target as Record<string, unknown> | undefined
     const targetType = target?.type === 'local_dir' ? 'local_dir' : 'webdav'
@@ -274,6 +291,18 @@ async function save(): Promise<void> {
     }
   }
 
+  const encryptionKeyName = form.encryptionKeyName.trim()
+  if (form.encryptionEnabled && !encryptionKeyName) {
+    message.error(t('errors.encryptionKeyNameRequired'))
+    return
+  }
+
+  const pipeline = {
+    encryption: form.encryptionEnabled
+      ? ({ type: 'age_x25519' as const, key_name: encryptionKeyName } as const)
+      : ({ type: 'none' as const } as const),
+  }
+
   const source =
     form.jobType === 'filesystem'
       ? {
@@ -325,6 +354,7 @@ async function save(): Promise<void> {
       spec: {
         v: 1 as const,
         type: form.jobType,
+        pipeline,
         source,
         target,
       },
@@ -807,6 +837,19 @@ onBeforeUnmount(() => {
           </n-form-item>
           <n-form-item :label="t('jobs.fields.type')">
             <n-select v-model:value="form.jobType" :options="jobTypeOptions" />
+          </n-form-item>
+
+          <n-form-item :label="t('jobs.fields.encryptionEnabled')">
+            <div class="space-y-1">
+              <n-switch v-model:value="form.encryptionEnabled" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionHelp') }}</div>
+            </div>
+          </n-form-item>
+          <n-form-item v-if="form.encryptionEnabled" :label="t('jobs.fields.encryptionKeyName')">
+            <div class="space-y-1 w-full">
+              <n-input v-model:value="form.encryptionKeyName" :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionKeyNameHelp') }}</div>
+            </div>
           </n-form-item>
 
           <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.sourceRoot')">

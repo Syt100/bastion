@@ -12,6 +12,16 @@ pub const ENTRIES_INDEX_NAME: &str = "entries.jsonl.zst";
 pub const MANIFEST_NAME: &str = "manifest.json";
 pub const COMPLETE_NAME: &str = "complete.json";
 
+#[derive(Debug, Clone, Default)]
+pub enum PayloadEncryption {
+    #[default]
+    None,
+    AgeX25519 {
+        recipient: String,
+        key_name: String,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalArtifact {
     pub name: String,

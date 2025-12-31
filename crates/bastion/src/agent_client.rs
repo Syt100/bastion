@@ -10,7 +10,8 @@ use tracing::{debug, info, warn};
 use url::Url;
 
 use crate::agent_protocol::{
-    AgentToHubMessageV1, HubToAgentMessageV1, JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
+    AgentToHubMessageV1, EncryptionResolvedV1, HubToAgentMessageV1, JobSpecResolvedV1,
+    PROTOCOL_VERSION, TargetResolvedV1,
 };
 use crate::config::AgentArgs;
 use crate::run_failure::RunFailedWithSummary;
@@ -219,10 +220,25 @@ async fn handle_backup_task(
     send_run_event(tx, &run_id, "info", "start", "start", None).await?;
 
     let summary = match task.spec {
-        JobSpecResolvedV1::Filesystem { source, target, .. } => {
+        JobSpecResolvedV1::Filesystem {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             send_run_event(tx, &run_id, "info", "packaging", "packaging", None).await?;
             let part_size = target_part_size_bytes(&target);
             let error_policy = source.error_policy;
+            let encryption = match pipeline.encryption {
+                EncryptionResolvedV1::None => backup::PayloadEncryption::None,
+                EncryptionResolvedV1::AgeX25519 {
+                    recipient,
+                    key_name,
+                } => backup::PayloadEncryption::AgeX25519 {
+                    recipient,
+                    key_name,
+                },
+            };
             let data_dir_buf = data_dir.to_path_buf();
             let job_id_clone = job_id.clone();
             let run_id_clone = run_id.clone();
@@ -233,6 +249,7 @@ async fn handle_backup_task(
                     &run_id_clone,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })
@@ -299,11 +316,26 @@ async fn handle_backup_task(
 
             summary
         }
-        JobSpecResolvedV1::Sqlite { source, target, .. } => {
+        JobSpecResolvedV1::Sqlite {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             send_run_event(tx, &run_id, "info", "snapshot", "snapshot", None).await?;
             let sqlite_path = source.path.clone();
             let part_size = target_part_size_bytes(&target);
 
+            let encryption = match pipeline.encryption {
+                EncryptionResolvedV1::None => backup::PayloadEncryption::None,
+                EncryptionResolvedV1::AgeX25519 {
+                    recipient,
+                    key_name,
+                } => backup::PayloadEncryption::AgeX25519 {
+                    recipient,
+                    key_name,
+                },
+            };
             let data_dir_buf = data_dir.to_path_buf();
             let job_id_clone = job_id.clone();
             let run_id_clone = run_id.clone();
@@ -314,6 +346,7 @@ async fn handle_backup_task(
                     &run_id_clone,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })
@@ -362,11 +395,26 @@ async fn handle_backup_task(
                 },
             })
         }
-        JobSpecResolvedV1::Vaultwarden { source, target, .. } => {
+        JobSpecResolvedV1::Vaultwarden {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             send_run_event(tx, &run_id, "info", "snapshot", "snapshot", None).await?;
             let vw_data_dir = source.data_dir.clone();
             let part_size = target_part_size_bytes(&target);
 
+            let encryption = match pipeline.encryption {
+                EncryptionResolvedV1::None => backup::PayloadEncryption::None,
+                EncryptionResolvedV1::AgeX25519 {
+                    recipient,
+                    key_name,
+                } => backup::PayloadEncryption::AgeX25519 {
+                    recipient,
+                    key_name,
+                },
+            };
             let data_dir_buf = data_dir.to_path_buf();
             let job_id_clone = job_id.clone();
             let run_id_clone = run_id.clone();
@@ -377,6 +425,7 @@ async fn handle_backup_task(
                     &run_id_clone,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })

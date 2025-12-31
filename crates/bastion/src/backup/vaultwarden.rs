@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 
 use crate::backup::{
     COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts, MANIFEST_NAME, PartWriter,
-    stage_dir,
+    PayloadEncryption, stage_dir,
 };
 use crate::job_spec::VaultwardenSource;
 
@@ -30,6 +30,7 @@ pub fn build_vaultwarden_run(
     run_id: &str,
     started_at: OffsetDateTime,
     source: &VaultwardenSource,
+    encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<LocalRunArtifacts, anyhow::Error> {
     let stage = stage_dir(data_dir, run_id);
@@ -62,6 +63,7 @@ pub fn build_vaultwarden_run(
         &stage,
         &root,
         &snapshot_path,
+        encryption,
         &mut entries_writer,
         &mut entries_count,
         part_size_bytes,
@@ -82,7 +84,14 @@ pub fn build_vaultwarden_run(
         pipeline: PipelineSettings {
             tar: "pax".to_string(),
             compression: "zstd".to_string(),
-            encryption: "none".to_string(),
+            encryption: match encryption {
+                PayloadEncryption::None => "none".to_string(),
+                PayloadEncryption::AgeX25519 { .. } => "age".to_string(),
+            },
+            encryption_key: match encryption {
+                PayloadEncryption::None => None,
+                PayloadEncryption::AgeX25519 { key_name, .. } => Some(key_name.clone()),
+            },
             split_bytes: part_size_bytes,
         },
         artifacts: parts
@@ -120,6 +129,7 @@ fn write_tar_zstd_parts(
     stage_dir: &Path,
     root: &Path,
     snapshot_path: &Path,
+    encryption: &PayloadEncryption,
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
     part_size_bytes: u64,
@@ -131,11 +141,76 @@ fn write_tar_zstd_parts(
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    let mut encoder = zstd::Encoder::new(&mut part_writer, 3)?;
-    encoder.multithread(threads as u32)?;
+    match encryption {
+        PayloadEncryption::None => {
+            let mut encoder = zstd::Encoder::new(&mut part_writer, 3)?;
+            encoder.multithread(threads as u32)?;
 
-    let mut tar = tar::Builder::new(encoder);
+            let mut tar = tar::Builder::new(encoder);
+            write_vaultwarden_tar_entries(
+                &mut tar,
+                root,
+                snapshot_path,
+                entries_writer,
+                entries_count,
+            )?;
 
+            tar.finish()?;
+            let encoder = tar.into_inner()?;
+            encoder.finish()?;
+        }
+        PayloadEncryption::AgeX25519 { recipient, .. } => {
+            use std::str::FromStr as _;
+
+            let recipient =
+                age::x25519::Recipient::from_str(recipient).map_err(|e| anyhow::anyhow!(e))?;
+            let encryptor = age::Encryptor::with_recipients(std::iter::once(
+                &recipient as &dyn age::Recipient,
+            ))?;
+            let encrypted = encryptor.wrap_output(&mut part_writer)?;
+
+            let mut encoder = zstd::Encoder::new(encrypted, 3)?;
+            encoder.multithread(threads as u32)?;
+
+            let mut tar = tar::Builder::new(encoder);
+            write_vaultwarden_tar_entries(
+                &mut tar,
+                root,
+                snapshot_path,
+                entries_writer,
+                entries_count,
+            )?;
+
+            tar.finish()?;
+            let encoder = tar.into_inner()?;
+            let encrypted = encoder.finish()?;
+            encrypted.finish()?;
+        }
+    }
+    entries_writer.flush()?;
+
+    let parts = part_writer.finish()?;
+    let local_parts = parts
+        .into_iter()
+        .map(|p| LocalArtifact {
+            name: p.name.clone(),
+            path: stage_dir.join(&p.name),
+            size: p.size,
+            hash_alg: p.hash_alg,
+            hash: p.hash,
+        })
+        .collect();
+
+    Ok(local_parts)
+}
+
+fn write_vaultwarden_tar_entries<W: Write>(
+    tar: &mut tar::Builder<W>,
+    root: &Path,
+    snapshot_path: &Path,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+) -> Result<(), anyhow::Error> {
     let mut iter = WalkDir::new(root).follow_links(false).into_iter();
     while let Some(next) = iter.next() {
         let entry = next?;
@@ -212,24 +287,7 @@ fn write_tar_zstd_parts(
     entries_writer.write_all(b"\n")?;
     *entries_count += 1;
 
-    tar.finish()?;
-    let encoder = tar.into_inner()?;
-    encoder.finish()?;
-    entries_writer.flush()?;
-
-    let parts = part_writer.finish()?;
-    let local_parts = parts
-        .into_iter()
-        .map(|p| LocalArtifact {
-            name: p.name.clone(),
-            path: stage_dir.join(&p.name),
-            size: p.size,
-            hash_alg: p.hash_alg,
-            hash: p.hash,
-        })
-        .collect();
-
-    Ok(local_parts)
+    Ok(())
 }
 
 fn hash_file(path: &Path) -> Result<String, anyhow::Error> {
@@ -256,6 +314,7 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), anyhow::Error> 
 #[cfg(test)]
 mod tests {
     use super::build_vaultwarden_run;
+    use crate::backup::PayloadEncryption;
     use crate::job_spec::VaultwardenSource;
     use rusqlite::Connection;
     use std::fs;
@@ -297,12 +356,14 @@ mod tests {
         let source = VaultwardenSource {
             data_dir: vw_dir.to_string_lossy().to_string(),
         };
+        let encryption = PayloadEncryption::None;
         let artifacts = build_vaultwarden_run(
             &data_dir,
             &job_id,
             &run_id,
             OffsetDateTime::now_utc(),
             &source,
+            &encryption,
             4 * 1024 * 1024,
         )
         .unwrap();

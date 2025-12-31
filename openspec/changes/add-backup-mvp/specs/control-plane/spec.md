@@ -87,3 +87,10 @@ The system SHALL support rotating the master keyring by generating a new active 
 #### Scenario: Existing secrets remain decryptable after rotation
 - **WHEN** the master key is rotated
 - **THEN** previously stored encrypted secrets remain decryptable
+
+### Requirement: Backup Encryption Key Storage
+The system SHALL store backup encryption keys in the encrypted secrets store protected by `data/master.key`.
+
+#### Scenario: Encryption key is created on demand
+- **WHEN** a user enables age encryption using key name `K` and the key does not exist
+- **THEN** the system creates and stores an encryption key under name `K` and uses it for the run

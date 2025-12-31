@@ -27,6 +27,8 @@ pub struct PipelineSettings {
     pub tar: String,
     pub compression: String,
     pub encryption: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_key: Option<String>,
     pub split_bytes: u64,
 }
 
@@ -65,6 +67,7 @@ mod tests {
                 tar: "pax".to_string(),
                 compression: "zstd".to_string(),
                 encryption: "none".to_string(),
+                encryption_key: None,
                 split_bytes: 268_435_456,
             },
             artifacts: vec![ArtifactPart {
