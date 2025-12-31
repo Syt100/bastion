@@ -28,10 +28,19 @@ const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
 const editorSaving = ref<boolean>(false)
 
+const wecomEditorOpen = ref<boolean>(false)
+const wecomEditorLoading = ref<boolean>(false)
+const wecomEditorSaving = ref<boolean>(false)
+
 const form = reactive<{ name: string; username: string; password: string }>({
   name: '',
   username: '',
   password: '',
+})
+
+const wecomForm = reactive<{ name: string; webhookUrl: string }>({
+  name: '',
+  webhookUrl: '',
 })
 
 const dateFormatter = computed(
@@ -53,6 +62,12 @@ async function refresh(): Promise<void> {
   } catch {
     message.error(t('errors.fetchWebdavSecretsFailed'))
   }
+
+  try {
+    await secrets.refreshWecomBots()
+  } catch {
+    message.error(t('errors.fetchWecomBotsFailed'))
+  }
 }
 
 function openCreate(): void {
@@ -60,6 +75,12 @@ function openCreate(): void {
   form.username = ''
   form.password = ''
   editorOpen.value = true
+}
+
+function openWecomCreate(): void {
+  wecomForm.name = ''
+  wecomForm.webhookUrl = ''
+  wecomEditorOpen.value = true
 }
 
 async function openEdit(name: string): Promise<void> {
@@ -75,6 +96,21 @@ async function openEdit(name: string): Promise<void> {
     editorOpen.value = false
   } finally {
     editorLoading.value = false
+  }
+}
+
+async function openWecomEdit(name: string): Promise<void> {
+  wecomEditorOpen.value = true
+  wecomEditorLoading.value = true
+  try {
+    const secret = await secrets.getWecomBot(name)
+    wecomForm.name = secret.name
+    wecomForm.webhookUrl = secret.webhook_url
+  } catch {
+    message.error(t('errors.fetchWecomBotFailed'))
+    wecomEditorOpen.value = false
+  } finally {
+    wecomEditorLoading.value = false
   }
 }
 
@@ -99,6 +135,27 @@ async function save(): Promise<void> {
   }
 }
 
+async function saveWecom(): Promise<void> {
+  const name = wecomForm.name.trim()
+  const webhookUrl = wecomForm.webhookUrl.trim()
+  if (!name || !webhookUrl) {
+    message.error(t('errors.wecomNameOrWebhookRequired'))
+    return
+  }
+
+  wecomEditorSaving.value = true
+  try {
+    await secrets.upsertWecomBot(name, webhookUrl)
+    message.success(t('messages.wecomBotSaved'))
+    wecomEditorOpen.value = false
+    await refresh()
+  } catch {
+    message.error(t('errors.saveWecomBotFailed'))
+  } finally {
+    wecomEditorSaving.value = false
+  }
+}
+
 async function remove(name: string): Promise<void> {
   try {
     await secrets.deleteWebdav(name)
@@ -106,6 +163,16 @@ async function remove(name: string): Promise<void> {
     await refresh()
   } catch {
     message.error(t('errors.deleteWebdavSecretFailed'))
+  }
+}
+
+async function removeWecom(name: string): Promise<void> {
+  try {
+    await secrets.deleteWecomBot(name)
+    message.success(t('messages.wecomBotDeleted'))
+    await refresh()
+  } catch {
+    message.error(t('errors.deleteWecomBotFailed'))
   }
 }
 
@@ -159,6 +226,47 @@ const columns = computed<DataTableColumns<SecretListItem>>(() => [
   },
 ])
 
+const wecomColumns = computed<DataTableColumns<SecretListItem>>(() => [
+  { title: t('settings.wecom.columns.name'), key: 'name' },
+  {
+    title: t('settings.wecom.columns.updatedAt'),
+    key: 'updated_at',
+    render: (row) => formatUnixSeconds(row.updated_at),
+  },
+  {
+    title: t('settings.wecom.columns.actions'),
+    key: 'actions',
+    render: (row) =>
+      h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(
+              NButton,
+              { size: 'small', onClick: () => copyToClipboard(row.name) },
+              { default: () => t('common.copy') },
+            ),
+            h(NButton, { size: 'small', onClick: () => openWecomEdit(row.name) }, { default: () => t('common.edit') }),
+            h(
+              NPopconfirm,
+              {
+                onPositiveClick: () => removeWecom(row.name),
+                positiveText: t('common.delete'),
+                negativeText: t('common.cancel'),
+              },
+              {
+                trigger: () =>
+                  h(NButton, { size: 'small', type: 'error', tertiary: true }, { default: () => t('common.delete') }),
+                default: () => t('settings.wecom.deleteConfirm'),
+              },
+            ),
+          ],
+        },
+      ),
+  },
+])
+
 onMounted(refresh)
 </script>
 
@@ -182,6 +290,14 @@ onMounted(refresh)
       <n-data-table :loading="secrets.loadingWebdav" :columns="columns" :data="secrets.webdav" />
     </n-card>
 
+    <n-card :title="t('settings.wecom.title')">
+      <template #header-extra>
+        <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
+      </template>
+
+      <n-data-table :loading="secrets.loadingWecomBots" :columns="wecomColumns" :data="secrets.wecomBots" />
+    </n-card>
+
     <n-modal v-model:show="editorOpen" preset="card" :title="t('settings.webdav.editorTitle')">
       <div class="space-y-4">
         <n-form label-placement="top">
@@ -199,6 +315,24 @@ onMounted(refresh)
         <n-space justify="end">
           <n-button @click="editorOpen = false">{{ t('common.cancel') }}</n-button>
           <n-button type="primary" :loading="editorSaving" @click="save">{{ t('common.save') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="wecomEditorOpen" preset="card" :title="t('settings.wecom.editorTitle')">
+      <div class="space-y-4">
+        <n-form label-placement="top">
+          <n-form-item :label="t('settings.wecom.fields.name')">
+            <n-input v-model:value="wecomForm.name" :disabled="wecomEditorLoading" />
+          </n-form-item>
+          <n-form-item :label="t('settings.wecom.fields.webhookUrl')">
+            <n-input v-model:value="wecomForm.webhookUrl" :disabled="wecomEditorLoading" />
+          </n-form-item>
+        </n-form>
+
+        <n-space justify="end">
+          <n-button @click="wecomEditorOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="wecomEditorSaving" @click="saveWecom">{{ t('common.save') }}</n-button>
         </n-space>
       </div>
     </n-modal>

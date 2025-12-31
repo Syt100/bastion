@@ -152,6 +152,21 @@ const messages = {
         actions: 'Actions',
       },
     },
+    wecom: {
+      title: 'WeCom group bot',
+      new: 'New',
+      editorTitle: 'Edit WeCom bot',
+      deleteConfirm: 'Delete this bot?',
+      fields: {
+        name: 'Name',
+        webhookUrl: 'Webhook URL',
+      },
+      columns: {
+        name: 'Name',
+        updatedAt: 'Updated',
+        actions: 'Actions',
+      },
+    },
   },
   runs: {
     title: 'Runs',
@@ -174,6 +189,8 @@ const messages = {
     runRejected: 'Rejected by overlap policy',
     webdavSecretSaved: 'WebDAV credential saved',
     webdavSecretDeleted: 'WebDAV credential deleted',
+    wecomBotSaved: 'WeCom bot saved',
+    wecomBotDeleted: 'WeCom bot deleted',
   },
   errors: {
     loginFailed: 'Login failed',
@@ -196,6 +213,11 @@ const messages = {
     saveWebdavSecretFailed: 'Failed to save WebDAV credential',
     deleteWebdavSecretFailed: 'Failed to delete WebDAV credential',
     secretNameOrUsernameRequired: 'Name and username are required',
+    fetchWecomBotsFailed: 'Failed to fetch WeCom bots',
+    fetchWecomBotFailed: 'Failed to fetch WeCom bot',
+    saveWecomBotFailed: 'Failed to save WeCom bot',
+    deleteWecomBotFailed: 'Failed to delete WeCom bot',
+    wecomNameOrWebhookRequired: 'Name and webhook URL are required',
     webdavBaseUrlRequired: 'WebDAV target URL is required',
     webdavSecretRequired: 'WebDAV credential is required',
     localBaseDirRequired: 'Local backup directory is required',

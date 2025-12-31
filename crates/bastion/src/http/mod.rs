@@ -80,6 +80,23 @@ async fn list_webdav_secrets(
     ))
 }
 
+async fn list_wecom_bot_secrets(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+) -> Result<Json<Vec<SecretListItem>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let secrets = secrets_repo::list_secrets(&state.db, "wecom_bot").await?;
+    Ok(Json(
+        secrets
+            .into_iter()
+            .map(|s| SecretListItem {
+                name: s.name,
+                updated_at: s.updated_at,
+            })
+            .collect(),
+    ))
+}
+
 #[derive(Debug, Deserialize)]
 struct UpsertWebdavSecretRequest {
     username: String,
@@ -97,6 +114,22 @@ struct WebdavSecretResponse {
 struct WebdavSecretPayload {
     username: String,
     password: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpsertWecomBotSecretRequest {
+    webhook_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WecomBotSecretResponse {
+    name: String,
+    webhook_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WecomBotSecretPayload {
+    webhook_url: String,
 }
 
 async fn upsert_webdav_secret(
@@ -161,6 +194,82 @@ async fn delete_webdav_secret(
     require_csrf(&headers, &session)?;
 
     let deleted = secrets_repo::delete_secret(&state.db, "webdav", &name).await?;
+    if !deleted {
+        return Err(AppError::not_found("secret_not_found", "Secret not found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn upsert_wecom_bot_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(req): Json<UpsertWecomBotSecretRequest>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    if name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_name",
+            "Secret name is required",
+        ));
+    }
+
+    let webhook_url = req.webhook_url.trim();
+    if webhook_url.is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_webhook_url",
+            "Webhook URL is required",
+        ));
+    }
+    let url = url::Url::parse(webhook_url)?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(AppError::bad_request(
+            "invalid_webhook_url",
+            "Webhook URL must be http(s)",
+        ));
+    }
+
+    let payload = WecomBotSecretPayload {
+        webhook_url: webhook_url.to_string(),
+    };
+    let bytes = serde_json::to_vec(&payload)?;
+
+    secrets_repo::upsert_secret(&state.db, &state.secrets, "wecom_bot", name.trim(), &bytes)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_wecom_bot_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(name): Path<String>,
+) -> Result<Json<WecomBotSecretResponse>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let bytes = secrets_repo::get_secret(&state.db, &state.secrets, "wecom_bot", &name)
+        .await?
+        .ok_or_else(|| AppError::not_found("secret_not_found", "Secret not found"))?;
+
+    let payload: WecomBotSecretPayload = serde_json::from_slice(&bytes)?;
+    Ok(Json(WecomBotSecretResponse {
+        name,
+        webhook_url: payload.webhook_url,
+    }))
+}
+
+async fn delete_wecom_bot_secret(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let deleted = secrets_repo::delete_secret(&state.db, "wecom_bot", &name).await?;
     if !deleted {
         return Err(AppError::not_found("secret_not_found", "Secret not found"));
     }
@@ -1143,6 +1252,13 @@ pub fn router(state: AppState) -> Router {
             get(get_webdav_secret)
                 .put(upsert_webdav_secret)
                 .delete(delete_webdav_secret),
+        )
+        .route("/api/secrets/wecom-bot", get(list_wecom_bot_secrets))
+        .route(
+            "/api/secrets/wecom-bot/{name}",
+            get(get_wecom_bot_secret)
+                .put(upsert_wecom_bot_secret)
+                .delete(delete_wecom_bot_secret),
         )
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{id}/revoke", post(revoke_agent))

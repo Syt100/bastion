@@ -12,6 +12,7 @@ use url::Url;
 use crate::backup;
 use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
+use crate::notifications_repo;
 use crate::runs_repo::{self, RunStatus};
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
@@ -250,6 +251,11 @@ async fn run_worker_loop(
                 let _ =
                     runs_repo::append_run_event(&db, &run.id, "info", "complete", "complete", None)
                         .await;
+                if let Err(error) =
+                    notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
+                {
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                }
                 info!(run_id = %run.id, "run completed");
             }
             Err(error) => {
@@ -267,6 +273,11 @@ async fn run_worker_loop(
                     Some("run_failed"),
                 )
                 .await;
+                if let Err(error) =
+                    notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
+                {
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                }
             }
         }
     }

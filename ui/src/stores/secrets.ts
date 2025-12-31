@@ -15,9 +15,16 @@ export type WebdavSecret = {
   password: string
 }
 
+export type WecomBotSecret = {
+  name: string
+  webhook_url: string
+}
+
 export const useSecretsStore = defineStore('secrets', () => {
   const webdav = ref<SecretListItem[]>([])
   const loadingWebdav = ref<boolean>(false)
+  const wecomBots = ref<SecretListItem[]>([])
+  const loadingWecomBots = ref<boolean>(false)
 
   const auth = useAuthStore()
 
@@ -66,6 +73,53 @@ export const useSecretsStore = defineStore('secrets', () => {
     })
   }
 
-  return { webdav, loadingWebdav, refreshWebdav, getWebdav, upsertWebdav, deleteWebdav }
-})
+  async function refreshWecomBots(): Promise<void> {
+    loadingWecomBots.value = true
+    try {
+      wecomBots.value = await apiFetch<SecretListItem[]>('/api/secrets/wecom-bot')
+    } finally {
+      loadingWecomBots.value = false
+    }
+  }
 
+  async function getWecomBot(name: string): Promise<WecomBotSecret> {
+    return await apiFetch<WecomBotSecret>(`/api/secrets/wecom-bot/${encodeURIComponent(name)}`)
+  }
+
+  async function upsertWecomBot(name: string, webhookUrl: string): Promise<void> {
+    const csrf = await ensureCsrf()
+    await apiFetch<void>(`/api/secrets/wecom-bot/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify({ webhook_url: webhookUrl }),
+      expectedStatus: 204,
+    })
+  }
+
+  async function deleteWecomBot(name: string): Promise<void> {
+    const csrf = await ensureCsrf()
+    await apiFetch<void>(`/api/secrets/wecom-bot/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': csrf },
+      expectedStatus: 204,
+    })
+  }
+
+  return {
+    webdav,
+    loadingWebdav,
+    refreshWebdav,
+    getWebdav,
+    upsertWebdav,
+    deleteWebdav,
+    wecomBots,
+    loadingWecomBots,
+    refreshWecomBots,
+    getWecomBot,
+    upsertWecomBot,
+    deleteWecomBot,
+  }
+})
