@@ -15,6 +15,7 @@ use crate::jobs_repo::{self, OverlapPolicy};
 use crate::runs_repo::{self, RunStatus};
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
+use crate::targets;
 use crate::webdav::{WebdavClient, WebdavCredentials};
 
 pub fn spawn(
@@ -287,7 +288,7 @@ async fn execute_run(
             let data_dir = data_dir.to_path_buf();
             let job_id = job.id.clone();
             let run_id_owned = run_id.to_string();
-            let part_size = target.part_size_bytes;
+            let part_size = target.part_size_bytes();
             let artifacts = tokio::task::spawn_blocking(move || {
                 backup::filesystem::build_filesystem_run(
                     &data_dir,
@@ -301,14 +302,14 @@ async fn execute_run(
             .await??;
 
             runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
-            let run_url =
-                upload_run_artifacts_to_webdav(db, secrets, &job.id, run_id, &target, &artifacts)
+            let target_summary =
+                store_run_artifacts_to_target(db, secrets, &job.id, run_id, &target, &artifacts)
                     .await?;
 
             let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
             Ok(serde_json::json!({
-                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "target": target_summary,
                 "entries_count": artifacts.entries_count,
                 "parts": artifacts.parts.len(),
             }))
@@ -320,7 +321,7 @@ async fn execute_run(
             let data_dir = data_dir.to_path_buf();
             let job_id = job.id.clone();
             let run_id_owned = run_id.to_string();
-            let part_size = target.part_size_bytes;
+            let part_size = target.part_size_bytes();
             let build = tokio::task::spawn_blocking(move || {
                 backup::sqlite::build_sqlite_run(
                     &data_dir,
@@ -356,7 +357,7 @@ async fn execute_run(
             }
 
             runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
-            let run_url = upload_run_artifacts_to_webdav(
+            let target_summary = store_run_artifacts_to_target(
                 db,
                 secrets,
                 &job.id,
@@ -369,7 +370,7 @@ async fn execute_run(
             let _ = tokio::fs::remove_dir_all(&build.artifacts.run_dir).await;
 
             Ok(serde_json::json!({
-                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "target": target_summary,
                 "entries_count": build.artifacts.entries_count,
                 "parts": build.artifacts.parts.len(),
                 "sqlite": {
@@ -390,7 +391,7 @@ async fn execute_run(
             let data_dir = data_dir.to_path_buf();
             let job_id = job.id.clone();
             let run_id_owned = run_id.to_string();
-            let part_size = target.part_size_bytes;
+            let part_size = target.part_size_bytes();
             let vw_data_dir = source.data_dir.clone();
             let artifacts = tokio::task::spawn_blocking(move || {
                 backup::vaultwarden::build_vaultwarden_run(
@@ -405,14 +406,14 @@ async fn execute_run(
             .await??;
 
             runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
-            let run_url =
-                upload_run_artifacts_to_webdav(db, secrets, &job.id, run_id, &target, &artifacts)
+            let target_summary =
+                store_run_artifacts_to_target(db, secrets, &job.id, run_id, &target, &artifacts)
                     .await?;
 
             let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
             Ok(serde_json::json!({
-                "target": { "type": "webdav", "run_url": run_url.as_str() },
+                "target": target_summary,
                 "entries_count": artifacts.entries_count,
                 "parts": artifacts.parts.len(),
                 "vaultwarden": {
@@ -424,20 +425,69 @@ async fn execute_run(
     }
 }
 
+async fn store_run_artifacts_to_target(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    job_id: &str,
+    run_id: &str,
+    target: &job_spec::TargetV1,
+    artifacts: &backup::LocalRunArtifacts,
+) -> Result<serde_json::Value, anyhow::Error> {
+    match target {
+        job_spec::TargetV1::Webdav {
+            base_url,
+            secret_name,
+            ..
+        } => {
+            let run_url = upload_run_artifacts_to_webdav(
+                db,
+                secrets,
+                job_id,
+                run_id,
+                base_url,
+                secret_name,
+                artifacts,
+            )
+            .await?;
+            Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
+        }
+        job_spec::TargetV1::LocalDir { base_dir, .. } => {
+            let base_dir = base_dir.to_string();
+            let job_id = job_id.to_string();
+            let run_id = run_id.to_string();
+            let artifacts = artifacts.clone();
+            let run_dir = tokio::task::spawn_blocking(move || {
+                targets::local_dir::store_run(
+                    std::path::Path::new(&base_dir),
+                    &job_id,
+                    &run_id,
+                    &artifacts,
+                )
+            })
+            .await??;
+            Ok(serde_json::json!({
+                "type": "local_dir",
+                "run_dir": run_dir.to_string_lossy().to_string()
+            }))
+        }
+    }
+}
+
 async fn upload_run_artifacts_to_webdav(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
     job_id: &str,
     run_id: &str,
-    target: &job_spec::WebdavTarget,
+    base_url: &str,
+    secret_name: &str,
     artifacts: &backup::LocalRunArtifacts,
 ) -> Result<Url, anyhow::Error> {
-    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &target.secret_name)
+    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", target.secret_name))?;
+        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
     let credentials = WebdavCredentials::from_json(&cred_bytes)?;
 
-    let mut base_url = Url::parse(&target.base_url)?;
+    let mut base_url = Url::parse(base_url)?;
     if !base_url.path().ends_with('/') {
         base_url.set_path(&format!("{}/", base_url.path()));
     }

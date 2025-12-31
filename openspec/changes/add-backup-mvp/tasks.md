@@ -34,6 +34,7 @@
 
 ## 6. Targets
 - [ ] WebDAV target with split-part upload, retries, and resume by existing part size
+- [ ] Local directory target (store runs under `<base_dir>/<job_id>/<run_id>/`)
 - [ ] Incomplete-run cleanup (no `complete.json` older than N days)
 
 ## 7. Notifications

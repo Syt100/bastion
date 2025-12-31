@@ -30,13 +30,32 @@ pub struct VaultwardenSource {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct WebdavTarget {
-    #[serde(rename = "type")]
-    pub target_type: String,
-    pub base_url: String,
-    pub secret_name: String,
-    #[serde(default = "default_part_size_bytes")]
-    pub part_size_bytes: u64,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TargetV1 {
+    Webdav {
+        base_url: String,
+        secret_name: String,
+        #[serde(default = "default_part_size_bytes")]
+        part_size_bytes: u64,
+    },
+    LocalDir {
+        base_dir: String,
+        #[serde(default = "default_part_size_bytes")]
+        part_size_bytes: u64,
+    },
+}
+
+impl TargetV1 {
+    pub fn part_size_bytes(&self) -> u64 {
+        match self {
+            TargetV1::Webdav {
+                part_size_bytes, ..
+            } => *part_size_bytes,
+            TargetV1::LocalDir {
+                part_size_bytes, ..
+            } => *part_size_bytes,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,17 +64,17 @@ pub enum JobSpecV1 {
     Filesystem {
         v: u32,
         source: FilesystemSource,
-        target: WebdavTarget,
+        target: TargetV1,
     },
     Sqlite {
         v: u32,
         source: SqliteSource,
-        target: WebdavTarget,
+        target: TargetV1,
     },
     Vaultwarden {
         v: u32,
         source: VaultwardenSource,
-        target: WebdavTarget,
+        target: TargetV1,
     },
 }
 
@@ -77,21 +96,21 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             }
             validate_globs(&source.include)?;
             validate_globs(&source.exclude)?;
-            validate_webdav_target(target)?;
+            validate_target(target)?;
         }
         JobSpecV1::Sqlite { v, source, target } => {
             validate_version(*v)?;
             if source.path.trim().is_empty() {
                 anyhow::bail!("sqlite.source.path is required");
             }
-            validate_webdav_target(target)?;
+            validate_target(target)?;
         }
         JobSpecV1::Vaultwarden { v, source, target } => {
             validate_version(*v)?;
             if source.data_dir.trim().is_empty() {
                 anyhow::bail!("vaultwarden.source.data_dir is required");
             }
-            validate_webdav_target(target)?;
+            validate_target(target)?;
         }
     }
 
@@ -112,22 +131,38 @@ fn validate_globs(patterns: &[String]) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn validate_webdav_target(target: &WebdavTarget) -> Result<(), anyhow::Error> {
-    if target.target_type != "webdav" {
-        anyhow::bail!("target.type must be webdav");
-    }
-    if target.base_url.trim().is_empty() {
-        anyhow::bail!("target.base_url is required");
-    }
-    if target.secret_name.trim().is_empty() {
-        anyhow::bail!("target.secret_name is required");
-    }
-    let url = Url::parse(target.base_url.trim())?;
-    if !matches!(url.scheme(), "http" | "https") {
-        anyhow::bail!("target.base_url must be http(s)");
-    }
-    if target.part_size_bytes < 1024 * 1024 {
-        anyhow::bail!("target.part_size_bytes must be >= 1048576");
+fn validate_target(target: &TargetV1) -> Result<(), anyhow::Error> {
+    match target {
+        TargetV1::Webdav {
+            base_url,
+            secret_name,
+            part_size_bytes,
+        } => {
+            if base_url.trim().is_empty() {
+                anyhow::bail!("target.base_url is required");
+            }
+            if secret_name.trim().is_empty() {
+                anyhow::bail!("target.secret_name is required");
+            }
+            let url = Url::parse(base_url.trim())?;
+            if !matches!(url.scheme(), "http" | "https") {
+                anyhow::bail!("target.base_url must be http(s)");
+            }
+            if *part_size_bytes < 1024 * 1024 {
+                anyhow::bail!("target.part_size_bytes must be >= 1048576");
+            }
+        }
+        TargetV1::LocalDir {
+            base_dir,
+            part_size_bytes,
+        } => {
+            if base_dir.trim().is_empty() {
+                anyhow::bail!("target.base_dir is required");
+            }
+            if *part_size_bytes < 1024 * 1024 {
+                anyhow::bail!("target.part_size_bytes must be >= 1048576");
+            }
+        }
     }
     Ok(())
 }
