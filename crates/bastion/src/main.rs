@@ -1,4 +1,5 @@
 mod agent;
+mod agent_client;
 mod auth;
 mod backup;
 mod config;
@@ -24,17 +25,23 @@ use std::sync::Arc;
 use clap::Parser;
 use tracing::info;
 
-use crate::{config::Cli, http::AppState};
+use crate::config::{Cli, Command};
+use crate::http::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cli = Cli::parse();
+    let Cli { command, hub } = Cli::parse();
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let config = Arc::new(cli.into_config()?);
+    if let Some(Command::Agent(args)) = command {
+        agent_client::run(args).await?;
+        return Ok(());
+    }
+
+    let config = Arc::new(hub.into_config()?);
     let pool = db::init(&config.data_dir).await?;
     let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
 
