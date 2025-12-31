@@ -58,6 +58,6 @@
 - [x] CI scripts: `cargo fmt`, `cargo clippy`, `cargo test`, `npm test`
 
 ## 10. Docs
-- [ ] Reverse proxy configuration examples (Nginx/Caddy) incl. WebSocket
-- [ ] Data directory layout + backup/restore of `master.key` keypack
-- [ ] Vaultwarden recipe guide (Docker/Compose, required mounts)
+- [x] Reverse proxy configuration examples (Nginx/Caddy) incl. WebSocket
+- [x] Data directory layout + backup/restore of `master.key` keypack
+- [x] Vaultwarden recipe guide (Docker/Compose, required mounts)
