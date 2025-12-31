@@ -140,6 +140,36 @@ pub async fn list_runs_for_job(
     Ok(runs)
 }
 
+pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyhow::Error> {
+    let row = sqlx::query(
+        "SELECT id, job_id, status, started_at, ended_at, summary_json, error FROM runs WHERE id = ? LIMIT 1",
+    )
+    .bind(run_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let status = row.get::<String, _>("status").parse::<RunStatus>()?;
+    let summary_json = row.get::<Option<String>, _>("summary_json");
+    let summary = match summary_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
+
+    Ok(Some(Run {
+        id: row.get::<String, _>("id"),
+        job_id: row.get::<String, _>("job_id"),
+        status,
+        started_at: row.get::<i64, _>("started_at"),
+        ended_at: row.get::<Option<i64>, _>("ended_at"),
+        summary,
+        error: row.get::<Option<String>, _>("error"),
+    }))
+}
+
 pub async fn append_run_event(
     db: &SqlitePool,
     run_id: &str,

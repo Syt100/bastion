@@ -175,7 +175,47 @@ const messages = {
       startedAt: 'Started',
       endedAt: 'Ended',
       error: 'Error',
+      actions: 'Actions',
     },
+    actions: {
+      restore: 'Restore',
+      verify: 'Restore drill',
+    },
+  },
+  restore: {
+    title: 'Restore',
+    fields: {
+      destinationDir: 'Destination directory',
+      destinationDirPlaceholder: '/path/to/restore',
+      destinationDirHelp: 'Restores backup contents into this directory.',
+      conflictPolicy: 'Conflict policy',
+    },
+    conflict: {
+      overwrite: 'Overwrite',
+      skip: 'Skip',
+      fail: 'Fail',
+    },
+    actions: {
+      start: 'Start restore',
+    },
+  },
+  verify: {
+    title: 'Restore drill',
+    helpTitle: 'Runs a full restore drill',
+    helpBody: 'Downloads the backup, restores it into a temporary directory, and verifies file hashes. For SQLite backups, it also runs PRAGMA integrity_check.',
+    actions: {
+      start: 'Start drill',
+    },
+  },
+  operations: {
+    title: 'Operation',
+    kind: 'Kind',
+    startedAt: 'Started',
+    endedAt: 'Ended',
+    summary: 'Summary',
+    events: 'Events',
+    noEvents: 'No events yet',
+    errorTitle: 'Operation failed',
   },
   messages: {
     initializedPleaseSignIn: 'Initialized. Please sign in.',
@@ -224,6 +264,9 @@ const messages = {
     sourceRootRequired: 'Source directory is required',
     sqlitePathRequired: 'SQLite path is required',
     vaultwardenDataDirRequired: 'Vaultwarden data dir is required',
+    restoreDestinationRequired: 'Destination directory is required',
+    restoreStartFailed: 'Failed to start restore',
+    verifyStartFailed: 'Failed to start restore drill',
   },
 } as const
 

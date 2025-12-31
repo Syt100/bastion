@@ -4,6 +4,7 @@ use std::time::Duration;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
+use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use url::Url;
 
@@ -140,5 +141,106 @@ impl WebdavClient {
                 Err(error) => return Err(error),
             }
         }
+    }
+
+    pub async fn get_bytes(&self, url: &Url) -> Result<Vec<u8>, anyhow::Error> {
+        let res = self
+            .http
+            .get(url.clone())
+            .basic_auth(
+                self.credentials.username.clone(),
+                Some(self.credentials.password.clone()),
+            )
+            .send()
+            .await?;
+
+        match res.status() {
+            StatusCode::OK => Ok(res.bytes().await?.to_vec()),
+            StatusCode::NOT_FOUND => Err(anyhow::anyhow!("GET failed: HTTP 404")),
+            s => Err(anyhow::anyhow!("GET failed: HTTP {s}")),
+        }
+    }
+
+    pub async fn get_to_file(
+        &self,
+        url: &Url,
+        dest: &Path,
+        expected_size: Option<u64>,
+        max_attempts: u32,
+    ) -> Result<u64, anyhow::Error> {
+        let mut attempt = 1u32;
+        let mut backoff = Duration::from_secs(1);
+        loop {
+            match self.get_to_file_once(url, dest, expected_size).await {
+                Ok(n) => return Ok(n),
+                Err(error) if attempt < max_attempts => {
+                    tokio::time::sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                    attempt += 1;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn get_to_file_once(
+        &self,
+        url: &Url,
+        dest: &Path,
+        expected_size: Option<u64>,
+    ) -> Result<u64, anyhow::Error> {
+        let res = self
+            .http
+            .get(url.clone())
+            .basic_auth(
+                self.credentials.username.clone(),
+                Some(self.credentials.password.clone()),
+            )
+            .send()
+            .await?;
+
+        if res.status() != StatusCode::OK {
+            anyhow::bail!("GET failed: HTTP {}", res.status());
+        }
+
+        if let Some(expected) = expected_size {
+            if let Some(len) = res
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                if len != expected {
+                    anyhow::bail!("Content-Length mismatch: expected {expected}, got {len}");
+                }
+            }
+        }
+
+        let file_name = dest
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow::anyhow!("invalid destination file name"))?;
+        let tmp = dest.with_file_name(format!("{file_name}.partial"));
+        let _ = tokio::fs::remove_file(&tmp).await;
+
+        let mut file = tokio::fs::File::create(&tmp).await?;
+        let mut written = 0u64;
+        let mut res = res;
+        while let Some(chunk) = res.chunk().await? {
+            file.write_all(&chunk).await?;
+            written = written.saturating_add(chunk.len() as u64);
+        }
+        file.flush().await?;
+
+        if let Some(expected) = expected_size {
+            if written != expected {
+                anyhow::bail!("download size mismatch: expected {expected}, got {written}");
+            }
+        }
+
+        let _ = tokio::fs::remove_file(dest).await;
+        tokio::fs::rename(&tmp, dest).await?;
+        Ok(written)
     }
 }

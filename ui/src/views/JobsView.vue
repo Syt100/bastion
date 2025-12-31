@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
+  NAlert,
   NButton,
   NCard,
+  NCode,
   NDataTable,
   NForm,
   NFormItem,
@@ -12,6 +14,7 @@ import {
   NPopconfirm,
   NSelect,
   NSpace,
+  NSpin,
   NSwitch,
   NTag,
   useMessage,
@@ -20,6 +23,7 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type JobType, type OverlapPolicy, type RunListItem } from '@/stores/jobs'
+import { useOperationsStore, type ConflictPolicy, type Operation, type OperationEvent } from '@/stores/operations'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 
@@ -28,6 +32,7 @@ const message = useMessage()
 
 const ui = useUiStore()
 const jobs = useJobsStore()
+const operations = useOperationsStore()
 const secrets = useSecretsStore()
 
 const editorOpen = ref<boolean>(false)
@@ -38,6 +43,23 @@ const runsOpen = ref<boolean>(false)
 const runsLoading = ref<boolean>(false)
 const runsJobId = ref<string | null>(null)
 const runs = ref<RunListItem[]>([])
+
+const restoreOpen = ref<boolean>(false)
+const restoreStarting = ref<boolean>(false)
+const restoreRunId = ref<string | null>(null)
+const restoreDestinationDir = ref<string>('')
+const restoreConflictPolicy = ref<ConflictPolicy>('overwrite')
+
+const verifyOpen = ref<boolean>(false)
+const verifyStarting = ref<boolean>(false)
+const verifyRunId = ref<string | null>(null)
+
+const opOpen = ref<boolean>(false)
+const opLoading = ref<boolean>(false)
+const opId = ref<string | null>(null)
+const op = ref<Operation | null>(null)
+const opEvents = ref<OperationEvent[]>([])
+let opPollTimer: number | null = null
 
 const form = reactive<{
   id: string | null
@@ -82,6 +104,14 @@ const dateFormatter = computed(
 function formatUnixSeconds(ts: number | null): string {
   if (!ts) return '-'
   return dateFormatter.value.format(new Date(ts * 1000))
+}
+
+function formatJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
 }
 
 function openCreate(): void {
@@ -284,6 +314,109 @@ async function openRuns(jobId: string): Promise<void> {
   }
 }
 
+function openRestoreWizard(runId: string): void {
+  restoreRunId.value = runId
+  restoreDestinationDir.value = ''
+  restoreConflictPolicy.value = 'overwrite'
+  restoreOpen.value = true
+}
+
+function openVerifyWizard(runId: string): void {
+  verifyRunId.value = runId
+  verifyOpen.value = true
+}
+
+function stopOpPolling(): void {
+  if (opPollTimer !== null) {
+    window.clearInterval(opPollTimer)
+    opPollTimer = null
+  }
+}
+
+async function refreshOp(): Promise<void> {
+  if (!opId.value) return
+  const [nextOp, events] = await Promise.all([operations.getOperation(opId.value), operations.listEvents(opId.value)])
+  op.value = nextOp
+  opEvents.value = events
+  if (nextOp.status !== 'running') {
+    stopOpPolling()
+  }
+}
+
+async function openOperation(id: string): Promise<void> {
+  opId.value = id
+  op.value = null
+  opEvents.value = []
+  opOpen.value = true
+  opLoading.value = true
+  try {
+    await refreshOp()
+  } finally {
+    opLoading.value = false
+  }
+
+  stopOpPolling()
+  opPollTimer = window.setInterval(async () => {
+    try {
+      await refreshOp()
+    } catch {
+      stopOpPolling()
+    }
+  }, 1000)
+}
+
+async function startRestore(): Promise<void> {
+  const runId = restoreRunId.value
+  if (!runId) return
+
+  const destination = restoreDestinationDir.value.trim()
+  if (!destination) {
+    message.error(t('errors.restoreDestinationRequired'))
+    return
+  }
+
+  restoreStarting.value = true
+  try {
+    const id = await operations.startRestore(runId, destination, restoreConflictPolicy.value)
+    restoreOpen.value = false
+    await openOperation(id)
+  } catch (error) {
+    const msg =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : t('errors.restoreStartFailed')
+    message.error(msg)
+  } finally {
+    restoreStarting.value = false
+  }
+}
+
+async function startVerify(): Promise<void> {
+  const runId = verifyRunId.value
+  if (!runId) return
+
+  verifyStarting.value = true
+  try {
+    const id = await operations.startVerify(runId)
+    verifyOpen.value = false
+    await openOperation(id)
+  } catch (error) {
+    const msg =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : t('errors.verifyStartFailed')
+    message.error(msg)
+  } finally {
+    verifyStarting.value = false
+  }
+}
+
+const conflictOptions = computed(() => [
+  { label: t('restore.conflict.overwrite'), value: 'overwrite' },
+  { label: t('restore.conflict.skip'), value: 'skip' },
+  { label: t('restore.conflict.fail'), value: 'fail' },
+])
+
 const overlapOptions = computed(() => [
   { label: t('jobs.overlap.queue'), value: 'queue' },
   { label: t('jobs.overlap.reject'), value: 'reject' },
@@ -304,6 +437,13 @@ function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'wa
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
   if (status === 'rejected') return 'warning'
+  return 'default'
+}
+
+function opStatusTagType(status: Operation['status']): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'running') return 'warning'
   return 'default'
 }
 
@@ -377,6 +517,29 @@ const runColumns = computed<DataTableColumns<RunListItem>>(() => [
   { title: t('runs.columns.startedAt'), key: 'started_at', render: (row) => formatUnixSeconds(row.started_at) },
   { title: t('runs.columns.endedAt'), key: 'ended_at', render: (row) => formatUnixSeconds(row.ended_at) },
   { title: t('runs.columns.error'), key: 'error', render: (row) => row.error ?? '-' },
+  {
+    title: t('runs.columns.actions'),
+    key: 'actions',
+    render: (row) =>
+      h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(
+              NButton,
+              { size: 'small', disabled: row.status !== 'success', onClick: () => openRestoreWizard(row.id) },
+              { default: () => t('runs.actions.restore') },
+            ),
+            h(
+              NButton,
+              { size: 'small', disabled: row.status !== 'success', onClick: () => openVerifyWizard(row.id) },
+              { default: () => t('runs.actions.verify') },
+            ),
+          ],
+        },
+      ),
+  },
 ])
 
 const webdavSecretOptions = computed(() =>
@@ -390,6 +553,16 @@ onMounted(async () => {
   } catch {
     message.error(t('errors.fetchWebdavSecretsFailed'))
   }
+})
+
+watch(opOpen, (open) => {
+  if (!open) {
+    stopOpPolling()
+  }
+})
+
+onBeforeUnmount(() => {
+  stopOpPolling()
 })
 </script>
 
@@ -487,6 +660,84 @@ onMounted(async () => {
         <n-data-table :loading="runsLoading" :columns="runColumns" :data="runs" />
         <n-space justify="end">
           <n-button @click="runsOpen = false">{{ t('common.close') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="restoreOpen" preset="card" :title="t('restore.title')">
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ restoreRunId }}</div>
+        <n-form label-placement="top">
+          <n-form-item :label="t('restore.fields.destinationDir')">
+            <div class="space-y-1 w-full">
+              <n-input v-model:value="restoreDestinationDir" :placeholder="t('restore.fields.destinationDirPlaceholder')" />
+              <div class="text-xs opacity-70">{{ t('restore.fields.destinationDirHelp') }}</div>
+            </div>
+          </n-form-item>
+          <n-form-item :label="t('restore.fields.conflictPolicy')">
+            <n-select v-model:value="restoreConflictPolicy" :options="conflictOptions" />
+          </n-form-item>
+        </n-form>
+        <n-space justify="end">
+          <n-button @click="restoreOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="restoreStarting" @click="startRestore">{{ t('restore.actions.start') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="verifyOpen" preset="card" :title="t('verify.title')">
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ verifyRunId }}</div>
+        <n-alert type="info" :title="t('verify.helpTitle')">
+          {{ t('verify.helpBody') }}
+        </n-alert>
+        <n-space justify="end">
+          <n-button @click="verifyOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="verifyStarting" @click="startVerify">{{ t('verify.actions.start') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="opOpen" preset="card" :title="t('operations.title')">
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ opId }}</div>
+
+        <div v-if="op" class="flex items-center gap-2">
+          <n-tag :type="opStatusTagType(op.status)">{{ op.status }}</n-tag>
+          <span class="text-sm opacity-70">{{ t('operations.kind') }}: {{ op.kind }}</span>
+          <span class="text-sm opacity-70">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
+          <span v-if="op.ended_at" class="text-sm opacity-70">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
+        </div>
+
+        <n-spin v-if="opLoading" size="small" />
+
+        <n-alert v-if="op?.error" type="error" :title="t('operations.errorTitle')">
+          {{ op.error }}
+        </n-alert>
+
+        <div v-if="op?.summary" class="space-y-2">
+          <div class="text-sm font-medium">{{ t('operations.summary') }}</div>
+          <n-code :code="formatJson(op.summary)" language="json" show-line-numbers />
+        </div>
+
+        <div class="space-y-2">
+          <div class="text-sm font-medium">{{ t('operations.events') }}</div>
+          <div class="max-h-80 overflow-auto border rounded-md p-2 bg-[var(--n-color)]">
+            <div v-if="opEvents.length === 0" class="text-sm opacity-70">{{ t('operations.noEvents') }}</div>
+            <div v-for="e in opEvents" :key="e.seq" class="font-mono text-xs py-1 border-b last:border-b-0 opacity-90">
+              <div class="flex flex-wrap gap-2">
+                <span class="opacity-70">{{ formatUnixSeconds(e.ts) }}</span>
+                <span class="opacity-70">{{ e.level }}</span>
+                <span class="opacity-70">{{ e.kind }}</span>
+                <span>{{ e.message }}</span>
+              </div>
+              <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
+            </div>
+          </div>
+        </div>
+
+        <n-space justify="end">
+          <n-button @click="opOpen = false">{{ t('common.close') }}</n-button>
         </n-space>
       </div>
     </n-modal>

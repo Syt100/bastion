@@ -9,11 +9,13 @@ mod job_spec;
 mod jobs_repo;
 mod notifications;
 mod notifications_repo;
+mod operations_repo;
 mod runs_repo;
 mod scheduler;
 mod secrets;
 mod secrets_repo;
 mod targets;
+mod restore;
 mod webdav;
 mod wecom;
 
