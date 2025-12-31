@@ -59,10 +59,16 @@ describe('SetupView', () => {
   it('shows error when passwords do not match and does not call api', async () => {
     const wrapper = mount(SetupView)
 
-    wrapper.vm.password = 'p1'
-    wrapper.vm.password2 = 'p2'
+    const vm = wrapper.vm as unknown as {
+      password: string
+      password2: string
+      onSubmit: () => Promise<void>
+    }
 
-    await wrapper.vm.onSubmit()
+    vm.password = 'p1'
+    vm.password2 = 'p2'
+
+    await vm.onSubmit()
 
     expect(messageApi.error).toHaveBeenCalledWith('errors.passwordsDoNotMatch')
     expect(apiFetchMock).not.toHaveBeenCalled()
@@ -72,11 +78,18 @@ describe('SetupView', () => {
     apiFetchMock.mockResolvedValue(undefined)
 
     const wrapper = mount(SetupView)
-    wrapper.vm.username = 'admin'
-    wrapper.vm.password = 'p1'
-    wrapper.vm.password2 = 'p1'
+    const vm = wrapper.vm as unknown as {
+      username: string
+      password: string
+      password2: string
+      onSubmit: () => Promise<void>
+    }
 
-    await wrapper.vm.onSubmit()
+    vm.username = 'admin'
+    vm.password = 'p1'
+    vm.password2 = 'p1'
+
+    await vm.onSubmit()
 
     expect(apiFetchMock).toHaveBeenCalledWith(
       '/api/setup/initialize',
@@ -86,4 +99,3 @@ describe('SetupView', () => {
     expect(routerApi.push).toHaveBeenCalledWith('/login')
   })
 })
-

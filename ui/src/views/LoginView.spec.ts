@@ -80,13 +80,18 @@ describe('LoginView', () => {
     authApi.login.mockResolvedValue(undefined)
 
     const wrapper = mount(LoginView)
-    wrapper.vm.username = 'admin'
-    wrapper.vm.password = 'p1'
+    const vm = wrapper.vm as unknown as {
+      username: string
+      password: string
+      onSubmit: () => Promise<void>
+    }
 
-    await wrapper.vm.onSubmit()
+    vm.username = 'admin'
+    vm.password = 'p1'
+
+    await vm.onSubmit()
 
     expect(authApi.login).toHaveBeenCalledWith('admin', 'p1')
     expect(routerApi.push).toHaveBeenCalledWith('/')
   })
 })
-
