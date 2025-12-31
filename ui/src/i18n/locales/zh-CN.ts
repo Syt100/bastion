@@ -152,6 +152,21 @@ const messages = {
         actions: '操作',
       },
     },
+    wecom: {
+      title: '企业微信群机器人',
+      new: '新增',
+      editorTitle: '编辑企业微信群机器人',
+      deleteConfirm: '确认删除该机器人？',
+      fields: {
+        name: '名称',
+        webhookUrl: 'Webhook URL',
+      },
+      columns: {
+        name: '名称',
+        updatedAt: '更新时间',
+        actions: '操作',
+      },
+    },
   },
   runs: {
     title: '运行记录',
@@ -174,6 +189,8 @@ const messages = {
     runRejected: '因重叠策略被拒绝',
     webdavSecretSaved: 'WebDAV 凭据已保存',
     webdavSecretDeleted: 'WebDAV 凭据已删除',
+    wecomBotSaved: '群机器人已保存',
+    wecomBotDeleted: '群机器人已删除',
   },
   errors: {
     loginFailed: '登录失败',
@@ -196,6 +213,11 @@ const messages = {
     saveWebdavSecretFailed: '保存 WebDAV 凭据失败',
     deleteWebdavSecretFailed: '删除 WebDAV 凭据失败',
     secretNameOrUsernameRequired: '名称和用户名不能为空',
+    fetchWecomBotsFailed: '获取群机器人列表失败',
+    fetchWecomBotFailed: '获取群机器人失败',
+    saveWecomBotFailed: '保存群机器人失败',
+    deleteWecomBotFailed: '删除群机器人失败',
+    wecomNameOrWebhookRequired: '名称和 Webhook URL 不能为空',
     webdavBaseUrlRequired: 'WebDAV 目标 URL 不能为空',
     webdavSecretRequired: '请选择 WebDAV 凭据',
     localBaseDirRequired: '本地备份目录不能为空',

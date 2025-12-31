@@ -7,12 +7,15 @@ mod db;
 mod http;
 mod job_spec;
 mod jobs_repo;
+mod notifications;
+mod notifications_repo;
 mod runs_repo;
 mod scheduler;
 mod secrets;
 mod secrets_repo;
 mod targets;
 mod webdav;
+mod wecom;
 
 use std::sync::Arc;
 
@@ -39,6 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
         secrets.clone(),
         config.run_retention_days,
     );
+    notifications::spawn(pool.clone(), secrets.clone());
 
     let app = http::router(AppState {
         config: config.clone(),
