@@ -11,6 +11,7 @@ mod runs_repo;
 mod scheduler;
 mod secrets;
 mod secrets_repo;
+mod targets;
 mod webdav;
 
 use std::sync::Arc;

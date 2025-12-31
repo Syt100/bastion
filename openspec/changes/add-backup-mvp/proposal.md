@@ -11,7 +11,9 @@ We want a cross-platform (Linux + Windows) backup system with a modern Web UI th
   - A versioned manifest + atomic completion marker.
   - Full restore verification ("restore drill") for integrity checks.
 - Add SQLite online backup as a first-class source (no downtime).
-- Add WebDAV as the first remote target.
+- Add backup targets:
+  - WebDAV as the first remote target.
+  - Local directory target for storing backups on the same machine.
 - Add notifications (Email + WeCom group bot).
 - Add a single-user Web UI (Vue 3) for backup/restore/verify with a modern UX.
 - Add centralized management: Hub can manage multiple Agents via WebSocket + JSON protocol, using enrollment tokens.
@@ -19,7 +21,7 @@ We want a cross-platform (Linux + Windows) backup system with a modern Web UI th
 
 ## Scope (MVP)
 - Full backups only (no incremental, no dedup).
-- WebDAV target only (S3/SMB later).
+- Targets: WebDAV and local directory (S3/SMB later).
 - Hub/Agent connection supports both secure mode behind reverse proxy TLS and an explicit insecure mode for dev/LAN.
 - Public Web UI access is supported via reverse proxy (TLS termination); the service itself runs HTTP.
 - Single user / single permission model (RBAC later).
@@ -55,4 +57,3 @@ We want a cross-platform (Linux + Windows) backup system with a modern Web UI th
   - Perform restore via Web UI wizard.
   - Run a restore drill integrity verification and view results.
   - Back up Vaultwarden data (SQLite + attachments + keys) without downtime.
-

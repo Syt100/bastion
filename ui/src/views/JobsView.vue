@@ -49,8 +49,10 @@ const form = reactive<{
   sqlitePath: string
   sqliteIntegrityCheck: boolean
   vaultwardenDataDir: string
+  targetType: 'webdav' | 'local_dir'
   webdavBaseUrl: string
   webdavSecretName: string
+  localBaseDir: string
   partSizeMiB: number
 }>({
   id: null,
@@ -62,8 +64,10 @@ const form = reactive<{
   sqlitePath: '',
   sqliteIntegrityCheck: false,
   vaultwardenDataDir: '',
+  targetType: 'webdav',
   webdavBaseUrl: '',
   webdavSecretName: '',
+  localBaseDir: '',
   partSizeMiB: 256,
 })
 
@@ -91,8 +95,10 @@ function openCreate(): void {
   form.sqlitePath = ''
   form.sqliteIntegrityCheck = false
   form.vaultwardenDataDir = ''
+  form.targetType = 'webdav'
   form.webdavBaseUrl = ''
   form.webdavSecretName = ''
+  form.localBaseDir = ''
   form.partSizeMiB = 256
   editorOpen.value = true
 }
@@ -110,8 +116,11 @@ async function openEdit(jobId: string): Promise<void> {
     form.jobType = job.spec.type
 
     const target = (job.spec as Record<string, unknown>).target as Record<string, unknown> | undefined
+    const targetType = target?.type === 'local_dir' ? 'local_dir' : 'webdav'
+    form.targetType = targetType
     form.webdavBaseUrl = typeof target?.base_url === 'string' ? target.base_url : ''
     form.webdavSecretName = typeof target?.secret_name === 'string' ? target.secret_name : ''
+    form.localBaseDir = typeof target?.base_dir === 'string' ? target.base_dir : ''
     form.partSizeMiB =
       typeof target?.part_size_bytes === 'number' && target.part_size_bytes > 0
         ? Math.max(1, Math.round(target.part_size_bytes / (1024 * 1024)))
@@ -137,19 +146,29 @@ async function save(): Promise<void> {
     return
   }
 
-  const webdavBaseUrl = form.webdavBaseUrl.trim()
-  if (!webdavBaseUrl) {
-    message.error(t('errors.webdavBaseUrlRequired'))
-    return
-  }
-  const webdavSecretName = form.webdavSecretName.trim()
-  if (!webdavSecretName) {
-    message.error(t('errors.webdavSecretRequired'))
-    return
-  }
-
   const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB))
   const partSizeBytes = partSizeMiB * 1024 * 1024
+
+  const targetType = form.targetType
+  const webdavBaseUrl = form.webdavBaseUrl.trim()
+  const webdavSecretName = form.webdavSecretName.trim()
+  const localBaseDir = form.localBaseDir.trim()
+
+  if (targetType === 'webdav') {
+    if (!webdavBaseUrl) {
+      message.error(t('errors.webdavBaseUrlRequired'))
+      return
+    }
+    if (!webdavSecretName) {
+      message.error(t('errors.webdavSecretRequired'))
+      return
+    }
+  } else {
+    if (!localBaseDir) {
+      message.error(t('errors.localBaseDirRequired'))
+      return
+    }
+  }
 
   const source =
     form.jobType === 'filesystem'
@@ -173,6 +192,20 @@ async function save(): Promise<void> {
 
   editorSaving.value = true
   try {
+    const target =
+      targetType === 'webdav'
+        ? ({
+            type: 'webdav' as const,
+            base_url: webdavBaseUrl,
+            secret_name: webdavSecretName,
+            part_size_bytes: partSizeBytes,
+          } as const)
+        : ({
+            type: 'local_dir' as const,
+            base_dir: localBaseDir,
+            part_size_bytes: partSizeBytes,
+          } as const)
+
     const payload = {
       name,
       schedule: form.schedule.trim() ? form.schedule.trim() : null,
@@ -181,12 +214,7 @@ async function save(): Promise<void> {
         v: 1 as const,
         type: form.jobType,
         source,
-        target: {
-          type: 'webdav' as const,
-          base_url: webdavBaseUrl,
-          secret_name: webdavSecretName,
-          part_size_bytes: partSizeBytes,
-        },
+        target,
       },
     }
 
@@ -259,6 +287,11 @@ async function openRuns(jobId: string): Promise<void> {
 const overlapOptions = computed(() => [
   { label: t('jobs.overlap.queue'), value: 'queue' },
   { label: t('jobs.overlap.reject'), value: 'reject' },
+])
+
+const targetTypeOptions = computed(() => [
+  { label: t('jobs.targets.webdav'), value: 'webdav' },
+  { label: t('jobs.targets.localDir'), value: 'local_dir' },
 ])
 
 const jobTypeOptions = computed(() => [
@@ -413,12 +446,28 @@ onMounted(async () => {
             </div>
           </n-form-item>
 
-          <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
-            <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
+          <n-form-item :label="t('jobs.fields.targetType')">
+            <n-select v-model:value="form.targetType" :options="targetTypeOptions" />
           </n-form-item>
-          <n-form-item :label="t('jobs.fields.webdavSecret')">
-            <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
-          </n-form-item>
+
+          <template v-if="form.targetType === 'webdav'">
+            <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
+              <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
+            </n-form-item>
+            <n-form-item :label="t('jobs.fields.webdavSecret')">
+              <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
+            </n-form-item>
+          </template>
+
+          <template v-else>
+            <n-form-item :label="t('jobs.fields.localBaseDir')">
+              <div class="space-y-1">
+                <n-input v-model:value="form.localBaseDir" :placeholder="t('jobs.fields.localBaseDirPlaceholder')" />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
+              </div>
+            </n-form-item>
+          </template>
+
           <n-form-item :label="t('jobs.fields.partSizeMiB')">
             <n-input-number v-model:value="form.partSizeMiB" :min="1" class="w-full" />
             <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
