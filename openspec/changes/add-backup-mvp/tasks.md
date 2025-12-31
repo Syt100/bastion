@@ -55,7 +55,7 @@
 - [x] Commit policy: commit after each milestone feature and each bug fix (see `specs/development-workflow/spec.md`)
 - [x] Rust unit tests for: manifest/entries, secrets crypto, WebDAV resume logic, scheduler policies
 - [ ] Vue unit tests for: core views, forms validation, run log viewer components
-- [ ] CI scripts: `cargo fmt`, `cargo clippy`, `cargo test`, `npm test`
+- [x] CI scripts: `cargo fmt`, `cargo clippy`, `cargo test`, `npm test`
 
 ## 10. Docs
 - [ ] Reverse proxy configuration examples (Nginx/Caddy) incl. WebSocket
