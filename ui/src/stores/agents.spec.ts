@@ -80,4 +80,32 @@ describe('useAgentsStore', () => {
       expect.objectContaining({ credentials: 'include' }),
     )
   })
+
+  it('rotates an agent key with CSRF header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ agent_id: 'a1', agent_key: 'k1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-123'
+
+    const agents = useAgentsStore()
+    const res = await agents.rotateAgentKey('a b')
+    expect(res.agent_key).toBe('k1')
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('csrf-123')
+    expect(init.method).toBe('POST')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/agents/a%20b/rotate-key',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
 })

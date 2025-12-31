@@ -35,3 +35,9 @@ The Hub SHALL support revoking an Agent key and SHALL reject subsequent connecti
 - **WHEN** an Agent key is revoked
 - **THEN** the Agent's next connection attempt is rejected
 
+### Requirement: Agent Key Rotation
+The Hub SHALL support rotating an Agent key by issuing a new `agent_key` for an existing `agent_id` and invalidating the old key.
+
+#### Scenario: Old key becomes invalid after rotation
+- **WHEN** an Agent key is rotated
+- **THEN** the old key can no longer connect and only the new key is accepted

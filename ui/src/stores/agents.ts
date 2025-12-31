@@ -18,6 +18,11 @@ export type EnrollmentToken = {
   remaining_uses: number | null
 }
 
+export type RotateAgentKeyResponse = {
+  agent_id: string
+  agent_key: string
+}
+
 export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
@@ -72,6 +77,19 @@ export const useAgentsStore = defineStore('agents', () => {
     })
   }
 
-  return { items, loading, refresh, createEnrollmentToken, revokeAgent }
-})
+  async function rotateAgentKey(agentId: string): Promise<RotateAgentKeyResponse> {
+    if (!auth.csrfToken) {
+      await auth.refreshSession()
+    }
+    if (!auth.csrfToken) {
+      throw new Error('Missing CSRF token')
+    }
 
+    return await apiFetch<RotateAgentKeyResponse>(`/api/agents/${encodeURIComponent(agentId)}/rotate-key`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': auth.csrfToken },
+    })
+  }
+
+  return { items, loading, refresh, createEnrollmentToken, revokeAgent, rotateAgentKey }
+})

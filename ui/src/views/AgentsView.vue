@@ -32,6 +32,10 @@ const tokenResult = ref<EnrollmentToken | null>(null)
 const ttlSeconds = ref<number>(60 * 60)
 const remainingUses = ref<number | null>(null)
 
+const rotateModalOpen = ref<boolean>(false)
+const rotateRotating = ref<boolean>(false)
+const rotateResult = ref<{ agent_id: string; agent_key: string } | null>(null)
+
 const dateFormatter = computed(
   () =>
     new Intl.DateTimeFormat(ui.locale, {
@@ -99,6 +103,19 @@ async function revokeAgent(agentId: string): Promise<void> {
   }
 }
 
+async function rotateAgentKey(agentId: string): Promise<void> {
+  rotateRotating.value = true
+  try {
+    rotateResult.value = await agents.rotateAgentKey(agentId)
+    rotateModalOpen.value = true
+    message.success(t('messages.agentKeyRotated'))
+  } catch {
+    message.error(t('errors.rotateAgentKeyFailed'))
+  } finally {
+    rotateRotating.value = false
+  }
+}
+
 const columns = computed<DataTableColumns<AgentListItem>>(() => [
   {
     title: t('agents.columns.name'),
@@ -141,21 +158,53 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
     key: 'actions',
     render: (row) =>
       h(
-        NPopconfirm,
+        NSpace,
+        { size: 8 },
         {
-          onPositiveClick: () => revokeAgent(row.id),
-          positiveText: t('agents.actions.revoke'),
-          negativeText: t('common.cancel'),
-          disabled: row.revoked,
-        },
-        {
-          trigger: () =>
+          default: () => [
             h(
-              NButton,
-              { tertiary: true, size: 'small', type: 'error', disabled: row.revoked },
-              { default: () => t('agents.actions.revoke') },
+              NPopconfirm,
+              {
+                onPositiveClick: () => rotateAgentKey(row.id),
+                positiveText: t('agents.actions.rotateKey'),
+                negativeText: t('common.cancel'),
+                disabled: row.revoked,
+              },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      tertiary: true,
+                      size: 'small',
+                      type: 'warning',
+                      loading: rotateRotating.value,
+                      disabled: row.revoked,
+                    },
+                    { default: () => t('agents.actions.rotateKey') },
+                  ),
+                default: () => t('agents.rotateConfirm'),
+              },
             ),
-          default: () => t('agents.revokeConfirm'),
+            h(
+              NPopconfirm,
+              {
+                onPositiveClick: () => revokeAgent(row.id),
+                positiveText: t('agents.actions.revoke'),
+                negativeText: t('common.cancel'),
+                disabled: row.revoked,
+              },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    { tertiary: true, size: 'small', type: 'error', disabled: row.revoked },
+                    { default: () => t('agents.actions.revoke') },
+                  ),
+                default: () => t('agents.revokeConfirm'),
+              },
+            ),
+          ],
         },
       ),
   },
@@ -215,6 +264,26 @@ onMounted(refresh)
             <n-button @click="copyToClipboard(tokenResult.token)">{{ t('agents.actions.copyToken') }}</n-button>
           </n-space>
         </div>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="rotateModalOpen" preset="card" :title="t('agents.rotateModal.title')">
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ t('agents.rotateModal.help') }}</div>
+
+        <n-form v-if="rotateResult" label-placement="top">
+          <n-form-item :label="t('agents.rotateModal.agentKey')">
+            <n-input :value="rotateResult.agent_key" readonly />
+          </n-form-item>
+        </n-form>
+
+        <n-space v-if="rotateResult">
+          <n-button @click="copyToClipboard(rotateResult.agent_key)">{{ t('agents.actions.copyKey') }}</n-button>
+        </n-space>
+
+        <n-space justify="end">
+          <n-button @click="rotateModalOpen = false">{{ t('common.close') }}</n-button>
+        </n-space>
       </div>
     </n-modal>
   </div>

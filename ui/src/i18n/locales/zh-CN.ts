@@ -48,6 +48,7 @@ const messages = {
     subtitle: '管理连接到 Hub 的客户端（Agent）。',
     newToken: '创建注册令牌',
     revokeConfirm: '确认撤销该客户端？撤销后需要重新注册才能连接。',
+    rotateConfirm: '确认轮换该客户端的连接密钥？旧密钥将立即失效。',
     status: {
       online: '在线',
       offline: '离线',
@@ -63,7 +64,9 @@ const messages = {
     actions: {
       copy: '复制',
       copyToken: '复制令牌',
+      copyKey: '复制密钥',
       revoke: '撤销',
+      rotateKey: '轮换密钥',
     },
     tokenModal: {
       title: '创建注册令牌',
@@ -73,6 +76,11 @@ const messages = {
       help: '将令牌粘贴到客户端的注册步骤中完成绑定。',
       token: '令牌',
       expiresAt: '过期时间',
+    },
+    rotateModal: {
+      title: '轮换客户端密钥',
+      help: '请妥善保存该密钥（仅显示一次），并在客户端更新配置后重启客户端进程。',
+      agentKey: '新的客户端密钥',
     },
   },
   jobs: {
@@ -238,6 +246,7 @@ const messages = {
     enrollmentTokenCreated: '注册令牌已创建',
     copied: '已复制',
     agentRevoked: '客户端已撤销',
+    agentKeyRotated: '客户端密钥已轮换',
     jobCreated: '任务已创建',
     jobUpdated: '任务已更新',
     jobDeleted: '任务已删除',
@@ -256,6 +265,7 @@ const messages = {
     fetchAgentsFailed: '获取客户端列表失败',
     createEnrollmentTokenFailed: '创建注册令牌失败',
     revokeAgentFailed: '撤销客户端失败',
+    rotateAgentKeyFailed: '轮换客户端密钥失败',
     copyFailed: '复制失败',
     fetchJobsFailed: '获取任务列表失败',
     fetchJobFailed: '获取任务失败',

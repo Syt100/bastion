@@ -3,6 +3,7 @@ mod agent_client;
 mod agent_manager;
 mod agent_protocol;
 mod agent_tasks_repo;
+mod agents_repo;
 mod auth;
 mod backup;
 mod config;
