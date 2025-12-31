@@ -989,6 +989,128 @@ async fn list_run_events(
     Ok(Json(events))
 }
 
+async fn run_events_ws(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    Path(run_id): Path<String>,
+    ws: WebSocketUpgrade,
+) -> Result<Response, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    require_ws_same_origin(&state, &headers, peer.ip())?;
+
+    let run_exists = runs_repo::get_run(&state.db, &run_id).await?.is_some();
+    if !run_exists {
+        return Err(AppError::not_found("run_not_found", "Run not found"));
+    }
+
+    let db = state.db.clone();
+    Ok(ws.on_upgrade(move |socket| handle_run_events_socket(db, run_id, socket)))
+}
+
+fn require_ws_same_origin(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+) -> Result<(), AppError> {
+    let origin = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
+
+    let expected_host = if is_trusted_proxy(state, peer_ip) {
+        headers
+            .get("x-forwarded-host")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|s| s.trim().to_string())
+            .or_else(|| {
+                headers
+                    .get(axum::http::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string())
+            })
+    } else {
+        headers
+            .get(axum::http::header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+    }
+    .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
+
+    let expected_host = expected_host
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    let origin_host = match url::Url::parse(origin) {
+        Ok(url) => url.host_str().unwrap_or("").to_ascii_lowercase(),
+        Err(_) => return Err(AppError::unauthorized("invalid_origin", "Invalid origin")),
+    };
+
+    if origin_host != expected_host {
+        return Err(AppError::unauthorized("invalid_origin", "Invalid origin"));
+    }
+
+    Ok(())
+}
+
+async fn handle_run_events_socket(db: SqlitePool, run_id: String, mut socket: WebSocket) {
+    let mut last_seq = 0i64;
+    let mut idle_after_end = 0u32;
+
+    loop {
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) => break,
+                }
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
+                let events = match runs_repo::list_run_events_after_seq(&db, &run_id, last_seq, 200).await {
+                    Ok(v) => v,
+                    Err(_) => break,
+                };
+
+                if events.is_empty() {
+                    match runs_repo::get_run(&db, &run_id).await {
+                        Ok(Some(run)) => {
+                            let ended = !matches!(run.status, runs_repo::RunStatus::Queued | runs_repo::RunStatus::Running);
+                            if ended {
+                                idle_after_end += 1;
+                                if idle_after_end >= 10 {
+                                    break;
+                                }
+                            } else {
+                                idle_after_end = 0;
+                            }
+                        }
+                        Ok(None) | Err(_) => break,
+                    }
+                    continue;
+                }
+
+                idle_after_end = 0;
+                for event in events {
+                    last_seq = event.seq;
+                    let payload = match serde_json::to_string(&event) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    if socket.send(Message::Text(payload.into())).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct StartRestoreRequest {
     destination_dir: String,
@@ -1436,6 +1558,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/jobs/{id}/run", post(trigger_job_run))
         .route("/api/jobs/{id}/runs", get(list_job_runs))
         .route("/api/runs/{id}/events", get(list_run_events))
+        .route("/api/runs/{id}/events/ws", get(run_events_ws))
         .route("/api/runs/{id}/restore", post(start_restore))
         .route("/api/runs/{id}/verify", post(start_verify))
         .route("/api/operations/{id}", get(get_operation))

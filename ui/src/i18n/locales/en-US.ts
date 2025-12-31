@@ -178,8 +178,19 @@ const messages = {
       actions: 'Actions',
     },
     actions: {
+      events: 'Events',
       restore: 'Restore',
       verify: 'Restore drill',
+    },
+  },
+  runEvents: {
+    title: 'Run events',
+    noEvents: 'No events yet',
+    ws: {
+      disconnected: 'Disconnected',
+      connecting: 'Connecting',
+      connected: 'Connected',
+      error: 'Error',
     },
   },
   restore: {
@@ -267,6 +278,7 @@ const messages = {
     restoreDestinationRequired: 'Destination directory is required',
     restoreStartFailed: 'Failed to start restore',
     verifyStartFailed: 'Failed to start restore drill',
+    fetchRunEventsFailed: 'Failed to fetch run events',
   },
 } as const
 

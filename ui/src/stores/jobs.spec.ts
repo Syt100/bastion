@@ -72,5 +72,33 @@ describe('useJobsStore', () => {
     expect(headers['X-CSRF-Token']).toBe('csrf-123')
     expect(headers['Content-Type']).toBe('application/json')
   })
-})
 
+  it('lists run events', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            run_id: 'r1',
+            seq: 1,
+            ts: 1,
+            level: 'info',
+            kind: 'start',
+            message: 'start',
+            fields: null,
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = useJobsStore()
+    const events = await jobs.listRunEvents('r1')
+
+    expect(events).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/runs/r1/events',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+})
