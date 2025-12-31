@@ -296,7 +296,12 @@ async fn run_worker_loop(
                     if let Err(error) =
                         notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
                     {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                    }
+                    if let Err(error) =
+                        notifications_repo::enqueue_emails_for_run(&db, &run.id).await
+                    {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
                     }
                     info!(run_id = %run.id, "run completed (agent)");
                     break;
@@ -345,7 +350,10 @@ async fn run_worker_loop(
                 if let Err(error) =
                     notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
                 {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                }
+                if let Err(error) = notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
                 }
                 info!(run_id = %run.id, "run completed");
             }
@@ -371,7 +379,10 @@ async fn run_worker_loop(
                 if let Err(error) =
                     notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
                 {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                }
+                if let Err(error) = notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
+                    warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
                 }
             }
         }
