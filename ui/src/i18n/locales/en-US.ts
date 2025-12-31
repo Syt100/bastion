@@ -100,6 +100,16 @@ const messages = {
       targetType: 'Target type',
       sourceRoot: 'Source directory (Filesystem)',
       sourceRootPlaceholder: '/path/to/data',
+      fsInclude: 'Include patterns (Glob, optional)',
+      fsIncludePlaceholder: '**/*.txt',
+      fsIncludeHelp: 'One glob per line. Empty means include everything (then apply exclude).',
+      fsExclude: 'Exclude patterns (Glob, optional)',
+      fsExcludePlaceholder: '**/node_modules/**',
+      fsExcludeHelp: 'One glob per line to exclude paths from backup.',
+      fsSymlinkPolicy: 'Symlink policy',
+      fsHardlinkPolicy: 'Hardlink policy',
+      fsErrorPolicy: 'Error policy',
+      fsErrorPolicyHelp: 'How to handle per-entry errors (read, hash, archive, etc.).',
       sqlitePath: 'SQLite database path (SQLite)',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
       sqliteIntegrityCheck: 'SQLite integrity check (optional)',
@@ -131,6 +141,22 @@ const messages = {
     overlap: {
       queue: 'Queue (no parallel)',
       reject: 'Reject (if running)',
+    },
+    fs: {
+      symlink: {
+        keep: 'Keep as symlink',
+        follow: 'Follow (store as real files/dirs)',
+        skip: 'Skip and record',
+      },
+      hardlink: {
+        copy: 'Copy (store as separate files)',
+        keep: 'Keep hardlinks (when supported)',
+      },
+      error: {
+        failFast: 'Fail fast',
+        skipFail: 'Skip but mark failed',
+        skipOk: 'Skip but mark success',
+      },
     },
     columns: {
       name: 'Name',

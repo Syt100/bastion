@@ -28,6 +28,10 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 
+type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
+type FsHardlinkPolicy = 'copy' | 'keep'
+type FsErrorPolicy = 'fail_fast' | 'skip_fail' | 'skip_ok'
+
 const { t } = useI18n()
 const message = useMessage()
 
@@ -79,6 +83,11 @@ const form = reactive<{
   overlapPolicy: OverlapPolicy
   jobType: JobType
   fsRoot: string
+  fsInclude: string
+  fsExclude: string
+  fsSymlinkPolicy: FsSymlinkPolicy
+  fsHardlinkPolicy: FsHardlinkPolicy
+  fsErrorPolicy: FsErrorPolicy
   sqlitePath: string
   sqliteIntegrityCheck: boolean
   vaultwardenDataDir: string
@@ -95,6 +104,11 @@ const form = reactive<{
   overlapPolicy: 'queue',
   jobType: 'filesystem',
   fsRoot: '',
+  fsInclude: '',
+  fsExclude: '',
+  fsSymlinkPolicy: 'keep',
+  fsHardlinkPolicy: 'copy',
+  fsErrorPolicy: 'fail_fast',
   sqlitePath: '',
   sqliteIntegrityCheck: false,
   vaultwardenDataDir: '',
@@ -131,6 +145,35 @@ function formatJson(value: unknown): string {
   }
 }
 
+function parseLines(text: string): string[] {
+  return text
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((v): v is string => typeof v === 'string')
+}
+
+function normalizeSymlinkPolicy(value: unknown): FsSymlinkPolicy {
+  if (value === 'follow') return 'follow'
+  if (value === 'skip') return 'skip'
+  return 'keep'
+}
+
+function normalizeHardlinkPolicy(value: unknown): FsHardlinkPolicy {
+  if (value === 'keep') return 'keep'
+  return 'copy'
+}
+
+function normalizeErrorPolicy(value: unknown): FsErrorPolicy {
+  if (value === 'skip_fail') return 'skip_fail'
+  if (value === 'skip_ok') return 'skip_ok'
+  return 'fail_fast'
+}
+
 function openCreate(): void {
   editorMode.value = 'create'
   form.id = null
@@ -140,6 +183,11 @@ function openCreate(): void {
   form.overlapPolicy = 'queue'
   form.jobType = 'filesystem'
   form.fsRoot = ''
+  form.fsInclude = ''
+  form.fsExclude = ''
+  form.fsSymlinkPolicy = 'keep'
+  form.fsHardlinkPolicy = 'copy'
+  form.fsErrorPolicy = 'fail_fast'
   form.sqlitePath = ''
   form.sqliteIntegrityCheck = false
   form.vaultwardenDataDir = ''
@@ -177,6 +225,11 @@ async function openEdit(jobId: string): Promise<void> {
 
     const source = (job.spec as Record<string, unknown>).source as Record<string, unknown> | undefined
     form.fsRoot = typeof source?.root === 'string' ? source.root : ''
+    form.fsInclude = parseStringArray(source?.include).join('\n')
+    form.fsExclude = parseStringArray(source?.exclude).join('\n')
+    form.fsSymlinkPolicy = normalizeSymlinkPolicy(source?.symlink_policy)
+    form.fsHardlinkPolicy = normalizeHardlinkPolicy(source?.hardlink_policy)
+    form.fsErrorPolicy = normalizeErrorPolicy(source?.error_policy)
     form.sqlitePath = typeof source?.path === 'string' ? source.path : ''
     form.sqliteIntegrityCheck = typeof source?.integrity_check === 'boolean' ? source.integrity_check : false
     form.vaultwardenDataDir = typeof source?.data_dir === 'string' ? source.data_dir : ''
@@ -223,7 +276,14 @@ async function save(): Promise<void> {
 
   const source =
     form.jobType === 'filesystem'
-      ? { root: form.fsRoot.trim(), include: [], exclude: [] }
+      ? {
+          root: form.fsRoot.trim(),
+          include: parseLines(form.fsInclude),
+          exclude: parseLines(form.fsExclude),
+          symlink_policy: form.fsSymlinkPolicy,
+          hardlink_policy: form.fsHardlinkPolicy,
+          error_policy: form.fsErrorPolicy,
+        }
       : form.jobType === 'sqlite'
         ? { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
         : { data_dir: form.vaultwardenDataDir.trim() }
@@ -533,6 +593,23 @@ const jobTypeOptions = computed(() => [
   { label: t('jobs.types.vaultwarden'), value: 'vaultwarden' },
 ])
 
+const fsSymlinkPolicyOptions = computed(() => [
+  { label: t('jobs.fs.symlink.keep'), value: 'keep' },
+  { label: t('jobs.fs.symlink.follow'), value: 'follow' },
+  { label: t('jobs.fs.symlink.skip'), value: 'skip' },
+])
+
+const fsHardlinkPolicyOptions = computed(() => [
+  { label: t('jobs.fs.hardlink.copy'), value: 'copy' },
+  { label: t('jobs.fs.hardlink.keep'), value: 'keep' },
+])
+
+const fsErrorPolicyOptions = computed(() => [
+  { label: t('jobs.fs.error.failFast'), value: 'fail_fast' },
+  { label: t('jobs.fs.error.skipFail'), value: 'skip_fail' },
+  { label: t('jobs.fs.error.skipOk'), value: 'skip_ok' },
+])
+
 function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
@@ -734,6 +811,38 @@ onBeforeUnmount(() => {
 
           <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.sourceRoot')">
             <n-input v-model:value="form.fsRoot" :placeholder="t('jobs.fields.sourceRootPlaceholder')" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsInclude')">
+            <div class="space-y-1 w-full">
+              <n-input
+                v-model:value="form.fsInclude"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 6 }"
+                :placeholder="t('jobs.fields.fsIncludePlaceholder')"
+              />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.fsIncludeHelp') }}</div>
+            </div>
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsExclude')">
+            <div class="space-y-1 w-full">
+              <n-input
+                v-model:value="form.fsExclude"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 6 }"
+                :placeholder="t('jobs.fields.fsExcludePlaceholder')"
+              />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.fsExcludeHelp') }}</div>
+            </div>
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsSymlinkPolicy')">
+            <n-select v-model:value="form.fsSymlinkPolicy" :options="fsSymlinkPolicyOptions" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsHardlinkPolicy')">
+            <n-select v-model:value="form.fsHardlinkPolicy" :options="fsHardlinkPolicyOptions" />
+          </n-form-item>
+          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsErrorPolicy')">
+            <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
+            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
           </n-form-item>
           <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqlitePath')">
             <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />

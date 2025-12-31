@@ -13,6 +13,7 @@ use crate::agent_protocol::{
     AgentToHubMessageV1, HubToAgentMessageV1, JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
 };
 use crate::config::AgentArgs;
+use crate::run_failure::RunFailedWithSummary;
 use crate::{backup, targets};
 
 const IDENTITY_FILE_NAME: &str = "agent.json";
@@ -178,12 +179,15 @@ async fn connect_and_run(
 
                                 if let Err(error) = handle_backup_task(data_dir, &mut tx, &task_id, task).await {
                                     warn!(task_id = %task_id, error = %error, "task failed");
+                                    let summary = error
+                                        .downcast_ref::<RunFailedWithSummary>()
+                                        .map(|e| e.summary.clone());
                                     let result = AgentToHubMessageV1::TaskResult {
                                         v: PROTOCOL_VERSION,
                                         task_id: task_id.clone(),
                                         run_id,
                                         status: "failed".to_string(),
-                                        summary: None,
+                                        summary,
                                         error: Some(format!("{error:#}")),
                                     };
                                     let _ = tx.send(Message::Text(serde_json::to_string(&result).unwrap_or_default().into())).await;
@@ -218,10 +222,11 @@ async fn handle_backup_task(
         JobSpecResolvedV1::Filesystem { source, target, .. } => {
             send_run_event(tx, &run_id, "info", "packaging", "packaging", None).await?;
             let part_size = target_part_size_bytes(&target);
+            let error_policy = source.error_policy;
             let data_dir_buf = data_dir.to_path_buf();
             let job_id_clone = job_id.clone();
             let run_id_clone = run_id.clone();
-            let artifacts = tokio::task::spawn_blocking(move || {
+            let build = tokio::task::spawn_blocking(move || {
                 backup::filesystem::build_filesystem_run(
                     &data_dir_buf,
                     &job_id_clone,
@@ -233,17 +238,66 @@ async fn handle_backup_task(
             })
             .await??;
 
+            if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
+                let level = if build.issues.errors_total > 0 {
+                    "error"
+                } else {
+                    "warn"
+                };
+                let fields = serde_json::json!({
+                    "warnings_total": build.issues.warnings_total,
+                    "errors_total": build.issues.errors_total,
+                    "sample_warnings": &build.issues.sample_warnings,
+                    "sample_errors": &build.issues.sample_errors,
+                });
+                send_run_event(
+                    tx,
+                    &run_id,
+                    level,
+                    "fs_issues",
+                    "filesystem issues",
+                    Some(fields),
+                )
+                .await?;
+            }
+
+            let issues = build.issues;
+            let artifacts = build.artifacts;
+
             send_run_event(tx, &run_id, "info", "upload", "upload", None).await?;
             let target_summary =
                 store_artifacts_to_resolved_target(&job_id, &run_id, &target, &artifacts).await?;
 
             let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
-            serde_json::json!({
+            let mut summary = serde_json::json!({
                 "target": target_summary,
                 "entries_count": artifacts.entries_count,
                 "parts": artifacts.parts.len(),
-            })
+                "filesystem": {
+                    "warnings_total": issues.warnings_total,
+                    "errors_total": issues.errors_total,
+                }
+            });
+
+            if error_policy == crate::job_spec::FsErrorPolicy::SkipFail && issues.errors_total > 0 {
+                if let Some(obj) = summary.as_object_mut() {
+                    obj.insert(
+                        "error_code".to_string(),
+                        serde_json::Value::String("fs_issues".to_string()),
+                    );
+                }
+                return Err(anyhow::Error::new(RunFailedWithSummary::new(
+                    "fs_issues",
+                    format!(
+                        "filesystem backup completed with {} errors",
+                        issues.errors_total
+                    ),
+                    summary,
+                )));
+            }
+
+            summary
         }
         JobSpecResolvedV1::Sqlite { source, target, .. } => {
             send_run_event(tx, &run_id, "info", "snapshot", "snapshot", None).await?;

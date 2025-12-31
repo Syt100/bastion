@@ -1586,7 +1586,13 @@ async fn handle_agent_socket(
                                 let (run_status, err_code) = if status == "success" {
                                     (runs_repo::RunStatus::Success, None)
                                 } else {
-                                    (runs_repo::RunStatus::Failed, Some("agent_failed"))
+                                    let code = summary
+                                        .as_ref()
+                                        .and_then(|v| v.get("error_code"))
+                                        .and_then(|v| v.as_str())
+                                        .filter(|v| !v.trim().is_empty())
+                                        .unwrap_or("agent_failed");
+                                    (runs_repo::RunStatus::Failed, Some(code))
                                 };
 
                                 let _ = runs_repo::complete_run(

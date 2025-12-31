@@ -8,6 +8,47 @@ fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FsSymlinkPolicy {
+    Keep,
+    Follow,
+    Skip,
+}
+
+impl Default for FsSymlinkPolicy {
+    fn default() -> Self {
+        Self::Keep
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FsHardlinkPolicy {
+    Copy,
+    Keep,
+}
+
+impl Default for FsHardlinkPolicy {
+    fn default() -> Self {
+        Self::Copy
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FsErrorPolicy {
+    FailFast,
+    SkipFail,
+    SkipOk,
+}
+
+impl Default for FsErrorPolicy {
+    fn default() -> Self {
+        Self::FailFast
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilesystemSource {
     pub root: String,
@@ -15,6 +56,12 @@ pub struct FilesystemSource {
     pub include: Vec<String>,
     #[serde(default)]
     pub exclude: Vec<String>,
+    #[serde(default)]
+    pub symlink_policy: FsSymlinkPolicy,
+    #[serde(default)]
+    pub hardlink_policy: FsHardlinkPolicy,
+    #[serde(default)]
+    pub error_policy: FsErrorPolicy,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -5,7 +5,9 @@ use rusqlite::{Connection, OpenFlags};
 use time::OffsetDateTime;
 
 use crate::backup::LocalRunArtifacts;
-use crate::job_spec::{FilesystemSource, SqliteSource};
+use crate::job_spec::{
+    FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, SqliteSource,
+};
 
 const SQLITE_BACKUP_PAGES_PER_STEP: i32 = 100;
 const SQLITE_BACKUP_PAUSE: Duration = Duration::from_millis(10);
@@ -56,8 +58,11 @@ pub fn build_sqlite_run(
         root: source_dir.to_string_lossy().to_string(),
         include: Vec::new(),
         exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
     };
-    let artifacts = crate::backup::filesystem::build_filesystem_run(
+    let build = crate::backup::filesystem::build_filesystem_run(
         data_dir,
         job_id,
         run_id,
@@ -65,6 +70,13 @@ pub fn build_sqlite_run(
         &fs_source,
         part_size_bytes,
     )?;
+    if build.issues.errors_total > 0 {
+        anyhow::bail!(
+            "unexpected filesystem issues while packaging sqlite snapshot: {}",
+            build.issues.errors_total
+        );
+    }
+    let artifacts = build.artifacts;
 
     Ok(SqliteRunArtifacts {
         artifacts,
