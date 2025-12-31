@@ -100,6 +100,16 @@ const messages = {
       targetType: '备份目标类型',
       sourceRoot: '源目录（Filesystem）',
       sourceRootPlaceholder: '/path/to/data',
+      fsInclude: '包含规则（Glob，可选）',
+      fsIncludePlaceholder: '**/*.txt',
+      fsIncludeHelp: '一行一个 Glob；留空表示包含全部（再受排除规则影响）。',
+      fsExclude: '排除规则（Glob，可选）',
+      fsExcludePlaceholder: '**/node_modules/**',
+      fsExcludeHelp: '一行一个 Glob；用于排除不需要备份的路径。',
+      fsSymlinkPolicy: '符号链接策略',
+      fsHardlinkPolicy: '硬链接策略',
+      fsErrorPolicy: '错误策略',
+      fsErrorPolicyHelp: '遇到单个文件/目录错误（读取、哈希、打包等）时的处理方式。',
       sqlitePath: 'SQLite 数据库路径（SQLite）',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
       sqliteIntegrityCheck: 'SQLite 完整性校验（可选）',
@@ -131,6 +141,22 @@ const messages = {
     overlap: {
       queue: '排队（不并行）',
       reject: '拒绝（运行中则拒绝）',
+    },
+    fs: {
+      symlink: {
+        keep: '保留为 symlink',
+        follow: '跟随（打包为实际文件/目录）',
+        skip: '跳过并记录',
+      },
+      hardlink: {
+        copy: '复制（作为独立文件）',
+        keep: '保留硬链接（支持的平台）',
+      },
+      error: {
+        failFast: '遇错立即失败',
+        skipFail: '跳过错误但标记失败',
+        skipOk: '跳过错误但标记成功',
+      },
     },
     columns: {
       name: '名称',

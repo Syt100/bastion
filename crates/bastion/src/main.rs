@@ -16,6 +16,7 @@ mod notifications;
 mod notifications_repo;
 mod operations_repo;
 mod restore;
+mod run_failure;
 mod runs_repo;
 mod scheduler;
 mod secrets;

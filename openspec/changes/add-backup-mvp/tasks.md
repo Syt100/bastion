@@ -25,7 +25,7 @@
 - [x] Explicit insecure mode (`--insecure-http`) with persistent UI warnings
 
 ## 5. Backup Engine
-- [ ] Filesystem source (include/exclude patterns; symlinks/hardlinks handling; error policy)
+- [x] Filesystem source (include/exclude patterns; symlinks/hardlinks handling; error policy)
 - [x] SQLite source using online backup API (no downtime) + optional `PRAGMA integrity_check`
 - [ ] Packaging pipeline: tar(PAX) → zstd(level=3, threads=auto) → optional age → split parts
 - [x] Manifest v1 + entries index + atomic completion marker

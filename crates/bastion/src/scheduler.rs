@@ -17,6 +17,7 @@ use crate::backup;
 use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
 use crate::notifications_repo;
+use crate::run_failure::RunFailedWithSummary;
 use crate::runs_repo::{self, RunStatus};
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
@@ -353,12 +354,16 @@ async fn run_worker_loop(
                     runs_repo::append_run_event(&db, &run.id, "error", "failed", &message, None)
                         .await;
 
+                let soft = error.downcast_ref::<RunFailedWithSummary>();
+                let summary = soft.map(|e| e.summary.clone());
+                let error_code = soft.map(|e| e.code).unwrap_or("run_failed");
+
                 let _ = runs_repo::complete_run(
                     &db,
                     &run.id,
                     RunStatus::Failed,
-                    None,
-                    Some("run_failed"),
+                    summary,
+                    Some(error_code),
                 )
                 .await;
                 if let Err(error) =
@@ -494,6 +499,7 @@ async fn execute_run(
             let job_id = job.id.clone();
             let run_id_owned = run_id.to_string();
             let part_size = target.part_size_bytes();
+            let error_policy = source.error_policy;
             let artifacts = tokio::task::spawn_blocking(move || {
                 backup::filesystem::build_filesystem_run(
                     &data_dir,
@@ -506,6 +512,32 @@ async fn execute_run(
             })
             .await??;
 
+            if artifacts.issues.warnings_total > 0 || artifacts.issues.errors_total > 0 {
+                let level = if artifacts.issues.errors_total > 0 {
+                    "error"
+                } else {
+                    "warn"
+                };
+                let fields = serde_json::json!({
+                    "warnings_total": artifacts.issues.warnings_total,
+                    "errors_total": artifacts.issues.errors_total,
+                    "sample_warnings": &artifacts.issues.sample_warnings,
+                    "sample_errors": &artifacts.issues.sample_errors,
+                });
+                let _ = runs_repo::append_run_event(
+                    db,
+                    run_id,
+                    level,
+                    "fs_issues",
+                    "filesystem issues",
+                    Some(fields),
+                )
+                .await;
+            }
+
+            let issues = artifacts.issues;
+            let artifacts = artifacts.artifacts;
+
             runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
             let target_summary =
                 store_run_artifacts_to_target(db, secrets, &job.id, run_id, &target, &artifacts)
@@ -513,11 +545,28 @@ async fn execute_run(
 
             let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
-            Ok(serde_json::json!({
+            let summary = serde_json::json!({
                 "target": target_summary,
                 "entries_count": artifacts.entries_count,
                 "parts": artifacts.parts.len(),
-            }))
+                "filesystem": {
+                    "warnings_total": issues.warnings_total,
+                    "errors_total": issues.errors_total,
+                },
+            });
+
+            if error_policy == job_spec::FsErrorPolicy::SkipFail && issues.errors_total > 0 {
+                return Err(anyhow::Error::new(RunFailedWithSummary::new(
+                    "fs_issues",
+                    format!(
+                        "filesystem backup completed with {} errors",
+                        issues.errors_total
+                    ),
+                    summary,
+                )));
+            }
+
+            Ok(summary)
         }
         job_spec::JobSpecV1::Sqlite { source, target, .. } => {
             runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
