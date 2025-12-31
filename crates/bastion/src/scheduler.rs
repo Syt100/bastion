@@ -25,6 +25,7 @@ use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
 use crate::targets;
 use crate::webdav::WebdavCredentials;
+use url::Url;
 
 pub fn spawn(
     db: SqlitePool,
@@ -32,15 +33,23 @@ pub fn spawn(
     secrets: Arc<SecretsCrypto>,
     agent_manager: AgentManager,
     run_retention_days: i64,
+    incomplete_cleanup_days: i64,
 ) {
     tokio::spawn(run_cron_loop(db.clone()));
     tokio::spawn(run_worker_loop(
         db.clone(),
         data_dir,
-        secrets,
+        secrets.clone(),
         agent_manager,
     ));
-    tokio::spawn(run_retention_loop(db, run_retention_days));
+    tokio::spawn(run_retention_loop(db.clone(), run_retention_days));
+    if incomplete_cleanup_days > 0 {
+        tokio::spawn(run_incomplete_cleanup_loop(
+            db.clone(),
+            secrets,
+            incomplete_cleanup_days,
+        ));
+    }
 }
 
 fn normalize_cron(expr: &str) -> Result<String, anyhow::Error> {
@@ -813,4 +822,179 @@ async fn run_retention_loop(db: SqlitePool, run_retention_days: i64) {
 
         tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
     }
+}
+
+async fn run_incomplete_cleanup_loop(
+    db: SqlitePool,
+    secrets: Arc<SecretsCrypto>,
+    incomplete_cleanup_days: i64,
+) {
+    let cutoff_seconds = incomplete_cleanup_days.saturating_mul(24 * 60 * 60);
+    if cutoff_seconds <= 0 {
+        return;
+    }
+
+    loop {
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        let cutoff_started_at = now.saturating_sub(cutoff_seconds);
+
+        let mut deleted = 0_u64;
+        loop {
+            let candidates =
+                match runs_repo::list_incomplete_cleanup_candidates(&db, cutoff_started_at, 100)
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(error) => {
+                        warn!(error = %error, "failed to list incomplete cleanup candidates");
+                        break;
+                    }
+                };
+            if candidates.is_empty() {
+                break;
+            }
+
+            for run in candidates {
+                let Some(job) = jobs_repo::get_job(&db, &run.job_id).await.unwrap_or(None) else {
+                    continue;
+                };
+                let spec = match job_spec::parse_value(&job.spec) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        warn!(job_id = %job.id, run_id = %run.id, error = %error, "invalid job spec while cleaning up incomplete run");
+                        continue;
+                    }
+                };
+
+                match extract_target(&spec) {
+                    job_spec::TargetV1::LocalDir { base_dir, .. } => {
+                        if job.agent_id.is_some() {
+                            continue;
+                        }
+                        let base_dir = base_dir.clone();
+                        let job_id = job.id.clone();
+                        let run_id = run.id.clone();
+                        let removed = tokio::task::spawn_blocking(move || {
+                            cleanup_local_dir_run(&base_dir, &job_id, &run_id)
+                        })
+                        .await
+                        .unwrap_or(Ok(false))
+                        .unwrap_or(false);
+                        if removed {
+                            deleted = deleted.saturating_add(1);
+                        }
+                    }
+                    job_spec::TargetV1::Webdav {
+                        base_url,
+                        secret_name,
+                        ..
+                    } => {
+                        let removed = match cleanup_webdav_run(
+                            &db,
+                            &secrets,
+                            base_url,
+                            secret_name,
+                            &job.id,
+                            &run.id,
+                        )
+                        .await
+                        {
+                            Ok(v) => v,
+                            Err(error) => {
+                                warn!(job_id = %job.id, run_id = %run.id, error = %error, "failed to cleanup stale webdav run");
+                                false
+                            }
+                        };
+                        if removed {
+                            deleted = deleted.saturating_add(1);
+                        }
+                    }
+                }
+            }
+        }
+
+        if deleted > 0 {
+            info!(
+                deleted,
+                incomplete_cleanup_days, "cleaned up stale incomplete target runs"
+            );
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+    }
+}
+
+fn extract_target(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {
+    match spec {
+        job_spec::JobSpecV1::Filesystem { target, .. } => target,
+        job_spec::JobSpecV1::Sqlite { target, .. } => target,
+        job_spec::JobSpecV1::Vaultwarden { target, .. } => target,
+    }
+}
+
+fn cleanup_local_dir_run(
+    base_dir: &str,
+    job_id: &str,
+    run_id: &str,
+) -> Result<bool, anyhow::Error> {
+    use crate::backup::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
+
+    let run_dir = std::path::Path::new(base_dir).join(job_id).join(run_id);
+    if !run_dir.exists() {
+        return Ok(false);
+    }
+    if run_dir.join(COMPLETE_NAME).exists() {
+        return Ok(false);
+    }
+
+    let mut looks_like_bastion = false;
+    if run_dir.join(MANIFEST_NAME).exists() || run_dir.join(ENTRIES_INDEX_NAME).exists() {
+        looks_like_bastion = true;
+    } else if let Ok(entries) = std::fs::read_dir(&run_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("payload.part") || name.ends_with(".partial") {
+                looks_like_bastion = true;
+                break;
+            }
+        }
+    }
+    if !looks_like_bastion {
+        return Ok(false);
+    }
+
+    std::fs::remove_dir_all(&run_dir)?;
+    Ok(true)
+}
+
+async fn cleanup_webdav_run(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    base_url: &str,
+    secret_name: &str,
+    job_id: &str,
+    run_id: &str,
+) -> Result<bool, anyhow::Error> {
+    use crate::backup::COMPLETE_NAME;
+
+    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+    let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+
+    let mut base_url = Url::parse(base_url)?;
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+
+    let client = crate::webdav::WebdavClient::new(base_url.clone(), credentials)?;
+    let job_url = base_url.join(&format!("{job_id}/"))?;
+    let run_url = job_url.join(&format!("{run_id}/"))?;
+    let complete_url = run_url.join(COMPLETE_NAME)?;
+    if client.head_size(&complete_url).await?.is_some() {
+        return Ok(false);
+    }
+
+    Ok(client.delete(&run_url).await?)
 }

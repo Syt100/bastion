@@ -12,6 +12,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub insecure_http: bool,
     pub run_retention_days: i64,
+    pub incomplete_cleanup_days: i64,
     pub trusted_proxies: Vec<IpNet>,
 }
 
@@ -55,6 +56,10 @@ pub struct HubArgs {
     /// Run history retention in days (default: 180).
     #[arg(long, default_value_t = 180, env = "BASTION_RUN_RETENTION_DAYS")]
     pub run_retention_days: i64,
+
+    /// Cleanup incomplete runs (missing complete.json) older than N days (default: 7, 0 disables).
+    #[arg(long, default_value_t = 7, env = "BASTION_INCOMPLETE_CLEANUP_DAYS")]
+    pub incomplete_cleanup_days: i64,
 
     /// Trusted proxy IPs/CIDRs that are allowed to set X-Forwarded-* headers.
     ///
@@ -137,6 +142,9 @@ impl HubArgs {
         if self.run_retention_days <= 0 {
             anyhow::bail!("run_retention_days must be > 0");
         }
+        if self.incomplete_cleanup_days < 0 {
+            anyhow::bail!("incomplete_cleanup_days must be >= 0");
+        }
 
         let mut trusted_proxies = self.trusted_proxies;
         if trusted_proxies.is_empty() {
@@ -149,6 +157,7 @@ impl HubArgs {
             data_dir,
             insecure_http: self.insecure_http,
             run_retention_days: self.run_retention_days,
+            incomplete_cleanup_days: self.incomplete_cleanup_days,
             trusted_proxies,
         })
     }

@@ -161,6 +161,24 @@ impl WebdavClient {
         }
     }
 
+    pub async fn delete(&self, url: &Url) -> Result<bool, anyhow::Error> {
+        let res = self
+            .http
+            .delete(url.clone())
+            .basic_auth(
+                self.credentials.username.clone(),
+                Some(self.credentials.password.clone()),
+            )
+            .send()
+            .await?;
+
+        match res.status() {
+            StatusCode::NOT_FOUND => Ok(false),
+            s if s.is_success() => Ok(true),
+            s => Err(anyhow::anyhow!("DELETE failed: HTTP {s}")),
+        }
+    }
+
     pub async fn get_to_file(
         &self,
         url: &Url,

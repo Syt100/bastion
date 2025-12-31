@@ -97,6 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
         secrets.clone(),
         agent_manager.clone(),
         config.run_retention_days,
+        config.incomplete_cleanup_days,
     );
     notifications::spawn(pool.clone(), secrets.clone());
 

@@ -21,3 +21,9 @@ The system SHALL upload `manifest.json` and `complete.json` only after all parts
 - **WHEN** the final part upload succeeds
 - **THEN** `manifest.json` is uploaded and then `complete.json` is uploaded
 
+### Requirement: Incomplete-Run Cleanup (WebDAV)
+The system SHALL periodically clean up incomplete run directories (missing `complete.json`) older than a configurable threshold.
+
+#### Scenario: Stale incomplete run is removed
+- **WHEN** a run directory exists under `<base_url>/<job_id>/<run_id>/` without `complete.json` and is older than the configured threshold
+- **THEN** the system deletes the run directory and its contents
