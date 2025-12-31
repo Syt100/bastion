@@ -69,3 +69,21 @@ The system SHALL determine the effective client IP from `X-Forwarded-For` only w
 #### Scenario: Trust X-Forwarded-For only from trusted proxy
 - **WHEN** a request includes `X-Forwarded-For` from an untrusted source
 - **THEN** the system ignores it for security decisions (e.g., throttling)
+
+### Requirement: Master Key Keypack Export/Import
+The system SHALL support exporting the master keyring (`data/master.key`) as a password-encrypted keypack and importing it back to restore the master keyring.
+
+#### Scenario: Keypack export/import round trip
+- **WHEN** a user exports a keypack with a password and later imports it with the same password
+- **THEN** the restored `data/master.key` can decrypt existing encrypted secrets in SQLite
+
+#### Scenario: Wrong keypack password is rejected
+- **WHEN** a user attempts to import a keypack using the wrong password
+- **THEN** the import fails without overwriting the existing `data/master.key`
+
+### Requirement: Master Key Rotation
+The system SHALL support rotating the master keyring by generating a new active key while retaining old keys for decryption of existing data.
+
+#### Scenario: Existing secrets remain decryptable after rotation
+- **WHEN** the master key is rotated
+- **THEN** previously stored encrypted secrets remain decryptable

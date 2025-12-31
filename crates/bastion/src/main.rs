@@ -28,7 +28,7 @@ use std::sync::Arc;
 use clap::Parser;
 use tracing::info;
 
-use crate::config::{Cli, Command};
+use crate::config::{Cli, Command, KeypackCommand};
 use crate::http::AppState;
 
 #[tokio::main]
@@ -39,9 +39,47 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    if let Some(Command::Agent(args)) = command {
-        agent_client::run(args).await?;
-        return Ok(());
+    if let Some(command) = command {
+        match command {
+            Command::Agent(args) => {
+                agent_client::run(args).await?;
+                return Ok(());
+            }
+            Command::Keypack { command } => {
+                let config = hub.into_config()?;
+                match command {
+                    KeypackCommand::Export(args) => {
+                        let password = read_keypack_password(args.password, args.password_stdin)?;
+                        secrets::export_keypack(&config.data_dir, &args.out, &password)?;
+                        println!("exported keypack to {}", args.out.display());
+                    }
+                    KeypackCommand::Import(args) => {
+                        let password = read_keypack_password(args.password, args.password_stdin)?;
+                        secrets::import_keypack(
+                            &config.data_dir,
+                            &args.r#in,
+                            &password,
+                            args.force,
+                        )?;
+                        println!(
+                            "imported keypack into {} (master.key {})",
+                            config.data_dir.display(),
+                            if args.force { "overwritten" } else { "written" }
+                        );
+                        println!("restart the service to ensure the new keyring is loaded");
+                    }
+                    KeypackCommand::Rotate(_) => {
+                        let result = secrets::rotate_master_key(&config.data_dir)?;
+                        println!(
+                            "rotated master.key: {} -> {} (keys: {})",
+                            result.previous_kid, result.active_kid, result.keys_count
+                        );
+                        println!("restart the service to use the new active key");
+                    }
+                }
+                return Ok(());
+            }
+        }
     }
 
     let config = Arc::new(hub.into_config()?);
@@ -81,4 +119,25 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .await?;
     Ok(())
+}
+
+fn read_keypack_password(
+    password: Option<String>,
+    password_stdin: bool,
+) -> Result<String, anyhow::Error> {
+    match (password, password_stdin) {
+        (Some(pw), false) => Ok(pw),
+        (None, true) => {
+            use std::io::Read as _;
+            let mut buf = String::new();
+            std::io::stdin().read_to_string(&mut buf)?;
+            let trimmed = buf.trim_end_matches(&['\r', '\n'][..]).to_string();
+            if trimmed.is_empty() {
+                anyhow::bail!("password from stdin is empty");
+            }
+            Ok(trimmed)
+        }
+        (Some(_), true) => anyhow::bail!("use either --password or --password-stdin, not both"),
+        (None, false) => anyhow::bail!("missing password: provide --password or --password-stdin"),
+    }
 }
