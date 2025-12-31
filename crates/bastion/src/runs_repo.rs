@@ -62,6 +62,14 @@ pub struct RunEvent {
     pub fields: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone)]
+pub struct IncompleteCleanupRun {
+    pub id: String,
+    pub job_id: String,
+    pub status: RunStatus,
+    pub started_at: i64,
+}
+
 pub async fn create_run(
     db: &SqlitePool,
     job_id: &str,
@@ -375,6 +383,33 @@ pub async fn prune_runs_ended_before(
     Ok(result.rows_affected())
 }
 
+pub async fn list_incomplete_cleanup_candidates(
+    db: &SqlitePool,
+    cutoff_started_at: i64,
+    limit: u32,
+) -> Result<Vec<IncompleteCleanupRun>, anyhow::Error> {
+    let rows = sqlx::query(
+        "SELECT id, job_id, status, started_at FROM runs WHERE status != 'success' AND started_at < ? ORDER BY started_at ASC LIMIT ?",
+    )
+    .bind(cutoff_started_at)
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
+
+    let mut runs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let status = row.get::<String, _>("status").parse::<RunStatus>()?;
+        runs.push(IncompleteCleanupRun {
+            id: row.get::<String, _>("id"),
+            job_id: row.get::<String, _>("job_id"),
+            status,
+            started_at: row.get::<i64, _>("started_at"),
+        });
+    }
+
+    Ok(runs)
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
@@ -382,8 +417,9 @@ mod tests {
     use crate::db;
 
     use super::{
-        RunStatus, append_run_event, claim_next_queued_run, complete_run, create_run,
-        list_run_events, list_runs_for_job, prune_runs_ended_before, requeue_run,
+        IncompleteCleanupRun, RunStatus, append_run_event, claim_next_queued_run, complete_run,
+        create_run, list_incomplete_cleanup_candidates, list_run_events, list_runs_for_job,
+        prune_runs_ended_before, requeue_run,
     };
 
     #[tokio::test]
@@ -448,5 +484,63 @@ mod tests {
 
         let pruned = prune_runs_ended_before(&pool, 0).await.expect("prune");
         assert_eq!(pruned, 0);
+    }
+
+    #[tokio::test]
+    async fn list_incomplete_cleanup_candidates_filters_and_orders() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+
+        sqlx::query(
+            "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+        )
+        .bind("job1")
+        .bind("job1")
+        .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+        .bind(1000)
+        .bind(1000)
+        .execute(&pool)
+        .await
+        .expect("insert job");
+
+        // Old queued -> included.
+        let r1 = create_run(&pool, "job1", RunStatus::Queued, 10, None, None, None)
+            .await
+            .expect("run1");
+        // Old running -> included.
+        let r2 = create_run(&pool, "job1", RunStatus::Running, 20, None, None, None)
+            .await
+            .expect("run2");
+        // Old success -> excluded.
+        let _ = create_run(&pool, "job1", RunStatus::Success, 30, Some(31), None, None)
+            .await
+            .expect("run3");
+        // New failed -> excluded by cutoff.
+        let _ = create_run(
+            &pool,
+            "job1",
+            RunStatus::Failed,
+            999,
+            Some(1000),
+            None,
+            None,
+        )
+        .await
+        .expect("run4");
+
+        let got = list_incomplete_cleanup_candidates(&pool, 100, 10)
+            .await
+            .expect("list");
+        let ids: Vec<String> = got.iter().map(|r| r.id.clone()).collect();
+        assert_eq!(ids, vec![r1.id, r2.id]);
+
+        // Ensure struct fields are populated.
+        assert!(matches!(
+            got[0],
+            IncompleteCleanupRun {
+                status: RunStatus::Queued,
+                ..
+            }
+        ));
     }
 }

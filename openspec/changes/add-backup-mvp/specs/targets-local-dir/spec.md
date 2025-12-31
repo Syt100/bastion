@@ -28,3 +28,9 @@ The system SHALL write `manifest.json` and `complete.json` only after all parts 
 - **WHEN** all parts and `entries.jsonl.zst` are written
 - **THEN** `manifest.json` is written and then `complete.json` is written
 
+### Requirement: Incomplete-Run Cleanup (Local)
+The system SHALL periodically clean up incomplete run directories (missing `complete.json`) older than a configurable threshold.
+
+#### Scenario: Stale incomplete run is removed
+- **WHEN** a run directory exists under `<base_dir>/<job_id>/<run_id>/` without `complete.json` and is older than the configured threshold
+- **THEN** the system deletes the run directory and its contents
