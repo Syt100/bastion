@@ -6,6 +6,7 @@ use bastion_core::manifest::{EntryIndexRef, HashAlgorithm, ManifestV1, PipelineS
 use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tracing::info;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -33,6 +34,15 @@ pub fn build_vaultwarden_run(
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<LocalRunArtifacts, anyhow::Error> {
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        vw_data_dir = %source.data_dir,
+        encryption = ?encryption,
+        part_size_bytes,
+        "building vaultwarden backup artifacts"
+    );
+
     let stage = stage_dir(data_dir, run_id);
     std::fs::create_dir_all(&stage)?;
 
@@ -58,6 +68,9 @@ pub fn build_vaultwarden_run(
     let source_db_path = root.join("db.sqlite3");
     let snapshot_path = source_dir.join("db.sqlite3");
     crate::backup::sqlite::create_snapshot(&source_db_path.to_string_lossy(), &snapshot_path)?;
+    let snapshot_size = std::fs::metadata(&snapshot_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let parts = write_tar_zstd_parts(
         &stage,
@@ -114,6 +127,18 @@ pub fn build_vaultwarden_run(
 
     write_json(&manifest_path, &manifest)?;
     write_json(&complete_path, &serde_json::json!({}))?;
+
+    let parts_count = parts.len();
+    let parts_bytes: u64 = parts.iter().map(|p| p.size).sum();
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        entries_count,
+        parts_count,
+        parts_bytes,
+        snapshot_size,
+        "built vaultwarden backup artifacts"
+    );
 
     Ok(LocalRunArtifacts {
         run_dir: stage.parent().unwrap_or(&stage).to_path_buf(),

@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use ipnet::IpNet;
 
 #[derive(Debug, Clone)]
@@ -21,6 +21,9 @@ pub struct Config {
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
+
+    #[command(flatten)]
+    pub logging: LoggingArgs,
 
     #[command(flatten)]
     pub hub: HubArgs,
@@ -66,6 +69,36 @@ pub struct HubArgs {
     /// Can be specified multiple times: `--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`.
     #[arg(long = "trusted-proxy", env = "BASTION_TRUSTED_PROXIES", value_delimiter = ',', num_args = 0..)]
     pub trusted_proxies: Vec<IpNet>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct LoggingArgs {
+    /// Logging filter (same syntax as RUST_LOG), e.g. `info`, `bastion=debug,tower_http=warn`.
+    ///
+    /// When not set, Bastion defaults to a conservative `info,tower_http=warn` filter.
+    #[arg(long, env = "BASTION_LOG")]
+    pub log: Option<String>,
+
+    /// Optional log file path. When set, logs are written to both console and file.
+    ///
+    /// For rotated logs, Bastion uses the file name as a prefix (e.g. `bastion.log.2025-12-31`).
+    #[arg(long, env = "BASTION_LOG_FILE")]
+    pub log_file: Option<PathBuf>,
+
+    /// Log rotation for `--log-file` (default: daily).
+    #[arg(long, env = "BASTION_LOG_ROTATION", value_enum, default_value_t = LogRotation::Daily)]
+    pub log_rotation: LogRotation,
+
+    /// How many rotated log files to keep (default: 30, 0 disables pruning).
+    #[arg(long, env = "BASTION_LOG_KEEP_FILES", default_value_t = 30)]
+    pub log_keep_files: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum LogRotation {
+    Never,
+    Hourly,
+    Daily,
 }
 
 #[derive(Debug, Args, Clone)]

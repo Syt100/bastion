@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
 use time::OffsetDateTime;
+use tracing::{info, warn};
 
 use crate::backup::{LocalRunArtifacts, PayloadEncryption};
 use crate::job_spec::{
@@ -38,6 +39,16 @@ pub fn build_sqlite_run(
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<SqliteRunArtifacts, anyhow::Error> {
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        source_path = %source.path,
+        integrity_check = source.integrity_check,
+        encryption = ?encryption,
+        part_size_bytes,
+        "building sqlite backup artifacts"
+    );
+
     let run_dir = crate::backup::run_dir(data_dir, run_id);
     let source_dir = run_dir.join("source");
     std::fs::create_dir_all(&source_dir)?;
@@ -50,7 +61,17 @@ pub fn build_sqlite_run(
     let snapshot_size = std::fs::metadata(&snapshot_path)?.len();
 
     let integrity_check = if source.integrity_check {
-        Some(integrity_check(&snapshot_path)?)
+        let check = integrity_check(&snapshot_path)?;
+        if !check.ok {
+            warn!(
+                job_id = %job_id,
+                run_id = %run_id,
+                snapshot_path = %snapshot_path.display(),
+                truncated = check.truncated,
+                "sqlite integrity_check reported problems"
+            );
+        }
+        Some(check)
     } else {
         None
     };
@@ -79,6 +100,17 @@ pub fn build_sqlite_run(
         );
     }
     let artifacts = build.artifacts;
+
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        snapshot_name = %snapshot_name,
+        snapshot_size,
+        entries_count = artifacts.entries_count,
+        parts_count = artifacts.parts.len(),
+        parts_bytes = artifacts.parts.iter().map(|p| p.size).sum::<u64>(),
+        "built sqlite backup artifacts"
+    );
 
     Ok(SqliteRunArtifacts {
         artifacts,

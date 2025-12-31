@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use tracing::{debug, info};
+
 use crate::backup::{COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME};
 
 pub fn store_run(
@@ -8,6 +10,17 @@ pub fn store_run(
     run_id: &str,
     artifacts: &LocalRunArtifacts,
 ) -> Result<PathBuf, anyhow::Error> {
+    let parts_count = artifacts.parts.len();
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        base_dir = %base_dir.display(),
+        parts_count,
+        parts_bytes,
+        "storing run to local dir target"
+    );
+
     let run_dir = base_dir.join(job_id).join(run_id);
     std::fs::create_dir_all(&run_dir)?;
 
@@ -38,12 +51,24 @@ pub fn store_run(
         complete_size,
     )?;
 
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        run_dir = %run_dir.display(),
+        "stored run to local dir target"
+    );
     Ok(run_dir)
 }
 
 fn copy_if_needed(src: &Path, dst: &Path, expected_size: u64) -> Result<(), anyhow::Error> {
     if let Ok(meta) = std::fs::metadata(dst) {
         if meta.len() == expected_size {
+            debug!(
+                src = %src.display(),
+                dst = %dst.display(),
+                expected_size,
+                "skipping existing target file"
+            );
             return Ok(());
         }
     }
@@ -55,6 +80,12 @@ fn copy_if_needed(src: &Path, dst: &Path, expected_size: u64) -> Result<(), anyh
     let tmp = dst.with_file_name(format!("{file_name}.partial"));
     let _ = std::fs::remove_file(&tmp);
 
+    debug!(
+        src = %src.display(),
+        dst = %dst.display(),
+        expected_size,
+        "copying file to local dir target"
+    );
     std::fs::copy(src, &tmp)?;
     let actual_size = std::fs::metadata(&tmp)?.len();
     if actual_size != expected_size {

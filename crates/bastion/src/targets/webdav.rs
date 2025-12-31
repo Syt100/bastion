@@ -1,9 +1,19 @@
 use std::path::Path;
 
+use tracing::{debug, info};
 use url::Url;
 
 use crate::backup::{COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME};
 use crate::webdav::{WebdavClient, WebdavCredentials};
+
+fn redact_url(url: &Url) -> String {
+    let mut redacted = url.clone();
+    let _ = redacted.set_username("");
+    let _ = redacted.set_password(None);
+    redacted.set_query(None);
+    redacted.set_fragment(None);
+    redacted.to_string()
+}
 
 pub async fn store_run(
     base_url: &str,
@@ -12,10 +22,20 @@ pub async fn store_run(
     run_id: &str,
     artifacts: &LocalRunArtifacts,
 ) -> Result<Url, anyhow::Error> {
+    let parts_count = artifacts.parts.len();
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
     let mut base_url = Url::parse(base_url)?;
     if !base_url.path().ends_with('/') {
         base_url.set_path(&format!("{}/", base_url.path()));
     }
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        base_url = %redact_url(&base_url),
+        parts_count,
+        parts_bytes,
+        "storing run to webdav"
+    );
 
     let client = WebdavClient::new(base_url.clone(), credentials)?;
     let job_url = base_url.join(&format!("{job_id}/"))?;
@@ -25,6 +45,13 @@ pub async fn store_run(
     client.ensure_collection(&run_url).await?;
 
     upload_artifacts(&client, &run_url, artifacts).await?;
+
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        run_url = %redact_url(&run_url),
+        "stored run to webdav"
+    );
     Ok(run_url)
 }
 
@@ -37,9 +64,11 @@ async fn upload_artifacts(
         let url = run_url.join(&part.name)?;
         if let Some(existing) = client.head_size(&url).await? {
             if existing == part.size {
+                debug!(url = %redact_url(&url), size = part.size, "skipping existing webdav part");
                 continue;
             }
         }
+        debug!(url = %redact_url(&url), size = part.size, "uploading webdav part");
         client
             .put_file_with_retries(&url, &part.path, part.size, 3)
             .await?;
@@ -89,11 +118,13 @@ async fn upload_named_file(
     if allow_resume {
         if let Some(existing) = client.head_size(&url).await? {
             if existing == size {
+                debug!(url = %redact_url(&url), size, "skipping existing webdav file");
                 return Ok(());
             }
         }
     }
 
+    debug!(url = %redact_url(&url), size, "uploading webdav file");
     client.put_file_with_retries(&url, path, size, 3).await?;
     Ok(())
 }
