@@ -99,6 +99,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config = Arc::new(hub.into_config()?);
     let pool = db::init(&config.data_dir).await?;
     let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
+    let master_kid = secrets.active_kid();
     let agent_manager = agent_manager::AgentManager::default();
 
     scheduler::spawn(
@@ -124,6 +125,7 @@ async fn main() -> Result<(), anyhow::Error> {
     info!(
         bind = %addr,
         data_dir = %config.data_dir.display(),
+        master_kid,
         insecure_http = config.insecure_http,
         "bastion started"
     );

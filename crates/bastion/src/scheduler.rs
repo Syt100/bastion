@@ -855,6 +855,14 @@ async fn run_incomplete_cleanup_loop(
             }
 
             for run in candidates {
+                debug!(
+                    run_id = %run.id,
+                    job_id = %run.job_id,
+                    status = ?run.status,
+                    started_at = run.started_at,
+                    "incomplete cleanup candidate"
+                );
+
                 let Some(job) = jobs_repo::get_job(&db, &run.job_id).await.unwrap_or(None) else {
                     continue;
                 };
@@ -985,7 +993,7 @@ async fn cleanup_webdav_run(
         base_url.set_path(&format!("{}/", base_url.path()));
     }
 
-    let client = crate::webdav::WebdavClient::new(base_url.clone(), credentials)?;
+    let client = crate::webdav::WebdavClient::new(credentials)?;
     let job_url = base_url.join(&format!("{job_id}/"))?;
     let run_url = job_url.join(&format!("{run_id}/"))?;
     let complete_url = run_url.join(COMPLETE_NAME)?;

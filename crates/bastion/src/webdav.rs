@@ -42,24 +42,15 @@ impl WebdavCredentials {
 #[derive(Debug, Clone)]
 pub struct WebdavClient {
     http: reqwest::Client,
-    base_url: Url,
     credentials: WebdavCredentials,
 }
 
 impl WebdavClient {
-    pub fn new(base_url: Url, credentials: WebdavCredentials) -> Result<Self, anyhow::Error> {
+    pub fn new(credentials: WebdavCredentials) -> Result<Self, anyhow::Error> {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()?;
-        Ok(Self {
-            http,
-            base_url,
-            credentials,
-        })
-    }
-
-    pub fn base_url(&self) -> &Url {
-        &self.base_url
+        Ok(Self { http, credentials })
     }
 
     pub async fn ensure_collection(&self, url: &Url) -> Result<(), anyhow::Error> {
