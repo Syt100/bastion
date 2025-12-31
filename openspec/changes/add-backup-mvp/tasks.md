@@ -11,7 +11,7 @@
 
 ## 3. Backend: Control Plane (Hub)
 - [ ] HTTP server (bind `127.0.0.1:9876` by default; configurable host/port)
-- [ ] Reverse-proxy-safe auth: cookie session (SQLite) + CSRF + login throttling
+- [ ] Public access auth: reverse-proxy-safe cookie sessions + CSRF + login throttling + HTTPS enforcement
 - [ ] Secrets store: `data/master.key`, encrypted secrets in SQLite
 - [ ] Keypack export/import + key rotation workflow
 - [ ] Jobs CRUD + scheduler (cron) + overlap policy (reject/queue)

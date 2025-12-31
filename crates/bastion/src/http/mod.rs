@@ -174,10 +174,9 @@ async fn require_secure_middleware(
     next: Next,
 ) -> Response {
     let path = req.uri().path();
-    let should_enforce = path.starts_with("/api/") || path.starts_with("/agent/");
     let allow_insecure = matches!(path, "/api/health" | "/api/system" | "/api/setup/status");
 
-    if !should_enforce || allow_insecure {
+    if allow_insecure {
         return next.run(req).await;
     }
 
@@ -249,7 +248,21 @@ async fn login(
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let client_ip = effective_client_ip(&state, &headers, peer.ip());
+    let client_ip_str = client_ip.to_string();
+
+    if let Some(retry_after) =
+        auth::login_throttle_retry_after_seconds(&state.db, &client_ip_str, now).await?
+    {
+        return Err(AppError::too_many_requests(
+            "rate_limited",
+            format!("Too many login attempts. Retry after {retry_after}s."),
+        ));
+    }
+
     let Some(user) = auth::find_user_by_username(&state.db, &req.username).await? else {
+        let _ = auth::record_login_failure(&state.db, &client_ip_str, now).await;
         return Err(AppError::unauthorized(
             "invalid_credentials",
             "Invalid credentials",
@@ -257,11 +270,14 @@ async fn login(
     };
 
     if !auth::verify_password(&user.password_hash, &req.password)? {
+        let _ = auth::record_login_failure(&state.db, &client_ip_str, now).await;
         return Err(AppError::unauthorized(
             "invalid_credentials",
             "Invalid credentials",
         ));
     }
+
+    let _ = auth::clear_login_throttle(&state.db, &client_ip_str).await;
 
     let session = auth::create_session(&state.db, user.id).await?;
     set_session_cookie(&state, &headers, peer.ip(), &cookies, &session.id)?;
@@ -397,12 +413,7 @@ fn request_is_https(state: &AppState, headers: &HeaderMap, peer_ip: std::net::Ip
         return false;
     }
 
-    let trusted = state
-        .config
-        .trusted_proxies
-        .iter()
-        .any(|net| net.contains(&peer_ip));
-    if !trusted {
+    if !is_trusted_proxy(state, peer_ip) {
         return false;
     }
 
@@ -414,6 +425,31 @@ fn request_is_https(state: &AppState, headers: &HeaderMap, peer_ip: std::net::Ip
     };
 
     proto.eq_ignore_ascii_case("https")
+}
+
+fn is_trusted_proxy(state: &AppState, peer_ip: std::net::IpAddr) -> bool {
+    state
+        .config
+        .trusted_proxies
+        .iter()
+        .any(|net| net.contains(&peer_ip))
+}
+
+fn effective_client_ip(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+) -> std::net::IpAddr {
+    if !is_trusted_proxy(state, peer_ip) {
+        return peer_ip;
+    }
+
+    let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) else {
+        return peer_ip;
+    };
+
+    let first = xff.split(',').next().unwrap_or("").trim();
+    first.parse().unwrap_or(peer_ip)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1023,6 +1059,14 @@ impl AppError {
     fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn too_many_requests(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
             code,
             message: message.into(),
         }

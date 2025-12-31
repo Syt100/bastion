@@ -48,3 +48,24 @@ The system SHALL require an explicit configuration option to allow insecure HTTP
 #### Scenario: Insecure mode warning
 - **WHEN** the system is started with insecure mode enabled
 - **THEN** the Web UI shows a persistent warning that tokens and traffic are not protected by TLS
+
+### Requirement: HTTPS Required for Non-Loopback Access
+When insecure mode is not enabled, the system SHALL reject non-loopback requests unless they are determined to be HTTPS via a trusted reverse proxy.
+
+#### Scenario: Direct HTTP access is rejected
+- **WHEN** a non-loopback client accesses the service over plain HTTP (not behind a trusted reverse proxy)
+- **THEN** the request is rejected with an error indicating HTTPS is required
+
+### Requirement: Login Throttling
+The system SHALL throttle repeated failed login attempts to mitigate brute-force attacks.
+
+#### Scenario: Too many failed attempts triggers lockout
+- **WHEN** a client exceeds the allowed number of failed login attempts within a time window
+- **THEN** subsequent login attempts are rejected for a cooldown period
+
+### Requirement: Client IP Extraction from Trusted Proxy
+The system SHALL determine the effective client IP from `X-Forwarded-For` only when the request originates from a configured trusted proxy, and SHALL otherwise use the direct peer IP.
+
+#### Scenario: Trust X-Forwarded-For only from trusted proxy
+- **WHEN** a request includes `X-Forwarded-For` from an untrusted source
+- **THEN** the system ignores it for security decisions (e.g., throttling)
