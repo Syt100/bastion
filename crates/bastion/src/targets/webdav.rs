@@ -37,7 +37,7 @@ pub async fn store_run(
         "storing run to webdav"
     );
 
-    let client = WebdavClient::new(base_url.clone(), credentials)?;
+    let client = WebdavClient::new(credentials)?;
     let job_url = base_url.join(&format!("{job_id}/"))?;
     client.ensure_collection(&job_url).await?;
 
