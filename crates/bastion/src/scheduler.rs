@@ -10,10 +10,12 @@ use tracing::{debug, info, warn};
 
 use crate::agent_manager::AgentManager;
 use crate::agent_protocol::{
-    BackupRunTaskV1, HubToAgentMessageV1, JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
+    BackupRunTaskV1, EncryptionResolvedV1, HubToAgentMessageV1, JobSpecResolvedV1,
+    PROTOCOL_VERSION, PipelineResolvedV1, TargetResolvedV1,
 };
 use crate::agent_tasks_repo;
 use crate::backup;
+use crate::backup_encryption;
 use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
 use crate::notifications_repo;
@@ -428,26 +430,59 @@ async fn resolve_job_spec_for_agent(
     spec: job_spec::JobSpecV1,
 ) -> Result<JobSpecResolvedV1, anyhow::Error> {
     match spec {
-        job_spec::JobSpecV1::Filesystem { v, source, target } => {
-            Ok(JobSpecResolvedV1::Filesystem {
-                v,
-                source,
-                target: resolve_target_for_agent(db, secrets, target).await?,
-            })
-        }
-        job_spec::JobSpecV1::Sqlite { v, source, target } => Ok(JobSpecResolvedV1::Sqlite {
+        job_spec::JobSpecV1::Filesystem {
             v,
+            pipeline,
+            source,
+            target,
+        } => Ok(JobSpecResolvedV1::Filesystem {
+            v,
+            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
             source,
             target: resolve_target_for_agent(db, secrets, target).await?,
         }),
-        job_spec::JobSpecV1::Vaultwarden { v, source, target } => {
-            Ok(JobSpecResolvedV1::Vaultwarden {
-                v,
-                source,
-                target: resolve_target_for_agent(db, secrets, target).await?,
-            })
-        }
+        job_spec::JobSpecV1::Sqlite {
+            v,
+            pipeline,
+            source,
+            target,
+        } => Ok(JobSpecResolvedV1::Sqlite {
+            v,
+            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
+            source,
+            target: resolve_target_for_agent(db, secrets, target).await?,
+        }),
+        job_spec::JobSpecV1::Vaultwarden {
+            v,
+            pipeline,
+            source,
+            target,
+        } => Ok(JobSpecResolvedV1::Vaultwarden {
+            v,
+            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
+            source,
+            target: resolve_target_for_agent(db, secrets, target).await?,
+        }),
     }
+}
+
+async fn resolve_pipeline_for_agent(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    pipeline: &job_spec::PipelineV1,
+) -> Result<PipelineResolvedV1, anyhow::Error> {
+    let encryption = backup_encryption::ensure_payload_encryption(db, secrets, pipeline).await?;
+    let encryption = match encryption {
+        backup::PayloadEncryption::None => EncryptionResolvedV1::None,
+        backup::PayloadEncryption::AgeX25519 {
+            recipient,
+            key_name,
+        } => EncryptionResolvedV1::AgeX25519 {
+            recipient,
+            key_name,
+        },
+    };
+    Ok(PipelineResolvedV1 { encryption })
 }
 
 async fn resolve_target_for_agent(
@@ -492,7 +527,12 @@ async fn execute_run(
     spec: job_spec::JobSpecV1,
 ) -> Result<serde_json::Value, anyhow::Error> {
     match spec {
-        job_spec::JobSpecV1::Filesystem { source, target, .. } => {
+        job_spec::JobSpecV1::Filesystem {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             runs_repo::append_run_event(db, run_id, "info", "packaging", "packaging", None).await?;
 
             let data_dir = data_dir.to_path_buf();
@@ -500,6 +540,8 @@ async fn execute_run(
             let run_id_owned = run_id.to_string();
             let part_size = target.part_size_bytes();
             let error_policy = source.error_policy;
+            let encryption =
+                backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
             let artifacts = tokio::task::spawn_blocking(move || {
                 backup::filesystem::build_filesystem_run(
                     &data_dir,
@@ -507,6 +549,7 @@ async fn execute_run(
                     &run_id_owned,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })
@@ -568,7 +611,12 @@ async fn execute_run(
 
             Ok(summary)
         }
-        job_spec::JobSpecV1::Sqlite { source, target, .. } => {
+        job_spec::JobSpecV1::Sqlite {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
 
             let sqlite_path = source.path.clone();
@@ -576,6 +624,8 @@ async fn execute_run(
             let job_id = job.id.clone();
             let run_id_owned = run_id.to_string();
             let part_size = target.part_size_bytes();
+            let encryption =
+                backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
             let build = tokio::task::spawn_blocking(move || {
                 backup::sqlite::build_sqlite_run(
                     &data_dir,
@@ -583,6 +633,7 @@ async fn execute_run(
                     &run_id_owned,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })
@@ -639,7 +690,12 @@ async fn execute_run(
                 }
             }))
         }
-        job_spec::JobSpecV1::Vaultwarden { source, target, .. } => {
+        job_spec::JobSpecV1::Vaultwarden {
+            pipeline,
+            source,
+            target,
+            ..
+        } => {
             runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
 
             let data_dir = data_dir.to_path_buf();
@@ -647,6 +703,8 @@ async fn execute_run(
             let run_id_owned = run_id.to_string();
             let part_size = target.part_size_bytes();
             let vw_data_dir = source.data_dir.clone();
+            let encryption =
+                backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
             let artifacts = tokio::task::spawn_blocking(move || {
                 backup::vaultwarden::build_vaultwarden_run(
                     &data_dir,
@@ -654,6 +712,7 @@ async fn execute_run(
                     &run_id_owned,
                     started_at,
                     &source,
+                    &encryption,
                     part_size,
                 )
             })

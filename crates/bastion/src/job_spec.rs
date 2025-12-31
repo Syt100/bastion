@@ -8,6 +8,25 @@ fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EncryptionV1 {
+    None,
+    AgeX25519 { key_name: String },
+}
+
+impl Default for EncryptionV1 {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct PipelineV1 {
+    #[serde(default)]
+    pub encryption: EncryptionV1,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FsSymlinkPolicy {
@@ -110,16 +129,22 @@ impl TargetV1 {
 pub enum JobSpecV1 {
     Filesystem {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineV1,
         source: FilesystemSource,
         target: TargetV1,
     },
     Sqlite {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineV1,
         source: SqliteSource,
         target: TargetV1,
     },
     Vaultwarden {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineV1,
         source: VaultwardenSource,
         target: TargetV1,
     },
@@ -136,8 +161,14 @@ pub fn validate_value(spec: &serde_json::Value) -> Result<(), anyhow::Error> {
 
 pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
     match spec {
-        JobSpecV1::Filesystem { v, source, target } => {
+        JobSpecV1::Filesystem {
+            v,
+            pipeline,
+            source,
+            target,
+        } => {
             validate_version(*v)?;
+            validate_pipeline(pipeline)?;
             if source.root.trim().is_empty() {
                 anyhow::bail!("filesystem.source.root is required");
             }
@@ -145,15 +176,27 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             validate_globs(&source.exclude)?;
             validate_target(target)?;
         }
-        JobSpecV1::Sqlite { v, source, target } => {
+        JobSpecV1::Sqlite {
+            v,
+            pipeline,
+            source,
+            target,
+        } => {
             validate_version(*v)?;
+            validate_pipeline(pipeline)?;
             if source.path.trim().is_empty() {
                 anyhow::bail!("sqlite.source.path is required");
             }
             validate_target(target)?;
         }
-        JobSpecV1::Vaultwarden { v, source, target } => {
+        JobSpecV1::Vaultwarden {
+            v,
+            pipeline,
+            source,
+            target,
+        } => {
             validate_version(*v)?;
+            validate_pipeline(pipeline)?;
             if source.data_dir.trim().is_empty() {
                 anyhow::bail!("vaultwarden.source.data_dir is required");
             }
@@ -161,6 +204,18 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         }
     }
 
+    Ok(())
+}
+
+fn validate_pipeline(pipeline: &PipelineV1) -> Result<(), anyhow::Error> {
+    match &pipeline.encryption {
+        EncryptionV1::None => {}
+        EncryptionV1::AgeX25519 { key_name } => {
+            if key_name.trim().is_empty() {
+                anyhow::bail!("pipeline.encryption.key_name is required");
+            }
+        }
+    }
     Ok(())
 }
 

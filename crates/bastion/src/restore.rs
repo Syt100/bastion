@@ -59,6 +59,37 @@ enum TargetAccess {
     LocalDir { run_dir: PathBuf },
 }
 
+#[derive(Debug, Clone)]
+enum PayloadDecryption {
+    None,
+    AgeX25519 { identity: String },
+}
+
+async fn resolve_payload_decryption(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    manifest: &ManifestV1,
+) -> Result<PayloadDecryption, anyhow::Error> {
+    match manifest.pipeline.encryption.as_str() {
+        "none" => Ok(PayloadDecryption::None),
+        "age" => {
+            let key_name = manifest
+                .pipeline
+                .encryption_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("missing manifest.pipeline.encryption_key"))?;
+
+            let identity = crate::backup_encryption::get_age_identity(db, secrets, key_name)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("missing backup age identity: {}", key_name))?;
+            Ok(PayloadDecryption::AgeX25519 { identity })
+        }
+        other => anyhow::bail!("unsupported manifest.pipeline.encryption: {}", other),
+    }
+}
+
 pub async fn spawn_restore_operation(
     db: SqlitePool,
     secrets: std::sync::Arc<SecretsCrypto>,
@@ -163,13 +194,15 @@ async fn restore_operation(
     )
     .await?;
 
+    let decryption = resolve_payload_decryption(db, secrets, &manifest).await?;
+
     let staging_dir = op_dir.join("staging");
     let parts = fetch_parts(&access, &manifest, &staging_dir).await?;
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let dest = destination_dir.to_path_buf();
     let summary = tokio::task::spawn_blocking(move || {
-        restore_from_parts(&parts, &dest, conflict)?;
+        restore_from_parts(&parts, &dest, conflict, decryption)?;
         Ok::<_, anyhow::Error>(serde_json::json!({
             "destination_dir": dest.to_string_lossy().to_string(),
             "conflict_policy": conflict.as_str(),
@@ -235,6 +268,8 @@ async fn verify_operation(
     )
     .await?;
 
+    let decryption = resolve_payload_decryption(db, secrets, &manifest).await?;
+
     let entries_path = fetch_entries_index(&access, &staging_dir).await?;
     let parts = fetch_parts(&access, &manifest, &staging_dir).await?;
 
@@ -246,7 +281,12 @@ async fn verify_operation(
     let sqlite_paths = sqlite_paths_for_verify(&run);
 
     let result = tokio::task::spawn_blocking(move || {
-        restore_from_parts(&parts, &temp_restore_dir, ConflictPolicy::Overwrite)?;
+        restore_from_parts(
+            &parts,
+            &temp_restore_dir,
+            ConflictPolicy::Overwrite,
+            decryption,
+        )?;
         let verify = verify_restored(&entries_path, &temp_restore_dir, record_count)?;
 
         let sqlite_results = verify_sqlite_files(&temp_restore_dir, &sqlite_paths)?;
@@ -485,6 +525,7 @@ fn restore_from_parts(
     part_paths: &[PathBuf],
     destination_dir: &Path,
     conflict: ConflictPolicy,
+    decryption: PayloadDecryption,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(destination_dir)?;
 
@@ -493,6 +534,18 @@ fn restore_from_parts(
         .map(|p| File::open(p))
         .collect::<Result<Vec<_>, _>>()?;
     let reader = ConcatReader { files, index: 0 };
+    let reader: Box<dyn Read> = match decryption {
+        PayloadDecryption::None => Box::new(reader),
+        PayloadDecryption::AgeX25519 { identity } => {
+            use std::str::FromStr as _;
+
+            let identity =
+                age::x25519::Identity::from_str(identity.trim()).map_err(|e| anyhow::anyhow!(e))?;
+            let decryptor = age::Decryptor::new(reader)?;
+            let reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))?;
+            Box::new(reader)
+        }
+    };
     let decoder = zstd::Decoder::new(reader)?;
     let mut archive = tar::Archive::new(decoder);
     archive.set_unpack_xattrs(false);
@@ -786,8 +839,12 @@ mod tests {
     use std::path::Path;
 
     use tempfile::tempdir;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
 
-    use super::{ConflictPolicy, restore_from_parts, safe_join};
+    use super::{ConflictPolicy, PayloadDecryption, restore_from_parts, safe_join};
+    use crate::backup::PayloadEncryption;
+    use crate::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 
     #[test]
     fn safe_join_rejects_parent() {
@@ -814,7 +871,85 @@ mod tests {
         encoder.finish().unwrap();
 
         let dest = tmp.path().join("out");
-        restore_from_parts(&vec![part], &dest, ConflictPolicy::Overwrite).unwrap();
+        restore_from_parts(
+            &vec![part],
+            &dest,
+            ConflictPolicy::Overwrite,
+            PayloadDecryption::None,
+        )
+        .unwrap();
+        let out = std::fs::read(dest.join("hello.txt")).unwrap();
+        assert_eq!(out, b"hi");
+    }
+
+    #[test]
+    fn restore_from_parts_extracts_tar_zstd_age() {
+        use age::secrecy::ExposeSecret as _;
+
+        let tmp = tempdir().unwrap();
+        let data_dir = tmp.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let src_root = tmp.path().join("src");
+        std::fs::create_dir_all(&src_root).unwrap();
+        std::fs::write(src_root.join("hello.txt"), b"hi").unwrap();
+
+        let identity = age::x25519::Identity::generate();
+        let recipient = identity.to_public().to_string();
+        let identity_str = identity.to_string().expose_secret().to_string();
+
+        let encryption = PayloadEncryption::AgeX25519 {
+            recipient,
+            key_name: "k".to_string(),
+        };
+
+        let job_id = Uuid::new_v4().to_string();
+        let run_id = Uuid::new_v4().to_string();
+        let source = FilesystemSource {
+            root: src_root.to_string_lossy().to_string(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+            symlink_policy: FsSymlinkPolicy::Keep,
+            hardlink_policy: FsHardlinkPolicy::Copy,
+            error_policy: FsErrorPolicy::FailFast,
+        };
+
+        let build = crate::backup::filesystem::build_filesystem_run(
+            &data_dir,
+            &job_id,
+            &run_id,
+            OffsetDateTime::now_utc(),
+            &source,
+            &encryption,
+            4 * 1024 * 1024,
+        )
+        .unwrap();
+        assert_eq!(build.issues.errors_total, 0);
+
+        let manifest_bytes = std::fs::read(&build.artifacts.manifest_path).unwrap();
+        let manifest =
+            serde_json::from_slice::<bastion_core::manifest::ManifestV1>(&manifest_bytes).unwrap();
+        assert_eq!(manifest.pipeline.encryption, "age");
+        assert_eq!(manifest.pipeline.encryption_key.as_deref(), Some("k"));
+
+        let part_paths = build
+            .artifacts
+            .parts
+            .iter()
+            .map(|p| p.path.clone())
+            .collect::<Vec<_>>();
+
+        let dest = tmp.path().join("out_age");
+        restore_from_parts(
+            &part_paths,
+            &dest,
+            ConflictPolicy::Overwrite,
+            PayloadDecryption::AgeX25519 {
+                identity: identity_str,
+            },
+        )
+        .unwrap();
+
         let out = std::fs::read(dest.join("hello.txt")).unwrap();
         assert_eq!(out, b"hi");
     }

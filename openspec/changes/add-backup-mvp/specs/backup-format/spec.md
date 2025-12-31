@@ -7,6 +7,10 @@ The system SHALL package backups as tar (PAX) compressed with zstd, and SHALL su
 - **WHEN** a run executes with compression enabled and encryption disabled
 - **THEN** the system produces a tar(PAX)+zstd artifact stream
 
+#### Scenario: Create a tar+zstd+age artifact
+- **WHEN** a run executes with compression enabled and age encryption enabled
+- **THEN** the system produces a tar(PAX)+zstd+age artifact stream
+
 ### Requirement: Default Compression Settings
 The system SHALL default zstd compression level to 3 and SHALL default compression threads to automatic (based on available CPU).
 
@@ -28,10 +32,20 @@ The system SHALL write a versioned `manifest.json` that includes pipeline settin
 - **WHEN** a run completes successfully
 - **THEN** a `manifest.json` with `format_version=1` is written and uploaded
 
+### Requirement: Encryption Key Reference in Manifest
+When encryption is enabled, the system SHALL record which encryption key name was used in `manifest.json` so restores can locate the correct key.
+
+#### Scenario: Age encryption key name is recorded
+- **WHEN** a run executes with age encryption enabled using key name `K`
+- **THEN** `manifest.pipeline.encryption=age` and `manifest.pipeline.encryption_key=K`
+
+#### Scenario: No encryption key name when disabled
+- **WHEN** a run executes with encryption disabled
+- **THEN** `manifest.pipeline.encryption=none` and `manifest.pipeline.encryption_key` is omitted
+
 ### Requirement: Per-File Content Hash Index
 The system SHALL generate an entries index that includes a content hash for each regular file and SHALL use it to support restore drill verification.
 
 #### Scenario: Restore drill verifies file hashes
 - **WHEN** a restore drill is executed
 - **THEN** restored files are hashed and compared against the entries index
-

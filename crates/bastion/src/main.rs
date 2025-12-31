@@ -6,6 +6,7 @@ mod agent_tasks_repo;
 mod agents_repo;
 mod auth;
 mod backup;
+mod backup_encryption;
 mod config;
 mod data_dir;
 mod db;

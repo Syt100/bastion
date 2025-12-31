@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 
 use crate::backup::{
     COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts, MANIFEST_NAME, PartWriter,
-    stage_dir,
+    PayloadEncryption, stage_dir,
 };
 use crate::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 
@@ -64,6 +64,7 @@ pub fn build_filesystem_run(
     run_id: &str,
     started_at: OffsetDateTime,
     source: &FilesystemSource,
+    encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
     let stage = stage_dir(data_dir, run_id);
@@ -83,6 +84,7 @@ pub fn build_filesystem_run(
     let parts = write_tar_zstd_parts(
         &stage,
         source,
+        encryption,
         &mut entries_writer,
         &mut entries_count,
         part_size_bytes,
@@ -104,7 +106,14 @@ pub fn build_filesystem_run(
         pipeline: PipelineSettings {
             tar: "pax".to_string(),
             compression: "zstd".to_string(),
-            encryption: "none".to_string(),
+            encryption: match encryption {
+                PayloadEncryption::None => "none".to_string(),
+                PayloadEncryption::AgeX25519 { .. } => "age".to_string(),
+            },
+            encryption_key: match encryption {
+                PayloadEncryption::None => None,
+                PayloadEncryption::AgeX25519 { key_name, .. } => Some(key_name.clone()),
+            },
             split_bytes: part_size_bytes,
         },
         artifacts: parts
@@ -144,6 +153,7 @@ pub fn build_filesystem_run(
 fn write_tar_zstd_parts(
     stage_dir: &Path,
     source: &FilesystemSource,
+    encryption: &PayloadEncryption,
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
     part_size_bytes: u64,
@@ -156,10 +166,64 @@ fn write_tar_zstd_parts(
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
-    let mut encoder = zstd::Encoder::new(&mut part_writer, 3)?;
-    encoder.multithread(threads as u32)?;
+    match encryption {
+        PayloadEncryption::None => {
+            let mut encoder = zstd::Encoder::new(&mut part_writer, 3)?;
+            encoder.multithread(threads as u32)?;
 
-    let mut tar = tar::Builder::new(encoder);
+            let mut tar = tar::Builder::new(encoder);
+            write_tar_entries(&mut tar, source, entries_writer, entries_count, issues)?;
+
+            tar.finish()?;
+            let encoder = tar.into_inner()?;
+            encoder.finish()?;
+        }
+        PayloadEncryption::AgeX25519 { recipient, .. } => {
+            use std::str::FromStr as _;
+
+            let recipient =
+                age::x25519::Recipient::from_str(recipient).map_err(|e| anyhow::anyhow!(e))?;
+            let encryptor = age::Encryptor::with_recipients(std::iter::once(
+                &recipient as &dyn age::Recipient,
+            ))?;
+            let encrypted = encryptor.wrap_output(&mut part_writer)?;
+
+            let mut encoder = zstd::Encoder::new(encrypted, 3)?;
+            encoder.multithread(threads as u32)?;
+
+            let mut tar = tar::Builder::new(encoder);
+            write_tar_entries(&mut tar, source, entries_writer, entries_count, issues)?;
+
+            tar.finish()?;
+            let encoder = tar.into_inner()?;
+            let encrypted = encoder.finish()?;
+            encrypted.finish()?;
+        }
+    }
+    entries_writer.flush()?;
+
+    let parts = part_writer.finish()?;
+    let local_parts = parts
+        .into_iter()
+        .map(|p| LocalArtifact {
+            name: p.name.clone(),
+            path: stage_dir.join(&p.name),
+            size: p.size,
+            hash_alg: p.hash_alg,
+            hash: p.hash,
+        })
+        .collect();
+
+    Ok(local_parts)
+}
+
+fn write_tar_entries<W: Write>(
+    tar: &mut tar::Builder<W>,
+    source: &FilesystemSource,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+) -> Result<(), anyhow::Error> {
     tar.follow_symlinks(source.symlink_policy == FsSymlinkPolicy::Follow);
 
     let exclude = compile_globset(&source.exclude)?;
@@ -429,24 +493,7 @@ fn write_tar_zstd_parts(
         issues.record_error(msg);
     }
 
-    tar.finish()?;
-    let encoder = tar.into_inner()?;
-    encoder.finish()?;
-    entries_writer.flush()?;
-
-    let parts = part_writer.finish()?;
-    let local_parts = parts
-        .into_iter()
-        .map(|p| LocalArtifact {
-            name: p.name.clone(),
-            path: stage_dir.join(&p.name),
-            size: p.size,
-            hash_alg: p.hash_alg,
-            hash: p.hash,
-        })
-        .collect();
-
-    Ok(local_parts)
+    Ok(())
 }
 
 fn write_entry_record(

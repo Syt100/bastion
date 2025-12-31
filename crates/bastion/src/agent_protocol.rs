@@ -6,6 +6,25 @@ pub const PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
+pub enum EncryptionResolvedV1 {
+    None,
+    AgeX25519 { recipient: String, key_name: String },
+}
+
+impl Default for EncryptionResolvedV1 {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct PipelineResolvedV1 {
+    #[serde(default)]
+    pub encryption: EncryptionResolvedV1,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum TargetResolvedV1 {
     Webdav {
         base_url: String,
@@ -24,16 +43,22 @@ pub enum TargetResolvedV1 {
 pub enum JobSpecResolvedV1 {
     Filesystem {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineResolvedV1,
         source: FilesystemSource,
         target: TargetResolvedV1,
     },
     Sqlite {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineResolvedV1,
         source: SqliteSource,
         target: TargetResolvedV1,
     },
     Vaultwarden {
         v: u32,
+        #[serde(default)]
+        pipeline: PipelineResolvedV1,
         source: VaultwardenSource,
         target: TargetResolvedV1,
     },
