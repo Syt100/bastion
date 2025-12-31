@@ -83,6 +83,7 @@ const messages = {
     deleteConfirm: 'Delete this job? Run history will be deleted as well.',
     fields: {
       name: 'Name',
+      node: 'Node',
       schedule: 'Cron schedule (optional)',
       schedulePlaceholder: '0 0 * * *',
       scheduleHelp: 'Supports standard 5-field cron (min hour dom month dow). Leave empty for manual runs.',
@@ -107,6 +108,9 @@ const messages = {
       partSizeMiB: 'Part size (MiB)',
       partSizeMiBHelp: 'Used for chunked uploads and resume.',
     },
+    nodes: {
+      hub: 'Hub (local)',
+    },
     targets: {
       webdav: 'WebDAV',
       localDir: 'Local directory',
@@ -122,6 +126,7 @@ const messages = {
     },
     columns: {
       name: 'Name',
+      node: 'Node',
       schedule: 'Schedule',
       overlap: 'Overlap',
       updatedAt: 'Updated',

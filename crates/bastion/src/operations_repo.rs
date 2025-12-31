@@ -113,7 +113,10 @@ pub async fn create_operation(
     })
 }
 
-pub async fn get_operation(db: &SqlitePool, op_id: &str) -> Result<Option<Operation>, anyhow::Error> {
+pub async fn get_operation(
+    db: &SqlitePool,
+    op_id: &str,
+) -> Result<Option<Operation>, anyhow::Error> {
     let row = sqlx::query(
         "SELECT id, kind, status, created_at, started_at, ended_at, summary_json, error FROM operations WHERE id = ? LIMIT 1",
     )
@@ -235,14 +238,16 @@ pub async fn complete_operation(
         None => None,
     };
 
-    sqlx::query("UPDATE operations SET status = ?, ended_at = ?, summary_json = ?, error = ? WHERE id = ?")
-        .bind(status.as_str())
-        .bind(ended_at)
-        .bind(summary_json)
-        .bind(error)
-        .bind(op_id)
-        .execute(db)
-        .await?;
+    sqlx::query(
+        "UPDATE operations SET status = ?, ended_at = ?, summary_json = ?, error = ? WHERE id = ?",
+    )
+    .bind(status.as_str())
+    .bind(ended_at)
+    .bind(summary_json)
+    .bind(error)
+    .bind(op_id)
+    .execute(db)
+    .await?;
 
     Ok(())
 }
@@ -253,7 +258,10 @@ mod tests {
 
     use crate::db;
 
-    use super::{OperationKind, OperationStatus, append_event, complete_operation, create_operation, get_operation, list_events};
+    use super::{
+        OperationKind, OperationStatus, append_event, complete_operation, create_operation,
+        get_operation, list_events,
+    };
 
     #[tokio::test]
     async fn operations_and_events_round_trip() {
@@ -266,9 +274,16 @@ mod tests {
         append_event(&pool, &op.id, "info", "start", "start", None)
             .await
             .expect("event1");
-        append_event(&pool, &op.id, "info", "step", "step", Some(serde_json::json!({"n": 1})))
-            .await
-            .expect("event2");
+        append_event(
+            &pool,
+            &op.id,
+            "info",
+            "step",
+            "step",
+            Some(serde_json::json!({"n": 1})),
+        )
+        .await
+        .expect("event2");
 
         complete_operation(&pool, &op.id, OperationStatus::Success, None, None)
             .await
@@ -287,4 +302,3 @@ mod tests {
         assert_eq!(events[1].seq, 2);
     }
 }
-

@@ -7,8 +7,12 @@ use sqlx::Row;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use tracing::{debug, info, warn};
-use url::Url;
 
+use crate::agent_manager::AgentManager;
+use crate::agent_protocol::{
+    BackupRunTaskV1, HubToAgentMessageV1, JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
+};
+use crate::agent_tasks_repo;
 use crate::backup;
 use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
@@ -17,16 +21,22 @@ use crate::runs_repo::{self, RunStatus};
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
 use crate::targets;
-use crate::webdav::{WebdavClient, WebdavCredentials};
+use crate::webdav::WebdavCredentials;
 
 pub fn spawn(
     db: SqlitePool,
     data_dir: std::path::PathBuf,
     secrets: Arc<SecretsCrypto>,
+    agent_manager: AgentManager,
     run_retention_days: i64,
 ) {
     tokio::spawn(run_cron_loop(db.clone()));
-    tokio::spawn(run_worker_loop(db.clone(), data_dir, secrets));
+    tokio::spawn(run_worker_loop(
+        db.clone(),
+        data_dir,
+        secrets,
+        agent_manager,
+    ));
     tokio::spawn(run_retention_loop(db, run_retention_days));
 }
 
@@ -144,6 +154,7 @@ async fn run_worker_loop(
     db: SqlitePool,
     data_dir: std::path::PathBuf,
     secrets: Arc<SecretsCrypto>,
+    agent_manager: AgentManager,
 ) {
     loop {
         let run = match runs_repo::claim_next_queued_run(&db).await {
@@ -239,6 +250,83 @@ async fn run_worker_loop(
         let started_at = OffsetDateTime::from_unix_timestamp(run.started_at)
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
+        if let Some(agent_id) = job.agent_id.as_deref() {
+            if let Err(error) = dispatch_run_to_agent(
+                &db,
+                &secrets,
+                &agent_manager,
+                &job,
+                &run.id,
+                started_at,
+                spec,
+                agent_id,
+            )
+            .await
+            {
+                warn!(run_id = %run.id, agent_id = %agent_id, error = %error, "dispatch failed");
+                let message = format!("dispatch failed: {error}");
+                let _ = runs_repo::append_run_event(
+                    &db,
+                    &run.id,
+                    "error",
+                    "dispatch_failed",
+                    &message,
+                    Some(serde_json::json!({ "agent_id": agent_id })),
+                )
+                .await;
+
+                let _ = runs_repo::requeue_run(&db, &run.id).await;
+                let _ = agent_tasks_repo::delete_task(&db, &run.id).await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            }
+
+            // Wait for Agent to complete the run (single-worker, no parallel runs).
+            let deadline = OffsetDateTime::now_utc()
+                .checked_add(time::Duration::hours(24))
+                .unwrap_or_else(OffsetDateTime::now_utc);
+            loop {
+                let Some(current) = runs_repo::get_run(&db, &run.id).await.unwrap_or(None) else {
+                    break;
+                };
+                if current.status != RunStatus::Running {
+                    if let Err(error) =
+                        notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
+                    {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
+                    }
+                    info!(run_id = %run.id, "run completed (agent)");
+                    break;
+                }
+
+                if OffsetDateTime::now_utc() >= deadline {
+                    warn!(run_id = %run.id, agent_id = %agent_id, "agent run timed out");
+                    let _ = runs_repo::append_run_event(
+                        &db,
+                        &run.id,
+                        "error",
+                        "timeout",
+                        "timeout",
+                        Some(serde_json::json!({ "agent_id": agent_id })),
+                    )
+                    .await;
+                    let _ = runs_repo::complete_run(
+                        &db,
+                        &run.id,
+                        RunStatus::Failed,
+                        None,
+                        Some("timeout"),
+                    )
+                    .await;
+                    break;
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+
+            continue;
+        }
+
         match execute_run(&db, &secrets, &data_dir, &job, &run.id, started_at, spec).await {
             Ok(summary) => {
                 if let Err(error) =
@@ -280,6 +368,112 @@ async fn run_worker_loop(
                 }
             }
         }
+    }
+}
+
+async fn dispatch_run_to_agent(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
+    job: &jobs_repo::Job,
+    run_id: &str,
+    started_at: OffsetDateTime,
+    spec: job_spec::JobSpecV1,
+    agent_id: &str,
+) -> Result<(), anyhow::Error> {
+    if !agent_manager.is_connected(agent_id).await {
+        anyhow::bail!("agent not connected");
+    }
+
+    runs_repo::append_run_event(
+        db,
+        run_id,
+        "info",
+        "dispatch",
+        "dispatch",
+        Some(serde_json::json!({ "agent_id": agent_id })),
+    )
+    .await?;
+
+    let resolved = resolve_job_spec_for_agent(db, secrets, spec).await?;
+    let task = BackupRunTaskV1 {
+        run_id: run_id.to_string(),
+        job_id: job.id.clone(),
+        started_at: started_at.unix_timestamp(),
+        spec: resolved,
+    };
+
+    // Use run_id as task_id for idempotency.
+    let msg = HubToAgentMessageV1::Task {
+        v: PROTOCOL_VERSION,
+        task_id: run_id.to_string(),
+        task,
+    };
+
+    let payload = serde_json::to_value(&msg)?;
+    agent_tasks_repo::upsert_task(db, run_id, agent_id, run_id, "sent", &payload).await?;
+
+    agent_manager.send_json(agent_id, &msg).await?;
+    Ok(())
+}
+
+async fn resolve_job_spec_for_agent(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    spec: job_spec::JobSpecV1,
+) -> Result<JobSpecResolvedV1, anyhow::Error> {
+    match spec {
+        job_spec::JobSpecV1::Filesystem { v, source, target } => {
+            Ok(JobSpecResolvedV1::Filesystem {
+                v,
+                source,
+                target: resolve_target_for_agent(db, secrets, target).await?,
+            })
+        }
+        job_spec::JobSpecV1::Sqlite { v, source, target } => Ok(JobSpecResolvedV1::Sqlite {
+            v,
+            source,
+            target: resolve_target_for_agent(db, secrets, target).await?,
+        }),
+        job_spec::JobSpecV1::Vaultwarden { v, source, target } => {
+            Ok(JobSpecResolvedV1::Vaultwarden {
+                v,
+                source,
+                target: resolve_target_for_agent(db, secrets, target).await?,
+            })
+        }
+    }
+}
+
+async fn resolve_target_for_agent(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    target: job_spec::TargetV1,
+) -> Result<TargetResolvedV1, anyhow::Error> {
+    match target {
+        job_spec::TargetV1::Webdav {
+            base_url,
+            secret_name,
+            part_size_bytes,
+        } => {
+            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &secret_name)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+            Ok(TargetResolvedV1::Webdav {
+                base_url,
+                username: credentials.username,
+                password: credentials.password,
+                part_size_bytes,
+            })
+        }
+        job_spec::TargetV1::LocalDir {
+            base_dir,
+            part_size_bytes,
+        } => Ok(TargetResolvedV1::LocalDir {
+            base_dir,
+            part_size_bytes,
+        }),
     }
 }
 
@@ -450,16 +644,14 @@ async fn store_run_artifacts_to_target(
             secret_name,
             ..
         } => {
-            let run_url = upload_run_artifacts_to_webdav(
-                db,
-                secrets,
-                job_id,
-                run_id,
-                base_url,
-                secret_name,
-                artifacts,
-            )
-            .await?;
+            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+
+            let run_url =
+                targets::webdav::store_run(base_url, credentials, job_id, run_id, artifacts)
+                    .await?;
             Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
         }
         job_spec::TargetV1::LocalDir { base_dir, .. } => {
@@ -482,84 +674,6 @@ async fn store_run_artifacts_to_target(
             }))
         }
     }
-}
-
-async fn upload_run_artifacts_to_webdav(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    job_id: &str,
-    run_id: &str,
-    base_url: &str,
-    secret_name: &str,
-    artifacts: &backup::LocalRunArtifacts,
-) -> Result<Url, anyhow::Error> {
-    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-    let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-
-    let mut base_url = Url::parse(base_url)?;
-    if !base_url.path().ends_with('/') {
-        base_url.set_path(&format!("{}/", base_url.path()));
-    }
-    let client = WebdavClient::new(base_url.clone(), credentials)?;
-
-    let job_url = base_url.join(&format!("{job_id}/"))?;
-    client.ensure_collection(&job_url).await?;
-    let run_url = job_url.join(&format!("{run_id}/"))?;
-    client.ensure_collection(&run_url).await?;
-
-    upload_artifacts(&client, &run_url, artifacts).await?;
-
-    Ok(run_url)
-}
-
-async fn upload_artifacts(
-    client: &WebdavClient,
-    run_url: &Url,
-    artifacts: &backup::LocalRunArtifacts,
-) -> Result<(), anyhow::Error> {
-    for part in &artifacts.parts {
-        let url = run_url.join(&part.name)?;
-        if let Some(existing) = client.head_size(&url).await? {
-            if existing == part.size {
-                continue;
-            }
-        }
-        client
-            .put_file_with_retries(&url, &part.path, part.size, 3)
-            .await?;
-    }
-
-    let entries_size = tokio::fs::metadata(&artifacts.entries_index_path)
-        .await?
-        .len();
-    let entries_url = run_url.join(backup::ENTRIES_INDEX_NAME)?;
-    if let Some(existing) = client.head_size(&entries_url).await? {
-        if existing != entries_size {
-            client
-                .put_file_with_retries(&entries_url, &artifacts.entries_index_path, entries_size, 3)
-                .await?;
-        }
-    } else {
-        client
-            .put_file_with_retries(&entries_url, &artifacts.entries_index_path, entries_size, 3)
-            .await?;
-    }
-
-    let manifest_size = tokio::fs::metadata(&artifacts.manifest_path).await?.len();
-    let manifest_url = run_url.join(backup::MANIFEST_NAME)?;
-    client
-        .put_file_with_retries(&manifest_url, &artifacts.manifest_path, manifest_size, 3)
-        .await?;
-
-    let complete_size = tokio::fs::metadata(&artifacts.complete_path).await?.len();
-    let complete_url = run_url.join(backup::COMPLETE_NAME)?;
-    client
-        .put_file_with_retries(&complete_url, &artifacts.complete_path, complete_size, 3)
-        .await?;
-
-    Ok(())
 }
 
 async fn run_retention_loop(db: SqlitePool, run_retention_days: i64) {

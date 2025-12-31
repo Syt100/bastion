@@ -1,15 +1,19 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{Sink, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
-use tokio_tungstenite::tungstenite::Message;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use url::Url;
 
+use crate::agent_protocol::{
+    AgentToHubMessageV1, HubToAgentMessageV1, JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
+};
 use crate::config::AgentArgs;
+use crate::{backup, targets};
 
 const IDENTITY_FILE_NAME: &str = "agent.json";
 
@@ -34,37 +38,6 @@ struct EnrollRequest<'a> {
 struct EnrollResponse {
     agent_id: String,
     agent_key: String,
-}
-
-#[derive(Debug, Serialize)]
-struct HelloMessage<'a> {
-    v: u32,
-    #[serde(rename = "type")]
-    msg_type: &'static str,
-    agent_id: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<&'a str>,
-    info: AgentInfo<'a>,
-    capabilities: AgentCapabilities<'a>,
-}
-
-#[derive(Debug, Serialize)]
-struct PingMessage {
-    v: u32,
-    #[serde(rename = "type")]
-    msg_type: &'static str,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentInfo<'a> {
-    version: &'a str,
-    os: &'a str,
-    arch: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentCapabilities<'a> {
-    backup: Vec<&'a str>,
 }
 
 pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
@@ -116,7 +89,7 @@ pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
     let mut backoff = Duration::from_secs(1);
 
     loop {
-        let action = connect_and_run(&ws_url, &identity, heartbeat).await;
+        let action = connect_and_run(&ws_url, &identity, &data_dir, heartbeat).await;
         match action {
             Ok(LoopAction::Exit) => return Ok(()),
             Ok(LoopAction::Reconnect) => {
@@ -141,6 +114,7 @@ enum LoopAction {
 async fn connect_and_run(
     ws_url: &Url,
     identity: &AgentIdentityV1,
+    data_dir: &Path,
     heartbeat: Duration,
 ) -> Result<LoopAction, anyhow::Error> {
     let mut req = ws_url.as_str().into_client_request()?;
@@ -152,19 +126,18 @@ async fn connect_and_run(
     let (socket, _) = tokio_tungstenite::connect_async(req).await?;
     let (mut tx, mut rx) = socket.split();
 
-    let hello = HelloMessage {
-        v: 1,
-        msg_type: "hello",
-        agent_id: &identity.agent_id,
-        name: identity.name.as_deref(),
-        info: AgentInfo {
-            version: env!("CARGO_PKG_VERSION"),
-            os: std::env::consts::OS,
-            arch: std::env::consts::ARCH,
-        },
-        capabilities: AgentCapabilities {
-            backup: vec!["filesystem", "sqlite", "vaultwarden"],
-        },
+    let hello = AgentToHubMessageV1::Hello {
+        v: PROTOCOL_VERSION,
+        agent_id: identity.agent_id.clone(),
+        name: identity.name.clone(),
+        info: serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+        }),
+        capabilities: serde_json::json!({
+            "backup": ["filesystem", "sqlite", "vaultwarden"],
+        }),
     };
     tx.send(Message::Text(serde_json::to_string(&hello)?.into()))
         .await?;
@@ -180,7 +153,7 @@ async fn connect_and_run(
                 return Ok(LoopAction::Exit);
             }
             _ = tick.tick() => {
-                let ping = PingMessage { v: 1, msg_type: "ping" };
+                let ping = AgentToHubMessageV1::Ping { v: PROTOCOL_VERSION };
                 if tx.send(Message::Text(serde_json::to_string(&ping)?.into())).await.is_err() {
                     return Ok(LoopAction::Reconnect);
                 }
@@ -190,12 +163,274 @@ async fn connect_and_run(
                     return Ok(LoopAction::Reconnect);
                 };
                 match msg {
-                    Ok(Message::Text(_)) => {}
+                    Ok(Message::Text(text)) => {
+                        let text = text.to_string();
+                        match serde_json::from_str::<HubToAgentMessageV1>(&text) {
+                            Ok(HubToAgentMessageV1::Pong { .. }) => {}
+                            Ok(HubToAgentMessageV1::Task { v, task_id, task }) if v == PROTOCOL_VERSION => {
+                                let run_id = task.run_id.clone();
+                                debug!(task_id = %task_id, run_id = %run_id, "received task");
+
+                                let ack = AgentToHubMessageV1::Ack { v: PROTOCOL_VERSION, task_id: task_id.clone() };
+                                if tx.send(Message::Text(serde_json::to_string(&ack)?.into())).await.is_err() {
+                                    return Ok(LoopAction::Reconnect);
+                                }
+
+                                if let Err(error) = handle_backup_task(data_dir, &mut tx, &task_id, task).await {
+                                    warn!(task_id = %task_id, error = %error, "task failed");
+                                    let result = AgentToHubMessageV1::TaskResult {
+                                        v: PROTOCOL_VERSION,
+                                        task_id: task_id.clone(),
+                                        run_id,
+                                        status: "failed".to_string(),
+                                        summary: None,
+                                        error: Some(format!("{error:#}")),
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&result).unwrap_or_default().into())).await;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     Ok(Message::Close(_)) => return Ok(LoopAction::Reconnect),
                     Ok(_) => {}
                     Err(_) => return Ok(LoopAction::Reconnect),
                 }
             }
+        }
+    }
+}
+
+async fn handle_backup_task(
+    data_dir: &Path,
+    tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
+    task_id: &str,
+    task: crate::agent_protocol::BackupRunTaskV1,
+) -> Result<(), anyhow::Error> {
+    let run_id = task.run_id.clone();
+    let job_id = task.job_id.clone();
+    let started_at = time::OffsetDateTime::from_unix_timestamp(task.started_at)
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+
+    send_run_event(tx, &run_id, "info", "start", "start", None).await?;
+
+    let summary = match task.spec {
+        JobSpecResolvedV1::Filesystem { source, target, .. } => {
+            send_run_event(tx, &run_id, "info", "packaging", "packaging", None).await?;
+            let part_size = target_part_size_bytes(&target);
+            let data_dir_buf = data_dir.to_path_buf();
+            let job_id_clone = job_id.clone();
+            let run_id_clone = run_id.clone();
+            let artifacts = tokio::task::spawn_blocking(move || {
+                backup::filesystem::build_filesystem_run(
+                    &data_dir_buf,
+                    &job_id_clone,
+                    &run_id_clone,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            send_run_event(tx, &run_id, "info", "upload", "upload", None).await?;
+            let target_summary =
+                store_artifacts_to_resolved_target(&job_id, &run_id, &target, &artifacts).await?;
+
+            let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+
+            serde_json::json!({
+                "target": target_summary,
+                "entries_count": artifacts.entries_count,
+                "parts": artifacts.parts.len(),
+            })
+        }
+        JobSpecResolvedV1::Sqlite { source, target, .. } => {
+            send_run_event(tx, &run_id, "info", "snapshot", "snapshot", None).await?;
+            let sqlite_path = source.path.clone();
+            let part_size = target_part_size_bytes(&target);
+
+            let data_dir_buf = data_dir.to_path_buf();
+            let job_id_clone = job_id.clone();
+            let run_id_clone = run_id.clone();
+            let build = tokio::task::spawn_blocking(move || {
+                backup::sqlite::build_sqlite_run(
+                    &data_dir_buf,
+                    &job_id_clone,
+                    &run_id_clone,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            if let Some(check) = build.integrity_check.as_ref() {
+                let data = serde_json::json!({
+                    "ok": check.ok,
+                    "truncated": check.truncated,
+                    "lines": check.lines,
+                });
+                send_run_event(
+                    tx,
+                    &run_id,
+                    if check.ok { "info" } else { "error" },
+                    "integrity_check",
+                    "integrity_check",
+                    Some(data),
+                )
+                .await?;
+                if !check.ok {
+                    let first = check.lines.first().cloned().unwrap_or_default();
+                    anyhow::bail!("sqlite integrity_check failed: {}", first);
+                }
+            }
+
+            send_run_event(tx, &run_id, "info", "upload", "upload", None).await?;
+            let target_summary =
+                store_artifacts_to_resolved_target(&job_id, &run_id, &target, &build.artifacts)
+                    .await?;
+            let _ = tokio::fs::remove_dir_all(&build.artifacts.run_dir).await;
+
+            serde_json::json!({
+                "target": target_summary,
+                "entries_count": build.artifacts.entries_count,
+                "parts": build.artifacts.parts.len(),
+                "sqlite": {
+                    "path": sqlite_path,
+                    "snapshot_name": build.snapshot_name,
+                    "snapshot_size": build.snapshot_size,
+                    "integrity_check": build.integrity_check.map(|check| serde_json::json!({
+                        "ok": check.ok,
+                        "truncated": check.truncated,
+                        "lines": check.lines,
+                    })),
+                },
+            })
+        }
+        JobSpecResolvedV1::Vaultwarden { source, target, .. } => {
+            send_run_event(tx, &run_id, "info", "snapshot", "snapshot", None).await?;
+            let vw_data_dir = source.data_dir.clone();
+            let part_size = target_part_size_bytes(&target);
+
+            let data_dir_buf = data_dir.to_path_buf();
+            let job_id_clone = job_id.clone();
+            let run_id_clone = run_id.clone();
+            let artifacts = tokio::task::spawn_blocking(move || {
+                backup::vaultwarden::build_vaultwarden_run(
+                    &data_dir_buf,
+                    &job_id_clone,
+                    &run_id_clone,
+                    started_at,
+                    &source,
+                    part_size,
+                )
+            })
+            .await??;
+
+            send_run_event(tx, &run_id, "info", "upload", "upload", None).await?;
+            let target_summary =
+                store_artifacts_to_resolved_target(&job_id, &run_id, &target, &artifacts).await?;
+            let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+
+            serde_json::json!({
+                "target": target_summary,
+                "entries_count": artifacts.entries_count,
+                "parts": artifacts.parts.len(),
+                "vaultwarden": {
+                    "data_dir": vw_data_dir,
+                    "db": "db.sqlite3",
+                }
+            })
+        }
+    };
+
+    send_run_event(tx, &run_id, "info", "complete", "complete", None).await?;
+
+    let result = AgentToHubMessageV1::TaskResult {
+        v: PROTOCOL_VERSION,
+        task_id: task_id.to_string(),
+        run_id: run_id.clone(),
+        status: "success".to_string(),
+        summary: Some(summary),
+        error: None,
+    };
+    tx.send(Message::Text(serde_json::to_string(&result)?.into()))
+        .await?;
+    Ok(())
+}
+
+async fn send_run_event(
+    tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
+    run_id: &str,
+    level: &str,
+    kind: &str,
+    message: &str,
+    fields: Option<serde_json::Value>,
+) -> Result<(), anyhow::Error> {
+    let msg = AgentToHubMessageV1::RunEvent {
+        v: PROTOCOL_VERSION,
+        run_id: run_id.to_string(),
+        level: level.to_string(),
+        kind: kind.to_string(),
+        message: message.to_string(),
+        fields,
+    };
+    tx.send(Message::Text(serde_json::to_string(&msg)?.into()))
+        .await?;
+    Ok(())
+}
+
+fn target_part_size_bytes(target: &TargetResolvedV1) -> u64 {
+    match target {
+        TargetResolvedV1::Webdav {
+            part_size_bytes, ..
+        } => *part_size_bytes,
+        TargetResolvedV1::LocalDir {
+            part_size_bytes, ..
+        } => *part_size_bytes,
+    }
+}
+
+async fn store_artifacts_to_resolved_target(
+    job_id: &str,
+    run_id: &str,
+    target: &TargetResolvedV1,
+    artifacts: &backup::LocalRunArtifacts,
+) -> Result<serde_json::Value, anyhow::Error> {
+    match target {
+        TargetResolvedV1::Webdav {
+            base_url,
+            username,
+            password,
+            ..
+        } => {
+            let creds = crate::webdav::WebdavCredentials {
+                username: username.clone(),
+                password: password.clone(),
+            };
+            let run_url =
+                targets::webdav::store_run(base_url, creds, job_id, run_id, artifacts).await?;
+            Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
+        }
+        TargetResolvedV1::LocalDir { base_dir, .. } => {
+            let base_dir = base_dir.to_string();
+            let job_id = job_id.to_string();
+            let run_id = run_id.to_string();
+            let artifacts = artifacts.clone();
+            let run_dir = tokio::task::spawn_blocking(move || {
+                targets::local_dir::store_run(
+                    std::path::Path::new(&base_dir),
+                    &job_id,
+                    &run_id,
+                    &artifacts,
+                )
+            })
+            .await??;
+            Ok(serde_json::json!({
+                "type": "local_dir",
+                "run_dir": run_dir.to_string_lossy().to_string()
+            }))
         }
     }
 }
@@ -222,7 +457,11 @@ fn agent_ws_url(base_url: &Url) -> Result<Url, anyhow::Error> {
     Ok(url.join("agent/ws")?)
 }
 
-async fn enroll(base_url: &Url, token: &str, name: Option<&str>) -> Result<EnrollResponse, anyhow::Error> {
+async fn enroll(
+    base_url: &Url,
+    token: &str,
+    name: Option<&str>,
+) -> Result<EnrollResponse, anyhow::Error> {
     let enroll_url = base_url.join("agent/enroll")?;
     let res = reqwest::Client::new()
         .post(enroll_url)
