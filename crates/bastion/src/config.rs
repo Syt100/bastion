@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use ipnet::IpNet;
 
 #[derive(Debug, Clone)]
@@ -18,6 +18,20 @@ pub struct Config {
 #[derive(Debug, Parser)]
 #[command(name = "bastion", version, about = "Bastion backup server (MVP)")]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    #[command(flatten)]
+    pub hub: HubArgs,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    Agent(AgentArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct HubArgs {
     /// Bind host (default: 127.0.0.1).
     #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::LOCALHOST), env = "BASTION_HOST")]
     pub host: IpAddr,
@@ -45,7 +59,30 @@ pub struct Cli {
     pub trusted_proxies: Vec<IpNet>,
 }
 
-impl Cli {
+#[derive(Debug, Args, Clone)]
+pub struct AgentArgs {
+    /// Hub base URL, e.g. `http://hub:9876` or `https://hub.example.com`.
+    #[arg(long, env = "BASTION_HUB_URL")]
+    pub hub_url: String,
+
+    /// Enrollment token (only required when the agent is not enrolled yet).
+    #[arg(long, env = "BASTION_AGENT_ENROLL_TOKEN")]
+    pub enroll_token: Option<String>,
+
+    /// Friendly agent name (stored on the Hub, optional).
+    #[arg(long, env = "BASTION_AGENT_NAME")]
+    pub name: Option<String>,
+
+    /// Override the data directory (also supports BASTION_DATA_DIR).
+    #[arg(long, env = "BASTION_DATA_DIR")]
+    pub data_dir: Option<PathBuf>,
+
+    /// Heartbeat interval in seconds (default: 15).
+    #[arg(long, default_value_t = 15, env = "BASTION_AGENT_HEARTBEAT_SECONDS")]
+    pub heartbeat_seconds: u64,
+}
+
+impl HubArgs {
     pub fn into_config(self) -> Result<Config, anyhow::Error> {
         let data_dir = crate::data_dir::resolve_data_dir(self.data_dir)?;
 

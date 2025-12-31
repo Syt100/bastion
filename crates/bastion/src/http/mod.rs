@@ -1417,21 +1417,45 @@ async fn handle_agent_socket(
         match msg {
             Message::Text(text) => {
                 let text = text.to_string();
-                if let Err(error) = sqlx::query(
-                    "UPDATE agents SET capabilities_json = ?, last_seen_at = ? WHERE id = ?",
-                )
-                .bind(text.clone())
-                .bind(time::OffsetDateTime::now_utc().unix_timestamp())
-                .bind(&agent_id)
-                .execute(&db)
-                .await
-                {
-                    tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent capabilities");
-                }
+                let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
-                let _ = socket
-                    .send(Message::Text(r#"{"v":1,"type":"ack"}"#.into()))
-                    .await;
+                let msg_type = serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()));
+
+                match msg_type.as_deref() {
+                    Some("ping") => {
+                        if let Err(error) =
+                            sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
+                                .bind(now)
+                                .bind(&agent_id)
+                                .execute(&db)
+                                .await
+                        {
+                            tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent last_seen_at");
+                        }
+                        let _ = socket
+                            .send(Message::Text(r#"{"v":1,"type":"pong"}"#.into()))
+                            .await;
+                    }
+                    _ => {
+                        if let Err(error) = sqlx::query(
+                            "UPDATE agents SET capabilities_json = ?, last_seen_at = ? WHERE id = ?",
+                        )
+                        .bind(text)
+                        .bind(now)
+                        .bind(&agent_id)
+                        .execute(&db)
+                        .await
+                        {
+                            tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent capabilities");
+                        }
+
+                        let _ = socket
+                            .send(Message::Text(r#"{"v":1,"type":"ack"}"#.into()))
+                            .await;
+                    }
+                }
             }
             Message::Close(_) => break,
             _ => {}
