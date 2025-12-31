@@ -1583,12 +1583,15 @@ async fn ui_fallback(method: Method, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
 
-    let bytes = match load_ui_asset(path).or_else(|| load_ui_asset("index.html")) {
-        Some(bytes) => bytes,
-        None => return StatusCode::NOT_FOUND.into_response(),
+    let (bytes, served_path) = if let Some(bytes) = load_ui_asset(path) {
+        (bytes, path)
+    } else if let Some(bytes) = load_ui_asset("index.html") {
+        (bytes, "index.html")
+    } else {
+        return StatusCode::NOT_FOUND.into_response();
     };
 
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    let mime = mime_guess::from_path(served_path).first_or_octet_stream();
     Response::builder()
         .status(StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, mime.as_ref())
