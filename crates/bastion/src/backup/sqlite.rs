@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
@@ -25,6 +25,8 @@ pub struct IntegrityCheck {
 pub struct SqliteRunArtifacts {
     pub artifacts: LocalRunArtifacts,
     pub snapshot_name: String,
+    #[allow(dead_code)]
+    pub snapshot_path: PathBuf,
     pub snapshot_size: u64,
     pub integrity_check: Option<IntegrityCheck>,
 }
@@ -114,6 +116,7 @@ pub fn build_sqlite_run(
     Ok(SqliteRunArtifacts {
         artifacts,
         snapshot_name,
+        snapshot_path,
         snapshot_size,
         integrity_check,
     })
@@ -228,6 +231,7 @@ mod tests {
         let snapshot_path = crate::backup::run_dir(&data_dir, &run_id)
             .join("source")
             .join(&result.snapshot_name);
+        assert_eq!(result.snapshot_path, snapshot_path);
         assert!(snapshot_path.exists());
         assert!(result.snapshot_size > 0);
         assert_eq!(result.artifacts.entries_count, 1);

@@ -425,7 +425,7 @@ async fn open_target_access(
             if !base_url.path().ends_with('/') {
                 base_url.set_path(&format!("{}/", base_url.path()));
             }
-            let client = WebdavClient::new(credentials)?;
+            let client = WebdavClient::new(base_url.clone(), credentials)?;
 
             let job_url = base_url.join(&format!("{job_id}/"))?;
             let run_url = job_url.join(&format!("{run_id}/"))?;

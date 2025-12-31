@@ -66,7 +66,9 @@ pub struct RunEvent {
 pub struct IncompleteCleanupRun {
     pub id: String,
     pub job_id: String,
+    #[allow(dead_code)]
     pub status: RunStatus,
+    #[allow(dead_code)]
     pub started_at: i64,
 }
 
