@@ -12,13 +12,19 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct SessionRow {
     pub id: String,
+    #[allow(dead_code)]
+    pub user_id: i64,
     pub csrf_token: String,
+    #[allow(dead_code)]
+    pub created_at: i64,
     pub expires_at: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct UserRow {
     pub id: i64,
+    #[allow(dead_code)]
+    pub username: String,
     pub password_hash: String,
 }
 
@@ -48,13 +54,15 @@ pub async fn find_user_by_username(
     db: &SqlitePool,
     username: &str,
 ) -> Result<Option<UserRow>, sqlx::Error> {
-    let row = sqlx::query("SELECT id, password_hash FROM users WHERE username = ? LIMIT 1")
-        .bind(username)
-        .fetch_optional(db)
-        .await?;
+    let row =
+        sqlx::query("SELECT id, username, password_hash FROM users WHERE username = ? LIMIT 1")
+            .bind(username)
+            .fetch_optional(db)
+            .await?;
 
     Ok(row.map(|r| UserRow {
         id: r.get::<i64, _>("id"),
+        username: r.get::<String, _>("username"),
         password_hash: r.get::<String, _>("password_hash"),
     }))
 }
@@ -80,7 +88,9 @@ pub async fn create_session(db: &SqlitePool, user_id: i64) -> Result<SessionRow,
 
     Ok(SessionRow {
         id,
+        user_id,
         csrf_token,
+        created_at,
         expires_at,
     })
 }
@@ -89,10 +99,12 @@ pub async fn get_session(
     db: &SqlitePool,
     session_id: &str,
 ) -> Result<Option<SessionRow>, sqlx::Error> {
-    let row = sqlx::query("SELECT id, csrf_token, expires_at FROM sessions WHERE id = ? LIMIT 1")
-        .bind(session_id)
-        .fetch_optional(db)
-        .await?;
+    let row = sqlx::query(
+        "SELECT id, user_id, csrf_token, created_at, expires_at FROM sessions WHERE id = ? LIMIT 1",
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await?;
 
     let Some(row) = row else {
         return Ok(None);
@@ -100,7 +112,9 @@ pub async fn get_session(
 
     let session = SessionRow {
         id: row.get::<String, _>("id"),
+        user_id: row.get::<i64, _>("user_id"),
         csrf_token: row.get::<String, _>("csrf_token"),
+        created_at: row.get::<i64, _>("created_at"),
         expires_at: row.get::<i64, _>("expires_at"),
     };
 

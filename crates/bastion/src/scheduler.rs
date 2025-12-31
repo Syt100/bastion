@@ -993,7 +993,7 @@ async fn cleanup_webdav_run(
         base_url.set_path(&format!("{}/", base_url.path()));
     }
 
-    let client = crate::webdav::WebdavClient::new(credentials)?;
+    let client = crate::webdav::WebdavClient::new(base_url.clone(), credentials)?;
     let job_url = base_url.join(&format!("{job_id}/"))?;
     let run_url = job_url.join(&format!("{run_id}/"))?;
     let complete_url = run_url.join(COMPLETE_NAME)?;

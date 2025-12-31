@@ -39,6 +39,8 @@ struct KeyringFile {
 struct KeyEntry {
     kid: u32,
     key: [u8; 32],
+    #[allow(dead_code)]
+    created_at: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +79,7 @@ impl SecretsCrypto {
                 KeyEntry {
                     kid: entry.kid,
                     key: decode_key(&entry.key_b64)?,
+                    created_at: entry.created_at,
                 },
             );
         }
