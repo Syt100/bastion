@@ -86,7 +86,7 @@ impl RunEventsBus {
 
     fn maybe_prune_locked(&self, inner: &mut HashMap<String, BusEntry>, now: i64) {
         let ops = self.ops.fetch_add(1, Ordering::Relaxed) + 1;
-        if ops % self.prune_every_ops != 0 {
+        if !ops.is_multiple_of(self.prune_every_ops) {
             return;
         }
 

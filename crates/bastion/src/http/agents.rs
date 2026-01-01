@@ -413,51 +413,51 @@ async fn handle_agent_socket(
                         error,
                     }) if v == PROTOCOL_VERSION => {
                         let run = runs_repo::get_run(&db, &run_id).await.ok().flatten();
-                        if let Some(run) = run {
-                            if run.status == runs_repo::RunStatus::Running {
-                                let (run_status, err_code) = if status == "success" {
-                                    (runs_repo::RunStatus::Success, None)
-                                } else {
-                                    let code = summary
-                                        .as_ref()
-                                        .and_then(|v| v.get("error_code"))
-                                        .and_then(|v| v.as_str())
-                                        .filter(|v| !v.trim().is_empty())
-                                        .unwrap_or("agent_failed");
-                                    (runs_repo::RunStatus::Failed, Some(code))
-                                };
+                        if let Some(run) = run
+                            && run.status == runs_repo::RunStatus::Running
+                        {
+                            let (run_status, err_code) = if status == "success" {
+                                (runs_repo::RunStatus::Success, None)
+                            } else {
+                                let code = summary
+                                    .as_ref()
+                                    .and_then(|v| v.get("error_code"))
+                                    .and_then(|v| v.as_str())
+                                    .filter(|v| !v.trim().is_empty())
+                                    .unwrap_or("agent_failed");
+                                (runs_repo::RunStatus::Failed, Some(code))
+                            };
 
-                                let _ = runs_repo::complete_run(
-                                    &db,
-                                    &run_id,
-                                    run_status,
-                                    summary.clone(),
-                                    err_code,
-                                )
-                                .await;
-                                let _ = run_events::append_and_broadcast(
-                                    &db,
-                                    &run_events_bus,
-                                    &run_id,
-                                    if run_status == runs_repo::RunStatus::Success {
-                                        "info"
-                                    } else {
-                                        "error"
-                                    },
-                                    if run_status == runs_repo::RunStatus::Success {
-                                        "complete"
-                                    } else {
-                                        "failed"
-                                    },
-                                    if run_status == runs_repo::RunStatus::Success {
-                                        "complete"
-                                    } else {
-                                        "failed"
-                                    },
-                                    Some(serde_json::json!({ "agent_id": agent_id.clone() })),
-                                )
-                                .await;
-                            }
+                            let _ = runs_repo::complete_run(
+                                &db,
+                                &run_id,
+                                run_status,
+                                summary.clone(),
+                                err_code,
+                            )
+                            .await;
+                            let _ = run_events::append_and_broadcast(
+                                &db,
+                                &run_events_bus,
+                                &run_id,
+                                if run_status == runs_repo::RunStatus::Success {
+                                    "info"
+                                } else {
+                                    "error"
+                                },
+                                if run_status == runs_repo::RunStatus::Success {
+                                    "complete"
+                                } else {
+                                    "failed"
+                                },
+                                if run_status == runs_repo::RunStatus::Success {
+                                    "complete"
+                                } else {
+                                    "failed"
+                                },
+                                Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                            )
+                            .await;
                         }
 
                         let _ = agent_tasks_repo::complete_task(

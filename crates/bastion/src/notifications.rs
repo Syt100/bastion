@@ -116,7 +116,7 @@ async fn run_loop(
 }
 
 fn backoff_seconds(attempts: i64) -> i64 {
-    let shift = (attempts.saturating_sub(1)).min(20).max(0) as u32;
+    let shift = (attempts.saturating_sub(1)).clamp(0, 20) as u32;
     let exp = 1_i64.checked_shl(shift).unwrap_or(i64::MAX);
     let delay = BACKOFF_BASE_SECONDS.saturating_mul(exp);
     delay.clamp(BACKOFF_BASE_SECONDS, BACKOFF_MAX_SECONDS)
@@ -241,19 +241,17 @@ async fn build_wecom_markdown(db: &SqlitePool, run_id: &str) -> Result<String, a
     let ended = ended_at.map(format_ts).unwrap_or_else(|| "-".to_string());
 
     let mut target_line = String::new();
-    if let Some(summary) = summary_json {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&summary) {
-            let target = v.get("target");
-            if let Some(target) = target {
-                let ttype = target.get("type").and_then(|x| x.as_str()).unwrap_or("-");
-                let loc = target
-                    .get("run_url")
-                    .or_else(|| target.get("run_dir"))
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("-");
-                target_line = format!("{ttype} {loc}");
-            }
-        }
+    if let Some(summary) = summary_json
+        && let Ok(v) = serde_json::from_str::<serde_json::Value>(&summary)
+        && let Some(target) = v.get("target")
+    {
+        let ttype = target.get("type").and_then(|x| x.as_str()).unwrap_or("-");
+        let loc = target
+            .get("run_url")
+            .or_else(|| target.get("run_dir"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("-");
+        target_line = format!("{ttype} {loc}");
     }
 
     let mut content = String::new();
@@ -265,10 +263,10 @@ async fn build_wecom_markdown(db: &SqlitePool, run_id: &str) -> Result<String, a
     if !target_line.is_empty() {
         content.push_str(&format!("> Target: {target_line}\n"));
     }
-    if let Some(error) = error {
-        if !error.trim().is_empty() {
-            content.push_str(&format!("> Error: {error}\n"));
-        }
+    if let Some(error) = error
+        && !error.trim().is_empty()
+    {
+        content.push_str(&format!("> Error: {error}\n"));
     }
 
     Ok(content)
@@ -323,19 +321,17 @@ async fn build_email_text(
     let ended = ended_at.map(format_ts).unwrap_or_else(|| "-".to_string());
 
     let mut target_line = String::new();
-    if let Some(summary) = summary_json {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&summary) {
-            let target = v.get("target");
-            if let Some(target) = target {
-                let ttype = target.get("type").and_then(|x| x.as_str()).unwrap_or("-");
-                let loc = target
-                    .get("run_url")
-                    .or_else(|| target.get("run_dir"))
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("-");
-                target_line = format!("{ttype} {loc}");
-            }
-        }
+    if let Some(summary) = summary_json
+        && let Ok(v) = serde_json::from_str::<serde_json::Value>(&summary)
+        && let Some(target) = v.get("target")
+    {
+        let ttype = target.get("type").and_then(|x| x.as_str()).unwrap_or("-");
+        let loc = target
+            .get("run_url")
+            .or_else(|| target.get("run_dir"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("-");
+        target_line = format!("{ttype} {loc}");
     }
 
     let mut body = String::new();
@@ -348,10 +344,10 @@ async fn build_email_text(
     if !target_line.is_empty() {
         body.push_str(&format!("Target: {target_line}\n"));
     }
-    if let Some(error) = error {
-        if !error.trim().is_empty() {
-            body.push_str(&format!("Error: {error}\n"));
-        }
+    if let Some(error) = error
+        && !error.trim().is_empty()
+    {
+        body.push_str(&format!("Error: {error}\n"));
     }
 
     Ok((subject, body))

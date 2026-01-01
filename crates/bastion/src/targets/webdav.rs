@@ -62,11 +62,11 @@ async fn upload_artifacts(
 ) -> Result<(), anyhow::Error> {
     for part in &artifacts.parts {
         let url = run_url.join(&part.name)?;
-        if let Some(existing) = client.head_size(&url).await? {
-            if existing == part.size {
-                debug!(url = %redact_url(&url), size = part.size, "skipping existing webdav part");
-                continue;
-            }
+        if let Some(existing) = client.head_size(&url).await?
+            && existing == part.size
+        {
+            debug!(url = %redact_url(&url), size = part.size, "skipping existing webdav part");
+            continue;
         }
         debug!(url = %redact_url(&url), size = part.size, "uploading webdav part");
         client
@@ -115,13 +115,12 @@ async fn upload_named_file(
     let size = tokio::fs::metadata(path).await?.len();
     let url = run_url.join(name)?;
 
-    if allow_resume {
-        if let Some(existing) = client.head_size(&url).await? {
-            if existing == size {
-                debug!(url = %redact_url(&url), size, "skipping existing webdav file");
-                return Ok(());
-            }
-        }
+    if allow_resume
+        && let Some(existing) = client.head_size(&url).await?
+        && existing == size
+    {
+        debug!(url = %redact_url(&url), size, "skipping existing webdav file");
+        return Ok(());
     }
 
     debug!(url = %redact_url(&url), size, "uploading webdav file");
