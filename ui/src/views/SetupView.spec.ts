@@ -19,6 +19,7 @@ vi.mock('naive-ui', async () => {
     })
 
   return {
+    NAlert: stub('NAlert'),
     NButton: stub('NButton'),
     NCard: stub('NCard'),
     NDropdown: stub('NDropdown'),
@@ -85,7 +86,7 @@ describe('SetupView', () => {
 
     await vm.onSubmit()
 
-    expect(messageApi.error).toHaveBeenCalledWith('errors.passwordsDoNotMatch')
+    expect(wrapper.text()).toContain('errors.passwordsDoNotMatch')
     expect(apiFetchMock).not.toHaveBeenCalled()
   })
 

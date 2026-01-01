@@ -7,6 +7,7 @@ import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { formatToastError } from '@/lib/errors'
 
 export type JobRunsModalExpose = {
   open: (jobId: string) => Promise<void>
@@ -80,8 +81,8 @@ async function open(nextJobId: string): Promise<void> {
   runs.value = []
   try {
     runs.value = await jobs.listRuns(nextJobId)
-  } catch {
-    message.error(t('errors.fetchRunsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchRunsFailed'), error, t))
   } finally {
     loading.value = false
   }

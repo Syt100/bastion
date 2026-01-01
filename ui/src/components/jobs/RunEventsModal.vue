@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunEvent } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 
 export type RunEventsModalExpose = {
@@ -110,8 +111,8 @@ async function open(id: string): Promise<void> {
     lastSeq = initial.reduce((m, e) => Math.max(m, e.seq), 0)
     await nextTick()
     if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight
-  } catch {
-    message.error(t('errors.fetchRunEventsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchRunEventsFailed'), error, t))
   } finally {
     loading.value = false
   }

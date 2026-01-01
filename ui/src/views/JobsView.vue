@@ -11,6 +11,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { formatToastError } from '@/lib/errors'
 
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobRunsModal, { type JobRunsModalExpose } from '@/components/jobs/JobRunsModal.vue'
@@ -51,8 +52,8 @@ function formatOverlap(policy: OverlapPolicy): string {
 async function refresh(): Promise<void> {
   try {
     await jobs.refresh()
-  } catch {
-    message.error(t('errors.fetchJobsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchJobsFailed'), error, t))
   }
 }
 
@@ -61,8 +62,8 @@ async function removeJob(jobId: string): Promise<void> {
     await jobs.deleteJob(jobId)
     message.success(t('messages.jobDeleted'))
     await refresh()
-  } catch {
-    message.error(t('errors.deleteJobFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.deleteJobFailed'), error, t))
   }
 }
 
@@ -74,8 +75,8 @@ async function runNow(jobId: string): Promise<void> {
     } else {
       message.success(t('messages.runQueued'))
     }
-  } catch {
-    message.error(t('errors.runNowFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.runNowFailed'), error, t))
   }
 }
 
@@ -182,13 +183,13 @@ onMounted(async () => {
   await refresh()
   try {
     await agents.refresh()
-  } catch {
-    message.error(t('errors.fetchAgentsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
   }
   try {
     await secrets.refreshWebdav()
-  } catch {
-    message.error(t('errors.fetchWebdavSecretsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
   }
 })
 </script>
