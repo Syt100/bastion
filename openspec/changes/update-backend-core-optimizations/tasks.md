@@ -19,11 +19,11 @@
 - [x] 3.5 Commit DB maintenance/index changes (detailed message)
 
 ## 4. Backend - HTTP modularity refactor (no behavior change)
-- [ ] 4.1 Split `crates/bastion/src/http/mod.rs` into smaller modules (routes/handlers/middleware/types/errors)
-- [ ] 4.2 Keep routes/API/behavior compatible (no changes to clients)
-- [ ] 4.3 Add/adjust tests if needed
-- [ ] 4.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] 4.5 Commit HTTP refactor changes (detailed message)
+- [x] 4.1 Split `crates/bastion/src/http/mod.rs` into smaller modules (routes/handlers/middleware/types/errors)
+- [x] 4.2 Keep routes/API/behavior compatible (no changes to clients)
+- [x] 4.3 Add/adjust tests if needed
+- [x] 4.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] 4.5 Commit HTTP refactor changes (detailed message)
 
 ## 5. Backend - Scheduler wakeups + graceful shutdown
 - [ ] 5.1 Add run-enqueue wakeups for the worker loop (Notify + timeout fallback)
