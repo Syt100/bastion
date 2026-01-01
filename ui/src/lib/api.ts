@@ -32,6 +32,14 @@ export async function apiFetch<T>(
   })
 
   if (response.status !== expectedStatus) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('bastion:unauthorized'))
+      } catch {
+        // ignore
+      }
+    }
+
     let body: ApiErrorBody | undefined
     try {
       body = (await response.json()) as ApiErrorBody
@@ -47,4 +55,3 @@ export async function apiFetch<T>(
 
   return (await response.json()) as T
 }
-

@@ -31,6 +31,17 @@ const messages = {
     title: 'Dashboard',
     subtitle: 'Backup activity overview (placeholder data)',
     runs7d: 'Runs (Last 7 Days)',
+    chart: {
+      success: 'Success',
+      failed: 'Failed',
+      mon: 'Mon',
+      tue: 'Tue',
+      wed: 'Wed',
+      thu: 'Thu',
+      fri: 'Fri',
+      sat: 'Sat',
+      sun: 'Sun',
+    },
   },
   placeholder: {
     comingSoon: 'Coming soon',

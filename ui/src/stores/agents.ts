@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
-import { useAuthStore } from '@/stores/auth'
+import { ensureCsrfToken } from '@/stores/csrf'
 
 export type AgentListItem = {
   id: string
@@ -27,8 +27,6 @@ export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
 
-  const auth = useAuthStore()
-
   async function refresh(): Promise<void> {
     loading.value = true
     try {
@@ -42,18 +40,13 @@ export const useAgentsStore = defineStore('agents', () => {
     ttlSeconds: number
     remainingUses: number | null
   }): Promise<EnrollmentToken> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
+    const csrf = await ensureCsrfToken()
 
     return await apiFetch<EnrollmentToken>('/api/agents/enrollment-tokens', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRF-Token': auth.csrfToken,
+        'X-CSRF-Token': csrf,
       },
       body: JSON.stringify({
         ttl_seconds: params.ttlSeconds,
@@ -63,31 +56,21 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   async function revokeAgent(agentId: string): Promise<void> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
+    const csrf = await ensureCsrfToken()
 
     await apiFetch<void>(`/api/agents/${encodeURIComponent(agentId)}/revoke`, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': auth.csrfToken },
+      headers: { 'X-CSRF-Token': csrf },
       expectedStatus: 204,
     })
   }
 
   async function rotateAgentKey(agentId: string): Promise<RotateAgentKeyResponse> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
+    const csrf = await ensureCsrfToken()
 
     return await apiFetch<RotateAgentKeyResponse>(`/api/agents/${encodeURIComponent(agentId)}/rotate-key`, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': auth.csrfToken },
+      headers: { 'X-CSRF-Token': csrf },
     })
   }
 

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
-import { useAuthStore } from '@/stores/auth'
+import { ensureCsrfToken } from '@/stores/csrf'
 
 export type SecretListItem = {
   name: string
@@ -41,18 +41,6 @@ export const useSecretsStore = defineStore('secrets', () => {
   const smtp = ref<SecretListItem[]>([])
   const loadingSmtp = ref<boolean>(false)
 
-  const auth = useAuthStore()
-
-  async function ensureCsrf(): Promise<string> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
-    return auth.csrfToken
-  }
-
   async function refreshWebdav(): Promise<void> {
     loadingWebdav.value = true
     try {
@@ -67,7 +55,7 @@ export const useSecretsStore = defineStore('secrets', () => {
   }
 
   async function upsertWebdav(name: string, username: string, password: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/webdav/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: {
@@ -80,7 +68,7 @@ export const useSecretsStore = defineStore('secrets', () => {
   }
 
   async function deleteWebdav(name: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/webdav/${encodeURIComponent(name)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrf },
@@ -102,7 +90,7 @@ export const useSecretsStore = defineStore('secrets', () => {
   }
 
   async function upsertWecomBot(name: string, webhookUrl: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/wecom-bot/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: {
@@ -115,7 +103,7 @@ export const useSecretsStore = defineStore('secrets', () => {
   }
 
   async function deleteWecomBot(name: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/wecom-bot/${encodeURIComponent(name)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrf },
@@ -140,7 +128,7 @@ export const useSecretsStore = defineStore('secrets', () => {
     name: string,
     secret: Omit<SmtpSecret, 'name'>,
   ): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/smtp/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: {
@@ -153,7 +141,7 @@ export const useSecretsStore = defineStore('secrets', () => {
   }
 
   async function deleteSmtp(name: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/secrets/smtp/${encodeURIComponent(name)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrf },

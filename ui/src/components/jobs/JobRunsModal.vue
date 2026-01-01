@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
 
 export type JobRunsModalExpose = {
   open: (jobId: string) => Promise<void>
@@ -28,18 +29,7 @@ const loading = ref<boolean>(false)
 const jobId = ref<string | null>(null)
 const runs = ref<RunListItem[]>([])
 
-const dateFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(ui.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-    }),
-)
-
-function formatUnixSeconds(ts: number | null): string {
-  if (!ts) return '-'
-  return dateFormatter.value.format(new Date(ts * 1000))
-}
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
@@ -111,4 +101,3 @@ defineExpose<JobRunsModalExpose>({ open })
     </div>
   </n-modal>
 </template>
-
