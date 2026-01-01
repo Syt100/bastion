@@ -8,7 +8,7 @@ echo "==> Rust: fmt"
 cargo fmt --check
 
 echo "==> Rust: clippy"
-cargo clippy --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 echo "==> Rust: test"
 cargo test --workspace
@@ -18,4 +18,3 @@ npm ci --prefix ui
 
 echo "==> UI: test"
 npm test --prefix ui
-

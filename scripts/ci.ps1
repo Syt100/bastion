@@ -8,7 +8,7 @@ Write-Host "==> Rust: fmt"
 cargo fmt --check
 
 Write-Host "==> Rust: clippy"
-cargo clippy --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 Write-Host "==> Rust: test"
 cargo test --workspace
@@ -18,4 +18,3 @@ npm ci --prefix ui
 
 Write-Host "==> UI: test"
 npm test --prefix ui
-
