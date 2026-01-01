@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
+  NCard,
   NDrawer,
   NDrawerContent,
   NDropdown,
@@ -31,6 +32,7 @@ import type { SupportedLocale } from '@/i18n'
 import { useSystemStore } from '@/stores/system'
 import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 import AppLogo from '@/components/AppLogo.vue'
+import { useMediaQuery } from '@/lib/media'
 
 const router = useRouter()
 const route = useRoute()
@@ -43,6 +45,13 @@ const system = useSystemStore()
 
 const activeKey = computed(() => route.path)
 const mobileMenuOpen = ref(false)
+const isDesktop = useMediaQuery('(min-width: 768px)')
+
+watch(isDesktop, (value) => {
+  if (value) {
+    mobileMenuOpen.value = false
+  }
+})
 
 function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
@@ -75,49 +84,53 @@ async function onLogout(): Promise<void> {
 </script>
 
 <template>
-  <n-layout class="h-screen bg-transparent">
-    <n-layout-header
+  <n-layout has-sider class="min-h-screen bg-transparent">
+    <n-layout-sider
+      v-if="isDesktop"
       bordered
-      class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur px-4 sticky top-0 z-50"
+      class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur"
+      collapse-mode="width"
+      :collapsed-width="64"
+      :width="220"
     >
-      <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
-        <div class="flex items-center gap-3">
-          <n-button class="md:hidden" quaternary @click="mobileMenuOpen = true">
-            <template #icon>
-              <n-icon><MenuOutline /></n-icon>
-            </template>
-          </n-button>
-
-          <AppLogo />
-          <n-tag size="small" type="info" :bordered="false">{{ t('common.mvp') }}</n-tag>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
-            <n-button quaternary>{{ t('common.language') }}</n-button>
-          </n-dropdown>
-          <n-button quaternary @click="ui.toggleDarkMode()">
-            {{ ui.darkMode ? t('common.light') : t('common.dark') }}
-          </n-button>
-          <n-button quaternary type="error" @click="onLogout">{{ t('common.logout') }}</n-button>
-        </div>
+      <div class="h-14 px-4 flex items-center gap-3 border-b border-black/5 dark:border-white/10">
+        <AppLogo />
+        <n-tag size="small" type="info" :bordered="false">{{ t('common.mvp') }}</n-tag>
       </div>
-    </n-layout-header>
 
-    <n-layout has-sider class="h-[calc(100vh-56px)] bg-transparent">
-      <n-layout-sider
+      <n-menu :value="activeKey" :options="menuOptions" @update:value="(key) => router.push(String(key))" />
+    </n-layout-sider>
+
+    <n-layout class="bg-transparent">
+      <n-layout-header
         bordered
-        class="hidden md:block bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur"
-        collapse-mode="width"
-        :collapsed-width="64"
-        :width="220"
+        class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur px-4 sticky top-0 z-50"
       >
-        <n-menu
-          :value="activeKey"
-          :options="menuOptions"
-          @update:value="(key) => router.push(String(key))"
-        />
-      </n-layout-sider>
+        <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
+          <div class="flex items-center gap-3">
+            <n-button v-if="!isDesktop" quaternary @click="mobileMenuOpen = true">
+              <template #icon>
+                <n-icon><MenuOutline /></n-icon>
+              </template>
+            </n-button>
+
+            <template v-if="!isDesktop">
+              <AppLogo />
+              <n-tag size="small" type="info" :bordered="false">{{ t('common.mvp') }}</n-tag>
+            </template>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
+              <n-button quaternary>{{ t('common.language') }}</n-button>
+            </n-dropdown>
+            <n-button quaternary @click="ui.toggleDarkMode()">
+              {{ ui.darkMode ? t('common.light') : t('common.dark') }}
+            </n-button>
+            <n-button quaternary type="error" @click="onLogout">{{ t('common.logout') }}</n-button>
+          </div>
+        </div>
+      </n-layout-header>
 
       <n-layout content-style="padding: 16px" class="bg-transparent">
         <div class="max-w-7xl mx-auto">
@@ -128,11 +141,15 @@ async function onLogout(): Promise<void> {
     </n-layout>
   </n-layout>
 
-  <n-drawer v-model:show="mobileMenuOpen" placement="left" :width="280">
+  <n-drawer v-if="!isDesktop" v-model:show="mobileMenuOpen" placement="left" :width="280">
     <n-drawer-content>
-      <div class="px-2 pt-2 pb-3">
-        <AppLogo size="sm" />
-      </div>
+      <n-card class="mb-3" :bordered="false">
+        <div class="flex items-center justify-between">
+          <AppLogo size="sm" />
+          <n-tag size="small" type="info" :bordered="false">{{ t('common.mvp') }}</n-tag>
+        </div>
+      </n-card>
+
       <n-menu
         :value="activeKey"
         :options="menuOptions"

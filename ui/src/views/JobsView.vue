@@ -30,6 +30,8 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import { MODAL_WIDTH } from '@/lib/modal'
+import { useMediaQuery } from '@/lib/media'
 
 type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 type FsHardlinkPolicy = 'copy' | 'keep'
@@ -43,6 +45,8 @@ const jobs = useJobsStore()
 const operations = useOperationsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
+
+const isDesktop = useMediaQuery('(min-width: 768px)')
 
 const editorOpen = ref<boolean>(false)
 const editorMode = ref<'create' | 'edit'>('create')
@@ -138,6 +142,16 @@ const dateFormatter = computed(
 function formatUnixSeconds(ts: number | null): string {
   if (!ts) return '-'
   return dateFormatter.value.format(new Date(ts * 1000))
+}
+
+function formatJobNode(agentId: string | null): string {
+  if (!agentId) return t('jobs.nodes.hub')
+  const agent = agents.items.find((a) => a.id === agentId)
+  return agent?.name ?? agentId
+}
+
+function formatOverlap(policy: OverlapPolicy): string {
+  return policy === 'queue' ? t('jobs.overlap.queue') : t('jobs.overlap.reject')
 }
 
 function wsUrl(path: string): string {
@@ -795,9 +809,7 @@ const columns = computed<DataTableColumns<JobListItem>>(() => [
     title: t('jobs.columns.node'),
     key: 'agent_id',
     render: (row) => {
-      if (!row.agent_id) return t('jobs.nodes.hub')
-      const agent = agents.items.find((a) => a.id === row.agent_id)
-      return agent?.name ?? row.agent_id
+      return formatJobNode(row.agent_id)
     },
   },
   {
@@ -808,7 +820,7 @@ const columns = computed<DataTableColumns<JobListItem>>(() => [
   {
     title: t('jobs.columns.overlap'),
     key: 'overlap_policy',
-    render: (row) => (row.overlap_policy === 'queue' ? t('jobs.overlap.queue') : t('jobs.overlap.reject')),
+    render: (row) => formatOverlap(row.overlap_policy),
   },
   {
     title: t('jobs.columns.updatedAt'),
@@ -937,16 +949,77 @@ onBeforeUnmount(() => {
       <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
     </PageHeader>
 
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10">
-      <div class="overflow-x-auto">
-        <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
-      </div>
-    </n-card>
+    <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
+      <n-card
+        v-if="!jobs.loading && jobs.items.length === 0"
+        class="shadow-sm border border-black/5 dark:border-white/10"
+      >
+        <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
+      </n-card>
+
+      <n-card
+        v-for="job in jobs.items"
+        :key="job.id"
+        size="small"
+        class="shadow-sm border border-black/5 dark:border-white/10"
+      >
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div class="font-medium truncate">{{ job.name }}</div>
+          </div>
+        </template>
+
+        <div class="text-sm">
+          <div class="flex items-start justify-between gap-4 py-1">
+            <div class="opacity-70">{{ t('jobs.columns.node') }}</div>
+            <div class="text-right">{{ formatJobNode(job.agent_id) }}</div>
+          </div>
+          <div class="flex items-start justify-between gap-4 py-1">
+            <div class="opacity-70">{{ t('jobs.columns.schedule') }}</div>
+            <div class="text-right">{{ job.schedule ?? '-' }}</div>
+          </div>
+          <div class="flex items-start justify-between gap-4 py-1">
+            <div class="opacity-70">{{ t('jobs.columns.overlap') }}</div>
+            <div class="text-right">{{ formatOverlap(job.overlap_policy) }}</div>
+          </div>
+          <div class="flex items-start justify-between gap-4 py-1">
+            <div class="opacity-70">{{ t('jobs.columns.updatedAt') }}</div>
+            <div class="text-right">{{ formatUnixSeconds(job.updated_at) }}</div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex flex-wrap justify-end gap-2">
+            <n-button size="small" type="primary" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
+            <n-button size="small" @click="openRuns(job.id)">{{ t('jobs.actions.runs') }}</n-button>
+            <n-button size="small" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
+            <n-popconfirm
+              :positive-text="t('common.delete')"
+              :negative-text="t('common.cancel')"
+              @positive-click="removeJob(job.id)"
+            >
+              <template #trigger>
+                <n-button size="small" type="error" tertiary>{{ t('common.delete') }}</n-button>
+              </template>
+              {{ t('jobs.deleteConfirm') }}
+            </n-popconfirm>
+          </div>
+        </template>
+      </n-card>
+    </div>
+
+    <div v-else data-testid="jobs-table">
+      <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+        <div class="overflow-x-auto">
+          <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
+        </div>
+      </n-card>
+    </div>
 
     <n-modal
       v-model:show="editorOpen"
       preset="card"
-      :style="{ width: 'min(980px, calc(100vw - 32px))' }"
+      :style="{ width: MODAL_WIDTH.lg }"
       :title="editorMode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
     >
       <div class="space-y-4">
@@ -1133,7 +1206,7 @@ onBeforeUnmount(() => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="runsOpen" preset="card" :title="t('runs.title')">
+    <n-modal v-model:show="runsOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runs.title')">
       <div class="space-y-3">
         <div class="text-sm opacity-70">{{ runsJobId }}</div>
         <n-data-table :loading="runsLoading" :columns="runColumns" :data="runs" />
@@ -1143,7 +1216,7 @@ onBeforeUnmount(() => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="runEventsOpen" preset="card" :title="t('runEvents.title')">
+    <n-modal v-model:show="runEventsOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runEvents.title')">
       <div class="space-y-3">
         <div class="text-sm opacity-70 flex items-center gap-2">
           <span>{{ runEventsRunId }}</span>
@@ -1173,7 +1246,7 @@ onBeforeUnmount(() => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="restoreOpen" preset="card" :title="t('restore.title')">
+    <n-modal v-model:show="restoreOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('restore.title')">
       <div class="space-y-4">
         <div class="text-sm opacity-70">{{ restoreRunId }}</div>
         <n-form label-placement="top">
@@ -1194,7 +1267,7 @@ onBeforeUnmount(() => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="verifyOpen" preset="card" :title="t('verify.title')">
+    <n-modal v-model:show="verifyOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('verify.title')">
       <div class="space-y-4">
         <div class="text-sm opacity-70">{{ verifyRunId }}</div>
         <n-alert type="info" :title="t('verify.helpTitle')">
@@ -1207,7 +1280,7 @@ onBeforeUnmount(() => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="opOpen" preset="card" :title="t('operations.title')">
+    <n-modal v-model:show="opOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('operations.title')">
       <div class="space-y-4">
         <div class="text-sm opacity-70">{{ opId }}</div>
 

@@ -20,12 +20,15 @@ import { useI18n } from 'vue-i18n'
 import { useSecretsStore, type SecretListItem, type SmtpTlsMode } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import { MODAL_WIDTH } from '@/lib/modal'
+import { useMediaQuery } from '@/lib/media'
 
 const { t } = useI18n()
 const message = useMessage()
 
 const ui = useUiStore()
 const secrets = useSecretsStore()
+const isDesktop = useMediaQuery('(min-width: 768px)')
 
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
@@ -445,7 +448,41 @@ onMounted(refresh)
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>
       </template>
 
-      <div class="overflow-x-auto">
+      <div v-if="!isDesktop" class="space-y-2">
+        <div
+          v-if="!secrets.loadingWebdav && secrets.webdav.length === 0"
+          class="text-sm opacity-70 px-1 py-2"
+        >
+          {{ t('common.noData') }}
+        </div>
+        <div
+          v-for="row in secrets.webdav"
+          :key="row.name"
+          class="p-3 rounded-lg border border-black/5 dark:border-white/10 bg-white/60 dark:bg-[#0b1220]/30"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-medium">{{ row.name }}</div>
+              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+            </div>
+            <n-space size="small">
+              <n-button size="small" @click="openEdit(row.name)">{{ t('common.edit') }}</n-button>
+              <n-popconfirm
+                :positive-text="t('common.delete')"
+                :negative-text="t('common.cancel')"
+                @positive-click="remove(row.name)"
+              >
+                <template #trigger>
+                  <n-button size="small" type="error" tertiary>{{ t('common.delete') }}</n-button>
+                </template>
+                {{ t('settings.webdav.deleteConfirm') }}
+              </n-popconfirm>
+            </n-space>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="overflow-x-auto">
         <n-data-table :loading="secrets.loadingWebdav" :columns="columns" :data="secrets.webdav" />
       </div>
     </n-card>
@@ -455,7 +492,41 @@ onMounted(refresh)
         <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
       </template>
 
-      <div class="overflow-x-auto">
+      <div v-if="!isDesktop" class="space-y-2">
+        <div
+          v-if="!secrets.loadingWecomBots && secrets.wecomBots.length === 0"
+          class="text-sm opacity-70 px-1 py-2"
+        >
+          {{ t('common.noData') }}
+        </div>
+        <div
+          v-for="row in secrets.wecomBots"
+          :key="row.name"
+          class="p-3 rounded-lg border border-black/5 dark:border-white/10 bg-white/60 dark:bg-[#0b1220]/30"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-medium">{{ row.name }}</div>
+              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+            </div>
+            <n-space size="small">
+              <n-button size="small" @click="openWecomEdit(row.name)">{{ t('common.edit') }}</n-button>
+              <n-popconfirm
+                :positive-text="t('common.delete')"
+                :negative-text="t('common.cancel')"
+                @positive-click="removeWecom(row.name)"
+              >
+                <template #trigger>
+                  <n-button size="small" type="error" tertiary>{{ t('common.delete') }}</n-button>
+                </template>
+                {{ t('settings.wecom.deleteConfirm') }}
+              </n-popconfirm>
+            </n-space>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="overflow-x-auto">
         <n-data-table :loading="secrets.loadingWecomBots" :columns="wecomColumns" :data="secrets.wecomBots" />
       </div>
     </n-card>
@@ -465,12 +536,46 @@ onMounted(refresh)
         <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
       </template>
 
-      <div class="overflow-x-auto">
+      <div v-if="!isDesktop" class="space-y-2">
+        <div
+          v-if="!secrets.loadingSmtp && secrets.smtp.length === 0"
+          class="text-sm opacity-70 px-1 py-2"
+        >
+          {{ t('common.noData') }}
+        </div>
+        <div
+          v-for="row in secrets.smtp"
+          :key="row.name"
+          class="p-3 rounded-lg border border-black/5 dark:border-white/10 bg-white/60 dark:bg-[#0b1220]/30"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-medium">{{ row.name }}</div>
+              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+            </div>
+            <n-space size="small">
+              <n-button size="small" @click="openSmtpEdit(row.name)">{{ t('common.edit') }}</n-button>
+              <n-popconfirm
+                :positive-text="t('common.delete')"
+                :negative-text="t('common.cancel')"
+                @positive-click="removeSmtp(row.name)"
+              >
+                <template #trigger>
+                  <n-button size="small" type="error" tertiary>{{ t('common.delete') }}</n-button>
+                </template>
+                {{ t('settings.smtp.deleteConfirm') }}
+              </n-popconfirm>
+            </n-space>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="overflow-x-auto">
         <n-data-table :loading="secrets.loadingSmtp" :columns="smtpColumns" :data="secrets.smtp" />
       </div>
     </n-card>
 
-    <n-modal v-model:show="editorOpen" preset="card" :title="t('settings.webdav.editorTitle')">
+    <n-modal v-model:show="editorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.webdav.editorTitle')">
       <div class="space-y-4">
         <n-form label-placement="top">
           <n-form-item :label="t('settings.webdav.fields.name')">
@@ -491,7 +596,7 @@ onMounted(refresh)
       </div>
     </n-modal>
 
-    <n-modal v-model:show="wecomEditorOpen" preset="card" :title="t('settings.wecom.editorTitle')">
+    <n-modal v-model:show="wecomEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.wecom.editorTitle')">
       <div class="space-y-4">
         <n-form label-placement="top">
           <n-form-item :label="t('settings.wecom.fields.name')">
@@ -509,7 +614,7 @@ onMounted(refresh)
       </div>
     </n-modal>
 
-    <n-modal v-model:show="smtpEditorOpen" preset="card" :title="t('settings.smtp.editorTitle')">
+    <n-modal v-model:show="smtpEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('settings.smtp.editorTitle')">
       <div class="space-y-4">
         <n-form label-placement="top">
           <n-form-item :label="t('settings.smtp.fields.name')">

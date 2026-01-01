@@ -20,12 +20,15 @@ import { useI18n } from 'vue-i18n'
 import { useAgentsStore, type AgentListItem, type EnrollmentToken } from '@/stores/agents'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import { MODAL_WIDTH } from '@/lib/modal'
+import { useMediaQuery } from '@/lib/media'
 
 const { t } = useI18n()
 const message = useMessage()
 
 const ui = useUiStore()
 const agents = useAgentsStore()
+const isDesktop = useMediaQuery('(min-width: 768px)')
 
 const tokenModalOpen = ref<boolean>(false)
 const tokenCreating = ref<boolean>(false)
@@ -221,13 +224,88 @@ onMounted(refresh)
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
 
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10">
-      <div class="overflow-x-auto">
-        <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
-      </div>
-    </n-card>
+    <div v-if="!isDesktop" class="space-y-3">
+      <n-card
+        v-if="!agents.loading && agents.items.length === 0"
+        class="shadow-sm border border-black/5 dark:border-white/10"
+      >
+        <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
+      </n-card>
 
-    <n-modal v-model:show="tokenModalOpen" preset="card" :title="t('agents.tokenModal.title')">
+      <n-card
+        v-for="agent in agents.items"
+        :key="agent.id"
+        size="small"
+        class="shadow-sm border border-black/5 dark:border-white/10"
+      >
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
+            <div>
+              <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+              <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+              <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+            </div>
+          </div>
+        </template>
+
+        <div class="text-sm space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <div class="opacity-70">{{ t('agents.columns.id') }}</div>
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
+              <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <div class="opacity-70">{{ t('agents.columns.lastSeen') }}</div>
+            <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex flex-wrap justify-end gap-2">
+            <n-popconfirm
+              :positive-text="t('agents.actions.rotateKey')"
+              :negative-text="t('common.cancel')"
+              :disabled="agent.revoked"
+              @positive-click="rotateAgentKey(agent.id)"
+            >
+              <template #trigger>
+                <n-button size="small" type="warning" tertiary :loading="rotateRotating" :disabled="agent.revoked">
+                  {{ t('agents.actions.rotateKey') }}
+                </n-button>
+              </template>
+              {{ t('agents.rotateConfirm') }}
+            </n-popconfirm>
+
+            <n-popconfirm
+              :positive-text="t('agents.actions.revoke')"
+              :negative-text="t('common.cancel')"
+              :disabled="agent.revoked"
+              @positive-click="revokeAgent(agent.id)"
+            >
+              <template #trigger>
+                <n-button size="small" type="error" tertiary :disabled="agent.revoked">
+                  {{ t('agents.actions.revoke') }}
+                </n-button>
+              </template>
+              {{ t('agents.revokeConfirm') }}
+            </n-popconfirm>
+          </div>
+        </template>
+      </n-card>
+    </div>
+
+    <div v-else>
+      <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+        <div class="overflow-x-auto">
+          <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
+        </div>
+      </n-card>
+    </div>
+
+    <n-modal v-model:show="tokenModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.tokenModal.title')">
       <div class="space-y-4">
         <n-form label-placement="top">
           <n-form-item :label="t('agents.tokenModal.ttl')">
@@ -264,7 +342,7 @@ onMounted(refresh)
       </div>
     </n-modal>
 
-    <n-modal v-model:show="rotateModalOpen" preset="card" :title="t('agents.rotateModal.title')">
+    <n-modal v-model:show="rotateModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.rotateModal.title')">
       <div class="space-y-4">
         <div class="text-sm opacity-70">{{ t('agents.rotateModal.help') }}</div>
 
