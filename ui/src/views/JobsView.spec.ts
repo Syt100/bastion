@@ -119,11 +119,28 @@ class MockWebSocket {
   }
 }
 
+function stubMatchMedia(matches: boolean): void {
+  vi.stubGlobal(
+    'matchMedia',
+    ((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia,
+  )
+}
+
 describe('JobsView run events', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
+    stubMatchMedia(true)
   })
 
   it('dedupes websocket events by seq and autoscrolls', async () => {
@@ -169,5 +186,26 @@ describe('JobsView run events', () => {
     expect(scroll.scrollTop).toBe(123)
 
     document.body.removeChild(scroll)
+  })
+})
+
+describe('JobsView responsive lists', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    stubMatchMedia(true)
+  })
+
+  it('shows desktop table when viewport is >= md', () => {
+    stubMatchMedia(true)
+    const wrapper = mount(JobsView)
+    expect(wrapper.find('[data-testid=\"jobs-table\"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid=\"jobs-cards\"]').exists()).toBe(false)
+  })
+
+  it('shows mobile cards when viewport is < md', () => {
+    stubMatchMedia(false)
+    const wrapper = mount(JobsView)
+    expect(wrapper.find('[data-testid=\"jobs-cards\"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid=\"jobs-table\"]').exists()).toBe(false)
   })
 })
