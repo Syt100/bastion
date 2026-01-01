@@ -6,6 +6,8 @@ use cron::Schedule;
 use sqlx::Row;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
+use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::agent_manager::AgentManager;
@@ -37,21 +39,35 @@ pub fn spawn(
     run_retention_days: i64,
     incomplete_cleanup_days: i64,
     run_events_bus: Arc<RunEventsBus>,
+    run_queue_notify: Arc<Notify>,
+    shutdown: CancellationToken,
 ) {
-    tokio::spawn(run_cron_loop(db.clone(), run_events_bus.clone()));
+    tokio::spawn(run_cron_loop(
+        db.clone(),
+        run_events_bus.clone(),
+        run_queue_notify.clone(),
+        shutdown.clone(),
+    ));
     tokio::spawn(run_worker_loop(
         db.clone(),
         data_dir,
         secrets.clone(),
         agent_manager,
         run_events_bus.clone(),
+        run_queue_notify.clone(),
+        shutdown.clone(),
     ));
-    tokio::spawn(run_retention_loop(db.clone(), run_retention_days));
+    tokio::spawn(run_retention_loop(
+        db.clone(),
+        run_retention_days,
+        shutdown.clone(),
+    ));
     if incomplete_cleanup_days > 0 {
         tokio::spawn(run_incomplete_cleanup_loop(
             db.clone(),
             secrets,
             incomplete_cleanup_days,
+            shutdown,
         ));
     }
 }
@@ -87,6 +103,7 @@ fn cron_matches_minute(expr: &str, minute_start: DateTime<Utc>) -> Result<bool, 
 async fn enqueue_run(
     db: &SqlitePool,
     run_events_bus: &RunEventsBus,
+    run_queue_notify: &Notify,
     job: &jobs_repo::Job,
     source: &str,
 ) -> anyhow::Result<()> {
@@ -118,13 +135,26 @@ async fn enqueue_run(
     )
     .await?;
 
+    if status == RunStatus::Queued {
+        run_queue_notify.notify_one();
+    }
+
     Ok(())
 }
 
-async fn run_cron_loop(db: SqlitePool, run_events_bus: Arc<RunEventsBus>) {
+async fn run_cron_loop(
+    db: SqlitePool,
+    run_events_bus: Arc<RunEventsBus>,
+    run_queue_notify: Arc<Notify>,
+    shutdown: CancellationToken,
+) {
     let mut last_minute = OffsetDateTime::now_utc().unix_timestamp() / 60 - 1;
 
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let minute = now / 60;
         if minute != last_minute {
@@ -156,8 +186,14 @@ async fn run_cron_loop(db: SqlitePool, run_events_bus: Arc<RunEventsBus>) {
                 match cron_matches_minute(schedule, minute_start) {
                     Ok(true) => {
                         debug!(job_id = %job.id, "cron due; enqueue run");
-                        if let Err(error) =
-                            enqueue_run(&db, run_events_bus.as_ref(), &job, "schedule").await
+                        if let Err(error) = enqueue_run(
+                            &db,
+                            run_events_bus.as_ref(),
+                            run_queue_notify.as_ref(),
+                            &job,
+                            "schedule",
+                        )
+                        .await
                         {
                             warn!(job_id = %job.id, error = %error, "failed to enqueue scheduled run");
                         }
@@ -170,7 +206,10 @@ async fn run_cron_loop(db: SqlitePool, run_events_bus: Arc<RunEventsBus>) {
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+        }
     }
 }
 
@@ -180,19 +219,33 @@ async fn run_worker_loop(
     secrets: Arc<SecretsCrypto>,
     agent_manager: AgentManager,
     run_events_bus: Arc<RunEventsBus>,
+    run_queue_notify: Arc<Notify>,
+    shutdown: CancellationToken,
 ) {
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let run = match runs_repo::claim_next_queued_run(&db).await {
             Ok(v) => v,
             Err(error) => {
                 warn!(error = %error, "failed to claim queued run");
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = run_queue_notify.notified() => {}
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
+                }
                 continue;
             }
         };
 
         let Some(run) = run else {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = run_queue_notify.notified() => {}
+                _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+            }
             continue;
         };
 
@@ -320,6 +373,7 @@ async fn run_worker_loop(
 
                 let _ = runs_repo::requeue_run(&db, &run.id).await;
                 let _ = agent_tasks_repo::delete_task(&db, &run.id).await;
+                run_queue_notify.notify_one();
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
@@ -370,7 +424,10 @@ async fn run_worker_loop(
                     break;
                 }
 
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
+                }
             }
 
             continue;
@@ -920,8 +977,12 @@ async fn store_run_artifacts_to_target(
     }
 }
 
-async fn run_retention_loop(db: SqlitePool, run_retention_days: i64) {
+async fn run_retention_loop(db: SqlitePool, run_retention_days: i64, shutdown: CancellationToken) {
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let cutoff = now.saturating_sub(run_retention_days.saturating_mul(24 * 60 * 60));
 
@@ -936,7 +997,10 @@ async fn run_retention_loop(db: SqlitePool, run_retention_days: i64) {
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+        }
     }
 }
 
@@ -944,6 +1008,7 @@ async fn run_incomplete_cleanup_loop(
     db: SqlitePool,
     secrets: Arc<SecretsCrypto>,
     incomplete_cleanup_days: i64,
+    shutdown: CancellationToken,
 ) {
     let cutoff_seconds = incomplete_cleanup_days.saturating_mul(24 * 60 * 60);
     if cutoff_seconds <= 0 {
@@ -951,6 +1016,10 @@ async fn run_incomplete_cleanup_loop(
     }
 
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let cutoff_started_at = now.saturating_sub(cutoff_seconds);
 
@@ -1041,7 +1110,10 @@ async fn run_incomplete_cleanup_loop(
             );
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+        }
     }
 }
 
@@ -1128,6 +1200,7 @@ mod tests {
     use crate::jobs_repo::{self, OverlapPolicy};
     use crate::run_events_bus::RunEventsBus;
     use crate::runs_repo::{self, RunStatus};
+    use tokio::sync::Notify;
 
     use super::enqueue_run;
 
@@ -1159,7 +1232,8 @@ mod tests {
                 .expect("existing run");
 
         let bus = RunEventsBus::new_with_options(8, 60, 1);
-        enqueue_run(&pool, &bus, &job, "cron")
+        let notify = Notify::new();
+        enqueue_run(&pool, &bus, &notify, &job, "cron")
             .await
             .expect("enqueue");
 
@@ -1199,7 +1273,8 @@ mod tests {
                 .expect("existing run");
 
         let bus = RunEventsBus::new_with_options(8, 60, 1);
-        enqueue_run(&pool, &bus, &job, "cron")
+        let notify = Notify::new();
+        enqueue_run(&pool, &bus, &notify, &job, "cron")
             .await
             .expect("enqueue");
 

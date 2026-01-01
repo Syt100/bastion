@@ -80,6 +80,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         db: pool.clone(),
         secrets,
         agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: run_events_bus.clone(),
     });
 

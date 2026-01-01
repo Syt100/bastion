@@ -1,5 +1,6 @@
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 const LOGIN_THROTTLE_RETENTION_DAYS: i64 = 30;
@@ -11,12 +12,16 @@ pub struct DbPruneStats {
     pub login_throttle_deleted: u64,
 }
 
-pub fn spawn(db: SqlitePool) {
-    tokio::spawn(run_loop(db));
+pub fn spawn(db: SqlitePool, shutdown: CancellationToken) {
+    tokio::spawn(run_loop(db, shutdown));
 }
 
-async fn run_loop(db: SqlitePool) {
+async fn run_loop(db: SqlitePool, shutdown: CancellationToken) {
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let now = OffsetDateTime::now_utc().unix_timestamp();
         match prune_with_now(&db, now).await {
             Ok(stats) => {
@@ -38,7 +43,10 @@ async fn run_loop(db: SqlitePool) {
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+        }
     }
 }
 
