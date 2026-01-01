@@ -26,11 +26,11 @@
 - [x] 4.5 Commit HTTP refactor changes (detailed message)
 
 ## 5. Backend - Scheduler wakeups + graceful shutdown
-- [ ] 5.1 Add run-enqueue wakeups for the worker loop (Notify + timeout fallback)
-- [ ] 5.2 Add cancellation for scheduler/maintenance loops and wire HTTP server shutdown to trigger it
-- [ ] 5.3 Add/adjust tests for shutdown/wakeup behavior where feasible
-- [ ] 5.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] 5.5 Commit scheduler shutdown/wakeup changes (detailed message)
+- [x] 5.1 Add run-enqueue wakeups for the worker loop (Notify + timeout fallback)
+- [x] 5.2 Add cancellation for scheduler/maintenance loops and wire HTTP server shutdown to trigger it
+- [x] 5.3 Add/adjust tests for shutdown/wakeup behavior where feasible
+- [x] 5.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] 5.5 Commit scheduler shutdown/wakeup changes (detailed message)
 
 ## 6. Quality gate
 - [ ] 6.1 Ensure CI/dev workflow includes `fmt`/`clippy`/`test` for backend runtime changes
