@@ -4,12 +4,12 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Backend - WebSocket run events (push model)
-- [ ] 2.1 Implement an in-process run events bus (bounded broadcast + idle pruning)
-- [ ] 2.2 Write a single helper to append run events that also broadcasts after DB insert
-- [ ] 2.3 Update the WS handler to: subscribe first, DB catch-up, live-forward, dedupe by seq, and resync on lag
-- [ ] 2.4 Add/adjust tests for event ordering, reconnect catch-up, and lag resync behavior
-- [ ] 2.5 Run `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] 2.6 Commit WS event optimization changes (detailed message)
+- [x] 2.1 Implement an in-process run events bus (bounded broadcast + idle pruning)
+- [x] 2.2 Write a single helper to append run events that also broadcasts after DB insert
+- [x] 2.3 Update the WS handler to: subscribe first, DB catch-up, live-forward, dedupe by seq, and resync on lag
+- [x] 2.4 Add/adjust tests for event ordering, reconnect catch-up, and lag resync behavior
+- [x] 2.5 Run `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] 2.6 Commit WS event optimization changes (detailed message)
 
 ## 3. Backend - Database maintenance + indexes
 - [ ] 3.1 Add a periodic DB maintenance loop to prune expired sessions/tokens and stale login_throttle entries
