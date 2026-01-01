@@ -18,6 +18,8 @@ mod notifications;
 mod notifications_repo;
 mod operations_repo;
 mod restore;
+mod run_events;
+mod run_events_bus;
 mod run_failure;
 mod runs_repo;
 mod scheduler;
@@ -35,6 +37,7 @@ use tracing::info;
 
 use crate::config::{Cli, Command, KeypackCommand};
 use crate::http::AppState;
+use crate::run_events_bus::RunEventsBus;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -101,6 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
     let master_kid = secrets.active_kid();
     let agent_manager = agent_manager::AgentManager::default();
+    let run_events_bus = Arc::new(RunEventsBus::new());
 
     scheduler::spawn(
         pool.clone(),
@@ -109,14 +113,16 @@ async fn main() -> Result<(), anyhow::Error> {
         agent_manager.clone(),
         config.run_retention_days,
         config.incomplete_cleanup_days,
+        run_events_bus.clone(),
     );
-    notifications::spawn(pool.clone(), secrets.clone());
+    notifications::spawn(pool.clone(), secrets.clone(), run_events_bus.clone());
 
     let app = http::router(AppState {
         config: config.clone(),
         db: pool,
         secrets,
         agent_manager,
+        run_events_bus,
     });
 
     let listener = tokio::net::TcpListener::bind(config.bind).await?;

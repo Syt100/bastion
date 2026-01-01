@@ -7,7 +7,8 @@ use time::format_description::well_known::Rfc3339;
 use tracing::{info, warn};
 
 use crate::notifications_repo;
-use crate::runs_repo;
+use crate::run_events;
+use crate::run_events_bus::RunEventsBus;
 use crate::secrets::SecretsCrypto;
 use crate::secrets_repo;
 use crate::smtp;
@@ -17,11 +18,11 @@ const MAX_ATTEMPTS: i64 = 10;
 const BACKOFF_BASE_SECONDS: i64 = 30;
 const BACKOFF_MAX_SECONDS: i64 = 60 * 60;
 
-pub fn spawn(db: SqlitePool, secrets: Arc<SecretsCrypto>) {
-    tokio::spawn(run_loop(db, secrets));
+pub fn spawn(db: SqlitePool, secrets: Arc<SecretsCrypto>, run_events_bus: Arc<RunEventsBus>) {
+    tokio::spawn(run_loop(db, secrets, run_events_bus));
 }
 
-async fn run_loop(db: SqlitePool, secrets: Arc<SecretsCrypto>) {
+async fn run_loop(db: SqlitePool, secrets: Arc<SecretsCrypto>, run_events_bus: Arc<RunEventsBus>) {
     loop {
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let next = match notifications_repo::claim_next_due(&db, now).await {
@@ -38,7 +39,7 @@ async fn run_loop(db: SqlitePool, secrets: Arc<SecretsCrypto>) {
             continue;
         };
 
-        match send_one(&db, &secrets, &notification).await {
+        match send_one(&db, &secrets, &run_events_bus, &notification).await {
             Ok(()) => {
                 if let Err(error) = notifications_repo::mark_sent(&db, &notification.id, now).await
                 {
@@ -73,8 +74,9 @@ async fn run_loop(db: SqlitePool, secrets: Arc<SecretsCrypto>) {
                     .await;
                 }
 
-                let _ = runs_repo::append_run_event(
+                let _ = run_events::append_and_broadcast(
                     &db,
+                    &run_events_bus,
                     &notification.run_id,
                     "warn",
                     "notify_failed",
@@ -102,6 +104,7 @@ fn backoff_seconds(attempts: i64) -> i64 {
 async fn send_one(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    run_events_bus: &RunEventsBus,
     notification: &notifications_repo::NotificationRow,
 ) -> Result<(), anyhow::Error> {
     match notification.channel.as_str() {
@@ -121,8 +124,9 @@ async fn send_one(
             let content = build_wecom_markdown(db, &notification.run_id).await?;
             wecom::send_markdown(&payload.webhook_url, &content).await?;
 
-            let _ = runs_repo::append_run_event(
+            let _ = run_events::append_and_broadcast(
                 db,
+                run_events_bus,
                 &notification.run_id,
                 "info",
                 "notify_sent",
@@ -154,8 +158,9 @@ async fn send_one(
             let (subject, body) = build_email_text(db, &notification.run_id).await?;
             smtp::send_plain_text(&payload, &subject, &body).await?;
 
-            let _ = runs_repo::append_run_event(
+            let _ = run_events::append_and_broadcast(
                 db,
+                run_events_bus,
                 &notification.run_id,
                 "info",
                 "notify_sent",

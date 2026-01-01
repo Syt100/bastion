@@ -187,11 +187,8 @@ pub async fn append_run_event(
     kind: &str,
     message: &str,
     fields: Option<serde_json::Value>,
-) -> Result<i64, anyhow::Error> {
-    let fields_json = match fields {
-        Some(v) => Some(serde_json::to_string(&v)?),
-        None => None,
-    };
+) -> Result<RunEvent, anyhow::Error> {
+    let fields_json = fields.as_ref().map(serde_json::to_string).transpose()?;
     let ts = OffsetDateTime::now_utc().unix_timestamp();
 
     let mut tx = db.begin().await?;
@@ -221,7 +218,15 @@ pub async fn append_run_event(
     .await?;
 
     tx.commit().await?;
-    Ok(seq)
+    Ok(RunEvent {
+        run_id: run_id.to_string(),
+        seq,
+        ts,
+        level: level.to_string(),
+        kind: kind.to_string(),
+        message: message.to_string(),
+        fields,
+    })
 }
 
 pub async fn list_run_events(

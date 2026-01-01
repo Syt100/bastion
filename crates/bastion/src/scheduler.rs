@@ -19,6 +19,8 @@ use crate::backup_encryption;
 use crate::job_spec;
 use crate::jobs_repo::{self, OverlapPolicy};
 use crate::notifications_repo;
+use crate::run_events;
+use crate::run_events_bus::RunEventsBus;
 use crate::run_failure::RunFailedWithSummary;
 use crate::runs_repo::{self, RunStatus};
 use crate::secrets::SecretsCrypto;
@@ -34,13 +36,15 @@ pub fn spawn(
     agent_manager: AgentManager,
     run_retention_days: i64,
     incomplete_cleanup_days: i64,
+    run_events_bus: Arc<RunEventsBus>,
 ) {
-    tokio::spawn(run_cron_loop(db.clone()));
+    tokio::spawn(run_cron_loop(db.clone(), run_events_bus.clone()));
     tokio::spawn(run_worker_loop(
         db.clone(),
         data_dir,
         secrets.clone(),
         agent_manager,
+        run_events_bus.clone(),
     ));
     tokio::spawn(run_retention_loop(db.clone(), run_retention_days));
     if incomplete_cleanup_days > 0 {
@@ -80,7 +84,12 @@ fn cron_matches_minute(expr: &str, minute_start: DateTime<Utc>) -> Result<bool, 
     Ok(next == minute_start)
 }
 
-async fn enqueue_run(db: &SqlitePool, job: &jobs_repo::Job, source: &str) -> anyhow::Result<()> {
+async fn enqueue_run(
+    db: &SqlitePool,
+    run_events_bus: &RunEventsBus,
+    job: &jobs_repo::Job,
+    source: &str,
+) -> anyhow::Result<()> {
     let running_count = sqlx::query(
         "SELECT COUNT(1) AS n FROM runs WHERE job_id = ? AND status IN ('running', 'queued')",
     )
@@ -98,8 +107,9 @@ async fn enqueue_run(db: &SqlitePool, job: &jobs_repo::Job, source: &str) -> any
         };
 
     let run = runs_repo::create_run(db, &job.id, status, now, ended_at, None, error).await?;
-    runs_repo::append_run_event(
+    run_events::append_and_broadcast(
         db,
+        run_events_bus,
         &run.id,
         "info",
         status.as_str(),
@@ -111,7 +121,7 @@ async fn enqueue_run(db: &SqlitePool, job: &jobs_repo::Job, source: &str) -> any
     Ok(())
 }
 
-async fn run_cron_loop(db: SqlitePool) {
+async fn run_cron_loop(db: SqlitePool, run_events_bus: Arc<RunEventsBus>) {
     let mut last_minute = OffsetDateTime::now_utc().unix_timestamp() / 60 - 1;
 
     loop {
@@ -146,7 +156,9 @@ async fn run_cron_loop(db: SqlitePool) {
                 match cron_matches_minute(schedule, minute_start) {
                     Ok(true) => {
                         debug!(job_id = %job.id, "cron due; enqueue run");
-                        if let Err(error) = enqueue_run(&db, &job, "schedule").await {
+                        if let Err(error) =
+                            enqueue_run(&db, run_events_bus.as_ref(), &job, "schedule").await
+                        {
                             warn!(job_id = %job.id, error = %error, "failed to enqueue scheduled run");
                         }
                     }
@@ -167,6 +179,7 @@ async fn run_worker_loop(
     data_dir: std::path::PathBuf,
     secrets: Arc<SecretsCrypto>,
     agent_manager: AgentManager,
+    run_events_bus: Arc<RunEventsBus>,
 ) {
     loop {
         let run = match runs_repo::claim_next_queued_run(&db).await {
@@ -185,8 +198,16 @@ async fn run_worker_loop(
 
         info!(run_id = %run.id, job_id = %run.job_id, "run started");
 
-        if let Err(error) =
-            runs_repo::append_run_event(&db, &run.id, "info", "start", "start", None).await
+        if let Err(error) = run_events::append_and_broadcast(
+            &db,
+            &run_events_bus,
+            &run.id,
+            "info",
+            "start",
+            "start",
+            None,
+        )
+        .await
         {
             warn!(run_id = %run.id, error = %error, "failed to write start event");
         }
@@ -222,8 +243,9 @@ async fn run_worker_loop(
             Ok(v) => v,
             Err(error) => {
                 let message = format!("invalid spec: {error}");
-                let _ = runs_repo::append_run_event(
+                let _ = run_events::append_and_broadcast(
                     &db,
+                    &run_events_bus,
                     &run.id,
                     "error",
                     "invalid_spec",
@@ -245,9 +267,16 @@ async fn run_worker_loop(
 
         if let Err(error) = job_spec::validate(&spec) {
             let message = format!("invalid spec: {error}");
-            let _ =
-                runs_repo::append_run_event(&db, &run.id, "error", "invalid_spec", &message, None)
-                    .await;
+            let _ = run_events::append_and_broadcast(
+                &db,
+                &run_events_bus,
+                &run.id,
+                "error",
+                "invalid_spec",
+                &message,
+                None,
+            )
+            .await;
             let _ = runs_repo::complete_run(
                 &db,
                 &run.id,
@@ -267,6 +296,7 @@ async fn run_worker_loop(
                 &db,
                 &secrets,
                 &agent_manager,
+                run_events_bus.as_ref(),
                 &job,
                 &run.id,
                 started_at,
@@ -277,8 +307,9 @@ async fn run_worker_loop(
             {
                 warn!(run_id = %run.id, agent_id = %agent_id, error = %error, "dispatch failed");
                 let message = format!("dispatch failed: {error}");
-                let _ = runs_repo::append_run_event(
+                let _ = run_events::append_and_broadcast(
                     &db,
+                    &run_events_bus,
                     &run.id,
                     "error",
                     "dispatch_failed",
@@ -318,8 +349,9 @@ async fn run_worker_loop(
 
                 if OffsetDateTime::now_utc() >= deadline {
                     warn!(run_id = %run.id, agent_id = %agent_id, "agent run timed out");
-                    let _ = runs_repo::append_run_event(
+                    let _ = run_events::append_and_broadcast(
                         &db,
+                        &run_events_bus,
                         &run.id,
                         "error",
                         "timeout",
@@ -344,7 +376,18 @@ async fn run_worker_loop(
             continue;
         }
 
-        match execute_run(&db, &secrets, &data_dir, &job, &run.id, started_at, spec).await {
+        match execute_run(
+            &db,
+            &secrets,
+            run_events_bus.as_ref(),
+            &data_dir,
+            &job,
+            &run.id,
+            started_at,
+            spec,
+        )
+        .await
+        {
             Ok(summary) => {
                 if let Err(error) =
                     runs_repo::complete_run(&db, &run.id, RunStatus::Success, Some(summary), None)
@@ -353,9 +396,16 @@ async fn run_worker_loop(
                     warn!(run_id = %run.id, error = %error, "failed to complete run");
                     continue;
                 }
-                let _ =
-                    runs_repo::append_run_event(&db, &run.id, "info", "complete", "complete", None)
-                        .await;
+                let _ = run_events::append_and_broadcast(
+                    &db,
+                    &run_events_bus,
+                    &run.id,
+                    "info",
+                    "complete",
+                    "complete",
+                    None,
+                )
+                .await;
                 if let Err(error) =
                     notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
                 {
@@ -369,9 +419,16 @@ async fn run_worker_loop(
             Err(error) => {
                 warn!(run_id = %run.id, error = %error, "run failed");
                 let message = format!("failed: {error}");
-                let _ =
-                    runs_repo::append_run_event(&db, &run.id, "error", "failed", &message, None)
-                        .await;
+                let _ = run_events::append_and_broadcast(
+                    &db,
+                    &run_events_bus,
+                    &run.id,
+                    "error",
+                    "failed",
+                    &message,
+                    None,
+                )
+                .await;
 
                 let soft = error.downcast_ref::<RunFailedWithSummary>();
                 let summary = soft.map(|e| e.summary.clone());
@@ -402,6 +459,7 @@ async fn dispatch_run_to_agent(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
     agent_manager: &AgentManager,
+    run_events_bus: &RunEventsBus,
     job: &jobs_repo::Job,
     run_id: &str,
     started_at: OffsetDateTime,
@@ -412,8 +470,9 @@ async fn dispatch_run_to_agent(
         anyhow::bail!("agent not connected");
     }
 
-    runs_repo::append_run_event(
+    run_events::append_and_broadcast(
         db,
+        run_events_bus,
         run_id,
         "info",
         "dispatch",
@@ -540,6 +599,7 @@ async fn resolve_target_for_agent(
 async fn execute_run(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    run_events_bus: &RunEventsBus,
     data_dir: &std::path::Path,
     job: &jobs_repo::Job,
     run_id: &str,
@@ -553,7 +613,16 @@ async fn execute_run(
             target,
             ..
         } => {
-            runs_repo::append_run_event(db, run_id, "info", "packaging", "packaging", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "packaging",
+                "packaging",
+                None,
+            )
+            .await?;
 
             let data_dir = data_dir.to_path_buf();
             let job_id = job.id.clone();
@@ -587,8 +656,9 @@ async fn execute_run(
                     "sample_warnings": &artifacts.issues.sample_warnings,
                     "sample_errors": &artifacts.issues.sample_errors,
                 });
-                let _ = runs_repo::append_run_event(
+                let _ = run_events::append_and_broadcast(
                     db,
+                    run_events_bus,
                     run_id,
                     level,
                     "fs_issues",
@@ -601,7 +671,16 @@ async fn execute_run(
             let issues = artifacts.issues;
             let artifacts = artifacts.artifacts;
 
-            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "upload",
+                "upload",
+                None,
+            )
+            .await?;
             let target_summary =
                 store_run_artifacts_to_target(db, secrets, &job.id, run_id, &target, &artifacts)
                     .await?;
@@ -637,7 +716,16 @@ async fn execute_run(
             target,
             ..
         } => {
-            runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "snapshot",
+                "snapshot",
+                None,
+            )
+            .await?;
 
             let sqlite_path = source.path.clone();
             let data_dir = data_dir.to_path_buf();
@@ -665,8 +753,9 @@ async fn execute_run(
                     "truncated": check.truncated,
                     "lines": check.lines,
                 });
-                let _ = runs_repo::append_run_event(
+                let _ = run_events::append_and_broadcast(
                     db,
+                    run_events_bus,
                     run_id,
                     if check.ok { "info" } else { "error" },
                     "integrity_check",
@@ -681,7 +770,16 @@ async fn execute_run(
                 }
             }
 
-            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "upload",
+                "upload",
+                None,
+            )
+            .await?;
             let target_summary = store_run_artifacts_to_target(
                 db,
                 secrets,
@@ -716,7 +814,16 @@ async fn execute_run(
             target,
             ..
         } => {
-            runs_repo::append_run_event(db, run_id, "info", "snapshot", "snapshot", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "snapshot",
+                "snapshot",
+                None,
+            )
+            .await?;
 
             let data_dir = data_dir.to_path_buf();
             let job_id = job.id.clone();
@@ -738,7 +845,16 @@ async fn execute_run(
             })
             .await??;
 
-            runs_repo::append_run_event(db, run_id, "info", "upload", "upload", None).await?;
+            run_events::append_and_broadcast(
+                db,
+                run_events_bus,
+                run_id,
+                "info",
+                "upload",
+                "upload",
+                None,
+            )
+            .await?;
             let target_summary =
                 store_run_artifacts_to_target(db, secrets, &job.id, run_id, &target, &artifacts)
                     .await?;
@@ -1010,6 +1126,7 @@ mod tests {
 
     use crate::db;
     use crate::jobs_repo::{self, OverlapPolicy};
+    use crate::run_events_bus::RunEventsBus;
     use crate::runs_repo::{self, RunStatus};
 
     use super::enqueue_run;
@@ -1041,7 +1158,8 @@ mod tests {
                 .await
                 .expect("existing run");
 
-        enqueue_run(&pool, &job, "cron").await.expect("enqueue");
+        let bus = RunEventsBus::new_with_options(8, 60, 1);
+        enqueue_run(&pool, &bus, &job, "cron").await.expect("enqueue");
 
         let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
             .await
@@ -1078,7 +1196,8 @@ mod tests {
                 .await
                 .expect("existing run");
 
-        enqueue_run(&pool, &job, "cron").await.expect("enqueue");
+        let bus = RunEventsBus::new_with_options(8, 60, 1);
+        enqueue_run(&pool, &bus, &job, "cron").await.expect("enqueue");
 
         let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
             .await
