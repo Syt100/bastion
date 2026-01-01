@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import {
+  NAlert,
   NButton,
   NCard,
   NDataTable,
@@ -25,6 +26,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
+import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -36,14 +38,28 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
 const editorSaving = ref<boolean>(false)
+const editorError = ref<string | null>(null)
+const editorFieldErrors = reactive<{ name?: string; username?: string }>({})
 
 const wecomEditorOpen = ref<boolean>(false)
 const wecomEditorLoading = ref<boolean>(false)
 const wecomEditorSaving = ref<boolean>(false)
+const wecomEditorError = ref<string | null>(null)
+const wecomFieldErrors = reactive<{ name?: string; webhookUrl?: string }>({})
 
 const smtpEditorOpen = ref<boolean>(false)
 const smtpEditorLoading = ref<boolean>(false)
 const smtpEditorSaving = ref<boolean>(false)
+const smtpEditorError = ref<string | null>(null)
+const smtpFieldErrors = reactive<{
+  name?: string
+  host?: string
+  port?: string
+  username?: string
+  password?: string
+  from?: string
+  toText?: string
+}>({})
 
 const form = reactive<{ name: string; username: string; password: string }>({
   name: '',
@@ -81,20 +97,20 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 async function refresh(): Promise<void> {
   try {
     await secrets.refreshWebdav()
-  } catch {
-    message.error(t('errors.fetchWebdavSecretsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
   }
 
   try {
     await secrets.refreshWecomBots()
-  } catch {
-    message.error(t('errors.fetchWecomBotsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWecomBotsFailed'), error, t))
   }
 
   try {
     await secrets.refreshSmtp()
-  } catch {
-    message.error(t('errors.fetchSmtpSecretsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchSmtpSecretsFailed'), error, t))
   }
 }
 
@@ -102,12 +118,18 @@ function openCreate(): void {
   form.name = ''
   form.username = ''
   form.password = ''
+  editorError.value = null
+  editorFieldErrors.name = undefined
+  editorFieldErrors.username = undefined
   editorOpen.value = true
 }
 
 function openWecomCreate(): void {
   wecomForm.name = ''
   wecomForm.webhookUrl = ''
+  wecomEditorError.value = null
+  wecomFieldErrors.name = undefined
+  wecomFieldErrors.webhookUrl = undefined
   wecomEditorOpen.value = true
 }
 
@@ -120,19 +142,30 @@ function openSmtpCreate(): void {
   smtpForm.password = ''
   smtpForm.from = ''
   smtpForm.toText = ''
+  smtpEditorError.value = null
+  smtpFieldErrors.name = undefined
+  smtpFieldErrors.host = undefined
+  smtpFieldErrors.port = undefined
+  smtpFieldErrors.username = undefined
+  smtpFieldErrors.password = undefined
+  smtpFieldErrors.from = undefined
+  smtpFieldErrors.toText = undefined
   smtpEditorOpen.value = true
 }
 
 async function openEdit(name: string): Promise<void> {
   editorOpen.value = true
   editorLoading.value = true
+  editorError.value = null
+  editorFieldErrors.name = undefined
+  editorFieldErrors.username = undefined
   try {
     const secret = await secrets.getWebdav(name)
     form.name = secret.name
     form.username = secret.username
     form.password = secret.password
-  } catch {
-    message.error(t('errors.fetchWebdavSecretFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWebdavSecretFailed'), error, t))
     editorOpen.value = false
   } finally {
     editorLoading.value = false
@@ -142,12 +175,15 @@ async function openEdit(name: string): Promise<void> {
 async function openWecomEdit(name: string): Promise<void> {
   wecomEditorOpen.value = true
   wecomEditorLoading.value = true
+  wecomEditorError.value = null
+  wecomFieldErrors.name = undefined
+  wecomFieldErrors.webhookUrl = undefined
   try {
     const secret = await secrets.getWecomBot(name)
     wecomForm.name = secret.name
     wecomForm.webhookUrl = secret.webhook_url
-  } catch {
-    message.error(t('errors.fetchWecomBotFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWecomBotFailed'), error, t))
     wecomEditorOpen.value = false
   } finally {
     wecomEditorLoading.value = false
@@ -157,6 +193,14 @@ async function openWecomEdit(name: string): Promise<void> {
 async function openSmtpEdit(name: string): Promise<void> {
   smtpEditorOpen.value = true
   smtpEditorLoading.value = true
+  smtpEditorError.value = null
+  smtpFieldErrors.name = undefined
+  smtpFieldErrors.host = undefined
+  smtpFieldErrors.port = undefined
+  smtpFieldErrors.username = undefined
+  smtpFieldErrors.password = undefined
+  smtpFieldErrors.from = undefined
+  smtpFieldErrors.toText = undefined
   try {
     const secret = await secrets.getSmtp(name)
     smtpForm.name = secret.name
@@ -167,8 +211,8 @@ async function openSmtpEdit(name: string): Promise<void> {
     smtpForm.password = secret.password
     smtpForm.from = secret.from
     smtpForm.toText = (secret.to || []).join('\n')
-  } catch {
-    message.error(t('errors.fetchSmtpSecretFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchSmtpSecretFailed'), error, t))
     smtpEditorOpen.value = false
   } finally {
     smtpEditorLoading.value = false
@@ -179,18 +223,26 @@ async function save(): Promise<void> {
   const name = form.name.trim()
   const username = form.username.trim()
   if (!name || !username) {
-    message.error(t('errors.secretNameOrUsernameRequired'))
+    editorError.value = t('errors.secretNameOrUsernameRequired')
+    editorFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
+    editorFieldErrors.username = !username ? t('apiErrors.invalid_username') : undefined
     return
   }
 
+  editorError.value = null
+  editorFieldErrors.name = undefined
+  editorFieldErrors.username = undefined
   editorSaving.value = true
   try {
     await secrets.upsertWebdav(name, username, form.password)
     message.success(t('messages.webdavSecretSaved'))
     editorOpen.value = false
     await refresh()
-  } catch {
-    message.error(t('errors.saveWebdavSecretFailed'))
+  } catch (error) {
+    const info = toApiErrorInfo(error, t)
+    editorError.value = info.message || t('errors.saveWebdavSecretFailed')
+    if (info.field === 'name') editorFieldErrors.name = info.message
+    if (info.field === 'username') editorFieldErrors.username = info.message
   } finally {
     editorSaving.value = false
   }
@@ -200,18 +252,26 @@ async function saveWecom(): Promise<void> {
   const name = wecomForm.name.trim()
   const webhookUrl = wecomForm.webhookUrl.trim()
   if (!name || !webhookUrl) {
-    message.error(t('errors.wecomNameOrWebhookRequired'))
+    wecomEditorError.value = t('errors.wecomNameOrWebhookRequired')
+    wecomFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
+    wecomFieldErrors.webhookUrl = !webhookUrl ? t('apiErrors.invalid_webhook_url') : undefined
     return
   }
 
+  wecomEditorError.value = null
+  wecomFieldErrors.name = undefined
+  wecomFieldErrors.webhookUrl = undefined
   wecomEditorSaving.value = true
   try {
     await secrets.upsertWecomBot(name, webhookUrl)
     message.success(t('messages.wecomBotSaved'))
     wecomEditorOpen.value = false
     await refresh()
-  } catch {
-    message.error(t('errors.saveWecomBotFailed'))
+  } catch (error) {
+    const info = toApiErrorInfo(error, t)
+    wecomEditorError.value = info.message || t('errors.saveWecomBotFailed')
+    if (info.field === 'name') wecomFieldErrors.name = info.message
+    if (info.field === 'webhook_url') wecomFieldErrors.webhookUrl = info.message
   } finally {
     wecomEditorSaving.value = false
   }
@@ -233,10 +293,23 @@ async function saveSmtp(): Promise<void> {
   const port = Number(smtpForm.port)
 
   if (!name || !host || !from || to.length === 0 || !Number.isFinite(port) || port <= 0) {
-    message.error(t('errors.smtpRequiredFields'))
+    smtpEditorError.value = t('errors.smtpRequiredFields')
+    smtpFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
+    smtpFieldErrors.host = !host ? t('apiErrors.invalid_host') : undefined
+    smtpFieldErrors.port = !Number.isFinite(port) || port <= 0 ? t('apiErrors.invalid_port') : undefined
+    smtpFieldErrors.from = !from ? t('apiErrors.invalid_from') : undefined
+    smtpFieldErrors.toText = to.length === 0 ? t('apiErrors.invalid_to') : undefined
     return
   }
 
+  smtpEditorError.value = null
+  smtpFieldErrors.name = undefined
+  smtpFieldErrors.host = undefined
+  smtpFieldErrors.port = undefined
+  smtpFieldErrors.username = undefined
+  smtpFieldErrors.password = undefined
+  smtpFieldErrors.from = undefined
+  smtpFieldErrors.toText = undefined
   smtpEditorSaving.value = true
   try {
     await secrets.upsertSmtp(name, {
@@ -251,8 +324,16 @@ async function saveSmtp(): Promise<void> {
     message.success(t('messages.smtpSecretSaved'))
     smtpEditorOpen.value = false
     await refresh()
-  } catch {
-    message.error(t('errors.saveSmtpSecretFailed'))
+  } catch (error) {
+    const info = toApiErrorInfo(error, t)
+    smtpEditorError.value = info.message || t('errors.saveSmtpSecretFailed')
+    if (info.field === 'name') smtpFieldErrors.name = info.message
+    if (info.field === 'host') smtpFieldErrors.host = info.message
+    if (info.field === 'port') smtpFieldErrors.port = info.message
+    if (info.field === 'username') smtpFieldErrors.username = info.message
+    if (info.field === 'password') smtpFieldErrors.password = info.message
+    if (info.field === 'from') smtpFieldErrors.from = info.message
+    if (info.field === 'to') smtpFieldErrors.toText = info.message
   } finally {
     smtpEditorSaving.value = false
   }
@@ -263,8 +344,8 @@ async function remove(name: string): Promise<void> {
     await secrets.deleteWebdav(name)
     message.success(t('messages.webdavSecretDeleted'))
     await refresh()
-  } catch {
-    message.error(t('errors.deleteWebdavSecretFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.deleteWebdavSecretFailed'), error, t))
   }
 }
 
@@ -273,8 +354,8 @@ async function removeWecom(name: string): Promise<void> {
     await secrets.deleteWecomBot(name)
     message.success(t('messages.wecomBotDeleted'))
     await refresh()
-  } catch {
-    message.error(t('errors.deleteWecomBotFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.deleteWecomBotFailed'), error, t))
   }
 }
 
@@ -283,8 +364,8 @@ async function removeSmtp(name: string): Promise<void> {
     await secrets.deleteSmtp(name)
     message.success(t('messages.smtpSecretDeleted'))
     await refresh()
-  } catch {
-    message.error(t('errors.deleteSmtpSecretFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.deleteSmtpSecretFailed'), error, t))
   }
 }
 
@@ -569,11 +650,23 @@ onMounted(refresh)
 
     <n-modal v-model:show="editorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.webdav.editorTitle')">
       <div class="space-y-4">
+        <n-alert v-if="editorError" type="error" :bordered="false">
+          {{ editorError }}
+        </n-alert>
+
         <n-form label-placement="top">
-          <n-form-item :label="t('settings.webdav.fields.name')">
+          <n-form-item
+            :label="t('settings.webdav.fields.name')"
+            :validation-status="editorFieldErrors.name ? 'error' : undefined"
+            :feedback="editorFieldErrors.name"
+          >
             <n-input v-model:value="form.name" :disabled="editorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.webdav.fields.username')">
+          <n-form-item
+            :label="t('settings.webdav.fields.username')"
+            :validation-status="editorFieldErrors.username ? 'error' : undefined"
+            :feedback="editorFieldErrors.username"
+          >
             <n-input v-model:value="form.username" :disabled="editorLoading" autocomplete="username" />
           </n-form-item>
           <n-form-item :label="t('settings.webdav.fields.password')">
@@ -590,11 +683,23 @@ onMounted(refresh)
 
     <n-modal v-model:show="wecomEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.wecom.editorTitle')">
       <div class="space-y-4">
+        <n-alert v-if="wecomEditorError" type="error" :bordered="false">
+          {{ wecomEditorError }}
+        </n-alert>
+
         <n-form label-placement="top">
-          <n-form-item :label="t('settings.wecom.fields.name')">
+          <n-form-item
+            :label="t('settings.wecom.fields.name')"
+            :validation-status="wecomFieldErrors.name ? 'error' : undefined"
+            :feedback="wecomFieldErrors.name"
+          >
             <n-input v-model:value="wecomForm.name" :disabled="wecomEditorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.wecom.fields.webhookUrl')">
+          <n-form-item
+            :label="t('settings.wecom.fields.webhookUrl')"
+            :validation-status="wecomFieldErrors.webhookUrl ? 'error' : undefined"
+            :feedback="wecomFieldErrors.webhookUrl"
+          >
             <n-input v-model:value="wecomForm.webhookUrl" :disabled="wecomEditorLoading" />
           </n-form-item>
         </n-form>
@@ -608,29 +713,61 @@ onMounted(refresh)
 
     <n-modal v-model:show="smtpEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('settings.smtp.editorTitle')">
       <div class="space-y-4">
+        <n-alert v-if="smtpEditorError" type="error" :bordered="false">
+          {{ smtpEditorError }}
+        </n-alert>
+
         <n-form label-placement="top">
-          <n-form-item :label="t('settings.smtp.fields.name')">
+          <n-form-item
+            :label="t('settings.smtp.fields.name')"
+            :validation-status="smtpFieldErrors.name ? 'error' : undefined"
+            :feedback="smtpFieldErrors.name"
+          >
             <n-input v-model:value="smtpForm.name" :disabled="smtpEditorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.host')">
+          <n-form-item
+            :label="t('settings.smtp.fields.host')"
+            :validation-status="smtpFieldErrors.host ? 'error' : undefined"
+            :feedback="smtpFieldErrors.host"
+          >
             <n-input v-model:value="smtpForm.host" :disabled="smtpEditorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.port')">
+          <n-form-item
+            :label="t('settings.smtp.fields.port')"
+            :validation-status="smtpFieldErrors.port ? 'error' : undefined"
+            :feedback="smtpFieldErrors.port"
+          >
             <n-input-number v-model:value="smtpForm.port" :disabled="smtpEditorLoading" :min="1" :max="65535" />
           </n-form-item>
           <n-form-item :label="t('settings.smtp.fields.tls')">
             <n-select v-model:value="smtpForm.tls" :options="smtpTlsOptions" :disabled="smtpEditorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.username')">
+          <n-form-item
+            :label="t('settings.smtp.fields.username')"
+            :validation-status="smtpFieldErrors.username ? 'error' : undefined"
+            :feedback="smtpFieldErrors.username"
+          >
             <n-input v-model:value="smtpForm.username" :disabled="smtpEditorLoading" autocomplete="username" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.password')">
+          <n-form-item
+            :label="t('settings.smtp.fields.password')"
+            :validation-status="smtpFieldErrors.password ? 'error' : undefined"
+            :feedback="smtpFieldErrors.password"
+          >
             <n-input v-model:value="smtpForm.password" :disabled="smtpEditorLoading" autocomplete="current-password" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.from')">
+          <n-form-item
+            :label="t('settings.smtp.fields.from')"
+            :validation-status="smtpFieldErrors.from ? 'error' : undefined"
+            :feedback="smtpFieldErrors.from"
+          >
             <n-input v-model:value="smtpForm.from" :disabled="smtpEditorLoading" />
           </n-form-item>
-          <n-form-item :label="t('settings.smtp.fields.to')">
+          <n-form-item
+            :label="t('settings.smtp.fields.to')"
+            :validation-status="smtpFieldErrors.toText ? 'error' : undefined"
+            :feedback="smtpFieldErrors.toText"
+          >
             <n-input v-model:value="smtpForm.toText" type="textarea" :disabled="smtpEditorLoading" />
           </n-form-item>
         </n-form>

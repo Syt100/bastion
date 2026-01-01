@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { apiFetch } from '@/lib/api'
 import { useSystemStore } from '@/stores/system'
 import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 import AuthLayout from '@/components/AuthLayout.vue'
+import { toApiErrorInfo } from '@/lib/errors'
 
 const router = useRouter()
 const message = useMessage()
@@ -18,15 +19,17 @@ const username = ref('admin')
 const password = ref('')
 const password2 = ref('')
 const loading = ref(false)
+const errorText = ref<string | null>(null)
 
 const passwordsMatch = computed(() => password.value === password2.value)
 
 async function onSubmit(): Promise<void> {
   if (!passwordsMatch.value) {
-    message.error(t('errors.passwordsDoNotMatch'))
+    errorText.value = t('errors.passwordsDoNotMatch')
     return
   }
 
+  errorText.value = null
   loading.value = true
   try {
     await apiFetch<void>('/api/setup/initialize', {
@@ -37,8 +40,8 @@ async function onSubmit(): Promise<void> {
     })
     message.success(t('messages.initializedPleaseSignIn'))
     await router.push('/login')
-  } catch {
-    message.error(t('errors.setupFailed'))
+  } catch (error) {
+    errorText.value = toApiErrorInfo(error, t).message || t('errors.setupFailed')
   } finally {
     loading.value = false
   }
@@ -56,6 +59,10 @@ async function onSubmit(): Promise<void> {
       </template>
 
       <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
+
+      <n-alert v-if="errorText" type="error" :bordered="false" class="mb-4">
+        {{ errorText }}
+      </n-alert>
 
       <n-form label-placement="top" @submit.prevent="onSubmit">
         <n-form-item :label="t('auth.username')">

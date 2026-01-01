@@ -36,6 +36,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { LAYOUT } from '@/lib/layout'
+import { formatToastError } from '@/lib/errors'
 
 const router = useRouter()
 const route = useRoute()
@@ -111,8 +112,8 @@ async function onLogout(): Promise<void> {
   try {
     await auth.logout()
     await router.push('/login')
-  } catch {
-    message.error(t('errors.logoutFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.logoutFailed'), error, t))
   }
 }
 </script>

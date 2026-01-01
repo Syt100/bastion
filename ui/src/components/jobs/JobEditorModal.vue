@@ -24,6 +24,7 @@ import { useSecretsStore } from '@/stores/secrets'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { formatToastError } from '@/lib/errors'
 
 type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 type FsHardlinkPolicy = 'copy' | 'keep'
@@ -231,8 +232,8 @@ async function openEdit(jobId: string): Promise<void> {
     form.sqlitePath = typeof source?.path === 'string' ? source.path : ''
     form.sqliteIntegrityCheck = typeof source?.integrity_check === 'boolean' ? source.integrity_check : false
     form.vaultwardenDataDir = typeof source?.data_dir === 'string' ? source.data_dir : ''
-  } catch {
-    message.error(t('errors.fetchJobFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchJobFailed'), error, t))
     show.value = false
   } finally {
     saving.value = false
@@ -731,4 +732,3 @@ defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
     </div>
   </n-modal>
 </template>
-

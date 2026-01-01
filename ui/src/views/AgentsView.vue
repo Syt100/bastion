@@ -25,6 +25,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
+import { formatToastError } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -53,8 +54,8 @@ function shortId(value: string): string {
 async function refresh(): Promise<void> {
   try {
     await agents.refresh()
-  } catch {
-    message.error(t('errors.fetchAgentsFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
   }
 }
 
@@ -73,8 +74,8 @@ async function createToken(): Promise<void> {
       remainingUses: remainingUses.value,
     })
     message.success(t('messages.enrollmentTokenCreated'))
-  } catch {
-    message.error(t('errors.createEnrollmentTokenFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.createEnrollmentTokenFailed'), error, t))
   } finally {
     tokenCreating.value = false
   }
@@ -94,8 +95,8 @@ async function revokeAgent(agentId: string): Promise<void> {
     await agents.revokeAgent(agentId)
     await refresh()
     message.success(t('messages.agentRevoked'))
-  } catch {
-    message.error(t('errors.revokeAgentFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.revokeAgentFailed'), error, t))
   }
 }
 
@@ -105,8 +106,8 @@ async function rotateAgentKey(agentId: string): Promise<void> {
     rotateResult.value = await agents.rotateAgentKey(agentId)
     rotateModalOpen.value = true
     message.success(t('messages.agentKeyRotated'))
-  } catch {
-    message.error(t('errors.rotateAgentKeyFailed'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.rotateAgentKeyFailed'), error, t))
   } finally {
     rotateRotating.value = false
   }
