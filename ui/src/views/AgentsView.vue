@@ -19,6 +19,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useAgentsStore, type AgentListItem, type EnrollmentToken } from '@/stores/agents'
 import { useUiStore } from '@/stores/ui'
+import PageHeader from '@/components/PageHeader.vue'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -214,20 +215,16 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">{{ t('agents.title') }}</h1>
-        <p class="text-sm opacity-70">{{ t('agents.subtitle') }}</p>
-      </div>
-      <n-space>
-        <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
-      </n-space>
-    </div>
+  <div class="space-y-6">
+    <PageHeader :title="t('agents.title')" :subtitle="t('agents.subtitle')">
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
+    </PageHeader>
 
-    <n-card>
-      <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+      <div class="overflow-x-auto">
+        <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
+      </div>
     </n-card>
 
     <n-modal v-model:show="tokenModalOpen" preset="card" :title="t('agents.tokenModal.title')">

@@ -21,6 +21,7 @@ vi.mock('naive-ui', async () => {
   return {
     NButton: stub('NButton'),
     NCard: stub('NCard'),
+    NDropdown: stub('NDropdown'),
     NForm: stub('NForm'),
     NFormItem: stub('NFormItem'),
     NInput: stub('NInput'),
@@ -36,12 +37,26 @@ vi.mock('vue-router', () => ({
   useRouter: () => routerApi,
 }))
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}))
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return {
+    ...actual,
+    useI18n: () => ({ t: (key: string) => key }),
+  }
+})
 
 vi.mock('@/stores/system', () => ({
   useSystemStore: () => ({ insecureHttp: false }),
+}))
+
+const uiApi = {
+  locale: 'zh-CN',
+  darkMode: false,
+  toggleDarkMode: vi.fn(),
+  setLocale: vi.fn(),
+}
+vi.mock('@/stores/ui', () => ({
+  useUiStore: () => uiApi,
 }))
 
 const authApi = {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
+  NDrawer,
+  NDrawerContent,
   NDropdown,
   NIcon,
   NLayout,
@@ -14,7 +16,13 @@ import {
   type MenuOption,
   useMessage,
 } from 'naive-ui'
-import { HomeOutline, SettingsOutline, PeopleOutline, ArchiveOutline } from '@vicons/ionicons5'
+import {
+  ArchiveOutline,
+  HomeOutline,
+  MenuOutline,
+  PeopleOutline,
+  SettingsOutline,
+} from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { useAuthStore } from '@/stores/auth'
@@ -22,6 +30,7 @@ import { useUiStore } from '@/stores/ui'
 import type { SupportedLocale } from '@/i18n'
 import { useSystemStore } from '@/stores/system'
 import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
+import AppLogo from '@/components/AppLogo.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,6 +42,7 @@ const auth = useAuthStore()
 const system = useSystemStore()
 
 const activeKey = computed(() => route.path)
+const mobileMenuOpen = ref(false)
 
 function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
@@ -65,13 +75,23 @@ async function onLogout(): Promise<void> {
 </script>
 
 <template>
-  <n-layout class="h-screen">
-    <n-layout-header bordered class="px-4">
-      <div class="h-14 flex items-center justify-between">
+  <n-layout class="h-screen bg-transparent">
+    <n-layout-header
+      bordered
+      class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur px-4 sticky top-0 z-50"
+    >
+      <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
         <div class="flex items-center gap-3">
-          <div class="font-semibold tracking-wide">{{ t('app.name') }}</div>
+          <n-button class="md:hidden" quaternary @click="mobileMenuOpen = true">
+            <template #icon>
+              <n-icon><MenuOutline /></n-icon>
+            </template>
+          </n-button>
+
+          <AppLogo />
           <n-tag size="small" type="info" :bordered="false">{{ t('common.mvp') }}</n-tag>
         </div>
+
         <div class="flex items-center gap-2">
           <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
             <n-button quaternary>{{ t('common.language') }}</n-button>
@@ -84,18 +104,45 @@ async function onLogout(): Promise<void> {
       </div>
     </n-layout-header>
 
-    <n-layout has-sider class="h-[calc(100vh-56px)]">
-      <n-layout-sider bordered collapse-mode="width" :collapsed-width="64" :width="220">
+    <n-layout has-sider class="h-[calc(100vh-56px)] bg-transparent">
+      <n-layout-sider
+        bordered
+        class="hidden md:block bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur"
+        collapse-mode="width"
+        :collapsed-width="64"
+        :width="220"
+      >
         <n-menu
           :value="activeKey"
           :options="menuOptions"
           @update:value="(key) => router.push(String(key))"
         />
       </n-layout-sider>
-      <n-layout content-style="padding: 16px">
-        <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
-        <router-view />
+
+      <n-layout content-style="padding: 16px" class="bg-transparent">
+        <div class="max-w-7xl mx-auto">
+          <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
+          <router-view />
+        </div>
       </n-layout>
     </n-layout>
   </n-layout>
+
+  <n-drawer v-model:show="mobileMenuOpen" placement="left" :width="280">
+    <n-drawer-content>
+      <div class="px-2 pt-2 pb-3">
+        <AppLogo size="sm" />
+      </div>
+      <n-menu
+        :value="activeKey"
+        :options="menuOptions"
+        @update:value="
+          (key) => {
+            mobileMenuOpen = false
+            router.push(String(key))
+          }
+        "
+      />
+    </n-drawer-content>
+  </n-drawer>
 </template>

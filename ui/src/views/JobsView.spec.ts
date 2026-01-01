@@ -35,6 +35,8 @@ vi.mock('naive-ui', async () => {
     NSelect: stub('NSelect'),
     NSpace: stub('NSpace'),
     NSpin: stub('NSpin'),
+    NStep: stub('NStep'),
+    NSteps: stub('NSteps'),
     NSwitch: stub('NSwitch'),
     NTag: stub('NTag'),
     useMessage: () => messageApi,

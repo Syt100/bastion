@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { apiFetch } from '@/lib/api'
 import { useSystemStore } from '@/stores/system'
 import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
+import AuthLayout from '@/components/AuthLayout.vue'
 
 const router = useRouter()
 const message = useMessage()
@@ -45,23 +46,31 @@ async function onSubmit(): Promise<void> {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center p-6">
-    <n-card class="w-full max-w-md" :title="t('auth.initTitle')">
+  <AuthLayout>
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :segmented="{ content: true }">
+      <template #header>
+        <div class="space-y-1">
+          <div class="text-lg font-semibold">{{ t('auth.initTitle') }}</div>
+          <div class="text-sm opacity-70">{{ t('auth.initSubtitle') }}</div>
+        </div>
+      </template>
+
       <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
-      <n-form @submit.prevent="onSubmit">
+
+      <n-form label-placement="top" @submit.prevent="onSubmit">
         <n-form-item :label="t('auth.username')">
-          <n-input v-model:value="username" autocomplete="username" />
+          <n-input v-model:value="username" size="large" autocomplete="username" />
         </n-form-item>
         <n-form-item :label="t('auth.password')">
-          <n-input v-model:value="password" type="password" autocomplete="new-password" />
+          <n-input v-model:value="password" size="large" type="password" autocomplete="new-password" />
         </n-form-item>
         <n-form-item :label="t('auth.confirmPassword')">
-          <n-input v-model:value="password2" type="password" autocomplete="new-password" />
+          <n-input v-model:value="password2" size="large" type="password" autocomplete="new-password" />
         </n-form-item>
-        <div class="flex justify-end">
-          <n-button type="primary" attr-type="submit" :loading="loading">{{ t('auth.initialize') }}</n-button>
-        </div>
+        <n-button block type="primary" size="large" attr-type="submit" :loading="loading">
+          {{ t('auth.initialize') }}
+        </n-button>
       </n-form>
     </n-card>
-  </div>
+  </AuthLayout>
 </template>
