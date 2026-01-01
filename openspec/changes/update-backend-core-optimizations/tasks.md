@@ -12,11 +12,11 @@
 - [x] 2.6 Commit WS event optimization changes (detailed message)
 
 ## 3. Backend - Database maintenance + indexes
-- [ ] 3.1 Add a periodic DB maintenance loop to prune expired sessions/tokens and stale login_throttle entries
-- [ ] 3.2 Add a migration for missing indexes on hot query paths (runs queue + retention)
-- [ ] 3.3 Add/adjust tests for prune queries/migrations where feasible
-- [ ] 3.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] 3.5 Commit DB maintenance/index changes (detailed message)
+- [x] 3.1 Add a periodic DB maintenance loop to prune expired sessions/tokens and stale login_throttle entries
+- [x] 3.2 Add a migration for missing indexes on hot query paths (runs queue + retention)
+- [x] 3.3 Add/adjust tests for prune queries/migrations where feasible
+- [x] 3.4 Run `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] 3.5 Commit DB maintenance/index changes (detailed message)
 
 ## 4. Backend - HTTP modularity refactor (no behavior change)
 - [ ] 4.1 Split `crates/bastion/src/http/mod.rs` into smaller modules (routes/handlers/middleware/types/errors)
