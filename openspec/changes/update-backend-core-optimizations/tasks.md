@@ -33,5 +33,5 @@
 - [x] 5.5 Commit scheduler shutdown/wakeup changes (detailed message)
 
 ## 6. Quality gate
-- [ ] 6.1 Ensure CI/dev workflow includes `fmt`/`clippy`/`test` for backend runtime changes
-- [ ] 6.2 Final verification: `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] 6.1 Ensure CI/dev workflow includes `fmt`/`clippy`/`test` for backend runtime changes
+- [x] 6.2 Final verification: `cargo fmt`, `cargo clippy`, `cargo test`
