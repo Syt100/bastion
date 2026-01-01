@@ -34,6 +34,7 @@ mod wecom;
 use std::sync::Arc;
 
 use clap::Parser;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::config::{Cli, Command, KeypackCommand};
@@ -106,6 +107,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let master_kid = secrets.active_kid();
     let agent_manager = agent_manager::AgentManager::default();
     let run_events_bus = Arc::new(RunEventsBus::new());
+    let run_queue_notify = Arc::new(tokio::sync::Notify::new());
+    let shutdown = CancellationToken::new();
 
     scheduler::spawn(
         pool.clone(),
@@ -115,15 +118,23 @@ async fn main() -> Result<(), anyhow::Error> {
         config.run_retention_days,
         config.incomplete_cleanup_days,
         run_events_bus.clone(),
+        run_queue_notify.clone(),
+        shutdown.clone(),
     );
-    notifications::spawn(pool.clone(), secrets.clone(), run_events_bus.clone());
-    maintenance::spawn(pool.clone());
+    notifications::spawn(
+        pool.clone(),
+        secrets.clone(),
+        run_events_bus.clone(),
+        shutdown.clone(),
+    );
+    maintenance::spawn(pool.clone(), shutdown.clone());
 
     let app = http::router(AppState {
         config: config.clone(),
         db: pool,
         secrets,
         agent_manager,
+        run_queue_notify,
         run_events_bus,
     });
 
@@ -138,10 +149,19 @@ async fn main() -> Result<(), anyhow::Error> {
         "bastion started"
     );
 
+    let shutdown_signal = shutdown.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("shutdown signal received");
+            shutdown_signal.cancel();
+        }
+    });
+
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(async move { shutdown.cancelled().await })
     .await?;
     Ok(())
 }

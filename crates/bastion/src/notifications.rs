@@ -4,6 +4,7 @@ use sqlx::Row;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::notifications_repo;
@@ -18,24 +19,44 @@ const MAX_ATTEMPTS: i64 = 10;
 const BACKOFF_BASE_SECONDS: i64 = 30;
 const BACKOFF_MAX_SECONDS: i64 = 60 * 60;
 
-pub fn spawn(db: SqlitePool, secrets: Arc<SecretsCrypto>, run_events_bus: Arc<RunEventsBus>) {
-    tokio::spawn(run_loop(db, secrets, run_events_bus));
+pub fn spawn(
+    db: SqlitePool,
+    secrets: Arc<SecretsCrypto>,
+    run_events_bus: Arc<RunEventsBus>,
+    shutdown: CancellationToken,
+) {
+    tokio::spawn(run_loop(db, secrets, run_events_bus, shutdown));
 }
 
-async fn run_loop(db: SqlitePool, secrets: Arc<SecretsCrypto>, run_events_bus: Arc<RunEventsBus>) {
+async fn run_loop(
+    db: SqlitePool,
+    secrets: Arc<SecretsCrypto>,
+    run_events_bus: Arc<RunEventsBus>,
+    shutdown: CancellationToken,
+) {
     loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let next = match notifications_repo::claim_next_due(&db, now).await {
             Ok(v) => v,
             Err(error) => {
                 warn!(error = %error, "failed to claim due notification");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                }
                 continue;
             }
         };
 
         let Some(notification) = next else {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
+            }
             continue;
         };
 

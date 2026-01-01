@@ -7,6 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use sqlx::SqlitePool;
+use tokio::sync::Notify;
 use tower_cookies::CookieManagerLayer;
 use tower_http::trace::TraceLayer;
 
@@ -32,6 +33,7 @@ pub struct AppState {
     pub db: SqlitePool,
     pub secrets: Arc<SecretsCrypto>,
     pub agent_manager: AgentManager,
+    pub run_queue_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
 }
 

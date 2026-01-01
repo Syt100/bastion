@@ -319,6 +319,10 @@ pub(super) async fn trigger_job_run(
     )
     .await?;
 
+    if status == runs_repo::RunStatus::Queued {
+        state.run_queue_notify.notify_one();
+    }
+
     tracing::info!(
         job_id = %job.id,
         run_id = %run.id,
