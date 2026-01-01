@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
 import { NCard } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import BackupTrendChart from '@/components/BackupTrendChart.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
 const { t } = useI18n()
+
+const BackupTrendChart = defineAsyncComponent(() => import('@/components/BackupTrendChart.vue'))
 </script>
 
 <template>
