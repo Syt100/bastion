@@ -178,7 +178,7 @@ async fn connect_and_run(
                                     return Ok(LoopAction::Reconnect);
                                 }
 
-                                if let Err(error) = handle_backup_task(data_dir, &mut tx, &task_id, task).await {
+                                if let Err(error) = handle_backup_task(data_dir, &mut tx, &task_id, *task).await {
                                     warn!(task_id = %task_id, error = %error, "task failed");
                                     let summary = error
                                         .downcast_ref::<RunFailedWithSummary>()

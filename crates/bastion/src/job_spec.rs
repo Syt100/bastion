@@ -8,17 +8,14 @@ fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EncryptionV1 {
+    #[default]
     None,
-    AgeX25519 { key_name: String },
-}
-
-impl Default for EncryptionV1 {
-    fn default() -> Self {
-        Self::None
-    }
+    AgeX25519 {
+        key_name: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -27,45 +24,30 @@ pub struct PipelineV1 {
     pub encryption: EncryptionV1,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FsSymlinkPolicy {
+    #[default]
     Keep,
     Follow,
     Skip,
 }
 
-impl Default for FsSymlinkPolicy {
-    fn default() -> Self {
-        Self::Keep
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FsHardlinkPolicy {
+    #[default]
     Copy,
     Keep,
 }
 
-impl Default for FsHardlinkPolicy {
-    fn default() -> Self {
-        Self::Copy
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FsErrorPolicy {
+    #[default]
     FailFast,
     SkipFail,
     SkipOk,
-}
-
-impl Default for FsErrorPolicy {
-    fn default() -> Self {
-        Self::FailFast
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

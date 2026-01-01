@@ -236,8 +236,7 @@ fn write_vaultwarden_tar_entries<W: Write>(
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
 ) -> Result<(), anyhow::Error> {
-    let mut iter = WalkDir::new(root).follow_links(false).into_iter();
-    while let Some(next) = iter.next() {
+    for next in WalkDir::new(root).follow_links(false).into_iter() {
         let entry = next?;
         if entry.path() == root {
             continue;

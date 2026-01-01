@@ -261,17 +261,15 @@ impl WebdavClient {
             anyhow::bail!("GET failed: HTTP {}", res.status());
         }
 
-        if let Some(expected) = expected_size {
-            if let Some(len) = res
+        if let Some(expected) = expected_size
+            && let Some(len) = res
                 .headers()
                 .get(CONTENT_LENGTH)
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok())
-            {
-                if len != expected {
-                    anyhow::bail!("Content-Length mismatch: expected {expected}, got {len}");
-                }
-            }
+            && len != expected
+        {
+            anyhow::bail!("Content-Length mismatch: expected {expected}, got {len}");
         }
 
         let file_name = dest
@@ -290,10 +288,10 @@ impl WebdavClient {
         }
         file.flush().await?;
 
-        if let Some(expected) = expected_size {
-            if written != expected {
-                anyhow::bail!("download size mismatch: expected {expected}, got {written}");
-            }
+        if let Some(expected) = expected_size
+            && written != expected
+        {
+            anyhow::bail!("download size mismatch: expected {expected}, got {written}");
         }
 
         let _ = tokio::fs::remove_file(dest).await;

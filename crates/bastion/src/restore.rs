@@ -65,8 +65,13 @@ struct EntryRecord {
 
 #[derive(Debug)]
 enum TargetAccess {
-    Webdav { client: WebdavClient, run_url: Url },
-    LocalDir { run_dir: PathBuf },
+    Webdav {
+        client: Box<WebdavClient>,
+        run_url: Url,
+    },
+    LocalDir {
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -437,7 +442,10 @@ async fn open_target_access(
                 run_url = %redact_url(&run_url),
                 "resolved restore target access"
             );
-            Ok(TargetAccess::Webdav { client, run_url })
+            Ok(TargetAccess::Webdav {
+                client: Box::new(client),
+                run_url,
+            })
         }
         job_spec::TargetV1::LocalDir { base_dir, .. } => {
             let run_dir = PathBuf::from(base_dir.trim()).join(job_id).join(run_id);
@@ -495,12 +503,11 @@ async fn fetch_entries_index(
         TargetAccess::Webdav { client, run_url } => {
             let url = run_url.join(crate::backup::ENTRIES_INDEX_NAME)?;
             let expected = client.head_size(&url).await?;
-            if let Some(size) = expected {
-                if let Ok(meta) = tokio::fs::metadata(&dst).await {
-                    if meta.len() == size {
-                        return Ok(dst);
-                    }
-                }
+            if let Some(size) = expected
+                && let Ok(meta) = tokio::fs::metadata(&dst).await
+                && meta.len() == size
+            {
+                return Ok(dst);
             }
             client.get_to_file(&url, &dst, expected, 3).await?;
             Ok(dst)
@@ -519,11 +526,11 @@ async fn fetch_parts(
         match access {
             TargetAccess::Webdav { client, run_url } => {
                 let dst = staging_dir.join(&part.name);
-                if let Ok(meta) = tokio::fs::metadata(&dst).await {
-                    if meta.len() == part.size {
-                        parts.push(dst);
-                        continue;
-                    }
+                if let Ok(meta) = tokio::fs::metadata(&dst).await
+                    && meta.len() == part.size
+                {
+                    parts.push(dst);
+                    continue;
                 }
 
                 let url = run_url.join(&part.name)?;
@@ -593,7 +600,7 @@ fn restore_from_parts(
 
     let files = part_paths
         .iter()
-        .map(|p| File::open(p))
+        .map(File::open)
         .collect::<Result<Vec<_>, _>>()?;
     let reader = ConcatReader { files, index: 0 };
     let reader: Box<dyn Read> = match decryption {
@@ -774,13 +781,11 @@ fn verify_restored(
         }
     }
 
-    if seen != expected_count {
-        if errors.len() < 10 {
-            errors.push(format!(
-                "entries_count mismatch: expected {}, got {}",
-                expected_count, seen
-            ));
-        }
+    if seen != expected_count && errors.len() < 10 {
+        errors.push(format!(
+            "entries_count mismatch: expected {}, got {}",
+            expected_count, seen
+        ));
     }
 
     Ok(VerifyResult {
@@ -797,10 +802,12 @@ fn sqlite_paths_for_verify(run: &runs_repo::Run) -> Vec<String> {
         return Vec::new();
     };
 
-    if let Some(v) = summary.get("sqlite") {
-        if let Some(name) = v.get("snapshot_name").and_then(|n| n.as_str()) {
-            return vec![name.to_string()];
-        }
+    if let Some(name) = summary
+        .get("sqlite")
+        .and_then(|v| v.get("snapshot_name"))
+        .and_then(|n| n.as_str())
+    {
+        return vec![name.to_string()];
     }
 
     if summary.get("vaultwarden").is_some() {
@@ -934,7 +941,7 @@ mod tests {
 
         let dest = tmp.path().join("out");
         restore_from_parts(
-            &vec![part],
+            &[part],
             &dest,
             ConflictPolicy::Overwrite,
             PayloadDecryption::None,

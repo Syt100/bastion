@@ -110,17 +110,17 @@ async fn main() -> Result<(), anyhow::Error> {
     let run_queue_notify = Arc::new(tokio::sync::Notify::new());
     let shutdown = CancellationToken::new();
 
-    scheduler::spawn(
-        pool.clone(),
-        config.data_dir.clone(),
-        secrets.clone(),
-        agent_manager.clone(),
-        config.run_retention_days,
-        config.incomplete_cleanup_days,
-        run_events_bus.clone(),
-        run_queue_notify.clone(),
-        shutdown.clone(),
-    );
+    scheduler::spawn(scheduler::SchedulerArgs {
+        db: pool.clone(),
+        data_dir: config.data_dir.clone(),
+        secrets: secrets.clone(),
+        agent_manager: agent_manager.clone(),
+        run_retention_days: config.run_retention_days,
+        incomplete_cleanup_days: config.incomplete_cleanup_days,
+        run_events_bus: run_events_bus.clone(),
+        run_queue_notify: run_queue_notify.clone(),
+        shutdown: shutdown.clone(),
+    });
     notifications::spawn(
         pool.clone(),
         secrets.clone(),

@@ -61,16 +61,16 @@ pub fn store_run(
 }
 
 fn copy_if_needed(src: &Path, dst: &Path, expected_size: u64) -> Result<(), anyhow::Error> {
-    if let Ok(meta) = std::fs::metadata(dst) {
-        if meta.len() == expected_size {
-            debug!(
-                src = %src.display(),
-                dst = %dst.display(),
-                expected_size,
-                "skipping existing target file"
-            );
-            return Ok(());
-        }
+    if let Ok(meta) = std::fs::metadata(dst)
+        && meta.len() == expected_size
+    {
+        debug!(
+            src = %src.display(),
+            dst = %dst.display(),
+            expected_size,
+            "skipping existing target file"
+        );
+        return Ok(());
     }
 
     let file_name = dst

@@ -350,64 +350,20 @@ fn write_tar_entries<W: Write>(
             if source.hardlink_policy == FsHardlinkPolicy::Keep
                 && !is_symlink_path
                 && hardlink_candidate(&meta)
+                && let Some(id) = file_id_for_meta(&meta)
             {
-                if let Some(id) = file_id_for_meta(&meta) {
-                    if let Some(existing) = hardlink_index.get(&id) {
-                        let mut header = Header::new_gnu();
-                        header.set_metadata_in_mode(&meta, HeaderMode::Complete);
-                        header.set_entry_type(EntryType::hard_link());
-                        header.set_size(0);
+                if let Some(existing) = hardlink_index.get(&id) {
+                    let mut header = Header::new_gnu();
+                    header.set_metadata_in_mode(&meta, HeaderMode::Complete);
+                    header.set_entry_type(EntryType::hard_link());
+                    header.set_size(0);
 
-                        if let Err(error) = tar.append_link(
-                            &mut header,
-                            Path::new(&rel_str),
-                            Path::new(&existing.first_path),
-                        ) {
-                            let msg = format!("archive error (hardlink): {rel_str}: {error}");
-                            if source.error_policy == FsErrorPolicy::FailFast {
-                                return Err(anyhow::anyhow!(msg));
-                            }
-                            issues.record_error(msg);
-                            continue;
-                        }
-
-                        write_entry_record(
-                            entries_writer,
-                            entries_count,
-                            EntryRecord {
-                                path: rel_str,
-                                kind: "file".to_string(),
-                                size: existing.size,
-                                hash_alg: Some(HashAlgorithm::Blake3),
-                                hash: Some(existing.hash.clone()),
-                            },
-                        )?;
-                        continue;
-                    }
-
-                    let hash = match hash_file(entry.path()) {
-                        Ok(h) => h,
-                        Err(error) => {
-                            let msg = format!("hash error: {rel_str}: {error}");
-                            if source.error_policy == FsErrorPolicy::FailFast {
-                                return Err(anyhow::anyhow!(msg));
-                            }
-                            issues.record_error(msg);
-                            continue;
-                        }
-                    };
-                    hardlink_index.insert(
-                        id,
-                        HardlinkRecord {
-                            first_path: rel_str.clone(),
-                            size,
-                            hash: hash.clone(),
-                        },
-                    );
-
-                    if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str))
-                    {
-                        let msg = format!("archive error: {rel_str}: {error}");
+                    if let Err(error) = tar.append_link(
+                        &mut header,
+                        Path::new(&rel_str),
+                        Path::new(&existing.first_path),
+                    ) {
+                        let msg = format!("archive error (hardlink): {rel_str}: {error}");
                         if source.error_policy == FsErrorPolicy::FailFast {
                             return Err(anyhow::anyhow!(msg));
                         }
@@ -421,13 +377,55 @@ fn write_tar_entries<W: Write>(
                         EntryRecord {
                             path: rel_str,
                             kind: "file".to_string(),
-                            size,
+                            size: existing.size,
                             hash_alg: Some(HashAlgorithm::Blake3),
-                            hash: Some(hash),
+                            hash: Some(existing.hash.clone()),
                         },
                     )?;
                     continue;
                 }
+
+                let hash = match hash_file(entry.path()) {
+                    Ok(h) => h,
+                    Err(error) => {
+                        let msg = format!("hash error: {rel_str}: {error}");
+                        if source.error_policy == FsErrorPolicy::FailFast {
+                            return Err(anyhow::anyhow!(msg));
+                        }
+                        issues.record_error(msg);
+                        continue;
+                    }
+                };
+                hardlink_index.insert(
+                    id,
+                    HardlinkRecord {
+                        first_path: rel_str.clone(),
+                        size,
+                        hash: hash.clone(),
+                    },
+                );
+
+                if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str)) {
+                    let msg = format!("archive error: {rel_str}: {error}");
+                    if source.error_policy == FsErrorPolicy::FailFast {
+                        return Err(anyhow::anyhow!(msg));
+                    }
+                    issues.record_error(msg);
+                    continue;
+                }
+
+                write_entry_record(
+                    entries_writer,
+                    entries_count,
+                    EntryRecord {
+                        path: rel_str,
+                        kind: "file".to_string(),
+                        size,
+                        hash_alg: Some(HashAlgorithm::Blake3),
+                        hash: Some(hash),
+                    },
+                )?;
+                continue;
             }
 
             let hash = match hash_file(entry.path()) {

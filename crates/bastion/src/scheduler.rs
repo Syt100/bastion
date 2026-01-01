@@ -31,17 +31,30 @@ use crate::targets;
 use crate::webdav::WebdavCredentials;
 use url::Url;
 
-pub fn spawn(
-    db: SqlitePool,
-    data_dir: std::path::PathBuf,
-    secrets: Arc<SecretsCrypto>,
-    agent_manager: AgentManager,
-    run_retention_days: i64,
-    incomplete_cleanup_days: i64,
-    run_events_bus: Arc<RunEventsBus>,
-    run_queue_notify: Arc<Notify>,
-    shutdown: CancellationToken,
-) {
+pub struct SchedulerArgs {
+    pub db: SqlitePool,
+    pub data_dir: std::path::PathBuf,
+    pub secrets: Arc<SecretsCrypto>,
+    pub agent_manager: AgentManager,
+    pub run_retention_days: i64,
+    pub incomplete_cleanup_days: i64,
+    pub run_events_bus: Arc<RunEventsBus>,
+    pub run_queue_notify: Arc<Notify>,
+    pub shutdown: CancellationToken,
+}
+
+pub fn spawn(args: SchedulerArgs) {
+    let SchedulerArgs {
+        db,
+        data_dir,
+        secrets,
+        agent_manager,
+        run_retention_days,
+        incomplete_cleanup_days,
+        run_events_bus,
+        run_queue_notify,
+        shutdown,
+    } = args;
     tokio::spawn(run_cron_loop(
         db.clone(),
         run_events_bus.clone(),
@@ -345,17 +358,17 @@ async fn run_worker_loop(
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
         if let Some(agent_id) = job.agent_id.as_deref() {
-            if let Err(error) = dispatch_run_to_agent(
-                &db,
-                &secrets,
-                &agent_manager,
-                run_events_bus.as_ref(),
-                &job,
-                &run.id,
+            if let Err(error) = dispatch_run_to_agent(DispatchRunToAgentArgs {
+                db: &db,
+                secrets: &secrets,
+                agent_manager: &agent_manager,
+                run_events_bus: run_events_bus.as_ref(),
+                job: &job,
+                run_id: &run.id,
                 started_at,
                 spec,
                 agent_id,
-            )
+            })
             .await
             {
                 warn!(run_id = %run.id, agent_id = %agent_id, error = %error, "dispatch failed");
@@ -433,16 +446,16 @@ async fn run_worker_loop(
             continue;
         }
 
-        match execute_run(
-            &db,
-            &secrets,
-            run_events_bus.as_ref(),
-            &data_dir,
-            &job,
-            &run.id,
+        match execute_run(ExecuteRunArgs {
+            db: &db,
+            secrets: &secrets,
+            run_events_bus: run_events_bus.as_ref(),
+            data_dir: &data_dir,
+            job: &job,
+            run_id: &run.id,
             started_at,
             spec,
-        )
+        })
         .await
         {
             Ok(summary) => {
@@ -512,17 +525,30 @@ async fn run_worker_loop(
     }
 }
 
-async fn dispatch_run_to_agent(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    agent_manager: &AgentManager,
-    run_events_bus: &RunEventsBus,
-    job: &jobs_repo::Job,
-    run_id: &str,
+struct DispatchRunToAgentArgs<'a> {
+    db: &'a SqlitePool,
+    secrets: &'a SecretsCrypto,
+    agent_manager: &'a AgentManager,
+    run_events_bus: &'a RunEventsBus,
+    job: &'a jobs_repo::Job,
+    run_id: &'a str,
     started_at: OffsetDateTime,
     spec: job_spec::JobSpecV1,
-    agent_id: &str,
-) -> Result<(), anyhow::Error> {
+    agent_id: &'a str,
+}
+
+async fn dispatch_run_to_agent(args: DispatchRunToAgentArgs<'_>) -> Result<(), anyhow::Error> {
+    let DispatchRunToAgentArgs {
+        db,
+        secrets,
+        agent_manager,
+        run_events_bus,
+        job,
+        run_id,
+        started_at,
+        spec,
+        agent_id,
+    } = args;
     if !agent_manager.is_connected(agent_id).await {
         anyhow::bail!("agent not connected");
     }
@@ -550,7 +576,7 @@ async fn dispatch_run_to_agent(
     let msg = HubToAgentMessageV1::Task {
         v: PROTOCOL_VERSION,
         task_id: run_id.to_string(),
-        task,
+        task: Box::new(task),
     };
 
     let payload = serde_json::to_value(&msg)?;
@@ -653,16 +679,28 @@ async fn resolve_target_for_agent(
     }
 }
 
-async fn execute_run(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    run_events_bus: &RunEventsBus,
-    data_dir: &std::path::Path,
-    job: &jobs_repo::Job,
-    run_id: &str,
+struct ExecuteRunArgs<'a> {
+    db: &'a SqlitePool,
+    secrets: &'a SecretsCrypto,
+    run_events_bus: &'a RunEventsBus,
+    data_dir: &'a std::path::Path,
+    job: &'a jobs_repo::Job,
+    run_id: &'a str,
     started_at: OffsetDateTime,
     spec: job_spec::JobSpecV1,
-) -> Result<serde_json::Value, anyhow::Error> {
+}
+
+async fn execute_run(args: ExecuteRunArgs<'_>) -> Result<serde_json::Value, anyhow::Error> {
+    let ExecuteRunArgs {
+        db,
+        secrets,
+        run_events_bus,
+        data_dir,
+        job,
+        run_id,
+        started_at,
+        spec,
+    } = args;
     match spec {
         job_spec::JobSpecV1::Filesystem {
             pipeline,
@@ -1189,7 +1227,7 @@ async fn cleanup_webdav_run(
         return Ok(false);
     }
 
-    Ok(client.delete(&run_url).await?)
+    client.delete(&run_url).await
 }
 
 #[cfg(test)]

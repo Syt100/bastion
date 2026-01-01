@@ -4,17 +4,15 @@ use crate::job_spec::{FilesystemSource, SqliteSource, VaultwardenSource};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EncryptionResolvedV1 {
+    #[default]
     None,
-    AgeX25519 { recipient: String, key_name: String },
-}
-
-impl Default for EncryptionResolvedV1 {
-    fn default() -> Self {
-        Self::None
-    }
+    AgeX25519 {
+        recipient: String,
+        key_name: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -78,7 +76,7 @@ pub enum HubToAgentMessageV1 {
     Task {
         v: u32,
         task_id: String,
-        task: BackupRunTaskV1,
+        task: Box<BackupRunTaskV1>,
     },
     Pong {
         v: u32,
