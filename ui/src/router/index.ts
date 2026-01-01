@@ -1,12 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import AppShell from '@/layouts/AppShell.vue'
-import AgentsView from '@/views/AgentsView.vue'
-import DashboardView from '@/views/DashboardView.vue'
-import JobsView from '@/views/JobsView.vue'
-import LoginView from '@/views/LoginView.vue'
-import SettingsView from '@/views/SettingsView.vue'
-import SetupView from '@/views/SetupView.vue'
+const AppShell = () => import('@/layouts/AppShell.vue')
+const AgentsView = () => import('@/views/AgentsView.vue')
+const DashboardView = () => import('@/views/DashboardView.vue')
+const JobsView = () => import('@/views/JobsView.vue')
+const LoginView = () => import('@/views/LoginView.vue')
+const SettingsView = () => import('@/views/SettingsView.vue')
+const SetupView = () => import('@/views/SetupView.vue')
 
 import { pinia } from '@/pinia'
 import { useAuthStore } from '@/stores/auth'
