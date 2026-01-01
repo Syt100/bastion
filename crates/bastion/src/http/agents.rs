@@ -8,6 +8,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::Row;
 use sqlx::SqlitePool;
 use tower_cookies::Cookies;
@@ -185,7 +186,10 @@ pub(super) async fn agent_enroll(
     state: axum::extract::State<AppState>,
     Json(req): Json<AgentEnrollRequest>,
 ) -> Result<Json<AgentEnrollResponse>, AppError> {
-    let token_hash = agent::sha256_urlsafe_token(&req.token)?;
+    let token_hash = agent::sha256_urlsafe_token(&req.token).map_err(|_| {
+        AppError::unauthorized("invalid_token", "Invalid enrollment token")
+            .with_details(json!({ "field": "token" }))
+    })?;
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
     let mut tx = state.db.begin().await?;
@@ -267,7 +271,8 @@ pub(super) async fn agent_ws(
 ) -> Result<Response, AppError> {
     let agent_key = bearer_token(&headers)
         .ok_or_else(|| AppError::unauthorized("unauthorized", "Unauthorized"))?;
-    let key_hash = agent::sha256_urlsafe_token(&agent_key)?;
+    let key_hash = agent::sha256_urlsafe_token(&agent_key)
+        .map_err(|_| AppError::unauthorized("unauthorized", "Unauthorized"))?;
 
     let row = sqlx::query("SELECT id, revoked_at FROM agents WHERE key_hash = ? LIMIT 1")
         .bind(key_hash)

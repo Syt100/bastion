@@ -8,6 +8,7 @@ pub(in crate::http) struct AppError {
     status: StatusCode,
     code: &'static str,
     message: String,
+    details: Option<serde_json::Value>,
 }
 
 impl AppError {
@@ -16,6 +17,7 @@ impl AppError {
             status: StatusCode::BAD_REQUEST,
             code,
             message: message.into(),
+            details: None,
         }
     }
 
@@ -27,6 +29,7 @@ impl AppError {
             status: StatusCode::TOO_MANY_REQUESTS,
             code,
             message: message.into(),
+            details: None,
         }
     }
 
@@ -35,6 +38,7 @@ impl AppError {
             status: StatusCode::UNAUTHORIZED,
             code,
             message: message.into(),
+            details: None,
         }
     }
 
@@ -43,6 +47,7 @@ impl AppError {
             status: StatusCode::CONFLICT,
             code,
             message: message.into(),
+            details: None,
         }
     }
 
@@ -51,7 +56,13 @@ impl AppError {
             status: StatusCode::NOT_FOUND,
             code,
             message: message.into(),
+            details: None,
         }
+    }
+
+    pub(in crate::http) fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -66,6 +77,7 @@ where
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal_error",
             message: "Internal server error".to_string(),
+            details: None,
         }
     }
 }
@@ -73,14 +85,17 @@ where
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         #[derive(Serialize)]
-        struct Body<'a> {
-            error: &'a str,
-            message: &'a str,
+        struct Body {
+            error: &'static str,
+            message: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            details: Option<serde_json::Value>,
         }
 
         let body = Json(Body {
             error: self.code,
-            message: &self.message,
+            message: self.message,
+            details: self.details,
         });
         (self.status, body).into_response()
     }
