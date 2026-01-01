@@ -4,6 +4,7 @@ const messages = {
   },
   common: {
     mvp: 'MVP',
+    beta: 'Beta',
     light: '浅色',
     dark: '深色',
     logout: '退出登录',
@@ -11,6 +12,7 @@ const messages = {
     refresh: '刷新',
     close: '关闭',
     noData: '暂无数据',
+    stepOf: '步骤 {current}/{total}',
     back: '上一步',
     next: '下一步',
     cancel: '取消',

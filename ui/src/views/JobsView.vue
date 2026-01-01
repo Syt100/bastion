@@ -32,6 +32,7 @@ import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
+import { MQ } from '@/lib/breakpoints'
 
 type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 type FsHardlinkPolicy = 'copy' | 'keep'
@@ -46,12 +47,29 @@ const operations = useOperationsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
 
-const isDesktop = useMediaQuery('(min-width: 768px)')
+const isDesktop = useMediaQuery(MQ.mdUp)
+
+const editorStep = ref<number>(1)
+
+const EDITOR_STEPS_TOTAL = 5
+const editorStepTitles = computed(() => [
+  t('jobs.steps.basics'),
+  t('jobs.steps.source'),
+  t('jobs.steps.target'),
+  t('jobs.steps.security'),
+  t('jobs.steps.review'),
+])
+const editorStepTitle = computed(() => {
+  const idx = Math.min(EDITOR_STEPS_TOTAL - 1, Math.max(0, editorStep.value - 1))
+  return editorStepTitles.value[idx]
+})
+const editorStepPercent = computed(() =>
+  Math.round((Math.min(EDITOR_STEPS_TOTAL, Math.max(1, editorStep.value)) / EDITOR_STEPS_TOTAL) * 100),
+)
 
 const editorOpen = ref<boolean>(false)
 const editorMode = ref<'create' | 'edit'>('create')
 const editorSaving = ref<boolean>(false)
-const editorStep = ref<number>(1)
 
 const runsOpen = ref<boolean>(false)
 const runsLoading = ref<boolean>(false)
@@ -1023,13 +1041,27 @@ onBeforeUnmount(() => {
       :title="editorMode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
     >
       <div class="space-y-4">
-        <n-steps :current="editorStep" size="small">
-          <n-step :title="t('jobs.steps.basics')" />
-          <n-step :title="t('jobs.steps.source')" />
-          <n-step :title="t('jobs.steps.target')" />
-          <n-step :title="t('jobs.steps.security')" />
-          <n-step :title="t('jobs.steps.review')" />
-        </n-steps>
+        <div v-if="isDesktop">
+          <n-steps :current="editorStep" size="small">
+            <n-step :title="t('jobs.steps.basics')" />
+            <n-step :title="t('jobs.steps.source')" />
+            <n-step :title="t('jobs.steps.target')" />
+            <n-step :title="t('jobs.steps.security')" />
+            <n-step :title="t('jobs.steps.review')" />
+          </n-steps>
+        </div>
+        <div v-else class="space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-medium">{{ editorStepTitle }}</div>
+            <div class="text-xs opacity-70">{{ t('common.stepOf', { current: editorStep, total: EDITOR_STEPS_TOTAL }) }}</div>
+          </div>
+          <div class="h-1.5 rounded bg-black/5 dark:bg-white/10 overflow-hidden">
+            <div
+              class="h-full bg-[var(--n-primary-color)]"
+              :style="{ width: `${editorStepPercent}%` }"
+            />
+          </div>
+        </div>
 
         <n-form label-placement="top">
           <template v-if="editorStep === 1">

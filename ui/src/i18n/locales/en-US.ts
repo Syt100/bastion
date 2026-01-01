@@ -4,6 +4,7 @@ const messages = {
   },
   common: {
     mvp: 'MVP',
+    beta: 'Beta',
     light: 'Light',
     dark: 'Dark',
     logout: 'Logout',
@@ -11,6 +12,7 @@ const messages = {
     refresh: 'Refresh',
     close: 'Close',
     noData: 'No data',
+    stepOf: 'Step {current}/{total}',
     back: 'Back',
     next: 'Next',
     cancel: 'Cancel',

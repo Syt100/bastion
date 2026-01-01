@@ -22,13 +22,14 @@ import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
+import { MQ } from '@/lib/breakpoints'
 
 const { t } = useI18n()
 const message = useMessage()
 
 const ui = useUiStore()
 const secrets = useSecretsStore()
-const isDesktop = useMediaQuery('(min-width: 768px)')
+const isDesktop = useMediaQuery(MQ.mdUp)
 
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
