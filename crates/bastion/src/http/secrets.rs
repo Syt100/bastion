@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tower_cookies::Cookies;
 
 use super::shared::{require_csrf, require_session};
@@ -135,16 +136,16 @@ pub(super) async fn upsert_webdav_secret(
     require_csrf(&headers, &session)?;
 
     if name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Secret name is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_name", "Secret name is required")
+                .with_details(json!({ "field": "name" })),
+        );
     }
     if req.username.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_username",
-            "Username is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_username", "Username is required")
+                .with_details(json!({ "field": "username" })),
+        );
     }
 
     let payload = WebdavSecretPayload {
@@ -205,25 +206,28 @@ pub(super) async fn upsert_wecom_bot_secret(
     require_csrf(&headers, &session)?;
 
     if name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Secret name is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_name", "Secret name is required")
+                .with_details(json!({ "field": "name" })),
+        );
     }
 
     let webhook_url = req.webhook_url.trim();
     if webhook_url.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_webhook_url",
-            "Webhook URL is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_webhook_url", "Webhook URL is required")
+                .with_details(json!({ "field": "webhook_url" })),
+        );
     }
-    let url = url::Url::parse(webhook_url)?;
+    let url = url::Url::parse(webhook_url).map_err(|_| {
+        AppError::bad_request("invalid_webhook_url", "Webhook URL is invalid")
+            .with_details(json!({ "field": "webhook_url" }))
+    })?;
     if !matches!(url.scheme(), "http" | "https") {
-        return Err(AppError::bad_request(
-            "invalid_webhook_url",
-            "Webhook URL must be http(s)",
-        ));
+        return Err(
+            AppError::bad_request("invalid_webhook_url", "Webhook URL must be http(s)")
+                .with_details(json!({ "field": "webhook_url" })),
+        );
     }
 
     let payload = WecomBotSecretPayload {
@@ -287,46 +291,53 @@ pub(super) async fn upsert_smtp_secret(
     require_csrf(&headers, &session)?;
 
     if name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Secret name is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_name", "Secret name is required")
+                .with_details(json!({ "field": "name" })),
+        );
     }
 
     let host = req.host.trim();
     if host.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_host",
-            "SMTP host is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_host", "SMTP host is required")
+                .with_details(json!({ "field": "host" })),
+        );
     }
     if req.port == 0 {
-        return Err(AppError::bad_request(
-            "invalid_port",
-            "SMTP port is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_port", "SMTP port is required")
+                .with_details(json!({ "field": "port" })),
+        );
     }
 
     let from = req.from.trim();
     if from.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_from",
-            "SMTP from is required",
-        ));
+        return Err(
+            AppError::bad_request("invalid_from", "SMTP from is required")
+                .with_details(json!({ "field": "from" })),
+        );
     }
-    let _ = from.parse::<lettre::message::Mailbox>()?;
+    from.parse::<lettre::message::Mailbox>().map_err(|_| {
+        AppError::bad_request("invalid_from", "Invalid SMTP from address")
+            .with_details(json!({ "field": "from" }))
+    })?;
 
     let mut to = Vec::new();
-    for item in req.to {
+    for (index, item) in req.to.into_iter().enumerate() {
         let addr = item.trim();
         if addr.is_empty() {
             continue;
         }
-        let _ = addr.parse::<lettre::message::Mailbox>()?;
+        addr.parse::<lettre::message::Mailbox>().map_err(|_| {
+            AppError::bad_request("invalid_to", "Invalid SMTP recipient address")
+                .with_details(json!({ "field": "to", "index": index }))
+        })?;
         to.push(addr.to_string());
     }
     if to.is_empty() {
-        return Err(AppError::bad_request("invalid_to", "SMTP to is required"));
+        return Err(AppError::bad_request("invalid_to", "SMTP to is required")
+            .with_details(json!({ "field": "to" })));
     }
 
     let username = req.username.trim().to_string();
@@ -334,7 +345,8 @@ pub(super) async fn upsert_smtp_secret(
         return Err(AppError::bad_request(
             "invalid_password",
             "SMTP password is required when username is set",
-        ));
+        )
+        .with_details(json!({ "field": "password" })));
     }
 
     let payload = SmtpSecretPayload {

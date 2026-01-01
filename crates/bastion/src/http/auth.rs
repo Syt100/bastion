@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, StatusCode};
 use serde::Serialize;
+use serde_json::json;
 use tower_cookies::Cookies;
 use tower_cookies::cookie::Cookie;
 
@@ -76,7 +77,8 @@ pub(super) async fn login(
         return Err(AppError::too_many_requests(
             "rate_limited",
             format!("Too many login attempts. Retry after {retry_after}s."),
-        ));
+        )
+        .with_details(json!({ "retry_after_seconds": retry_after })));
     }
 
     let Some(user) = auth::find_user_by_username(&state.db, &req.username).await? else {

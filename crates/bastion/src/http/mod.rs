@@ -177,3 +177,6 @@ fn load_ui_asset(path: &str) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod ws_tests;
+
+#[cfg(test)]
+mod error_feedback_tests;
