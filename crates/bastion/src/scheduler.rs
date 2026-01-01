@@ -1159,7 +1159,9 @@ mod tests {
                 .expect("existing run");
 
         let bus = RunEventsBus::new_with_options(8, 60, 1);
-        enqueue_run(&pool, &bus, &job, "cron").await.expect("enqueue");
+        enqueue_run(&pool, &bus, &job, "cron")
+            .await
+            .expect("enqueue");
 
         let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
             .await
@@ -1197,7 +1199,9 @@ mod tests {
                 .expect("existing run");
 
         let bus = RunEventsBus::new_with_options(8, 60, 1);
-        enqueue_run(&pool, &bus, &job, "cron").await.expect("enqueue");
+        enqueue_run(&pool, &bus, &job, "cron")
+            .await
+            .expect("enqueue");
 
         let runs = runs_repo::list_runs_for_job(&pool, &job.id, 10)
             .await
