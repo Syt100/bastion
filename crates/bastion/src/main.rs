@@ -14,6 +14,7 @@ mod http;
 mod job_spec;
 mod jobs_repo;
 mod logging;
+mod maintenance;
 mod notifications;
 mod notifications_repo;
 mod operations_repo;
@@ -116,6 +117,7 @@ async fn main() -> Result<(), anyhow::Error> {
         run_events_bus.clone(),
     );
     notifications::spawn(pool.clone(), secrets.clone(), run_events_bus.clone());
+    maintenance::spawn(pool.clone());
 
     let app = http::router(AppState {
         config: config.clone(),
