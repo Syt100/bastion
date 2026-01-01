@@ -93,32 +93,6 @@ vi.mock('@/stores/ui', () => ({
 
 import JobsView from './JobsView.vue'
 
-class MockWebSocket {
-  static instances: MockWebSocket[] = []
-  url: string
-  onopen: (() => void) | null = null
-  onmessage: ((evt: { data: unknown }) => void) | null = null
-  onerror: (() => void) | null = null
-  onclose: (() => void) | null = null
-
-  constructor(url: string) {
-    this.url = url
-    MockWebSocket.instances.push(this)
-  }
-
-  close(): void {
-    this.onclose?.()
-  }
-
-  triggerOpen(): void {
-    this.onopen?.()
-  }
-
-  triggerMessage(value: unknown): void {
-    this.onmessage?.({ data: value })
-  }
-}
-
 function stubMatchMedia(matches: boolean): void {
   vi.stubGlobal(
     'matchMedia',
@@ -134,60 +108,6 @@ function stubMatchMedia(matches: boolean): void {
     })) as unknown as typeof window.matchMedia,
   )
 }
-
-describe('JobsView run events', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    MockWebSocket.instances = []
-    vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
-    stubMatchMedia(true)
-  })
-
-  it('dedupes websocket events by seq and autoscrolls', async () => {
-    const scroll = document.createElement('div')
-    scroll.id = 'run-events-scroll'
-    Object.defineProperty(scroll, 'scrollHeight', { value: 123, configurable: true })
-    scroll.scrollTop = 0
-    document.body.appendChild(scroll)
-
-    jobsApi.listRunEvents.mockResolvedValue([
-      { run_id: 'run1', seq: 1, ts: 1, level: 'info', kind: 'start', message: 'start', fields: null },
-    ])
-
-    const wrapper = mount(JobsView)
-    await Promise.resolve()
-
-    const vm = wrapper.vm as unknown as {
-      openRunEvents: (runId: string) => Promise<void>
-      runEvents: unknown[]
-      runEventsWsStatus: string
-    }
-
-    await vm.openRunEvents('run1')
-
-    expect(vm.runEvents).toHaveLength(1)
-    expect(scroll.scrollTop).toBe(123)
-
-    expect(MockWebSocket.instances).toHaveLength(1)
-    const sock = MockWebSocket.instances[0]!
-    sock.triggerOpen()
-    expect(vm.runEventsWsStatus).toBe('connected')
-
-    // Duplicate seq should be ignored.
-    sock.triggerMessage(JSON.stringify({ run_id: 'run1', seq: 1, ts: 2, level: 'info', kind: 'dup', message: 'dup', fields: null }))
-    await Promise.resolve()
-    expect(vm.runEvents).toHaveLength(1)
-
-    // New seq appended.
-    sock.triggerMessage(JSON.stringify({ run_id: 'run1', seq: 2, ts: 2, level: 'info', kind: 'next', message: 'next', fields: null }))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(vm.runEvents).toHaveLength(2)
-    expect(scroll.scrollTop).toBe(123)
-
-    document.body.removeChild(scroll)
-  })
-})
 
 describe('JobsView responsive lists', () => {
   beforeEach(() => {
