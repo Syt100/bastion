@@ -1,0 +1,114 @@
+<script setup lang="ts">
+import { computed, h, ref } from 'vue'
+import { NButton, NDataTable, NModal, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
+
+import { useUiStore } from '@/stores/ui'
+import { useJobsStore, type RunListItem } from '@/stores/jobs'
+import { MODAL_WIDTH } from '@/lib/modal'
+
+export type JobRunsModalExpose = {
+  open: (jobId: string) => Promise<void>
+}
+
+const emit = defineEmits<{
+  (e: 'open-events', runId: string): void
+  (e: 'open-restore', runId: string): void
+  (e: 'open-verify', runId: string): void
+}>()
+
+const { t } = useI18n()
+const message = useMessage()
+
+const ui = useUiStore()
+const jobs = useJobsStore()
+
+const show = ref<boolean>(false)
+const loading = ref<boolean>(false)
+const jobId = ref<string | null>(null)
+const runs = ref<RunListItem[]>([])
+
+const dateFormatter = computed(
+  () =>
+    new Intl.DateTimeFormat(ui.locale, {
+      dateStyle: 'medium',
+      timeStyle: 'medium',
+    }),
+)
+
+function formatUnixSeconds(ts: number | null): string {
+  if (!ts) return '-'
+  return dateFormatter.value.format(new Date(ts * 1000))
+}
+
+function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'rejected') return 'warning'
+  return 'default'
+}
+
+const columns = computed<DataTableColumns<RunListItem>>(() => [
+  {
+    title: t('runs.columns.status'),
+    key: 'status',
+    render: (row) => h(NTag, { type: statusTagType(row.status) }, { default: () => row.status }),
+  },
+  { title: t('runs.columns.startedAt'), key: 'started_at', render: (row) => formatUnixSeconds(row.started_at) },
+  { title: t('runs.columns.endedAt'), key: 'ended_at', render: (row) => formatUnixSeconds(row.ended_at) },
+  { title: t('runs.columns.error'), key: 'error', render: (row) => row.error ?? '-' },
+  {
+    title: t('runs.columns.actions'),
+    key: 'actions',
+    render: (row) =>
+      h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(NButton, { size: 'small', onClick: () => emit('open-events', row.id) }, { default: () => t('runs.actions.events') }),
+            h(
+              NButton,
+              { size: 'small', disabled: row.status !== 'success', onClick: () => emit('open-restore', row.id) },
+              { default: () => t('runs.actions.restore') },
+            ),
+            h(
+              NButton,
+              { size: 'small', disabled: row.status !== 'success', onClick: () => emit('open-verify', row.id) },
+              { default: () => t('runs.actions.verify') },
+            ),
+          ],
+        },
+      ),
+  },
+])
+
+async function open(nextJobId: string): Promise<void> {
+  show.value = true
+  jobId.value = nextJobId
+  loading.value = true
+  runs.value = []
+  try {
+    runs.value = await jobs.listRuns(nextJobId)
+  } catch {
+    message.error(t('errors.fetchRunsFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
+defineExpose<JobRunsModalExpose>({ open })
+</script>
+
+<template>
+  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runs.title')">
+    <div class="space-y-3">
+      <div class="text-sm opacity-70">{{ jobId }}</div>
+      <n-data-table :loading="loading" :columns="columns" :data="runs" />
+      <n-space justify="end">
+        <n-button @click="show = false">{{ t('common.close') }}</n-button>
+      </n-space>
+    </div>
+  </n-modal>
+</template>
+
