@@ -19,6 +19,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useSecretsStore, type SecretListItem, type SmtpTlsMode } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
+import PageHeader from '@/components/PageHeader.vue'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -434,39 +435,39 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">{{ t('settings.title') }}</h1>
-        <p class="text-sm opacity-70">{{ t('settings.subtitle') }}</p>
-      </div>
-      <n-space>
-        <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-      </n-space>
-    </div>
+  <div class="space-y-6">
+    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')">
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+    </PageHeader>
 
-    <n-card :title="t('settings.webdav.title')">
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.webdav.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>
       </template>
 
-      <n-data-table :loading="secrets.loadingWebdav" :columns="columns" :data="secrets.webdav" />
+      <div class="overflow-x-auto">
+        <n-data-table :loading="secrets.loadingWebdav" :columns="columns" :data="secrets.webdav" />
+      </div>
     </n-card>
 
-    <n-card :title="t('settings.wecom.title')">
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.wecom.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
       </template>
 
-      <n-data-table :loading="secrets.loadingWecomBots" :columns="wecomColumns" :data="secrets.wecomBots" />
+      <div class="overflow-x-auto">
+        <n-data-table :loading="secrets.loadingWecomBots" :columns="wecomColumns" :data="secrets.wecomBots" />
+      </div>
     </n-card>
 
-    <n-card :title="t('settings.smtp.title')">
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.smtp.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
       </template>
 
-      <n-data-table :loading="secrets.loadingSmtp" :columns="smtpColumns" :data="secrets.smtp" />
+      <div class="overflow-x-auto">
+        <n-data-table :loading="secrets.loadingSmtp" :columns="smtpColumns" :data="secrets.smtp" />
+      </div>
     </n-card>
 
     <n-modal v-model:show="editorOpen" preset="card" :title="t('settings.webdav.editorTitle')">

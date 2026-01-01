@@ -15,6 +15,8 @@ import {
   NSelect,
   NSpace,
   NSpin,
+  NStep,
+  NSteps,
   NSwitch,
   NTag,
   useMessage,
@@ -27,6 +29,7 @@ import { useOperationsStore, type ConflictPolicy, type Operation, type Operation
 import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
+import PageHeader from '@/components/PageHeader.vue'
 
 type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 type FsHardlinkPolicy = 'copy' | 'keep'
@@ -44,6 +47,7 @@ const secrets = useSecretsStore()
 const editorOpen = ref<boolean>(false)
 const editorMode = ref<'create' | 'edit'>('create')
 const editorSaving = ref<boolean>(false)
+const editorStep = ref<number>(1)
 
 const runsOpen = ref<boolean>(false)
 const runsLoading = ref<boolean>(false)
@@ -180,6 +184,7 @@ function normalizeErrorPolicy(value: unknown): FsErrorPolicy {
 
 function openCreate(): void {
   editorMode.value = 'create'
+  editorStep.value = 1
   form.id = null
   form.name = ''
   form.node = 'hub'
@@ -207,6 +212,7 @@ function openCreate(): void {
 
 async function openEdit(jobId: string): Promise<void> {
   editorMode.value = 'edit'
+  editorStep.value = 1
   editorOpen.value = true
   editorSaving.value = true
   try {
@@ -258,7 +264,129 @@ async function openEdit(jobId: string): Promise<void> {
   }
 }
 
+function validateEditorStep(step: number): boolean {
+  if (step >= 1) {
+    const name = form.name.trim()
+    if (!name) {
+      message.error(t('errors.jobNameRequired'))
+      return false
+    }
+  }
+
+  if (step >= 2) {
+    if (form.jobType === 'filesystem' && !form.fsRoot.trim()) {
+      message.error(t('errors.sourceRootRequired'))
+      return false
+    }
+    if (form.jobType === 'sqlite' && !form.sqlitePath.trim()) {
+      message.error(t('errors.sqlitePathRequired'))
+      return false
+    }
+    if (form.jobType === 'vaultwarden' && !form.vaultwardenDataDir.trim()) {
+      message.error(t('errors.vaultwardenDataDirRequired'))
+      return false
+    }
+  }
+
+  if (step >= 3) {
+    if (form.targetType === 'webdav') {
+      if (!form.webdavBaseUrl.trim()) {
+        message.error(t('errors.webdavBaseUrlRequired'))
+        return false
+      }
+      if (!form.webdavSecretName.trim()) {
+        message.error(t('errors.webdavSecretRequired'))
+        return false
+      }
+    } else {
+      if (!form.localBaseDir.trim()) {
+        message.error(t('errors.localBaseDirRequired'))
+        return false
+      }
+    }
+
+    if (!Number.isFinite(form.partSizeMiB) || form.partSizeMiB <= 0) {
+      message.error(t('errors.partSizeInvalid'))
+      return false
+    }
+  }
+
+  if (step >= 4) {
+    const encryptionKeyName = form.encryptionKeyName.trim()
+    if (form.encryptionEnabled && !encryptionKeyName) {
+      message.error(t('errors.encryptionKeyNameRequired'))
+      return false
+    }
+  }
+
+  return true
+}
+
+function prevStep(): void {
+  editorStep.value = Math.max(1, editorStep.value - 1)
+}
+
+function nextStep(): void {
+  if (!validateEditorStep(editorStep.value)) return
+  editorStep.value = Math.min(5, editorStep.value + 1)
+}
+
+const previewPayload = computed(() => {
+  const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB || 1))
+  const partSizeBytes = partSizeMiB * 1024 * 1024
+
+  const pipeline = {
+    encryption: form.encryptionEnabled
+      ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() || 'default' } as const)
+      : ({ type: 'none' as const } as const),
+  }
+
+  const source =
+    form.jobType === 'filesystem'
+      ? {
+          root: form.fsRoot.trim(),
+          include: parseLines(form.fsInclude),
+          exclude: parseLines(form.fsExclude),
+          symlink_policy: form.fsSymlinkPolicy,
+          hardlink_policy: form.fsHardlinkPolicy,
+          error_policy: form.fsErrorPolicy,
+        }
+      : form.jobType === 'sqlite'
+        ? { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
+        : { data_dir: form.vaultwardenDataDir.trim() }
+
+  const target =
+    form.targetType === 'webdav'
+      ? ({
+          type: 'webdav' as const,
+          base_url: form.webdavBaseUrl.trim(),
+          secret_name: form.webdavSecretName.trim(),
+          part_size_bytes: partSizeBytes,
+        } as const)
+      : ({
+          type: 'local_dir' as const,
+          base_dir: form.localBaseDir.trim(),
+          part_size_bytes: partSizeBytes,
+        } as const)
+
+  return {
+    name: form.name.trim(),
+    agent_id: form.node === 'hub' ? null : form.node,
+    schedule: form.schedule.trim() ? form.schedule.trim() : null,
+    overlap_policy: form.overlapPolicy,
+    spec: {
+      v: 1 as const,
+      type: form.jobType,
+      pipeline,
+      source,
+      target,
+    },
+  }
+})
+
 async function save(): Promise<void> {
+  if (!validateEditorStep(4)) return
+
   const name = form.name.trim()
   if (!name) {
     message.error(t('errors.jobNameRequired'))
@@ -803,137 +931,204 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">{{ t('jobs.title') }}</h1>
-        <p class="text-sm opacity-70">{{ t('jobs.subtitle') }}</p>
-      </div>
-      <n-space>
-        <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
-      </n-space>
-    </div>
+  <div class="space-y-6">
+    <PageHeader :title="t('jobs.title')" :subtitle="t('jobs.subtitle')">
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
+    </PageHeader>
 
-    <n-card>
-      <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
+    <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+      <div class="overflow-x-auto">
+        <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
+      </div>
     </n-card>
 
-    <n-modal v-model:show="editorOpen" preset="card" :title="editorMode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')">
+    <n-modal
+      v-model:show="editorOpen"
+      preset="card"
+      :style="{ width: 'min(980px, calc(100vw - 32px))' }"
+      :title="editorMode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
+    >
       <div class="space-y-4">
+        <n-steps :current="editorStep" size="small">
+          <n-step :title="t('jobs.steps.basics')" />
+          <n-step :title="t('jobs.steps.source')" />
+          <n-step :title="t('jobs.steps.target')" />
+          <n-step :title="t('jobs.steps.security')" />
+          <n-step :title="t('jobs.steps.review')" />
+        </n-steps>
+
         <n-form label-placement="top">
-          <n-form-item :label="t('jobs.fields.name')">
-            <n-input v-model:value="form.name" />
-          </n-form-item>
-          <n-form-item :label="t('jobs.fields.node')">
-            <n-select v-model:value="form.node" :options="nodeOptions" filterable />
-          </n-form-item>
-          <n-form-item :label="t('jobs.fields.schedule')">
-            <n-input v-model:value="form.schedule" :placeholder="t('jobs.fields.schedulePlaceholder')" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.scheduleHelp') }}</div>
-          </n-form-item>
-          <n-form-item :label="t('jobs.fields.overlap')">
-            <n-select v-model:value="form.overlapPolicy" :options="overlapOptions" />
-          </n-form-item>
-          <n-form-item :label="t('jobs.fields.type')">
-            <n-select v-model:value="form.jobType" :options="jobTypeOptions" />
-          </n-form-item>
-
-          <n-form-item :label="t('jobs.fields.encryptionEnabled')">
-            <div class="space-y-1">
-              <n-switch v-model:value="form.encryptionEnabled" />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionHelp') }}</div>
+          <template v-if="editorStep === 1">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+              <n-form-item :label="t('jobs.fields.name')">
+                <n-input v-model:value="form.name" />
+              </n-form-item>
+              <n-form-item :label="t('jobs.fields.node')">
+                <n-select v-model:value="form.node" :options="nodeOptions" filterable />
+              </n-form-item>
             </div>
-          </n-form-item>
-          <n-form-item v-if="form.encryptionEnabled" :label="t('jobs.fields.encryptionKeyName')">
-            <div class="space-y-1 w-full">
-              <n-input v-model:value="form.encryptionKeyName" :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')" />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionKeyNameHelp') }}</div>
-            </div>
-          </n-form-item>
 
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.sourceRoot')">
-            <n-input v-model:value="form.fsRoot" :placeholder="t('jobs.fields.sourceRootPlaceholder')" />
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsInclude')">
-            <div class="space-y-1 w-full">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+              <n-form-item :label="t('jobs.fields.type')">
+                <n-select v-model:value="form.jobType" :options="jobTypeOptions" />
+              </n-form-item>
+              <n-form-item :label="t('jobs.fields.overlap')">
+                <n-select v-model:value="form.overlapPolicy" :options="overlapOptions" />
+              </n-form-item>
+            </div>
+
+            <n-form-item :label="t('jobs.fields.schedule')">
               <n-input
-                v-model:value="form.fsInclude"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 6 }"
-                :placeholder="t('jobs.fields.fsIncludePlaceholder')"
+                v-model:value="form.schedule"
+                :placeholder="t('jobs.fields.schedulePlaceholder')"
               />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.fsIncludeHelp') }}</div>
-            </div>
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsExclude')">
-            <div class="space-y-1 w-full">
-              <n-input
-                v-model:value="form.fsExclude"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 6 }"
-                :placeholder="t('jobs.fields.fsExcludePlaceholder')"
-              />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.fsExcludeHelp') }}</div>
-            </div>
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsSymlinkPolicy')">
-            <n-select v-model:value="form.fsSymlinkPolicy" :options="fsSymlinkPolicyOptions" />
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsHardlinkPolicy')">
-            <n-select v-model:value="form.fsHardlinkPolicy" :options="fsHardlinkPolicyOptions" />
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'filesystem'" :label="t('jobs.fields.fsErrorPolicy')">
-            <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqlitePath')">
-            <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'sqlite'" :label="t('jobs.fields.sqliteIntegrityCheck')">
-            <div class="space-y-1">
-              <n-switch v-model:value="form.sqliteIntegrityCheck" />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
-            </div>
-          </n-form-item>
-          <n-form-item v-if="form.jobType === 'vaultwarden'" :label="t('jobs.fields.vaultwardenDataDir')">
-            <div class="space-y-1">
-              <n-input v-model:value="form.vaultwardenDataDir" :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')" />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.vaultwardenDataDirHelp') }}</div>
-            </div>
-          </n-form-item>
-
-          <n-form-item :label="t('jobs.fields.targetType')">
-            <n-select v-model:value="form.targetType" :options="targetTypeOptions" />
-          </n-form-item>
-
-          <template v-if="form.targetType === 'webdav'">
-            <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
-              <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
-            </n-form-item>
-            <n-form-item :label="t('jobs.fields.webdavSecret')">
-              <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
+              <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.scheduleHelp') }}</div>
             </n-form-item>
           </template>
 
-          <template v-else>
-            <n-form-item :label="t('jobs.fields.localBaseDir')">
+          <template v-else-if="editorStep === 2">
+            <n-alert type="info" :bordered="false">
+              {{ t('jobs.steps.sourceHelp') }}
+            </n-alert>
+
+            <template v-if="form.jobType === 'filesystem'">
+              <n-form-item :label="t('jobs.fields.sourceRoot')">
+                <n-input
+                  v-model:value="form.fsRoot"
+                  :placeholder="t('jobs.fields.sourceRootPlaceholder')"
+                />
+              </n-form-item>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+                <n-form-item :label="t('jobs.fields.fsSymlinkPolicy')">
+                  <n-select v-model:value="form.fsSymlinkPolicy" :options="fsSymlinkPolicyOptions" />
+                </n-form-item>
+                <n-form-item :label="t('jobs.fields.fsHardlinkPolicy')">
+                  <n-select v-model:value="form.fsHardlinkPolicy" :options="fsHardlinkPolicyOptions" />
+                </n-form-item>
+              </div>
+              <n-form-item :label="t('jobs.fields.fsErrorPolicy')">
+                <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
+                <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
+              </n-form-item>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+                <n-form-item :label="t('jobs.fields.fsInclude')">
+                  <div class="space-y-1 w-full">
+                    <n-input
+                      v-model:value="form.fsInclude"
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 6 }"
+                      :placeholder="t('jobs.fields.fsIncludePlaceholder')"
+                    />
+                    <div class="text-xs opacity-70">{{ t('jobs.fields.fsIncludeHelp') }}</div>
+                  </div>
+                </n-form-item>
+                <n-form-item :label="t('jobs.fields.fsExclude')">
+                  <div class="space-y-1 w-full">
+                    <n-input
+                      v-model:value="form.fsExclude"
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 6 }"
+                      :placeholder="t('jobs.fields.fsExcludePlaceholder')"
+                    />
+                    <div class="text-xs opacity-70">{{ t('jobs.fields.fsExcludeHelp') }}</div>
+                  </div>
+                </n-form-item>
+              </div>
+            </template>
+
+            <template v-else-if="form.jobType === 'sqlite'">
+              <n-form-item :label="t('jobs.fields.sqlitePath')">
+                <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />
+              </n-form-item>
+              <n-form-item :label="t('jobs.fields.sqliteIntegrityCheck')">
+                <div class="space-y-1">
+                  <n-switch v-model:value="form.sqliteIntegrityCheck" />
+                  <div class="text-xs opacity-70">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
+                </div>
+              </n-form-item>
+            </template>
+
+            <template v-else>
+              <n-form-item :label="t('jobs.fields.vaultwardenDataDir')">
+                <div class="space-y-1">
+                  <n-input
+                    v-model:value="form.vaultwardenDataDir"
+                    :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')"
+                  />
+                  <div class="text-xs opacity-70">{{ t('jobs.fields.vaultwardenDataDirHelp') }}</div>
+                </div>
+              </n-form-item>
+            </template>
+          </template>
+
+          <template v-else-if="editorStep === 3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+              <n-form-item :label="t('jobs.fields.targetType')">
+                <n-select v-model:value="form.targetType" :options="targetTypeOptions" />
+              </n-form-item>
+
+              <n-form-item :label="t('jobs.fields.partSizeMiB')">
+                <n-input-number v-model:value="form.partSizeMiB" :min="1" class="w-full" />
+                <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
+              </n-form-item>
+            </div>
+
+            <template v-if="form.targetType === 'webdav'">
+              <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
+                <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
+              </n-form-item>
+              <n-form-item :label="t('jobs.fields.webdavSecret')">
+                <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
+              </n-form-item>
+            </template>
+            <template v-else>
+              <n-form-item :label="t('jobs.fields.localBaseDir')">
+                <div class="space-y-1">
+                  <n-input v-model:value="form.localBaseDir" :placeholder="t('jobs.fields.localBaseDirPlaceholder')" />
+                  <div class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
+                </div>
+              </n-form-item>
+            </template>
+          </template>
+
+          <template v-else-if="editorStep === 4">
+            <n-form-item :label="t('jobs.fields.encryptionEnabled')">
               <div class="space-y-1">
-                <n-input v-model:value="form.localBaseDir" :placeholder="t('jobs.fields.localBaseDirPlaceholder')" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
+                <n-switch v-model:value="form.encryptionEnabled" />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionHelp') }}</div>
+              </div>
+            </n-form-item>
+            <n-form-item v-if="form.encryptionEnabled" :label="t('jobs.fields.encryptionKeyName')">
+              <div class="space-y-1 w-full">
+                <n-input
+                  v-model:value="form.encryptionKeyName"
+                  :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
+                />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionKeyNameHelp') }}</div>
               </div>
             </n-form-item>
           </template>
 
-          <n-form-item :label="t('jobs.fields.partSizeMiB')">
-            <n-input-number v-model:value="form.partSizeMiB" :min="1" class="w-full" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
-          </n-form-item>
+          <template v-else>
+            <n-alert type="info" :bordered="false">
+              {{ t('jobs.steps.reviewHelp') }}
+            </n-alert>
+            <n-code class="mt-2" :code="formatJson(previewPayload)" language="json" />
+          </template>
         </n-form>
 
-        <n-space justify="end">
+        <n-space justify="space-between">
           <n-button @click="editorOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="editorSaving" @click="save">{{ t('common.save') }}</n-button>
+          <n-space>
+            <n-button v-if="editorStep > 1" @click="prevStep">{{ t('common.back') }}</n-button>
+            <n-button v-if="editorStep < 5" type="primary" @click="nextStep">
+              {{ t('common.next') }}
+            </n-button>
+            <n-button v-else type="primary" :loading="editorSaving" @click="save">
+              {{ t('common.save') }}
+            </n-button>
+          </n-space>
         </n-space>
       </div>
     </n-modal>
