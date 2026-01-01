@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
-import { useAuthStore } from '@/stores/auth'
+import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OverlapPolicy = 'reject' | 'queue'
 export type JobType = 'filesystem' | 'sqlite' | 'vaultwarden'
@@ -57,18 +57,6 @@ export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
 
-  const auth = useAuthStore()
-
-  async function ensureCsrf(): Promise<string> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
-    return auth.csrfToken
-  }
-
   async function refresh(): Promise<void> {
     loading.value = true
     try {
@@ -83,7 +71,7 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   async function createJob(payload: CreateOrUpdateJobRequest): Promise<JobDetail> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     return await apiFetch<JobDetail>('/api/jobs', {
       method: 'POST',
       headers: {
@@ -95,7 +83,7 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   async function updateJob(jobId: string, payload: CreateOrUpdateJobRequest): Promise<JobDetail> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     return await apiFetch<JobDetail>(`/api/jobs/${encodeURIComponent(jobId)}`, {
       method: 'PUT',
       headers: {
@@ -107,7 +95,7 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   async function deleteJob(jobId: string): Promise<void> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrf },
@@ -116,7 +104,7 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   async function runNow(jobId: string): Promise<TriggerRunResponse> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     return await apiFetch<TriggerRunResponse>(`/api/jobs/${encodeURIComponent(jobId)}/run`, {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf },

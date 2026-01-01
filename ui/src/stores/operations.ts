@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { apiFetch } from '@/lib/api'
-import { useAuthStore } from '@/stores/auth'
+import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OperationKind = 'restore' | 'verify'
 export type OperationStatus = 'running' | 'success' | 'failed'
@@ -30,20 +30,8 @@ export type OperationEvent = {
 export type ConflictPolicy = 'overwrite' | 'skip' | 'fail'
 
 export const useOperationsStore = defineStore('operations', () => {
-  const auth = useAuthStore()
-
-  async function ensureCsrf(): Promise<string> {
-    if (!auth.csrfToken) {
-      await auth.refreshSession()
-    }
-    if (!auth.csrfToken) {
-      throw new Error('Missing CSRF token')
-    }
-    return auth.csrfToken
-  }
-
   async function startRestore(runId: string, destinationDir: string, conflictPolicy: ConflictPolicy): Promise<string> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     const res = await apiFetch<{ op_id: string }>(`/api/runs/${encodeURIComponent(runId)}/restore`, {
       method: 'POST',
       headers: {
@@ -56,7 +44,7 @@ export const useOperationsStore = defineStore('operations', () => {
   }
 
   async function startVerify(runId: string): Promise<string> {
-    const csrf = await ensureCsrf()
+    const csrf = await ensureCsrfToken()
     const res = await apiFetch<{ op_id: string }>(`/api/runs/${encodeURIComponent(runId)}/verify`, {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf },
@@ -74,4 +62,3 @@ export const useOperationsStore = defineStore('operations', () => {
 
   return { startRestore, startVerify, getOperation, listEvents }
 })
-

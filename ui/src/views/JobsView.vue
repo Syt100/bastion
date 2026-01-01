@@ -10,6 +10,7 @@ import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
 
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobRunsModal, { type JobRunsModalExpose } from '@/components/jobs/JobRunsModal.vue'
@@ -35,18 +36,7 @@ const restoreModal = ref<RestoreWizardModalExpose | null>(null)
 const verifyModal = ref<VerifyWizardModalExpose | null>(null)
 const opModal = ref<OperationModalExpose | null>(null)
 
-const dateFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(ui.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-    }),
-)
-
-function formatUnixSeconds(ts: number | null): string {
-  if (!ts) return '-'
-  return dateFormatter.value.format(new Date(ts * 1000))
-}
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function formatJobNode(agentId: string | null): string {
   if (!agentId) return t('jobs.nodes.hub')
@@ -295,4 +285,3 @@ onMounted(async () => {
     <OperationModal ref="opModal" />
   </div>
 </template>
-

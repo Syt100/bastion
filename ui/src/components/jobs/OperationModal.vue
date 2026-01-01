@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useOperationsStore, type Operation, type OperationEvent } from '@/stores/operations'
 import { useUiStore } from '@/stores/ui'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
 
 export type OperationModalExpose = {
   open: (opId: string) => Promise<void>
@@ -24,18 +25,7 @@ const events = ref<OperationEvent[]>([])
 
 let pollTimer: number | null = null
 
-const dateFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(ui.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-    }),
-)
-
-function formatUnixSeconds(ts: number | null): string {
-  if (!ts) return '-'
-  return dateFormatter.value.format(new Date(ts * 1000))
-}
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function formatJson(value: unknown): string {
   try {
@@ -150,4 +140,3 @@ defineExpose<OperationModalExpose>({ open })
     </div>
   </n-modal>
 </template>
-

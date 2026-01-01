@@ -31,6 +31,17 @@ const messages = {
     title: '概览',
     subtitle: '备份活动概览（示例数据）',
     runs7d: '近 7 天运行情况',
+    chart: {
+      success: '成功',
+      failed: '失败',
+      mon: '周一',
+      tue: '周二',
+      wed: '周三',
+      thu: '周四',
+      fri: '周五',
+      sat: '周六',
+      sun: '周日',
+    },
   },
   placeholder: {
     comingSoon: '即将支持',

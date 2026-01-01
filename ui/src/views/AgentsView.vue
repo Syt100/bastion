@@ -23,6 +23,8 @@ import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { copyText } from '@/lib/clipboard'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -41,22 +43,11 @@ const rotateModalOpen = ref<boolean>(false)
 const rotateRotating = ref<boolean>(false)
 const rotateResult = ref<{ agent_id: string; agent_key: string } | null>(null)
 
-const dateFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(ui.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-    }),
-)
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function shortId(value: string): string {
   if (value.length <= 12) return value
   return `${value.slice(0, 8)}…${value.slice(-4)}`
-}
-
-function formatUnixSeconds(ts: number | null): string {
-  if (!ts) return '-'
-  return dateFormatter.value.format(new Date(ts * 1000))
 }
 
 async function refresh(): Promise<void> {
@@ -90,10 +81,10 @@ async function createToken(): Promise<void> {
 }
 
 async function copyToClipboard(value: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value)
+  const ok = await copyText(value)
+  if (ok) {
     message.success(t('messages.copied'))
-  } catch {
+  } else {
     message.error(t('errors.copyFailed'))
   }
 }

@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunEvent } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
 
 export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
@@ -27,18 +28,7 @@ const scrollEl = ref<HTMLElement | null>(null)
 let lastSeq = 0
 let socket: WebSocket | null = null
 
-const dateFormatter = computed(
-  () =>
-    new Intl.DateTimeFormat(ui.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-    }),
-)
-
-function formatUnixSeconds(ts: number | null): string {
-  if (!ts) return '-'
-  return dateFormatter.value.format(new Date(ts * 1000))
-}
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function formatJson(value: unknown): string {
   try {
