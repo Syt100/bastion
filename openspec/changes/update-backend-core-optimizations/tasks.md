@@ -1,7 +1,7 @@
 ## 1. Spec
 - [x] 1.1 Add `backend` spec delta for: WS push-based events + resumable catch-up, DB maintenance + indexes, HTTP modularity, scheduler wakeups + graceful shutdown, and test expectations
 - [x] 1.2 Run `openspec validate update-backend-core-optimizations --strict`
-- [ ] 1.3 Commit the spec proposal (detailed message)
+- [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Backend - WebSocket run events (push model)
 - [ ] 2.1 Implement an in-process run events bus (bounded broadcast + idle pruning)
