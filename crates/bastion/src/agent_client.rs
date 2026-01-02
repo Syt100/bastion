@@ -91,19 +91,23 @@ pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
 
     let ws_url = agent_ws_url(&base_url)?;
     let heartbeat = Duration::from_secs(args.heartbeat_seconds);
+    let pong_timeout = Duration::from_secs(args.heartbeat_seconds.saturating_mul(3));
     let mut backoff = Duration::from_secs(1);
+    let mut attempt = 0u32;
 
     loop {
-        let action = connect_and_run(&ws_url, &identity, &data_dir, heartbeat).await;
+        let action = connect_and_run(&ws_url, &identity, &data_dir, heartbeat, pong_timeout).await;
         match action {
             Ok(LoopAction::Exit) => return Ok(()),
             Ok(LoopAction::Reconnect) => {
-                tokio::time::sleep(backoff).await;
+                attempt = attempt.saturating_add(1);
+                tokio::time::sleep(jittered_backoff(backoff, &identity.agent_id, attempt)).await;
                 backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
             }
             Err(error) => {
                 warn!(error = %error, "agent connection failed; retrying");
-                tokio::time::sleep(backoff).await;
+                attempt = attempt.saturating_add(1);
+                tokio::time::sleep(jittered_backoff(backoff, &identity.agent_id, attempt)).await;
                 backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
             }
         }
@@ -121,6 +125,7 @@ async fn connect_and_run(
     identity: &AgentIdentityV1,
     data_dir: &Path,
     heartbeat: Duration,
+    pong_timeout: Duration,
 ) -> Result<LoopAction, anyhow::Error> {
     let mut req = ws_url.as_str().into_client_request()?;
     req.headers_mut().insert(
@@ -148,6 +153,7 @@ async fn connect_and_run(
         .await?;
 
     let mut tick = tokio::time::interval(heartbeat);
+    let mut last_pong = tokio::time::Instant::now();
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
 
@@ -158,6 +164,14 @@ async fn connect_and_run(
                 return Ok(LoopAction::Exit);
             }
             _ = tick.tick() => {
+                if last_pong.elapsed() > pong_timeout {
+                    warn!(
+                        agent_id = %identity.agent_id,
+                        timeout_seconds = pong_timeout.as_secs(),
+                        "pong timeout; reconnecting"
+                    );
+                    return Ok(LoopAction::Reconnect);
+                }
                 let ping = AgentToHubMessageV1::Ping { v: PROTOCOL_VERSION };
                 if tx.send(Message::Text(serde_json::to_string(&ping)?.into())).await.is_err() {
                     return Ok(LoopAction::Reconnect);
@@ -171,31 +185,66 @@ async fn connect_and_run(
                     Ok(Message::Text(text)) => {
                         let text = text.to_string();
                         match serde_json::from_str::<HubToAgentMessageV1>(&text) {
-                            Ok(HubToAgentMessageV1::Pong { .. }) => {}
+                            Ok(HubToAgentMessageV1::Pong { .. }) => {
+                                last_pong = tokio::time::Instant::now();
+                            }
                             Ok(HubToAgentMessageV1::Task { v, task_id, task }) if v == PROTOCOL_VERSION => {
                                 let run_id = task.run_id.clone();
                                 debug!(task_id = %task_id, run_id = %run_id, "received task");
+
+                                if let Some(cached) = load_cached_task_result(data_dir, &task_id, &run_id) {
+                                    debug!(task_id = %task_id, run_id = %run_id, "replaying cached task result");
+                                    let ack = AgentToHubMessageV1::Ack { v: PROTOCOL_VERSION, task_id: task_id.clone() };
+                                    if tx.send(Message::Text(serde_json::to_string(&ack)?.into())).await.is_err() {
+                                        return Ok(LoopAction::Reconnect);
+                                    }
+
+                                    if tx.send(Message::Text(serde_json::to_string(&cached)?.into())).await.is_err() {
+                                        return Ok(LoopAction::Reconnect);
+                                    }
+                                    continue;
+                                }
 
                                 let ack = AgentToHubMessageV1::Ack { v: PROTOCOL_VERSION, task_id: task_id.clone() };
                                 if tx.send(Message::Text(serde_json::to_string(&ack)?.into())).await.is_err() {
                                     return Ok(LoopAction::Reconnect);
                                 }
 
-                                if let Err(error) = handle_backup_task(data_dir, &mut tx, &task_id, *task).await {
-                                    warn!(task_id = %task_id, error = %error, "task failed");
-                                    let summary = error
-                                        .downcast_ref::<RunFailedWithSummary>()
-                                        .map(|e| e.summary.clone());
-                                    let result = AgentToHubMessageV1::TaskResult {
-                                        v: PROTOCOL_VERSION,
-                                        task_id: task_id.clone(),
-                                        run_id,
-                                        status: "failed".to_string(),
-                                        summary,
-                                        error: Some(format!("{error:#}")),
-                                    };
-                                    let _ = tx.send(Message::Text(serde_json::to_string(&result).unwrap_or_default().into())).await;
-                                }
+                                match handle_backup_task(data_dir, &mut tx, &task_id, *task).await {
+                                    Ok(()) => {}
+                                    Err(error) => {
+                                        if is_ws_error(&error) {
+                                            warn!(
+                                                task_id = %task_id,
+                                                run_id = %run_id,
+                                                error = %error,
+                                                "task aborted due to websocket error; reconnecting"
+                                            );
+                                            return Ok(LoopAction::Reconnect);
+                                        }
+
+                                        warn!(task_id = %task_id, run_id = %run_id, error = %error, "task failed");
+                                        let summary = error
+                                            .downcast_ref::<RunFailedWithSummary>()
+                                            .map(|e| e.summary.clone());
+                                        let result = AgentToHubMessageV1::TaskResult {
+                                            v: PROTOCOL_VERSION,
+                                            task_id: task_id.clone(),
+                                            run_id,
+                                            status: "failed".to_string(),
+                                            summary,
+                                            error: Some(format!("{error:#}")),
+                                        };
+
+                                        if let Err(error) = save_task_result(data_dir, &result) {
+                                            warn!(task_id = %task_id, error = %error, "failed to persist task result");
+                                        }
+
+                                        if tx.send(Message::Text(serde_json::to_string(&result)?.into())).await.is_err() {
+                                            return Ok(LoopAction::Reconnect);
+                                        }
+                                    }
+                                };
                             }
                             _ => {}
                         }
@@ -463,6 +512,9 @@ async fn handle_backup_task(
         summary: Some(summary),
         error: None,
     };
+    if let Err(error) = save_task_result(data_dir, &result) {
+        warn!(task_id = %task_id, error = %error, "failed to persist task result");
+    }
     tx.send(Message::Text(serde_json::to_string(&result)?.into()))
         .await?;
     Ok(())
@@ -600,6 +652,108 @@ fn save_identity(path: &Path, identity: &AgentIdentityV1) -> Result<(), anyhow::
     }
 
     let bytes = serde_json::to_vec_pretty(identity)?;
+    let tmp = path.with_extension("json.partial");
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(&tmp, bytes)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+fn jittered_backoff(base: Duration, agent_id: &str, attempt: u32) -> Duration {
+    if base.is_zero() {
+        return base;
+    }
+
+    // Equal-jitter backoff: [base/2, base], deterministic per agent+attempt.
+    let half = base / 2;
+    let half_ms = half.as_millis().min(u128::from(u64::MAX)) as u64;
+    if half_ms == 0 {
+        return base;
+    }
+
+    let seed = fnv1a64(agent_id.as_bytes())
+        .wrapping_add(u64::from(attempt).wrapping_mul(0x9e3779b97f4a7c15));
+    let jitter_ms = seed % (half_ms + 1);
+    half + Duration::from_millis(jitter_ms)
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut hash = FNV_OFFSET_BASIS;
+    for b in bytes {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn is_ws_error(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|e| e.is::<tokio_tungstenite::tungstenite::Error>())
+}
+
+fn is_safe_task_id(task_id: &str) -> bool {
+    !task_id.is_empty()
+        && task_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn task_results_dir(data_dir: &Path) -> std::path::PathBuf {
+    data_dir.join("agent").join("task_results")
+}
+
+fn task_result_path(data_dir: &Path, task_id: &str) -> Option<std::path::PathBuf> {
+    if !is_safe_task_id(task_id) {
+        return None;
+    }
+    Some(task_results_dir(data_dir).join(format!("{task_id}.json")))
+}
+
+fn load_cached_task_result(
+    data_dir: &Path,
+    task_id: &str,
+    run_id: &str,
+) -> Option<AgentToHubMessageV1> {
+    let path = task_result_path(data_dir, task_id)?;
+    let bytes = std::fs::read(path).ok()?;
+    let msg = serde_json::from_slice::<AgentToHubMessageV1>(&bytes).ok()?;
+    match &msg {
+        AgentToHubMessageV1::TaskResult {
+            v,
+            task_id: saved_task_id,
+            run_id: saved_run_id,
+            ..
+        } if *v == PROTOCOL_VERSION && saved_task_id == task_id && saved_run_id == run_id => {
+            Some(msg)
+        }
+        _ => None,
+    }
+}
+
+fn save_task_result(data_dir: &Path, msg: &AgentToHubMessageV1) -> Result<(), anyhow::Error> {
+    let AgentToHubMessageV1::TaskResult { task_id, .. } = msg else {
+        return Ok(());
+    };
+
+    let Some(path) = task_result_path(data_dir, task_id) else {
+        return Ok(());
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let bytes = serde_json::to_vec_pretty(msg)?;
     let tmp = path.with_extension("json.partial");
     let _ = std::fs::remove_file(&tmp);
     std::fs::write(&tmp, bytes)?;
