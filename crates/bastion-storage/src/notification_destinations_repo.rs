@@ -147,7 +147,9 @@ mod tests {
 
         let list = list_destinations(&pool).await.unwrap();
         assert_eq!(list.len(), 2);
-        let w1 = list.iter().find(|x| x.channel == "wecom_bot" && x.name == "w1");
+        let w1 = list
+            .iter()
+            .find(|x| x.channel == "wecom_bot" && x.name == "w1");
         assert_eq!(w1.map(|x| x.enabled), Some(false));
     }
 }

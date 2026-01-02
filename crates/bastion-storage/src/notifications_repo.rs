@@ -52,7 +52,10 @@ pub async fn enqueue_wecom_bots_for_run(
         return Ok(0);
     }
 
-    let names = bots.into_iter().map(|r| r.get::<String, _>("name")).collect::<Vec<_>>();
+    let names = bots
+        .into_iter()
+        .map(|r| r.get::<String, _>("name"))
+        .collect::<Vec<_>>();
     enqueue_for_run(db, run_id, CHANNEL_WECOM_BOT, &names).await
 }
 
@@ -248,11 +251,7 @@ pub async fn cancel_queued_by_id(
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn retry_now_by_id(
-    db: &SqlitePool,
-    id: &str,
-    now: i64,
-) -> Result<bool, anyhow::Error> {
+pub async fn retry_now_by_id(db: &SqlitePool, id: &str, now: i64) -> Result<bool, anyhow::Error> {
     let result = sqlx::query(
         "UPDATE notifications SET status = 'queued', attempts = 0, next_attempt_at = ?, updated_at = ? WHERE id = ? AND status IN ('failed', 'canceled')",
     )

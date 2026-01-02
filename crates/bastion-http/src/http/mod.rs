@@ -154,10 +154,7 @@ pub fn router(state: AppState) -> Router {
             "/api/notifications/destinations/{channel}/{name}/test",
             post(notifications::test_destination),
         )
-        .route(
-            "/api/notifications/queue",
-            get(notifications::list_queue),
-        )
+        .route("/api/notifications/queue", get(notifications::list_queue))
         .route(
             "/api/notifications/queue/{id}/retry-now",
             post(notifications::retry_now),

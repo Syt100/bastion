@@ -16,17 +16,22 @@ use bastion_storage::notifications_settings_repo;
 use bastion_storage::secrets_repo;
 
 fn require_supported_channel(channel: &str) -> Result<(), AppError> {
-    if channel == notifications_repo::CHANNEL_WECOM_BOT || channel == notifications_repo::CHANNEL_EMAIL {
+    if channel == notifications_repo::CHANNEL_WECOM_BOT
+        || channel == notifications_repo::CHANNEL_EMAIL
+    {
         return Ok(());
     }
-    Err(AppError::bad_request(
-        "invalid_channel",
-        "Unsupported notification channel",
+    Err(
+        AppError::bad_request("invalid_channel", "Unsupported notification channel")
+            .with_details(json!({ "field": "channel" })),
     )
-    .with_details(json!({ "field": "channel" })))
 }
 
-async fn destination_exists(db: &SqlitePool, channel: &str, name: &str) -> Result<bool, anyhow::Error> {
+async fn destination_exists(
+    db: &SqlitePool,
+    channel: &str,
+    name: &str,
+) -> Result<bool, anyhow::Error> {
     let Some(kind) = notification_destinations_repo::secret_kind_for_channel(channel) else {
         return Ok(false);
     };
@@ -57,11 +62,10 @@ pub(super) async fn put_settings(
     require_csrf(&headers, &session)?;
 
     if req.templates.wecom_markdown.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_template",
-            "WeCom template is required",
-        )
-        .with_details(json!({ "field": "templates.wecom_markdown" })));
+        return Err(
+            AppError::bad_request("invalid_template", "WeCom template is required")
+                .with_details(json!({ "field": "templates.wecom_markdown" })),
+        );
     }
     if req.templates.email_subject.trim().is_empty() {
         return Err(AppError::bad_request(
@@ -71,11 +75,10 @@ pub(super) async fn put_settings(
         .with_details(json!({ "field": "templates.email_subject" })));
     }
     if req.templates.email_body.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_template",
-            "Email body template is required",
-        )
-        .with_details(json!({ "field": "templates.email_body" })));
+        return Err(
+            AppError::bad_request("invalid_template", "Email body template is required")
+                .with_details(json!({ "field": "templates.email_body" })),
+        );
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -224,24 +227,37 @@ pub(super) async fn test_destination(
 
     match channel.as_str() {
         notifications_repo::CHANNEL_WECOM_BOT => {
-            let secret = secrets_repo::get_secret(&state.db, &state.secrets, "wecom_bot", name.trim())
-                .await?
-                .ok_or_else(|| AppError::not_found("destination_not_found", "Destination not found"))?;
+            let secret =
+                secrets_repo::get_secret(&state.db, &state.secrets, "wecom_bot", name.trim())
+                    .await?
+                    .ok_or_else(|| {
+                        AppError::not_found("destination_not_found", "Destination not found")
+                    })?;
             #[derive(Deserialize)]
             struct Payload {
                 webhook_url: String,
             }
             let payload: Payload = serde_json::from_slice(&secret)?;
-            let content = format!("**Bastion 测试通知**\n> Destination: {}\n> Time: {}\n", name.trim(), ts);
+            let content = format!(
+                "**Bastion 测试通知**\n> Destination: {}\n> Time: {}\n",
+                name.trim(),
+                ts
+            );
             wecom::send_markdown(&payload.webhook_url, &content).await?;
         }
         notifications_repo::CHANNEL_EMAIL => {
             let secret = secrets_repo::get_secret(&state.db, &state.secrets, "smtp", name.trim())
                 .await?
-                .ok_or_else(|| AppError::not_found("destination_not_found", "Destination not found"))?;
+                .ok_or_else(|| {
+                    AppError::not_found("destination_not_found", "Destination not found")
+                })?;
             let payload: smtp::SmtpSecretPayload = serde_json::from_slice(&secret)?;
             let subject = "Bastion 测试通知".to_string();
-            let body = format!("Bastion test notification\n\nDestination: {}\nTime: {}\n", name.trim(), ts);
+            let body = format!(
+                "Bastion test notification\n\nDestination: {}\nTime: {}\n",
+                name.trim(),
+                ts
+            );
             smtp::send_plain_text(&payload, &subject, &body).await?;
         }
         _ => {
@@ -309,7 +325,8 @@ pub(super) async fn list_queue(
     let channel = q.channel.as_deref();
 
     let total = notifications_repo::count_queue(&state.db, status, channel).await?;
-    let rows = notifications_repo::list_queue(&state.db, status, channel, page_size, offset).await?;
+    let rows =
+        notifications_repo::list_queue(&state.db, status, channel, page_size, offset).await?;
 
     let items = rows
         .into_iter()
@@ -349,7 +366,10 @@ pub(super) async fn cancel(
     require_csrf(&headers, &session)?;
 
     let Some(_row) = notifications_repo::get_notification(&state.db, &id).await? else {
-        return Err(AppError::not_found("notification_not_found", "Notification not found"));
+        return Err(AppError::not_found(
+            "notification_not_found",
+            "Notification not found",
+        ));
     };
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -375,7 +395,10 @@ pub(super) async fn retry_now(
     require_csrf(&headers, &session)?;
 
     let Some(row) = notifications_repo::get_notification(&state.db, &id).await? else {
-        return Err(AppError::not_found("notification_not_found", "Notification not found"));
+        return Err(AppError::not_found(
+            "notification_not_found",
+            "Notification not found",
+        ));
     };
 
     let settings = notifications_settings_repo::get_or_default(&state.db).await?;
@@ -388,12 +411,18 @@ pub(super) async fn retry_now(
     match row.channel.as_str() {
         notifications_repo::CHANNEL_WECOM_BOT => {
             if !settings.channels.wecom_bot.enabled {
-                return Err(AppError::conflict("channel_disabled", "Channel is disabled"));
+                return Err(AppError::conflict(
+                    "channel_disabled",
+                    "Channel is disabled",
+                ));
             }
         }
         notifications_repo::CHANNEL_EMAIL => {
             if !settings.channels.email.enabled {
-                return Err(AppError::conflict("channel_disabled", "Channel is disabled"));
+                return Err(AppError::conflict(
+                    "channel_disabled",
+                    "Channel is disabled",
+                ));
             }
         }
         _ => {
@@ -411,7 +440,8 @@ pub(super) async fn retry_now(
             "Destination has been deleted",
         ));
     }
-    if !notification_destinations_repo::is_enabled(&state.db, &row.channel, &row.secret_name).await?
+    if !notification_destinations_repo::is_enabled(&state.db, &row.channel, &row.secret_name)
+        .await?
     {
         return Err(AppError::conflict(
             "destination_disabled",
