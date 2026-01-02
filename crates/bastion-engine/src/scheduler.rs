@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -19,7 +19,9 @@ use bastion_core::job_spec;
 use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::jobs_repo::{self, OverlapPolicy};
+use bastion_storage::notification_destinations_repo;
 use bastion_storage::notifications_repo;
+use bastion_storage::notifications_settings_repo;
 use bastion_storage::runs_repo::{self, RunStatus};
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -487,7 +489,7 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                 job: &job,
                 run_id: &run.id,
                 started_at,
-                spec,
+                spec: spec.clone(),
                 agent_id,
             })
             .await
@@ -521,21 +523,12 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     break;
                 };
                 if current.status != RunStatus::Running {
-                    let mut enqueued_any = false;
-                    match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
-                        Ok(n) => enqueued_any |= n > 0,
+                    match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                        Ok(true) => notifications_notify.notify_one(),
+                        Ok(false) => {}
                         Err(error) => {
-                            warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                            warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
                         }
-                    }
-                    match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
-                        Ok(n) => enqueued_any |= n > 0,
-                        Err(error) => {
-                            warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
-                        }
-                    }
-                    if enqueued_any {
-                        notifications_notify.notify_one();
                     }
                     info!(run_id = %run.id, "run completed (agent)");
                     break;
@@ -581,7 +574,7 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
             job: &job,
             run_id: &run.id,
             started_at,
-            spec,
+            spec: spec.clone(),
         })
         .await
         {
@@ -603,21 +596,12 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     None,
                 )
                 .await;
-                let mut enqueued_any = false;
-                match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
-                    Ok(n) => enqueued_any |= n > 0,
+                match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                    Ok(true) => notifications_notify.notify_one(),
+                    Ok(false) => {}
                     Err(error) => {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
                     }
-                }
-                match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
-                    Ok(n) => enqueued_any |= n > 0,
-                    Err(error) => {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
-                    }
-                }
-                if enqueued_any {
-                    notifications_notify.notify_one();
                 }
                 info!(run_id = %run.id, "run completed");
             }
@@ -647,25 +631,88 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     Some(error_code),
                 )
                 .await;
-                let mut enqueued_any = false;
-                match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
-                    Ok(n) => enqueued_any |= n > 0,
+                match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                    Ok(true) => notifications_notify.notify_one(),
+                    Ok(false) => {}
                     Err(error) => {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue notifications");
                     }
-                }
-                match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
-                    Ok(n) => enqueued_any |= n > 0,
-                    Err(error) => {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
-                    }
-                }
-                if enqueued_any {
-                    notifications_notify.notify_one();
                 }
             }
         }
     }
+}
+
+async fn enqueue_notifications_for_run(
+    db: &SqlitePool,
+    spec: &job_spec::JobSpecV1,
+    run_id: &str,
+) -> Result<bool, anyhow::Error> {
+    let settings = notifications_settings_repo::get_or_default(db).await?;
+    if !settings.enabled {
+        return Ok(false);
+    }
+
+    let all = notification_destinations_repo::list_destinations(db).await?;
+
+    let mut enabled_wecom = Vec::new();
+    let mut enabled_email = Vec::new();
+    for d in &all {
+        if !d.enabled {
+            continue;
+        }
+        match d.channel.as_str() {
+            notifications_repo::CHANNEL_WECOM_BOT => enabled_wecom.push(d.name.clone()),
+            notifications_repo::CHANNEL_EMAIL => enabled_email.push(d.name.clone()),
+            _ => {}
+        }
+    }
+
+    let mut selected_wecom: Vec<String> = Vec::new();
+    let mut selected_email: Vec<String> = Vec::new();
+    match spec.notifications().mode {
+        job_spec::NotificationsModeV1::Inherit => {
+            selected_wecom = enabled_wecom;
+            selected_email = enabled_email;
+        }
+        job_spec::NotificationsModeV1::Custom => {
+            let wecom_set: HashSet<&str> = enabled_wecom.iter().map(|s| s.as_str()).collect();
+            let email_set: HashSet<&str> = enabled_email.iter().map(|s| s.as_str()).collect();
+
+            for name in &spec.notifications().wecom_bot {
+                if wecom_set.contains(name.as_str()) {
+                    selected_wecom.push(name.clone());
+                }
+            }
+            for name in &spec.notifications().email {
+                if email_set.contains(name.as_str()) {
+                    selected_email.push(name.clone());
+                }
+            }
+        }
+    }
+
+    let mut inserted = 0_i64;
+    if settings.channels.wecom_bot.enabled && !selected_wecom.is_empty() {
+        inserted += notifications_repo::enqueue_for_run(
+            db,
+            run_id,
+            notifications_repo::CHANNEL_WECOM_BOT,
+            &selected_wecom,
+        )
+        .await?;
+    }
+    if settings.channels.email.enabled && !selected_email.is_empty() {
+        inserted += notifications_repo::enqueue_for_run(
+            db,
+            run_id,
+            notifications_repo::CHANNEL_EMAIL,
+            &selected_email,
+        )
+        .await?;
+    }
+
+    Ok(inserted > 0)
 }
 
 struct DispatchRunToAgentArgs<'a> {
@@ -738,6 +785,7 @@ async fn resolve_job_spec_for_agent(
         job_spec::JobSpecV1::Filesystem {
             v,
             pipeline,
+            notifications: _,
             source,
             target,
         } => Ok(JobSpecResolvedV1::Filesystem {
@@ -749,6 +797,7 @@ async fn resolve_job_spec_for_agent(
         job_spec::JobSpecV1::Sqlite {
             v,
             pipeline,
+            notifications: _,
             source,
             target,
         } => Ok(JobSpecResolvedV1::Sqlite {
@@ -760,6 +809,7 @@ async fn resolve_job_spec_for_agent(
         job_spec::JobSpecV1::Vaultwarden {
             v,
             pipeline,
+            notifications: _,
             source,
             target,
         } => Ok(JobSpecResolvedV1::Vaultwarden {
