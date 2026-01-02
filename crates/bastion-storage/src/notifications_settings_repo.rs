@@ -16,21 +16,12 @@ impl Default for NotificationsChannelSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NotificationsChannels {
     #[serde(default)]
     pub wecom_bot: NotificationsChannelSettings,
     #[serde(default)]
     pub email: NotificationsChannelSettings,
-}
-
-impl Default for NotificationsChannels {
-    fn default() -> Self {
-        Self {
-            wecom_bot: NotificationsChannelSettings::default(),
-            email: NotificationsChannelSettings::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +87,10 @@ pub async fn get_or_default(db: &SqlitePool) -> Result<NotificationsSettings, an
     Ok(defaults)
 }
 
-pub async fn upsert(db: &SqlitePool, settings: &NotificationsSettings) -> Result<(), anyhow::Error> {
+pub async fn upsert(
+    db: &SqlitePool,
+    settings: &NotificationsSettings,
+) -> Result<(), anyhow::Error> {
     let json = serde_json::to_string(settings)?;
     settings_repo::upsert_value_json(db, KEY_NOTIFICATIONS, &json).await?;
     Ok(())

@@ -243,7 +243,11 @@ fn validate_pipeline(pipeline: &PipelineV1) -> Result<(), anyhow::Error> {
 
 fn validate_notifications(notifications: &NotificationsV1) -> Result<(), anyhow::Error> {
     if notifications.mode == NotificationsModeV1::Custom {
-        for name in notifications.wecom_bot.iter().chain(notifications.email.iter()) {
+        for name in notifications
+            .wecom_bot
+            .iter()
+            .chain(notifications.email.iter())
+        {
             if name.trim().is_empty() {
                 anyhow::bail!("notifications destination name is required");
             }
