@@ -87,6 +87,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let run_events_bus = Arc::new(RunEventsBus::new());
     let run_queue_notify = Arc::new(tokio::sync::Notify::new());
     let jobs_notify = Arc::new(tokio::sync::Notify::new());
+    let notifications_notify = Arc::new(tokio::sync::Notify::new());
     let shutdown = CancellationToken::new();
 
     scheduler::spawn(scheduler::SchedulerArgs {
@@ -99,12 +100,14 @@ async fn main() -> Result<(), anyhow::Error> {
         run_events_bus: run_events_bus.clone(),
         run_queue_notify: run_queue_notify.clone(),
         jobs_notify: jobs_notify.clone(),
+        notifications_notify: notifications_notify.clone(),
         shutdown: shutdown.clone(),
     });
     notifications::spawn(
         pool.clone(),
         secrets.clone(),
         run_events_bus.clone(),
+        notifications_notify.clone(),
         shutdown.clone(),
     );
     maintenance::spawn(pool.clone(), shutdown.clone());

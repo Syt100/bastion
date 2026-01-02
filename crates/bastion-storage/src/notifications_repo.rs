@@ -111,6 +111,16 @@ pub async fn claim_next_due(
     }))
 }
 
+pub async fn next_due_at(db: &SqlitePool) -> Result<Option<i64>, anyhow::Error> {
+    let row = sqlx::query(
+        "SELECT next_attempt_at FROM notifications WHERE status = 'queued' ORDER BY next_attempt_at ASC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.map(|r| r.get::<i64, _>("next_attempt_at")))
+}
+
 pub async fn mark_sent(db: &SqlitePool, id: &str, now: i64) -> Result<(), anyhow::Error> {
     sqlx::query(
         "UPDATE notifications SET status = 'sent', updated_at = ?, last_error = NULL WHERE id = ?",
