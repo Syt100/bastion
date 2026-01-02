@@ -86,6 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent_manager = agent_manager::AgentManager::default();
     let run_events_bus = Arc::new(RunEventsBus::new());
     let run_queue_notify = Arc::new(tokio::sync::Notify::new());
+    let jobs_notify = Arc::new(tokio::sync::Notify::new());
     let shutdown = CancellationToken::new();
 
     scheduler::spawn(scheduler::SchedulerArgs {
@@ -97,6 +98,7 @@ async fn main() -> Result<(), anyhow::Error> {
         incomplete_cleanup_days: config.incomplete_cleanup_days,
         run_events_bus: run_events_bus.clone(),
         run_queue_notify: run_queue_notify.clone(),
+        jobs_notify: jobs_notify.clone(),
         shutdown: shutdown.clone(),
     });
     notifications::spawn(
@@ -113,6 +115,7 @@ async fn main() -> Result<(), anyhow::Error> {
         secrets,
         agent_manager,
         run_queue_notify,
+        jobs_notify,
         run_events_bus,
     });
 

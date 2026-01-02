@@ -149,6 +149,7 @@ pub(super) async fn create_job(
         overlap_policy = ?job.overlap_policy,
         "job created"
     );
+    state.jobs_notify.notify_one();
     Ok(Json(job))
 }
 
@@ -243,6 +244,7 @@ pub(super) async fn update_job(
         overlap_policy = ?job.overlap_policy,
         "job updated"
     );
+    state.jobs_notify.notify_one();
     Ok(Json(job))
 }
 
@@ -260,6 +262,7 @@ pub(super) async fn delete_job(
         return Err(AppError::not_found("job_not_found", "Job not found"));
     }
     tracing::info!(job_id = %job_id, "job deleted");
+    state.jobs_notify.notify_one();
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -60,6 +60,7 @@ async fn invalid_wecom_webhook_returns_400_with_details_field() {
         secrets,
         agent_manager: AgentManager::default(),
         run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
     });
 
@@ -122,6 +123,7 @@ async fn invalid_smtp_from_returns_400_with_details_field() {
         secrets,
         agent_manager: AgentManager::default(),
         run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
     });
 
@@ -192,6 +194,7 @@ async fn login_rate_limit_includes_retry_after_details() {
         secrets,
         agent_manager: AgentManager::default(),
         run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
     });
 
@@ -240,6 +243,7 @@ async fn agent_enroll_invalid_token_format_returns_401_with_details() {
         secrets,
         agent_manager: AgentManager::default(),
         run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
     });
 
