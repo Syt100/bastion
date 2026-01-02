@@ -1,0 +1,40 @@
+[package]
+name = "bastion-http"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bastion-backup = { path = "../bastion-backup" }
+bastion-config = { path = "../bastion-config" }
+bastion-core = { path = "../bastion-core" }
+bastion-engine = { path = "../bastion-engine" }
+bastion-notify = { path = "../bastion-notify" }
+bastion-storage = { path = "../bastion-storage" }
+anyhow = "1.0.100"
+axum = { version = "0.8.6", features = ["ws"] }
+futures-util = "0.3.31"
+include_dir = { version = "0.7.4", optional = true }
+mime_guess = "2.0.5"
+serde = { version = "1.0.225", features = ["derive"] }
+serde_json = "1.0.145"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
+time = { version = "0.3.44", features = ["formatting", "macros", "serde"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tower-cookies = "0.11.0"
+tower-http = { version = "0.6.6", features = ["trace"] }
+tracing = "0.1.41"
+url = "2.5.7"
+uuid = { version = "1.18.1", features = ["v4"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
+tempfile = "3.23.0"
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+
+[features]
+default = []
+embed-ui = ["dep:include_dir"]
+
+[lints]
+workspace = true

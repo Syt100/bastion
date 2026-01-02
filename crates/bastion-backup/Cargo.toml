@@ -1,0 +1,32 @@
+[package]
+name = "bastion-backup"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bastion-core = { path = "../bastion-core" }
+bastion-storage = { path = "../bastion-storage" }
+bastion-targets = { path = "../bastion-targets" }
+age = "0.11.2"
+anyhow = "1.0.100"
+blake3 = "1.8.2"
+globset = "0.4.16"
+rusqlite = { version = "0.32.1", features = ["backup"] }
+serde = { version = "1.0.225", features = ["derive"] }
+serde_json = "1.0.145"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
+tar = "0.4.44"
+time = { version = "0.3.44", features = ["formatting", "macros", "serde"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tracing = "0.1.41"
+url = "2.5.7"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+walkdir = "2.5.0"
+zstd = { version = "0.13.3", features = ["zstdmt"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

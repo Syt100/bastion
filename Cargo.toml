@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/bastion",
-  "crates/bastion-core",
+  "crates/bastion", "crates/bastion-backup", "crates/bastion-config",
+  "crates/bastion-core", "crates/bastion-engine", "crates/bastion-http", "crates/bastion-notify", "crates/bastion-storage", "crates/bastion-targets",
 ]
 
 [workspace.package]
