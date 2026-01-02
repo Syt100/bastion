@@ -4,6 +4,7 @@ use sqlx::Row;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -23,15 +24,23 @@ pub fn spawn(
     db: SqlitePool,
     secrets: Arc<SecretsCrypto>,
     run_events_bus: Arc<RunEventsBus>,
+    notifications_notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    tokio::spawn(run_loop(db, secrets, run_events_bus, shutdown));
+    tokio::spawn(run_loop(
+        db,
+        secrets,
+        run_events_bus,
+        notifications_notify,
+        shutdown,
+    ));
 }
 
 async fn run_loop(
     db: SqlitePool,
     secrets: Arc<SecretsCrypto>,
     run_events_bus: Arc<RunEventsBus>,
+    notifications_notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
     loop {
@@ -46,6 +55,7 @@ async fn run_loop(
                 warn!(error = %error, "failed to claim due notification");
                 tokio::select! {
                     _ = shutdown.cancelled() => break,
+                    _ = notifications_notify.notified() => {}
                     _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
                 }
                 continue;
@@ -53,9 +63,32 @@ async fn run_loop(
         };
 
         let Some(notification) = next else {
+            let next_due_at = match notifications_repo::next_due_at(&db).await {
+                Ok(v) => v,
+                Err(error) => {
+                    warn!(error = %error, "failed to fetch next due notification time");
+                    tokio::select! {
+                        _ = shutdown.cancelled() => break,
+                        _ = notifications_notify.notified() => {}
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                    }
+                    continue;
+                }
+            };
+
+            let Some(next_due_at) = next_due_at else {
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = notifications_notify.notified() => {}
+                }
+                continue;
+            };
+
+            let delay = next_due_at.saturating_sub(now);
             tokio::select! {
                 _ = shutdown.cancelled() => break,
-                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
+                _ = notifications_notify.notified() => {}
+                _ = tokio::time::sleep(std::time::Duration::from_secs(delay as u64)) => {}
             }
             continue;
         };

@@ -44,7 +44,19 @@ pub struct SchedulerArgs {
     pub run_events_bus: Arc<RunEventsBus>,
     pub run_queue_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
+    pub notifications_notify: Arc<Notify>,
     pub shutdown: CancellationToken,
+}
+
+struct WorkerLoopArgs {
+    db: SqlitePool,
+    data_dir: std::path::PathBuf,
+    secrets: Arc<SecretsCrypto>,
+    agent_manager: AgentManager,
+    run_events_bus: Arc<RunEventsBus>,
+    run_queue_notify: Arc<Notify>,
+    notifications_notify: Arc<Notify>,
+    shutdown: CancellationToken,
 }
 
 pub fn spawn(args: SchedulerArgs) {
@@ -58,6 +70,7 @@ pub fn spawn(args: SchedulerArgs) {
         run_events_bus,
         run_queue_notify,
         jobs_notify,
+        notifications_notify,
         shutdown,
     } = args;
     tokio::spawn(run_cron_loop(
@@ -67,15 +80,16 @@ pub fn spawn(args: SchedulerArgs) {
         jobs_notify.clone(),
         shutdown.clone(),
     ));
-    tokio::spawn(run_worker_loop(
-        db.clone(),
+    tokio::spawn(run_worker_loop(WorkerLoopArgs {
+        db: db.clone(),
         data_dir,
-        secrets.clone(),
+        secrets: secrets.clone(),
         agent_manager,
-        run_events_bus.clone(),
-        run_queue_notify.clone(),
-        shutdown.clone(),
-    ));
+        run_events_bus: run_events_bus.clone(),
+        run_queue_notify: run_queue_notify.clone(),
+        notifications_notify: notifications_notify.clone(),
+        shutdown: shutdown.clone(),
+    }));
     tokio::spawn(run_retention_loop(
         db.clone(),
         run_retention_days,
@@ -331,15 +345,17 @@ fn parse_cron_cached<'a>(
         .expect("schedule_cache contains key we just inserted"))
 }
 
-async fn run_worker_loop(
-    db: SqlitePool,
-    data_dir: std::path::PathBuf,
-    secrets: Arc<SecretsCrypto>,
-    agent_manager: AgentManager,
-    run_events_bus: Arc<RunEventsBus>,
-    run_queue_notify: Arc<Notify>,
-    shutdown: CancellationToken,
-) {
+async fn run_worker_loop(args: WorkerLoopArgs) {
+    let WorkerLoopArgs {
+        db,
+        data_dir,
+        secrets,
+        agent_manager,
+        run_events_bus,
+        run_queue_notify,
+        notifications_notify,
+        shutdown,
+    } = args;
     loop {
         if shutdown.is_cancelled() {
             break;
@@ -505,15 +521,21 @@ async fn run_worker_loop(
                     break;
                 };
                 if current.status != RunStatus::Running {
-                    if let Err(error) =
-                        notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
-                    {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                    let mut enqueued_any = false;
+                    match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
+                        Ok(n) => enqueued_any |= n > 0,
+                        Err(error) => {
+                            warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                        }
                     }
-                    if let Err(error) =
-                        notifications_repo::enqueue_emails_for_run(&db, &run.id).await
-                    {
-                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                    match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
+                        Ok(n) => enqueued_any |= n > 0,
+                        Err(error) => {
+                            warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                        }
+                    }
+                    if enqueued_any {
+                        notifications_notify.notify_one();
                     }
                     info!(run_id = %run.id, "run completed (agent)");
                     break;
@@ -581,13 +603,21 @@ async fn run_worker_loop(
                     None,
                 )
                 .await;
-                if let Err(error) =
-                    notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
-                {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                let mut enqueued_any = false;
+                match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
+                    Ok(n) => enqueued_any |= n > 0,
+                    Err(error) => {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                    }
                 }
-                if let Err(error) = notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
+                    Ok(n) => enqueued_any |= n > 0,
+                    Err(error) => {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                    }
+                }
+                if enqueued_any {
+                    notifications_notify.notify_one();
                 }
                 info!(run_id = %run.id, "run completed");
             }
@@ -617,13 +647,21 @@ async fn run_worker_loop(
                     Some(error_code),
                 )
                 .await;
-                if let Err(error) =
-                    notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await
-                {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                let mut enqueued_any = false;
+                match notifications_repo::enqueue_wecom_bots_for_run(&db, &run.id).await {
+                    Ok(n) => enqueued_any |= n > 0,
+                    Err(error) => {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue wecom notifications");
+                    }
                 }
-                if let Err(error) = notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
-                    warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                match notifications_repo::enqueue_emails_for_run(&db, &run.id).await {
+                    Ok(n) => enqueued_any |= n > 0,
+                    Err(error) => {
+                        warn!(run_id = %run.id, error = %error, "failed to enqueue email notifications");
+                    }
+                }
+                if enqueued_any {
+                    notifications_notify.notify_one();
                 }
             }
         }
