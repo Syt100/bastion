@@ -3,18 +3,9 @@ use std::{
     path::PathBuf,
 };
 
+use bastion_config::Config;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use ipnet::IpNet;
-
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub bind: SocketAddr,
-    pub data_dir: PathBuf,
-    pub insecure_http: bool,
-    pub run_retention_days: i64,
-    pub incomplete_cleanup_days: i64,
-    pub trusted_proxies: Vec<IpNet>,
-}
 
 #[derive(Debug, Parser)]
 #[command(name = "bastion", version, about = "Bastion backup server (MVP)")]
@@ -170,7 +161,7 @@ pub struct KeypackRotateArgs {}
 
 impl HubArgs {
     pub fn into_config(self) -> Result<Config, anyhow::Error> {
-        let data_dir = crate::data_dir::resolve_data_dir(self.data_dir)?;
+        let data_dir = bastion_config::data_dir::resolve_data_dir(self.data_dir)?;
 
         if self.run_retention_days <= 0 {
             anyhow::bail!("run_retention_days must be > 0");

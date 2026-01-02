@@ -1,35 +1,6 @@
-mod agent;
 mod agent_client;
-mod agent_manager;
-mod agent_protocol;
-mod agent_tasks_repo;
-mod agents_repo;
-mod auth;
-mod backup;
-mod backup_encryption;
 mod config;
-mod data_dir;
-mod db;
-mod http;
-mod job_spec;
-mod jobs_repo;
 mod logging;
-mod maintenance;
-mod notifications;
-mod notifications_repo;
-mod operations_repo;
-mod restore;
-mod run_events;
-mod run_events_bus;
-mod run_failure;
-mod runs_repo;
-mod scheduler;
-mod secrets;
-mod secrets_repo;
-mod smtp;
-mod targets;
-mod webdav;
-mod wecom;
 
 use std::sync::Arc;
 
@@ -38,8 +9,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::config::{Cli, Command, KeypackCommand};
-use crate::http::AppState;
-use crate::run_events_bus::RunEventsBus;
+use bastion_engine::run_events_bus::RunEventsBus;
+use bastion_engine::{agent_manager, maintenance, notifications, scheduler};
+use bastion_http::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -69,12 +41,16 @@ async fn main() -> Result<(), anyhow::Error> {
                 match command {
                     KeypackCommand::Export(args) => {
                         let password = read_keypack_password(args.password, args.password_stdin)?;
-                        secrets::export_keypack(&config.data_dir, &args.out, &password)?;
+                        bastion_storage::secrets::export_keypack(
+                            &config.data_dir,
+                            &args.out,
+                            &password,
+                        )?;
                         println!("exported keypack to {}", args.out.display());
                     }
                     KeypackCommand::Import(args) => {
                         let password = read_keypack_password(args.password, args.password_stdin)?;
-                        secrets::import_keypack(
+                        bastion_storage::secrets::import_keypack(
                             &config.data_dir,
                             &args.r#in,
                             &password,
@@ -88,7 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         println!("restart the service to ensure the new keyring is loaded");
                     }
                     KeypackCommand::Rotate(_) => {
-                        let result = secrets::rotate_master_key(&config.data_dir)?;
+                        let result = bastion_storage::secrets::rotate_master_key(&config.data_dir)?;
                         println!(
                             "rotated master.key: {} -> {} (keys: {})",
                             result.previous_kid, result.active_kid, result.keys_count
@@ -102,8 +78,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let config = Arc::new(hub.into_config()?);
-    let pool = db::init(&config.data_dir).await?;
-    let secrets = Arc::new(secrets::SecretsCrypto::load_or_create(&config.data_dir)?);
+    let pool = bastion_storage::db::init(&config.data_dir).await?;
+    let secrets = Arc::new(bastion_storage::secrets::SecretsCrypto::load_or_create(
+        &config.data_dir,
+    )?);
     let master_kid = secrets.active_kid();
     let agent_manager = agent_manager::AgentManager::default();
     let run_events_bus = Arc::new(RunEventsBus::new());
@@ -129,7 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
     maintenance::spawn(pool.clone(), shutdown.clone());
 
-    let app = http::router(AppState {
+    let app = bastion_http::router(AppState {
         config: config.clone(),
         db: pool,
         secrets,

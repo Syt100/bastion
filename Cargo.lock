@@ -329,45 +329,52 @@ dependencies = [
 name = "bastion"
 version = "0.1.0"
 dependencies = [
- "age",
  "anyhow",
- "argon2",
  "axum",
- "base64 0.22.1",
+ "bastion-backup",
+ "bastion-config",
  "bastion-core",
- "blake3",
- "chacha20poly1305",
- "chrono",
+ "bastion-engine",
+ "bastion-http",
+ "bastion-storage",
+ "bastion-targets",
  "clap",
- "cron",
- "directories",
  "futures-util",
- "globset",
- "hex",
- "hkdf",
- "include_dir",
  "ipnet",
- "lettre",
- "mime_guess",
- "rand 0.9.2",
  "reqwest",
- "rusqlite",
  "serde",
  "serde_json",
- "sha2",
- "sqlx",
- "tar",
  "tempfile",
  "time",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
- "tower",
- "tower-cookies",
- "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "bastion-backup"
+version = "0.1.0"
+dependencies = [
+ "age",
+ "anyhow",
+ "bastion-core",
+ "bastion-storage",
+ "bastion-targets",
+ "blake3",
+ "globset",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tar",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
  "url",
  "uuid",
  "walkdir",
@@ -375,13 +382,133 @@ dependencies = [
 ]
 
 [[package]]
+name = "bastion-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "hex",
+ "ipnet",
+ "rand 0.9.2",
+]
+
+[[package]]
 name = "bastion-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "assert-json-diff",
+ "base64 0.22.1",
+ "globset",
+ "rand 0.9.2",
  "serde",
  "serde_json",
+ "sha2",
+ "url",
  "uuid",
+]
+
+[[package]]
+name = "bastion-engine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bastion-backup",
+ "bastion-core",
+ "bastion-notify",
+ "bastion-storage",
+ "bastion-targets",
+ "chrono",
+ "cron",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "bastion-http"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bastion-backup",
+ "bastion-config",
+ "bastion-core",
+ "bastion-engine",
+ "bastion-notify",
+ "bastion-storage",
+ "futures-util",
+ "include_dir",
+ "mime_guess",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tower-cookies",
+ "tower-http",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "bastion-notify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lettre",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bastion-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "base64 0.22.1",
+ "bastion-core",
+ "chacha20poly1305",
+ "hkdf",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "bastion-targets"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bastion-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -1256,12 +1383,6 @@ dependencies = [
  "http-body",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -3259,20 +3380,11 @@ checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "bitflags",
  "bytes",
- "futures-core",
  "futures-util",
  "http",
  "http-body",
- "http-body-util",
- "http-range-header",
- "httpdate",
  "iri-string",
- "mime",
- "mime_guess",
- "percent-encoding",
  "pin-project-lite",
- "tokio",
- "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",

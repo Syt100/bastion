@@ -1,0 +1,27 @@
+[package]
+name = "bastion-storage"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bastion-core = { path = "../bastion-core" }
+anyhow = "1.0.100"
+argon2 = "0.5.3"
+base64 = "0.22.1"
+chacha20poly1305 = "0.10.1"
+hkdf = "0.12.4"
+rand = "0.9.2"
+serde = { version = "1.0.225", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+time = { version = "0.3.44", features = ["formatting", "macros", "serde"] }
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"
+tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

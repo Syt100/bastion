@@ -9,13 +9,16 @@ use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 use tracing::{debug, info, warn};
 use url::Url;
 
-use crate::agent_protocol::{
+use bastion_core::agent_protocol::{
     AgentToHubMessageV1, EncryptionResolvedV1, HubToAgentMessageV1, JobSpecResolvedV1,
     PROTOCOL_VERSION, TargetResolvedV1,
 };
+use bastion_core::run_failure::RunFailedWithSummary;
+use bastion_targets::WebdavCredentials;
+
 use crate::config::AgentArgs;
-use crate::run_failure::RunFailedWithSummary;
-use crate::{backup, targets};
+use bastion_backup as backup;
+use bastion_targets as targets;
 
 const IDENTITY_FILE_NAME: &str = "agent.json";
 
@@ -47,7 +50,7 @@ pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
         anyhow::bail!("heartbeat_seconds must be > 0");
     }
 
-    let data_dir = crate::data_dir::resolve_data_dir(args.data_dir)?;
+    let data_dir = bastion_config::data_dir::resolve_data_dir(args.data_dir)?;
     let base_url = normalize_base_url(&args.hub_url)?;
 
     let identity_path = identity_path(&data_dir);
@@ -210,7 +213,7 @@ async fn handle_backup_task(
     data_dir: &Path,
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
     task_id: &str,
-    task: crate::agent_protocol::BackupRunTaskV1,
+    task: bastion_core::agent_protocol::BackupRunTaskV1,
 ) -> Result<(), anyhow::Error> {
     let run_id = task.run_id.clone();
     let job_id = task.job_id.clone();
@@ -297,7 +300,9 @@ async fn handle_backup_task(
                 }
             });
 
-            if error_policy == crate::job_spec::FsErrorPolicy::SkipFail && issues.errors_total > 0 {
+            if error_policy == bastion_core::job_spec::FsErrorPolicy::SkipFail
+                && issues.errors_total > 0
+            {
                 if let Some(obj) = summary.as_object_mut() {
                     obj.insert(
                         "error_code".to_string(),
@@ -508,7 +513,7 @@ async fn store_artifacts_to_resolved_target(
             password,
             ..
         } => {
-            let creds = crate::webdav::WebdavCredentials {
+            let creds = WebdavCredentials {
                 username: username.clone(),
                 password: password.clone(),
             };
