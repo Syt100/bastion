@@ -87,6 +87,14 @@ vi.mock('@/stores/secrets', () => ({
   useSecretsStore: () => secretsApi,
 }))
 
+const notificationsApi = {
+  destinations: [],
+  refreshDestinations: vi.fn().mockResolvedValue(undefined),
+}
+vi.mock('@/stores/notifications', () => ({
+  useNotificationsStore: () => notificationsApi,
+}))
+
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({ locale: 'zh-CN' }),
 }))

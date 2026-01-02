@@ -47,7 +47,18 @@ const ui = useUiStore()
 const auth = useAuthStore()
 const system = useSystemStore()
 
-const activeKey = computed(() => route.path)
+const activeKey = computed(() => {
+  const path = route.path
+  const ordered = [...menuKeys].sort((a, b) => b.length - a.length)
+  for (const key of ordered) {
+    if (key === '/') {
+      if (path === '/') return '/'
+      continue
+    }
+    if (path === key || path.startsWith(`${key}/`)) return key
+  }
+  return path
+})
 const mobileMenuOpen = ref(false)
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -83,7 +94,7 @@ function onSelectLanguage(key: string | number): void {
 function navigateMenu(key: unknown): void {
   if (typeof key !== 'string') return
   if (!menuKeySet.has(key)) return
-  if (key === route.path) return
+  if (key === activeKey.value) return
   void router.push(key)
 }
 

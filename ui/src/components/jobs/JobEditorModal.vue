@@ -21,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 import { useJobsStore, type JobType, type OverlapPolicy } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
+import { useNotificationsStore } from '@/stores/notifications'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -45,6 +46,7 @@ const message = useMessage()
 const jobs = useJobsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
+const notifications = useNotificationsStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -53,12 +55,13 @@ const mode = ref<'create' | 'edit'>('create')
 const saving = ref<boolean>(false)
 const step = ref<number>(1)
 
-const EDITOR_STEPS_TOTAL = 5
+const EDITOR_STEPS_TOTAL = 6
 const stepTitles = computed(() => [
   t('jobs.steps.basics'),
   t('jobs.steps.source'),
   t('jobs.steps.target'),
   t('jobs.steps.security'),
+  t('jobs.steps.notifications'),
   t('jobs.steps.review'),
 ])
 const stepTitle = computed(() => {
@@ -92,6 +95,9 @@ const form = reactive<{
   webdavSecretName: string
   localBaseDir: string
   partSizeMiB: number
+  notifyMode: 'inherit' | 'custom'
+  notifyWecomBots: string[]
+  notifyEmails: string[]
 }>({
   id: null,
   name: '',
@@ -115,6 +121,9 @@ const form = reactive<{
   webdavSecretName: '',
   localBaseDir: '',
   partSizeMiB: 256,
+  notifyMode: 'inherit',
+  notifyWecomBots: [],
+  notifyEmails: [],
 })
 
 function resetForm(): void {
@@ -140,6 +149,9 @@ function resetForm(): void {
   form.webdavSecretName = ''
   form.localBaseDir = ''
   form.partSizeMiB = 256
+  form.notifyMode = 'inherit'
+  form.notifyWecomBots = []
+  form.notifyEmails = []
 }
 
 function parseLines(text: string): string[] {
@@ -183,6 +195,7 @@ function openCreate(): void {
   mode.value = 'create'
   step.value = 1
   resetForm()
+  void notifications.refreshDestinations()
   show.value = true
 }
 
@@ -191,6 +204,7 @@ async function openEdit(jobId: string): Promise<void> {
   step.value = 1
   show.value = true
   saving.value = true
+  void notifications.refreshDestinations()
   try {
     const job = await jobs.getJob(jobId)
     form.id = job.id
@@ -232,6 +246,12 @@ async function openEdit(jobId: string): Promise<void> {
     form.sqlitePath = typeof source?.path === 'string' ? source.path : ''
     form.sqliteIntegrityCheck = typeof source?.integrity_check === 'boolean' ? source.integrity_check : false
     form.vaultwardenDataDir = typeof source?.data_dir === 'string' ? source.data_dir : ''
+
+    const notif = (job.spec as Record<string, unknown>).notifications as Record<string, unknown> | undefined
+    const mode = typeof notif?.mode === 'string' && notif.mode === 'custom' ? 'custom' : 'inherit'
+    form.notifyMode = mode
+    form.notifyWecomBots = parseStringArray(notif?.['wecom_bot'])
+    form.notifyEmails = parseStringArray(notif?.['email'])
   } catch (error) {
     message.error(formatToastError(t('errors.fetchJobFailed'), error, t))
     show.value = false
@@ -304,7 +324,7 @@ function prevStep(): void {
 
 function nextStep(): void {
   if (!validateEditorStep(step.value)) return
-  step.value = Math.min(5, step.value + 1)
+  step.value = Math.min(EDITOR_STEPS_TOTAL, step.value + 1)
 }
 
 const previewPayload = computed(() => {
@@ -316,6 +336,15 @@ const previewPayload = computed(() => {
       ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() || 'default' } as const)
       : ({ type: 'none' as const } as const),
   }
+
+  const notifications =
+    form.notifyMode === 'custom'
+      ? {
+          mode: 'custom' as const,
+          wecom_bot: form.notifyWecomBots,
+          email: form.notifyEmails,
+        }
+      : ({ mode: 'inherit' as const } as const)
 
   const source =
     form.jobType === 'filesystem'
@@ -354,6 +383,7 @@ const previewPayload = computed(() => {
       v: 1 as const,
       type: form.jobType,
       pipeline,
+      notifications,
       source,
       target,
     },
@@ -361,7 +391,7 @@ const previewPayload = computed(() => {
 })
 
 async function save(): Promise<void> {
-  if (!validateEditorStep(4)) return
+  if (!validateEditorStep(5)) return
 
   const name = form.name.trim()
   if (!name) {
@@ -406,6 +436,15 @@ async function save(): Promise<void> {
       ? ({ type: 'age_x25519' as const, key_name: encryptionKeyName } as const)
       : ({ type: 'none' as const } as const),
   }
+
+  const notifications =
+    form.notifyMode === 'custom'
+      ? {
+          mode: 'custom' as const,
+          wecom_bot: form.notifyWecomBots,
+          email: form.notifyEmails,
+        }
+      : ({ mode: 'inherit' as const } as const)
 
   const source =
     form.jobType === 'filesystem'
@@ -459,6 +498,7 @@ async function save(): Promise<void> {
         v: 1 as const,
         type: form.jobType,
         pipeline,
+        notifications,
         source,
         target,
       },
@@ -528,6 +568,47 @@ const fsErrorPolicyOptions = computed(() => [
 
 const webdavSecretOptions = computed(() => secrets.webdav.map((s) => ({ label: s.name, value: s.name })))
 
+const notifyModeOptions = computed(() => [
+  { label: t('jobs.notifications.inherit'), value: 'inherit' as const },
+  { label: t('jobs.notifications.custom'), value: 'custom' as const },
+])
+
+const wecomDestinationOptions = computed(() =>
+  notifications.destinations
+    .filter((d) => d.channel === 'wecom_bot')
+    .map((d) => ({
+      label: d.enabled ? d.name : `${d.name} (${t('settings.notifications.destinationDisabled')})`,
+      value: d.name,
+    })),
+)
+
+const emailDestinationOptions = computed(() =>
+  notifications.destinations
+    .filter((d) => d.channel === 'email')
+    .map((d) => ({
+      label: d.enabled ? d.name : `${d.name} (${t('settings.notifications.destinationDisabled')})`,
+      value: d.name,
+    })),
+)
+
+const disabledWecomSelected = computed(() => {
+  const enabled = new Map(
+    notifications.destinations
+      .filter((d) => d.channel === 'wecom_bot')
+      .map((d) => [d.name, d.enabled] as const),
+  )
+  return form.notifyWecomBots.filter((name) => enabled.get(name) === false)
+})
+
+const disabledEmailSelected = computed(() => {
+  const enabled = new Map(
+    notifications.destinations
+      .filter((d) => d.channel === 'email')
+      .map((d) => [d.name, d.enabled] as const),
+  )
+  return form.notifyEmails.filter((name) => enabled.get(name) === false)
+})
+
 defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
 </script>
 
@@ -545,6 +626,7 @@ defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
           <n-step :title="t('jobs.steps.source')" />
           <n-step :title="t('jobs.steps.target')" />
           <n-step :title="t('jobs.steps.security')" />
+          <n-step :title="t('jobs.steps.notifications')" />
           <n-step :title="t('jobs.steps.review')" />
         </n-steps>
       </div>
@@ -709,6 +791,62 @@ defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
           </n-form-item>
         </template>
 
+        <template v-else-if="step === 5">
+          <n-alert type="info" :bordered="false">
+            {{ t('jobs.steps.notificationsHelp') }}
+          </n-alert>
+
+          <n-form-item :label="t('jobs.fields.notificationsMode')">
+            <n-select v-model:value="form.notifyMode" :options="notifyModeOptions" />
+            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.notificationsModeHelp') }}</div>
+          </n-form-item>
+
+          <template v-if="form.notifyMode === 'custom'">
+            <n-form-item :label="t('jobs.fields.notifyWecomBots')">
+              <div class="space-y-2 w-full">
+                <n-select
+                  v-model:value="form.notifyWecomBots"
+                  multiple
+                  filterable
+                  :options="wecomDestinationOptions"
+                  :placeholder="t('jobs.fields.notifySelectPlaceholder')"
+                />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
+                <n-alert
+                  v-if="disabledWecomSelected.length > 0"
+                  type="warning"
+                  :bordered="false"
+                >
+                  {{ t('jobs.fields.notifyDisabledSelected', { names: disabledWecomSelected.join(', ') }) }}
+                </n-alert>
+              </div>
+            </n-form-item>
+
+            <n-form-item :label="t('jobs.fields.notifyEmails')">
+              <div class="space-y-2 w-full">
+                <n-select
+                  v-model:value="form.notifyEmails"
+                  multiple
+                  filterable
+                  :options="emailDestinationOptions"
+                  :placeholder="t('jobs.fields.notifySelectPlaceholder')"
+                />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
+                <n-alert
+                  v-if="disabledEmailSelected.length > 0"
+                  type="warning"
+                  :bordered="false"
+                >
+                  {{ t('jobs.fields.notifyDisabledSelected', { names: disabledEmailSelected.join(', ') }) }}
+                </n-alert>
+              </div>
+            </n-form-item>
+          </template>
+          <template v-else>
+            <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsInheritHelp') }}</div>
+          </template>
+        </template>
+
         <template v-else>
           <n-alert type="info" :bordered="false">
             {{ t('jobs.steps.reviewHelp') }}
@@ -721,7 +859,7 @@ defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
         <n-space>
           <n-button v-if="step > 1" @click="prevStep">{{ t('common.back') }}</n-button>
-          <n-button v-if="step < 5" type="primary" @click="nextStep">
+          <n-button v-if="step < EDITOR_STEPS_TOTAL" type="primary" @click="nextStep">
             {{ t('common.next') }}
           </n-button>
           <n-button v-else type="primary" :loading="saving" @click="save">

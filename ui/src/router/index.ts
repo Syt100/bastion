@@ -5,7 +5,13 @@ const AgentsView = () => import('@/views/AgentsView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const JobsView = () => import('@/views/JobsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
-const SettingsView = () => import('@/views/SettingsView.vue')
+const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
+const SettingsStorageView = () => import('@/views/settings/SettingsStorageView.vue')
+const NotificationsShellView = () => import('@/views/settings/notifications/NotificationsShellView.vue')
+const NotificationsChannelsView = () => import('@/views/settings/notifications/NotificationsChannelsView.vue')
+const NotificationsDestinationsView = () => import('@/views/settings/notifications/NotificationsDestinationsView.vue')
+const NotificationsTemplatesView = () => import('@/views/settings/notifications/NotificationsTemplatesView.vue')
+const NotificationsQueueView = () => import('@/views/settings/notifications/NotificationsQueueView.vue')
 const SetupView = () => import('@/views/SetupView.vue')
 
 import { pinia } from '@/pinia'
@@ -23,7 +29,25 @@ const router = createRouter({
         { path: '', component: DashboardView },
         { path: 'jobs', component: JobsView },
         { path: 'agents', component: AgentsView },
-        { path: 'settings', component: SettingsView },
+        {
+          path: 'settings',
+          component: SettingsShellView,
+          children: [
+            { path: '', redirect: '/settings/storage' },
+            { path: 'storage', component: SettingsStorageView },
+            {
+              path: 'notifications',
+              component: NotificationsShellView,
+              children: [
+                { path: '', redirect: '/settings/notifications/destinations' },
+                { path: 'channels', component: NotificationsChannelsView },
+                { path: 'destinations', component: NotificationsDestinationsView },
+                { path: 'templates', component: NotificationsTemplatesView },
+                { path: 'queue', component: NotificationsQueueView },
+              ],
+            },
+          ],
+        },
       ],
       meta: { requiresAuth: true },
     },
