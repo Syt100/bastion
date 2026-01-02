@@ -26,6 +26,24 @@ pub struct PipelineV1 {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum NotificationsModeV1 {
+    #[default]
+    Inherit,
+    Custom,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct NotificationsV1 {
+    #[serde(default)]
+    pub mode: NotificationsModeV1,
+    #[serde(default)]
+    pub wecom_bot: Vec<String>,
+    #[serde(default)]
+    pub email: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum FsSymlinkPolicy {
     #[default]
     Keep,
@@ -113,6 +131,8 @@ pub enum JobSpecV1 {
         v: u32,
         #[serde(default)]
         pipeline: PipelineV1,
+        #[serde(default)]
+        notifications: NotificationsV1,
         source: FilesystemSource,
         target: TargetV1,
     },
@@ -120,6 +140,8 @@ pub enum JobSpecV1 {
         v: u32,
         #[serde(default)]
         pipeline: PipelineV1,
+        #[serde(default)]
+        notifications: NotificationsV1,
         source: SqliteSource,
         target: TargetV1,
     },
@@ -127,9 +149,21 @@ pub enum JobSpecV1 {
         v: u32,
         #[serde(default)]
         pipeline: PipelineV1,
+        #[serde(default)]
+        notifications: NotificationsV1,
         source: VaultwardenSource,
         target: TargetV1,
     },
+}
+
+impl JobSpecV1 {
+    pub fn notifications(&self) -> &NotificationsV1 {
+        match self {
+            JobSpecV1::Filesystem { notifications, .. } => notifications,
+            JobSpecV1::Sqlite { notifications, .. } => notifications,
+            JobSpecV1::Vaultwarden { notifications, .. } => notifications,
+        }
+    }
 }
 
 pub fn parse_value(spec: &serde_json::Value) -> Result<JobSpecV1, anyhow::Error> {
@@ -146,11 +180,13 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         JobSpecV1::Filesystem {
             v,
             pipeline,
+            notifications,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_notifications(notifications)?;
             if source.root.trim().is_empty() {
                 anyhow::bail!("filesystem.source.root is required");
             }
@@ -161,11 +197,13 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         JobSpecV1::Sqlite {
             v,
             pipeline,
+            notifications,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_notifications(notifications)?;
             if source.path.trim().is_empty() {
                 anyhow::bail!("sqlite.source.path is required");
             }
@@ -174,11 +212,13 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         JobSpecV1::Vaultwarden {
             v,
             pipeline,
+            notifications,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_notifications(notifications)?;
             if source.data_dir.trim().is_empty() {
                 anyhow::bail!("vaultwarden.source.data_dir is required");
             }
@@ -195,6 +235,17 @@ fn validate_pipeline(pipeline: &PipelineV1) -> Result<(), anyhow::Error> {
         EncryptionV1::AgeX25519 { key_name } => {
             if key_name.trim().is_empty() {
                 anyhow::bail!("pipeline.encryption.key_name is required");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_notifications(notifications: &NotificationsV1) -> Result<(), anyhow::Error> {
+    if notifications.mode == NotificationsModeV1::Custom {
+        for name in notifications.wecom_bot.iter().chain(notifications.email.iter()) {
+            if name.trim().is_empty() {
+                anyhow::bail!("notifications destination name is required");
             }
         }
     }

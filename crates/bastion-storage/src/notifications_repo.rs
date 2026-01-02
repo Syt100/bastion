@@ -43,8 +43,6 @@ pub async fn enqueue_wecom_bots_for_run(
     db: &SqlitePool,
     run_id: &str,
 ) -> Result<i64, anyhow::Error> {
-    let now = OffsetDateTime::now_utc().unix_timestamp();
-
     let bots = sqlx::query("SELECT name FROM secrets WHERE kind = ? ORDER BY updated_at DESC")
         .bind("wecom_bot")
         .fetch_all(db)
@@ -54,31 +52,11 @@ pub async fn enqueue_wecom_bots_for_run(
         return Ok(0);
     }
 
-    let mut inserted = 0_i64;
-    for row in bots {
-        let name = row.get::<String, _>("name");
-        let id = Uuid::new_v4().to_string();
-        let result = sqlx::query(
-            "INSERT OR IGNORE INTO notifications (id, run_id, channel, secret_name, status, attempts, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 0, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(run_id)
-        .bind(CHANNEL_WECOM_BOT)
-        .bind(name)
-        .bind(now)
-        .bind(now)
-        .bind(now)
-        .execute(db)
-        .await?;
-        inserted += result.rows_affected() as i64;
-    }
-
-    Ok(inserted)
+    let names = bots.into_iter().map(|r| r.get::<String, _>("name")).collect::<Vec<_>>();
+    enqueue_for_run(db, run_id, CHANNEL_WECOM_BOT, &names).await
 }
 
 pub async fn enqueue_emails_for_run(db: &SqlitePool, run_id: &str) -> Result<i64, anyhow::Error> {
-    let now = OffsetDateTime::now_utc().unix_timestamp();
-
     let destinations =
         sqlx::query("SELECT name FROM secrets WHERE kind = ? ORDER BY updated_at DESC")
             .bind("smtp")
@@ -89,16 +67,35 @@ pub async fn enqueue_emails_for_run(db: &SqlitePool, run_id: &str) -> Result<i64
         return Ok(0);
     }
 
+    let names = destinations
+        .into_iter()
+        .map(|r| r.get::<String, _>("name"))
+        .collect::<Vec<_>>();
+    enqueue_for_run(db, run_id, CHANNEL_EMAIL, &names).await
+}
+
+pub async fn enqueue_for_run(
+    db: &SqlitePool,
+    run_id: &str,
+    channel: &str,
+    secret_names: &[String],
+) -> Result<i64, anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+
     let mut inserted = 0_i64;
-    for row in destinations {
-        let name = row.get::<String, _>("name");
+    for name in secret_names {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+
         let id = Uuid::new_v4().to_string();
         let result = sqlx::query(
             "INSERT OR IGNORE INTO notifications (id, run_id, channel, secret_name, status, attempts, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 0, ?, ?, ?)",
         )
         .bind(id)
         .bind(run_id)
-        .bind(CHANNEL_EMAIL)
+        .bind(channel)
         .bind(name)
         .bind(now)
         .bind(now)
@@ -151,6 +148,23 @@ pub async fn mark_sent(db: &SqlitePool, id: &str, now: i64) -> Result<(), anyhow
         "UPDATE notifications SET status = 'sent', updated_at = ?, last_error = NULL WHERE id = ? AND status = 'sending'",
     )
     .bind(now)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_canceled(
+    db: &SqlitePool,
+    id: &str,
+    reason: &str,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE notifications SET status = 'canceled', updated_at = ?, last_error = ? WHERE id = ? AND status = 'sending'",
+    )
+    .bind(now)
+    .bind(reason)
     .bind(id)
     .execute(db)
     .await?;
