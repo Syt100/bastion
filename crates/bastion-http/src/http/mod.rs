@@ -34,6 +34,7 @@ pub struct AppState {
     pub secrets: Arc<SecretsCrypto>,
     pub agent_manager: AgentManager,
     pub run_queue_notify: Arc<Notify>,
+    pub jobs_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
 }
 
