@@ -23,7 +23,7 @@ time = { version = "0.3.44", features = ["formatting", "macros", "serde"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["io"] }
 tower-cookies = "0.11.0"
-tower-http = { version = "0.6.6", features = ["trace"] }
+tower-http = { version = "0.6.6", features = ["request-id", "trace"] }
 tracing = "0.1.41"
 url = "2.5.7"
 uuid = { version = "1.18.1", features = ["v4"] }

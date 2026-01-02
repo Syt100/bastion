@@ -9,6 +9,9 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tokio::sync::Notify;
 use tower_cookies::CookieManagerLayer;
+use tower_http::request_id::{
+    MakeRequestUuid, PropagateRequestIdLayer, RequestId, SetRequestIdLayer,
+};
 use tower_http::trace::TraceLayer;
 
 use bastion_config::Config;
@@ -61,6 +64,23 @@ async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStat
 }
 
 pub fn router(state: AppState) -> Router {
+    let request_id_header = axum::http::HeaderName::from_static("x-request-id");
+    let trace_layer =
+        TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+            let request_id = request
+                .extensions()
+                .get::<RequestId>()
+                .and_then(|v| v.header_value().to_str().ok())
+                .unwrap_or("-");
+            tracing::info_span!(
+                "http.request",
+                request_id = %request_id,
+                method = %request.method(),
+                uri = %request.uri(),
+                version = ?request.version(),
+            )
+        });
+
     Router::new()
         .route("/api/health", get(health))
         .route("/api/system", get(system_status))
@@ -128,7 +148,9 @@ pub fn router(state: AppState) -> Router {
             middleware::require_secure_middleware,
         ))
         .layer(CookieManagerLayer::new())
-        .layer(TraceLayer::new_for_http())
+        .layer(trace_layer)
+        .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
+        .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid))
         .with_state(state)
         .fallback(ui_fallback)
 }
