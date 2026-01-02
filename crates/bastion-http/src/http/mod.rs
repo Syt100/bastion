@@ -24,6 +24,7 @@ mod auth;
 mod error;
 mod jobs;
 mod middleware;
+mod notifications;
 mod operations;
 mod secrets;
 mod shared;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub agent_manager: AgentManager,
     pub run_queue_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
+    pub notifications_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
 }
 
@@ -136,6 +138,34 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/restore", post(operations::start_restore))
         .route("/api/runs/{id}/verify", post(operations::start_verify))
+        .route(
+            "/api/notifications/settings",
+            get(notifications::get_settings).put(notifications::put_settings),
+        )
+        .route(
+            "/api/notifications/destinations",
+            get(notifications::list_destinations),
+        )
+        .route(
+            "/api/notifications/destinations/{channel}/{name}/enabled",
+            post(notifications::set_destination_enabled),
+        )
+        .route(
+            "/api/notifications/destinations/{channel}/{name}/test",
+            post(notifications::test_destination),
+        )
+        .route(
+            "/api/notifications/queue",
+            get(notifications::list_queue),
+        )
+        .route(
+            "/api/notifications/queue/{id}/retry-now",
+            post(notifications::retry_now),
+        )
+        .route(
+            "/api/notifications/queue/{id}/cancel",
+            post(notifications::cancel),
+        )
         .route("/api/operations/{id}", get(operations::get_operation))
         .route(
             "/api/operations/{id}/events",

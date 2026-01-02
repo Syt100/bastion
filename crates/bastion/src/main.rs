@@ -119,6 +119,7 @@ async fn main() -> Result<(), anyhow::Error> {
         agent_manager,
         run_queue_notify,
         jobs_notify,
+        notifications_notify,
         run_events_bus,
     });
 
