@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NCard, NSelect, NTabs, NTabPane } from 'naive-ui'
+import { NButton, NCard, NIcon, NTabs, NTabPane } from 'naive-ui'
+import { ChevronBackOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { useMediaQuery } from '@/lib/media'
@@ -13,12 +14,7 @@ const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const tabs = computed(() => [
-  { label: t('settings.notifications.tabs.channels'), value: 'channels' },
-  { label: t('settings.notifications.tabs.destinations'), value: 'destinations' },
-  { label: t('settings.notifications.tabs.templates'), value: 'templates' },
-  { label: t('settings.notifications.tabs.queue'), value: 'queue' },
-])
+const isIndex = computed(() => route.path === '/settings/notifications')
 
 const active = computed(() => {
   const path = route.path
@@ -32,30 +28,36 @@ function go(key: unknown): void {
   if (typeof key !== 'string') return
   void router.push(`/settings/notifications/${key}`)
 }
+
+function back(): void {
+  void router.push('/settings/notifications')
+}
 </script>
 
 <template>
   <div class="space-y-4">
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
-      <template v-if="isDesktop">
-        <n-tabs
-          type="line"
-          :value="active"
-          :pane-style="{ display: 'none' }"
-          @update:value="go"
-        >
+    <template v-if="isDesktop && !isIndex">
+      <n-card class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
+        <n-tabs type="line" :value="active" :pane-style="{ display: 'none' }" @update:value="go">
           <n-tab-pane name="channels" :tab="t('settings.notifications.tabs.channels')" />
           <n-tab-pane name="destinations" :tab="t('settings.notifications.tabs.destinations')" />
           <n-tab-pane name="templates" :tab="t('settings.notifications.tabs.templates')" />
           <n-tab-pane name="queue" :tab="t('settings.notifications.tabs.queue')" />
         </n-tabs>
-      </template>
-      <template v-else>
-        <n-select :value="active" :options="tabs" @update:value="go" />
-      </template>
-    </n-card>
+      </n-card>
+    </template>
+    <template v-else-if="!isDesktop && !isIndex">
+      <div class="flex items-center gap-2">
+        <n-button quaternary size="small" @click="back">
+          <template #icon>
+            <n-icon><ChevronBackOutline /></n-icon>
+          </template>
+          {{ t('common.back') }}
+        </n-button>
+        <div class="text-sm font-medium truncate">{{ t('settings.menu.notifications') }}</div>
+      </div>
+    </template>
 
     <router-view />
   </div>
 </template>
-

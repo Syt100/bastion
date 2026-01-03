@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
@@ -49,7 +49,7 @@ const system = useSystemStore()
 
 const activeKey = computed(() => {
   const path = route.path
-  const ordered = [...menuKeys].sort((a, b) => b.length - a.length)
+  const ordered = [...menuRouteKeys].sort((a, b) => b.length - a.length)
   for (const key of ordered) {
     if (key === '/') {
       if (path === '/') return '/'
@@ -72,14 +72,37 @@ function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
 }
 
-const menuKeys = ['/', '/jobs', '/agents', '/settings'] as const
-const menuKeySet = new Set<string>(menuKeys)
+const menuRouteKeys = ['/', '/jobs', '/agents', '/settings', '/settings/storage', '/settings/notifications'] as const
+const menuRouteKeySet = new Set<string>(menuRouteKeys)
+
+const settingsParentKey = 'settings'
+const expandedKeys = ref<string[]>([])
+
+watchEffect(() => {
+  if (!isDesktop.value) return
+  if (!route.path.startsWith('/settings')) return
+  if (expandedKeys.value.includes(settingsParentKey)) return
+  expandedKeys.value = [...expandedKeys.value, settingsParentKey]
+})
 
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.dashboard'), key: '/', icon: icon(HomeOutline) },
   { label: t('nav.jobs'), key: '/jobs', icon: icon(ArchiveOutline) },
   { label: t('nav.agents'), key: '/agents', icon: icon(PeopleOutline) },
-  { label: t('nav.settings'), key: '/settings', icon: icon(SettingsOutline) },
+  ...(isDesktop.value
+    ? [
+        {
+          label: t('nav.settings'),
+          key: settingsParentKey,
+          icon: icon(SettingsOutline),
+          children: [
+            { label: t('settings.menu.overview'), key: '/settings' },
+            { label: t('settings.menu.storage'), key: '/settings/storage' },
+            { label: t('settings.menu.notifications'), key: '/settings/notifications' },
+          ],
+        } satisfies MenuOption,
+      ]
+    : [{ label: t('nav.settings'), key: '/settings', icon: icon(SettingsOutline) }]),
 ])
 
 const languageOptions = computed(() => [
@@ -93,9 +116,13 @@ function onSelectLanguage(key: string | number): void {
 
 function navigateMenu(key: unknown): void {
   if (typeof key !== 'string') return
-  if (!menuKeySet.has(key)) return
+  if (!menuRouteKeySet.has(key)) return
   if (key === activeKey.value) return
   void router.push(key)
+}
+
+function onUpdateExpandedKeys(keys: string[]): void {
+  expandedKeys.value = keys
 }
 
 const mobileActions = computed(() => [
@@ -144,7 +171,13 @@ async function onLogout(): Promise<void> {
         <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
       </div>
 
-      <n-menu :value="activeKey" :options="menuOptions" @update:value="navigateMenu" />
+      <n-menu
+        :value="activeKey"
+        :options="menuOptions"
+        :expanded-keys="expandedKeys"
+        @update:value="navigateMenu"
+        @update:expanded-keys="onUpdateExpandedKeys"
+      />
     </n-layout-sider>
 
     <n-layout class="bg-transparent">

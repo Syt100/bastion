@@ -6,8 +6,10 @@ const DashboardView = () => import('@/views/DashboardView.vue')
 const JobsView = () => import('@/views/JobsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
+const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
 const SettingsStorageView = () => import('@/views/settings/SettingsStorageView.vue')
 const NotificationsShellView = () => import('@/views/settings/notifications/NotificationsShellView.vue')
+const NotificationsIndexView = () => import('@/views/settings/notifications/NotificationsIndexView.vue')
 const NotificationsChannelsView = () => import('@/views/settings/notifications/NotificationsChannelsView.vue')
 const NotificationsDestinationsView = () => import('@/views/settings/notifications/NotificationsDestinationsView.vue')
 const NotificationsTemplatesView = () => import('@/views/settings/notifications/NotificationsTemplatesView.vue')
@@ -33,13 +35,13 @@ const router = createRouter({
           path: 'settings',
           component: SettingsShellView,
           children: [
-            { path: '', redirect: '/settings/storage' },
+            { path: '', component: SettingsIndexView },
             { path: 'storage', component: SettingsStorageView },
             {
               path: 'notifications',
               component: NotificationsShellView,
               children: [
-                { path: '', redirect: '/settings/notifications/destinations' },
+                { path: '', component: NotificationsIndexView },
                 { path: 'channels', component: NotificationsChannelsView },
                 { path: 'destinations', component: NotificationsDestinationsView },
                 { path: 'templates', component: NotificationsTemplatesView },
