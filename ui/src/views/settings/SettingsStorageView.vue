@@ -186,14 +186,14 @@ onMounted(refresh)
       <div v-if="!isDesktop" class="space-y-2">
         <div
           v-if="!secrets.loadingWebdav && secrets.webdav.length === 0"
-          class="text-sm opacity-70 px-1 py-2"
+          class="app-help-text px-1 py-2"
         >
           {{ t('common.noData') }}
         </div>
         <div
           v-for="row in secrets.webdav"
           :key="row.name"
-          class="p-3 rounded-lg border border-black/5 dark:border-white/10 bg-white/60 dark:bg-[#0b1220]/30"
+          class="p-3 rounded-lg app-border-subtle app-glass-soft"
         >
           <div class="flex items-start justify-between gap-3">
             <div>

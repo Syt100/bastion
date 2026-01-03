@@ -161,7 +161,7 @@ async function onLogout(): Promise<void> {
     <n-layout-sider
       v-if="isDesktop"
       bordered
-      class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur"
+      class="app-glass"
       collapse-mode="width"
       :collapsed-width="LAYOUT.siderCollapsedWidth"
       :width="LAYOUT.siderWidth"
@@ -183,7 +183,7 @@ async function onLogout(): Promise<void> {
     <n-layout class="bg-transparent">
       <n-layout-header
         bordered
-        class="bg-white/70 dark:bg-[#0b1220]/60 backdrop-blur px-4 sticky top-0 z-50"
+        class="app-glass px-4 sticky top-0 z-50"
       >
         <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
           <div class="flex items-center gap-3">

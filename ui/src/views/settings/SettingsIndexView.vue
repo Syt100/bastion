@@ -44,12 +44,12 @@ function go(to: string): void {
         v-for="item in items"
         :key="item.key"
         type="button"
-        class="w-full text-left px-3 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition flex items-center justify-between gap-3"
+        class="app-list-row"
         @click="go(item.to)"
       >
         <div class="flex items-start gap-3 min-w-0">
           <div
-            class="w-10 h-10 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center flex-shrink-0"
+            class="app-icon-tile"
           >
             <n-icon size="20">
               <component :is="item.icon" />
