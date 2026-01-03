@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NIcon, NTabs, NTabPane } from 'naive-ui'
-import { ChevronBackOutline } from '@vicons/ionicons5'
+import { NCard, NTabs, NTabPane } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useMediaQuery } from '@/lib/media'
@@ -28,10 +27,6 @@ function go(key: unknown): void {
   if (typeof key !== 'string') return
   void router.push(`/settings/notifications/${key}`)
 }
-
-function back(): void {
-  void router.push('/settings/notifications')
-}
 </script>
 
 <template>
@@ -45,17 +40,6 @@ function back(): void {
           <n-tab-pane name="queue" :tab="t('settings.notifications.tabs.queue')" />
         </n-tabs>
       </n-card>
-    </template>
-    <template v-else-if="!isDesktop && !isIndex">
-      <div class="flex items-center gap-2">
-        <n-button quaternary size="small" @click="back">
-          <template #icon>
-            <n-icon><ChevronBackOutline /></n-icon>
-          </template>
-          {{ t('common.back') }}
-        </n-button>
-        <div class="text-sm font-medium truncate">{{ t('settings.menu.notifications') }}</div>
-      </div>
     </template>
 
     <router-view />

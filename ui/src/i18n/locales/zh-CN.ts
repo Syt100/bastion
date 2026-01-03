@@ -14,6 +14,7 @@ const messages = {
     noData: '暂无数据',
     stepOf: '步骤 {current}/{total}',
     back: '上一步',
+    return: '返回',
     next: '下一步',
     cancel: '取消',
     save: '保存',

@@ -18,9 +18,12 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const showBackToOverview = computed(() => {
   if (isDesktop.value) return false
   if (route.path === '/settings') return false
-  // Avoid stacking two back bars on notification subpages (they already have "back to notifications list").
-  if (route.path.startsWith('/settings/notifications/')) return false
   return true
+})
+
+const backTarget = computed(() => {
+  if (route.path.startsWith('/settings/notifications/')) return '/settings/notifications'
+  return '/settings'
 })
 
 const mobileSectionTitle = computed(() => {
@@ -30,7 +33,7 @@ const mobileSectionTitle = computed(() => {
 })
 
 function backToSettingsOverview(): void {
-  void router.push('/settings')
+  void router.push(backTarget.value)
 }
 </script>
 
@@ -42,7 +45,7 @@ function backToSettingsOverview(): void {
           <template #icon>
             <n-icon><ChevronBackOutline /></n-icon>
           </template>
-          {{ t('common.back') }}
+          {{ t('common.return') }}
         </n-button>
         <div class="text-sm font-medium truncate">{{ mobileSectionTitle }}</div>
       </div>
