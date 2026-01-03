@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watchEffect } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   darkTheme,
   dateEnUS,
@@ -11,17 +12,40 @@ import {
   zhCN,
   type GlobalThemeOverrides,
 } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 
 import { useUiStore } from '@/stores/ui'
 import { useSystemStore } from '@/stores/system'
 
 const ui = useUiStore()
 const system = useSystemStore()
+const route = useRoute()
+const { t } = useI18n()
+
+const appName = computed(() => t('app.name'))
+const pageTitle = computed(() => {
+  const titleKey = [...route.matched]
+    .reverse()
+    .find((r) => typeof r.meta.titleKey === 'string')?.meta.titleKey as string | undefined
+
+  if (!titleKey) return appName.value
+  const localized = t(titleKey)
+  if (!localized || localized === titleKey) return appName.value
+  if (localized === appName.value) return appName.value
+  return `${localized} · ${appName.value}`
+})
 
 watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('dark', ui.darkMode)
   document.documentElement.lang = ui.locale
+  document.title = pageTitle.value
+
+  const themeColor = ui.darkMode ? '#0b1220' : '#3b82f6'
+  const themeMeta = document.querySelector('meta[name="theme-color"]')
+  if (themeMeta) {
+    themeMeta.setAttribute('content', themeColor)
+  }
 })
 
 const naiveLocale = computed(() => (ui.locale === 'zh-CN' ? zhCN : enUS))
