@@ -128,6 +128,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     channel?: NotificationChannel
     page?: number
     pageSize?: number
+    signal?: AbortSignal
   }): Promise<NotificationQueueResponse> {
     const q = new URLSearchParams()
     if (params.status) q.set('status', params.status)
@@ -135,7 +136,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
     if (params.page) q.set('page', String(params.page))
     if (params.pageSize) q.set('page_size', String(params.pageSize))
     const suffix = q.toString() ? `?${q.toString()}` : ''
-    return await apiFetch<NotificationQueueResponse>(`/api/notifications/queue${suffix}`)
+    return await apiFetch<NotificationQueueResponse>(`/api/notifications/queue${suffix}`, {
+      signal: params.signal,
+    })
   }
 
   async function retryNow(id: string): Promise<void> {
@@ -171,4 +174,3 @@ export const useNotificationsStore = defineStore('notifications', () => {
     cancel,
   }
 })
-

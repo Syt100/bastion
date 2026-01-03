@@ -18,6 +18,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { useLatestRequest } from '@/lib/latest'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -39,6 +40,14 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const items = ref<NotificationQueueItem[]>([])
+
+const latest = useLatestRequest()
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return error.name === 'AbortError'
+  return 'name' in error && (error as { name?: unknown }).name === 'AbortError'
+}
 
 const statusOptions = computed(() => [
   { label: t('settings.notifications.status.all'), value: 'all' as const },
@@ -71,6 +80,7 @@ function formatStatus(status: string): string {
 }
 
 async function refresh(): Promise<void> {
+  const req = latest.next()
   loading.value = true
   try {
     const res = await notifications.listQueue({
@@ -78,14 +88,18 @@ async function refresh(): Promise<void> {
       channel: channelFilter.value === 'all' ? undefined : channelFilter.value,
       page: page.value,
       pageSize: pageSize.value,
+      signal: req.signal,
     })
+    if (req.isStale()) return
     items.value = res.items
     total.value = res.total
     page.value = res.page
     pageSize.value = res.page_size
   } catch (e) {
+    if (req.isStale() || isAbortError(e)) return
     message.error(formatToastError(t('errors.fetchNotificationQueueFailed'), e, t))
   } finally {
+    if (req.isStale()) return
     loading.value = false
   }
 }
