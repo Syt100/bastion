@@ -32,7 +32,7 @@ function go(key: unknown): void {
 <template>
   <div class="space-y-4">
     <template v-if="isDesktop && !isIndex">
-      <n-card class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
+      <n-card class="app-card" :bordered="false">
         <n-tabs type="line" :value="active" :pane-style="{ display: 'none' }" @update:value="go">
           <n-tab-pane name="channels" :tab="t('settings.notifications.tabs.channels')" />
           <n-tab-pane name="destinations" :tab="t('settings.notifications.tabs.destinations')" />

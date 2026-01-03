@@ -48,7 +48,7 @@ async function onSubmit(): Promise<void> {
 
 <template>
   <AuthLayout>
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :segmented="{ content: true }">
+    <n-card class="app-card" :segmented="{ content: true }">
       <template #header>
         <div class="space-y-1">
           <div class="text-lg font-semibold">{{ t('auth.signIn') }}</div>

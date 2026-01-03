@@ -31,3 +31,7 @@ body {
   background: #0b1220;
   color: #e5e7eb;
 }
+
+.app-card {
+  @apply shadow-sm border border-black/5 dark:border-white/10;
+}

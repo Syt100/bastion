@@ -59,7 +59,7 @@ onMounted(refresh)
 </script>
 
 <template>
-  <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.notifications.channelsTitle')">
+  <n-card class="app-card" :title="t('settings.notifications.channelsTitle')">
     <div class="space-y-4">
       <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
 
@@ -88,4 +88,3 @@ onMounted(refresh)
     </div>
   </n-card>
 </template>
-
