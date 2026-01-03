@@ -15,43 +15,30 @@ const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const showBackToOverview = computed(() => {
-  if (isDesktop.value) return false
-  if (route.path === '/settings') return false
-  return true
-})
-
 const backTarget = computed(() => {
   if (route.path.startsWith('/settings/notifications/')) return '/settings/notifications'
   return '/settings'
 })
 
-const mobileSectionTitle = computed(() => {
-  if (route.path.startsWith('/settings/storage')) return t('settings.menu.storage')
-  if (route.path.startsWith('/settings/notifications')) return t('settings.menu.notifications')
-  return t('settings.title')
-})
-
 function backToSettingsOverview(): void {
   void router.push(backTarget.value)
 }
+
+const showMobileBack = computed(() => !isDesktop.value && route.path !== '/settings')
 </script>
 
 <template>
   <div class="space-y-6">
-    <template v-if="showBackToOverview">
-      <div class="flex items-center gap-2">
+    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')">
+      <template v-if="showMobileBack" #prefix>
         <n-button quaternary size="small" @click="backToSettingsOverview">
           <template #icon>
             <n-icon><ChevronBackOutline /></n-icon>
           </template>
           {{ t('common.return') }}
         </n-button>
-        <div class="text-sm font-medium truncate">{{ mobileSectionTitle }}</div>
-      </div>
-    </template>
-
-    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" />
+      </template>
+    </PageHeader>
     <router-view />
   </div>
 </template>
