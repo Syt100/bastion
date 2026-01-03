@@ -516,7 +516,7 @@ onMounted(refresh)
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
     </PageHeader>
 
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.webdav.title')">
+    <n-card class="app-card" :title="t('settings.webdav.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>
       </template>
@@ -560,7 +560,7 @@ onMounted(refresh)
       </div>
     </n-card>
 
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.wecom.title')">
+    <n-card class="app-card" :title="t('settings.wecom.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
       </template>
@@ -604,7 +604,7 @@ onMounted(refresh)
       </div>
     </n-card>
 
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.smtp.title')">
+    <n-card class="app-card" :title="t('settings.smtp.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
       </template>

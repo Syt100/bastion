@@ -177,7 +177,7 @@ onMounted(refresh)
 
 <template>
   <div class="space-y-6">
-    <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.webdav.title')">
+    <n-card class="app-card" :title="t('settings.webdav.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>
         <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>

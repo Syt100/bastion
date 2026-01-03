@@ -62,7 +62,7 @@ function go(to: string): void {
 </script>
 
 <template>
-  <n-card v-if="!isDesktop" class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
+  <n-card v-if="!isDesktop" class="app-card" :bordered="false">
     <div class="divide-y divide-black/5 dark:divide-white/10">
       <button
         v-for="item in items"

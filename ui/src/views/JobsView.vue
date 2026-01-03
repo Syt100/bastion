@@ -204,7 +204,7 @@ onMounted(async () => {
     <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
       <n-card
         v-if="!jobs.loading && jobs.items.length === 0"
-        class="shadow-sm border border-black/5 dark:border-white/10"
+        class="app-card"
       >
         <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
       </n-card>
@@ -213,7 +213,7 @@ onMounted(async () => {
         v-for="job in jobs.items"
         :key="job.id"
         size="small"
-        class="shadow-sm border border-black/5 dark:border-white/10"
+        class="app-card"
       >
         <template #header>
           <div class="flex items-center justify-between gap-3">
@@ -261,7 +261,7 @@ onMounted(async () => {
     </div>
 
     <div v-else data-testid="jobs-table">
-      <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+      <n-card class="app-card">
         <div class="overflow-x-auto">
           <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
         </div>

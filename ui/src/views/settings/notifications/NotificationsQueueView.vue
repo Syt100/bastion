@@ -221,7 +221,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 </script>
 
 <template>
-  <n-card class="shadow-sm border border-black/5 dark:border-white/10" :title="t('settings.notifications.queueTitle')">
+  <n-card class="app-card" :title="t('settings.notifications.queueTitle')">
     <div class="space-y-4">
       <div class="flex flex-wrap items-center gap-2">
         <n-select v-model:value="statusFilter" :options="statusOptions" class="w-48" />
@@ -234,7 +234,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
           v-for="row in items"
           :key="row.id"
           size="small"
-          class="shadow-sm border border-black/5 dark:border-white/10"
+          class="app-card"
         >
           <template #header>
             <div class="flex items-center justify-between gap-3">

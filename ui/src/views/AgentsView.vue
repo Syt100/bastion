@@ -220,7 +220,7 @@ onMounted(refresh)
     <div v-if="!isDesktop" class="space-y-3">
       <n-card
         v-if="!agents.loading && agents.items.length === 0"
-        class="shadow-sm border border-black/5 dark:border-white/10"
+        class="app-card"
       >
         <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
       </n-card>
@@ -229,7 +229,7 @@ onMounted(refresh)
         v-for="agent in agents.items"
         :key="agent.id"
         size="small"
-        class="shadow-sm border border-black/5 dark:border-white/10"
+        class="app-card"
       >
         <template #header>
           <div class="flex items-center justify-between gap-3">
@@ -291,7 +291,7 @@ onMounted(refresh)
     </div>
 
     <div v-else>
-      <n-card class="shadow-sm border border-black/5 dark:border-white/10">
+      <n-card class="app-card">
         <div class="overflow-x-auto">
           <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
         </div>
