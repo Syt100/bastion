@@ -12,6 +12,7 @@ const messages = {
     openMenu: 'Open menu',
     more: 'More',
     refresh: 'Refresh',
+    loading: 'Loading',
     close: 'Close',
     noData: 'No data',
     stepOf: 'Step {current}/{total}',

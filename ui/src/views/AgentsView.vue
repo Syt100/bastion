@@ -26,6 +26,7 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
+import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -218,12 +219,8 @@ onMounted(refresh)
     </PageHeader>
 
     <div v-if="!isDesktop" class="space-y-3">
-      <n-card
-        v-if="!agents.loading && agents.items.length === 0"
-        class="app-card"
-      >
-        <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
-      </n-card>
+      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!agents.loading && agents.items.length === 0" :title="t('common.noData')" />
 
       <n-card
         v-for="agent in agents.items"
