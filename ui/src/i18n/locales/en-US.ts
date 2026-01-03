@@ -224,8 +224,13 @@ const messages = {
     title: 'Settings',
     subtitle: 'Credentials and global configuration',
     menu: {
+      overview: 'Overview',
       storage: 'Storage',
       notifications: 'Notifications',
+    },
+    overview: {
+      storageDesc: 'Manage remote storage credentials and related settings',
+      notificationsDesc: 'Manage channels, destinations, templates, and queue',
     },
     webdav: {
       title: 'WebDAV credentials',
@@ -290,6 +295,12 @@ const messages = {
         destinations: 'Destinations',
         templates: 'Templates',
         queue: 'Queue',
+      },
+      overview: {
+        channelsDesc: 'Global switch and per-channel enable/disable',
+        destinationsDesc: 'Manage WeCom and SMTP destinations (with test send)',
+        templatesDesc: 'Global templates and placeholders',
+        queueDesc: 'View delivery records and retry/cancel',
       },
       channelsTitle: 'Notification channels',
       templatesTitle: 'Notification templates',

@@ -224,8 +224,13 @@ const messages = {
     title: '设置',
     subtitle: '凭据与全局配置',
     menu: {
+      overview: '概览',
       storage: '存储',
       notifications: '通知',
+    },
+    overview: {
+      storageDesc: '配置远程存储凭据与相关设置',
+      notificationsDesc: '配置通知渠道、目的地、模板与队列',
     },
     webdav: {
       title: 'WebDAV 凭据',
@@ -290,6 +295,12 @@ const messages = {
         destinations: '目的地',
         templates: '模板',
         queue: '队列',
+      },
+      overview: {
+        channelsDesc: '全局开关与渠道启用/禁用',
+        destinationsDesc: '配置企业微信与 SMTP 目的地（含测试）',
+        templatesDesc: '全局模板与占位符变量',
+        queueDesc: '查看发送记录并执行重试/取消',
       },
       channelsTitle: '通知渠道',
       templatesTitle: '通知模板',
