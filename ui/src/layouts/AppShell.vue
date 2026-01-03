@@ -187,7 +187,7 @@ async function onLogout(): Promise<void> {
       >
         <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
           <div class="flex items-center gap-3">
-            <n-button v-if="!isDesktop" quaternary @click="mobileMenuOpen = true">
+            <n-button v-if="!isDesktop" quaternary :aria-label="t('common.openMenu')" @click="mobileMenuOpen = true">
               <template #icon>
                 <n-icon><MenuOutline /></n-icon>
               </template>
@@ -211,7 +211,7 @@ async function onLogout(): Promise<void> {
             </template>
             <template v-else>
               <n-dropdown :options="mobileActions" trigger="click" @select="onSelectMobileAction">
-                <n-button quaternary>
+                <n-button quaternary :aria-label="t('common.more')">
                   <template #icon>
                     <n-icon><EllipsisHorizontal /></n-icon>
                   </template>

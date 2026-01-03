@@ -9,6 +9,8 @@ const messages = {
     dark: 'Dark',
     logout: 'Logout',
     language: 'Language',
+    openMenu: 'Open menu',
+    more: 'More',
     refresh: 'Refresh',
     close: 'Close',
     noData: 'No data',
