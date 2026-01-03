@@ -16,7 +16,14 @@ const BackupTrendChart = defineAsyncComponent(() => import('@/components/BackupT
 
     <n-card class="app-card" :title="t('dashboard.runs7d')">
       <div class="h-64">
-        <BackupTrendChart />
+        <Suspense>
+          <template #default>
+            <BackupTrendChart />
+          </template>
+          <template #fallback>
+            <div class="h-full w-full rounded-lg bg-black/5 dark:bg-white/10 animate-pulse" />
+          </template>
+        </Suspense>
       </div>
     </n-card>
   </div>
