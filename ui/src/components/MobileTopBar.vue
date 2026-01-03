@@ -35,7 +35,7 @@ function back(): void {
         </n-button>
       </div>
 
-      <div class="text-center font-medium truncate px-2">
+      <div class="text-center text-[17px] font-semibold truncate px-2">
         {{ title }}
       </div>
 
@@ -45,4 +45,3 @@ function back(): void {
     </div>
   </div>
 </template>
-
