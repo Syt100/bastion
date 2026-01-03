@@ -1,11 +1,21 @@
 <script setup lang="ts">
+import { watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NIcon } from 'naive-ui'
 import { ChevronForwardOutline, DocumentTextOutline, ListOutline, OptionsOutline, PinOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
+import { useMediaQuery } from '@/lib/media'
+import { MQ } from '@/lib/breakpoints'
+
 const { t } = useI18n()
 const router = useRouter()
+const isDesktop = useMediaQuery(MQ.mdUp)
+
+watchEffect(() => {
+  if (!isDesktop.value) return
+  void router.replace('/settings/notifications/destinations')
+})
 
 type NotificationsItem = {
   key: string
@@ -52,7 +62,7 @@ function go(to: string): void {
 </script>
 
 <template>
-  <n-card class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
+  <n-card v-if="!isDesktop" class="shadow-sm border border-black/5 dark:border-white/10" :bordered="false">
     <div class="divide-y divide-black/5 dark:divide-white/10">
       <button
         v-for="item in items"
@@ -82,4 +92,3 @@ function go(to: string): void {
     </div>
   </n-card>
 </template>
-

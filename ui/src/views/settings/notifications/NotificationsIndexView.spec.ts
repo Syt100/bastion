@@ -20,6 +20,7 @@ vi.mock('naive-ui', async () => {
 
 const routerApi = {
   push: vi.fn(),
+  replace: vi.fn(),
 }
 vi.mock('vue-router', () => ({
   useRouter: () => routerApi,
@@ -35,9 +36,26 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 import NotificationsIndexView from './NotificationsIndexView.vue'
 
+function stubMatchMedia(matches: boolean): void {
+  vi.stubGlobal(
+    'matchMedia',
+    ((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia,
+  )
+}
+
 describe('NotificationsIndexView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubMatchMedia(false)
   })
 
   it('navigates to notification subpages', async () => {
@@ -57,5 +75,11 @@ describe('NotificationsIndexView', () => {
     await buttons[3]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/queue')
   })
-})
 
+  it('redirects to destinations on desktop', async () => {
+    stubMatchMedia(true)
+    mount(NotificationsIndexView)
+    await Promise.resolve()
+    expect(routerApi.replace).toHaveBeenCalledWith('/settings/notifications/destinations')
+  })
+})
