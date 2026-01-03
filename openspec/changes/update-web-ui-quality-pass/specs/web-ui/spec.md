@@ -13,7 +13,7 @@ The Web UI SHALL keep the document `<html lang>` attribute synchronized with the
 
 #### Scenario: Switching locale updates document lang
 - **WHEN** the user changes the UI language from `zh-CN` to `en-US`
-- **THEN** the document `<html lang>` attribute becomes `en`
+- **THEN** the document `<html lang>` attribute becomes `en-US`
 
 ### Requirement: i18n Key Parity Is Enforced
 The Web UI SHALL include an automated check that enforces i18n key parity between supported locales (`zh-CN` and `en-US`) to prevent missing translation keys.
@@ -35,4 +35,3 @@ The Dashboard chart area SHALL display a lightweight fallback UI while the async
 #### Scenario: Chart does not render as a blank area while loading
 - **WHEN** the Dashboard page first renders and the chart chunk has not loaded yet
 - **THEN** a visible fallback (e.g. skeleton/placeholder) is shown until the chart is ready
-
