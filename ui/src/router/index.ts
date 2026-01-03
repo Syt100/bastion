@@ -34,18 +34,44 @@ const router = createRouter({
         {
           path: 'settings',
           component: SettingsShellView,
+          meta: { mobileTopBar: { titleKey: 'settings.title', backTo: null } },
           children: [
-            { path: '', component: SettingsIndexView },
-            { path: 'storage', component: SettingsStorageView },
+            { path: '', component: SettingsIndexView, meta: { mobileTopBar: { titleKey: 'settings.title', backTo: null } } },
+            {
+              path: 'storage',
+              component: SettingsStorageView,
+              meta: { mobileTopBar: { titleKey: 'settings.menu.storage', backTo: '/settings' } },
+            },
             {
               path: 'notifications',
               component: NotificationsShellView,
+              meta: { mobileTopBar: { titleKey: 'settings.menu.notifications', backTo: '/settings' } },
               children: [
-                { path: '', component: NotificationsIndexView },
-                { path: 'channels', component: NotificationsChannelsView },
-                { path: 'destinations', component: NotificationsDestinationsView },
-                { path: 'templates', component: NotificationsTemplatesView },
-                { path: 'queue', component: NotificationsQueueView },
+                {
+                  path: '',
+                  component: NotificationsIndexView,
+                  meta: { mobileTopBar: { titleKey: 'settings.menu.notifications', backTo: '/settings' } },
+                },
+                {
+                  path: 'channels',
+                  component: NotificationsChannelsView,
+                  meta: { mobileTopBar: { titleKey: 'settings.notifications.tabs.channels', backTo: '/settings/notifications' } },
+                },
+                {
+                  path: 'destinations',
+                  component: NotificationsDestinationsView,
+                  meta: { mobileTopBar: { titleKey: 'settings.notifications.tabs.destinations', backTo: '/settings/notifications' } },
+                },
+                {
+                  path: 'templates',
+                  component: NotificationsTemplatesView,
+                  meta: { mobileTopBar: { titleKey: 'settings.notifications.tabs.templates', backTo: '/settings/notifications' } },
+                },
+                {
+                  path: 'queue',
+                  component: NotificationsQueueView,
+                  meta: { mobileTopBar: { titleKey: 'settings.notifications.tabs.queue', backTo: '/settings/notifications' } },
+                },
               ],
             },
           ],

@@ -1,44 +1,44 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { NButton, NIcon } from 'naive-ui'
-import { ChevronBackOutline } from '@vicons/ionicons5'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
+import MobileTopBar from '@/components/MobileTopBar.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 
 const { t } = useI18n()
 const route = useRoute()
-const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const backTarget = computed(() => {
-  if (route.path.startsWith('/settings/notifications/')) return '/settings/notifications'
-  return '/settings'
-})
-
-function backToSettingsOverview(): void {
-  void router.push(backTarget.value)
+type MobileTopBarMeta = {
+  titleKey: string
+  backTo?: string | null
 }
 
-const showMobileBack = computed(() => !isDesktop.value && route.path !== '/settings')
+const mobileTopBarMeta = computed<MobileTopBarMeta>(() => {
+  for (const record of [...route.matched].reverse()) {
+    const raw = record.meta?.mobileTopBar as unknown
+    if (!raw || typeof raw !== 'object') continue
+    const meta = raw as { titleKey?: unknown; backTo?: unknown }
+    if (typeof meta.titleKey !== 'string' || meta.titleKey.trim().length === 0) continue
+    return {
+      titleKey: meta.titleKey,
+      backTo: typeof meta.backTo === 'string' ? meta.backTo : null,
+    }
+  }
+  return { titleKey: 'settings.title', backTo: null }
+})
+
+const mobileTitle = computed(() => t(mobileTopBarMeta.value.titleKey))
 </script>
 
 <template>
   <div class="space-y-6">
-    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')">
-      <template v-if="showMobileBack" #prefix>
-        <n-button quaternary size="small" @click="backToSettingsOverview">
-          <template #icon>
-            <n-icon><ChevronBackOutline /></n-icon>
-          </template>
-          {{ t('common.return') }}
-        </n-button>
-      </template>
-    </PageHeader>
+    <MobileTopBar v-if="!isDesktop" :title="mobileTitle" :back-to="mobileTopBarMeta.backTo" />
+    <PageHeader v-else :title="t('settings.title')" :subtitle="t('settings.subtitle')" />
     <router-view />
   </div>
 </template>
