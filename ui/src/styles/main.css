@@ -75,3 +75,18 @@ body {
   backdrop-filter: blur(var(--app-glass-blur));
   -webkit-backdrop-filter: blur(var(--app-glass-blur));
 }
+
+:where(a, button, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.9);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none !important;
+  }
+
+  .app-list-row {
+    transition: none !important;
+  }
+}
