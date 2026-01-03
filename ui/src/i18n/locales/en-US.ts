@@ -14,6 +14,7 @@ const messages = {
     noData: 'No data',
     stepOf: 'Step {current}/{total}',
     back: 'Back',
+    return: 'Back',
     next: 'Next',
     cancel: 'Cancel',
     save: 'Save',
