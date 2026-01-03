@@ -9,6 +9,8 @@ const messages = {
     dark: '深色',
     logout: '退出登录',
     language: '语言',
+    openMenu: '打开菜单',
+    more: '更多',
     refresh: '刷新',
     close: '关闭',
     noData: '暂无数据',
