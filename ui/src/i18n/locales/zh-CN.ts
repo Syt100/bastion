@@ -12,6 +12,7 @@ const messages = {
     openMenu: '打开菜单',
     more: '更多',
     refresh: '刷新',
+    loading: '加载中',
     close: '关闭',
     noData: '暂无数据',
     stepOf: '步骤 {current}/{total}',

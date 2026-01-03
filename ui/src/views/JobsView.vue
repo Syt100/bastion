@@ -19,6 +19,7 @@ import RunEventsModal, { type RunEventsModalExpose } from '@/components/jobs/Run
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
 import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
+import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -202,12 +203,8 @@ onMounted(async () => {
     </PageHeader>
 
     <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
-      <n-card
-        v-if="!jobs.loading && jobs.items.length === 0"
-        class="app-card"
-      >
-        <div class="text-sm opacity-70">{{ t('common.noData') }}</div>
-      </n-card>
+      <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!jobs.loading && jobs.items.length === 0" :title="t('common.noData')" />
 
       <n-card
         v-for="job in jobs.items"
