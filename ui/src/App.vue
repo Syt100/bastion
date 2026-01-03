@@ -19,7 +19,9 @@ const ui = useUiStore()
 const system = useSystemStore()
 
 watchEffect(() => {
+  if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('dark', ui.darkMode)
+  document.documentElement.lang = ui.locale
 })
 
 const naiveLocale = computed(() => (ui.locale === 'zh-CN' ? zhCN : enUS))
