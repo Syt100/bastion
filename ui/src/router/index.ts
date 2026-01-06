@@ -35,6 +35,18 @@ const router = createRouter({
           children: [
             { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
             { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
+            {
+              path: 'settings',
+              component: SettingsShellView,
+              meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } },
+              children: [
+                {
+                  path: 'storage',
+                  component: SettingsStorageView,
+                  meta: { titleKey: 'settings.menu.storage', mobileTopBar: { titleKey: 'settings.menu.storage', backTo: null } },
+                },
+              ],
+            },
           ],
         },
         { path: 'agents', component: AgentsView, meta: { titleKey: 'agents.title' } },
@@ -46,8 +58,7 @@ const router = createRouter({
             { path: '', component: SettingsIndexView, meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } } },
             {
               path: 'storage',
-              component: SettingsStorageView,
-              meta: { titleKey: 'settings.menu.storage', mobileTopBar: { titleKey: 'settings.menu.storage', backTo: '/settings' } },
+              redirect: '/n/hub/settings/storage',
             },
             {
               path: 'notifications',

@@ -9,5 +9,10 @@ describe('router node-scoped routes', () => {
     expect(resolved.params.nodeId).toBe('hub')
     expect(resolved.meta.titleKey).toBe('jobs.title')
   })
-})
 
+  it('resolves /n/:nodeId/settings/storage', () => {
+    const resolved = router.resolve('/n/hub/settings/storage')
+    expect(resolved.params.nodeId).toBe('hub')
+    expect(resolved.meta.titleKey).toBe('settings.menu.storage')
+  })
+})

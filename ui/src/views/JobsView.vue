@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NButton, NCard, NDataTable, NPopconfirm, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -44,6 +44,7 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
 const inNodeContext = computed(() => nodeId.value !== null)
+const nodeIdOrHub = computed(() => nodeId.value ?? 'hub')
 
 const visibleJobs = computed(() => {
   const id = nodeId.value
@@ -210,7 +211,15 @@ onMounted(async () => {
     message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
   }
   try {
-    await secrets.refreshWebdav()
+    await secrets.refreshWebdav(nodeIdOrHub.value)
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
+  }
+})
+
+watch(nodeIdOrHub, async () => {
+  try {
+    await secrets.refreshWebdav(nodeIdOrHub.value)
   } catch (error) {
     message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
   }

@@ -41,22 +41,26 @@ export const useSecretsStore = defineStore('secrets', () => {
   const smtp = ref<SecretListItem[]>([])
   const loadingSmtp = ref<boolean>(false)
 
-  async function refreshWebdav(): Promise<void> {
+  function webdavBase(nodeId: string): string {
+    return `/api/nodes/${encodeURIComponent(nodeId)}/secrets/webdav`
+  }
+
+  async function refreshWebdav(nodeId: string): Promise<void> {
     loadingWebdav.value = true
     try {
-      webdav.value = await apiFetch<SecretListItem[]>('/api/secrets/webdav')
+      webdav.value = await apiFetch<SecretListItem[]>(webdavBase(nodeId))
     } finally {
       loadingWebdav.value = false
     }
   }
 
-  async function getWebdav(name: string): Promise<WebdavSecret> {
-    return await apiFetch<WebdavSecret>(`/api/secrets/webdav/${encodeURIComponent(name)}`)
+  async function getWebdav(nodeId: string, name: string): Promise<WebdavSecret> {
+    return await apiFetch<WebdavSecret>(`${webdavBase(nodeId)}/${encodeURIComponent(name)}`)
   }
 
-  async function upsertWebdav(name: string, username: string, password: string): Promise<void> {
+  async function upsertWebdav(nodeId: string, name: string, username: string, password: string): Promise<void> {
     const csrf = await ensureCsrfToken()
-    await apiFetch<void>(`/api/secrets/webdav/${encodeURIComponent(name)}`, {
+    await apiFetch<void>(`${webdavBase(nodeId)}/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -67,9 +71,9 @@ export const useSecretsStore = defineStore('secrets', () => {
     })
   }
 
-  async function deleteWebdav(name: string): Promise<void> {
+  async function deleteWebdav(nodeId: string, name: string): Promise<void> {
     const csrf = await ensureCsrfToken()
-    await apiFetch<void>(`/api/secrets/webdav/${encodeURIComponent(name)}`, {
+    await apiFetch<void>(`${webdavBase(nodeId)}/${encodeURIComponent(name)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrf },
       expectedStatus: 204,

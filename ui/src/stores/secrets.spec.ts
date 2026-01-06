@@ -20,11 +20,11 @@ describe('useSecretsStore', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const secrets = useSecretsStore()
-    await secrets.refreshWebdav()
+    await secrets.refreshWebdav('hub')
 
     expect(secrets.webdav).toHaveLength(1)
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/secrets/webdav',
+      '/api/nodes/hub/secrets/webdav',
       expect.objectContaining({ credentials: 'include' }),
     )
   })
@@ -38,7 +38,7 @@ describe('useSecretsStore', () => {
     auth.csrfToken = 'csrf-123'
 
     const secrets = useSecretsStore()
-    await secrets.upsertWebdav('primary', 'u1', 'p1')
+    await secrets.upsertWebdav('hub', 'primary', 'u1', 'p1')
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
     const headers = init.headers as Record<string, string>
