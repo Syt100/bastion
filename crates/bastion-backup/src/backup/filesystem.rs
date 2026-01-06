@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use bastion_core::manifest::{EntryIndexRef, HashAlgorithm, ManifestV1, PipelineSettings};
 use serde::Serialize;
@@ -68,9 +68,12 @@ pub fn build_filesystem_run(
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
+    let using_paths = source.paths.iter().any(|p| !p.trim().is_empty());
     info!(
         job_id = %job_id,
         run_id = %run_id,
+        using_paths,
+        paths_count = source.paths.len(),
         root = %source.root,
         include_rules = source.include.len(),
         exclude_rules = source.exclude.len(),
@@ -258,8 +261,6 @@ fn write_tar_entries<W: Write>(
     let include = compile_globset(&source.include)?;
     let has_includes = !source.include.is_empty();
 
-    let root = PathBuf::from(source.root.trim());
-
     #[cfg(not(unix))]
     if source.hardlink_policy == FsHardlinkPolicy::Keep {
         issues.record_warning(
@@ -268,9 +269,440 @@ fn write_tar_entries<W: Write>(
     }
 
     let mut hardlink_index = HashMap::<FileId, HardlinkRecord>::new();
+    let mut seen_archive_paths = HashSet::<String>::new();
 
     let follow_links = source.symlink_policy == FsSymlinkPolicy::Follow;
-    let mut iter = WalkDir::new(&root).follow_links(follow_links).into_iter();
+
+    let using_paths = source.paths.iter().any(|p| !p.trim().is_empty());
+    if using_paths {
+        let mut raw_paths = source
+            .paths
+            .iter()
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+
+        // Preserve input order while removing exact duplicates.
+        let mut seen_inputs = HashSet::<String>::new();
+        raw_paths.retain(|p| seen_inputs.insert(p.to_string_lossy().replace('\\', "/")));
+
+        // Remove selections already covered by a previously selected directory (best-effort).
+        let mut covered_dirs = Vec::<PathBuf>::new();
+        let mut removed = Vec::<String>::new();
+        for p in raw_paths {
+            if covered_dirs.iter().any(|dir| p.strip_prefix(dir).is_ok()) {
+                removed.push(p.to_string_lossy().to_string());
+                continue;
+            }
+
+            if let Ok(meta) = source_meta_for_policy(&p, source.symlink_policy)
+                && meta.is_dir()
+            {
+                covered_dirs.push(p.clone());
+            }
+
+            write_source_entry(
+                tar,
+                &p,
+                source,
+                &exclude,
+                &include,
+                has_includes,
+                follow_links,
+                entries_writer,
+                entries_count,
+                issues,
+                &mut hardlink_index,
+                &mut seen_archive_paths,
+            )?;
+        }
+
+        if !removed.is_empty() {
+            let sample = removed
+                .iter()
+                .take(5)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            issues.record_warning(format!(
+                "deduplicated {} overlapping source path(s) (sample: {})",
+                removed.len(),
+                sample
+            ));
+        }
+    } else {
+        let root = PathBuf::from(source.root.trim());
+        write_legacy_root(
+            tar,
+            &root,
+            source,
+            &exclude,
+            &include,
+            has_includes,
+            follow_links,
+            entries_writer,
+            entries_count,
+            issues,
+            &mut hardlink_index,
+            &mut seen_archive_paths,
+        )?;
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_source_entry<W: Write>(
+    tar: &mut tar::Builder<W>,
+    path: &Path,
+    source: &FilesystemSource,
+    exclude: &globset::GlobSet,
+    include: &globset::GlobSet,
+    has_includes: bool,
+    follow_links: bool,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
+    seen_archive_paths: &mut HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    let prefix = match archive_prefix_for_path(path) {
+        Ok(v) => v,
+        Err(error) => {
+            let msg = format!("archive path error: {}: {error:#}", path.display());
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+            return Ok(());
+        }
+    };
+    let meta = match source_meta_for_policy(path, source.symlink_policy) {
+        Ok(m) => m,
+        Err(error) => {
+            let msg = format!("metadata error: {}: {error}", path.display());
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+            return Ok(());
+        }
+    };
+
+    if meta.is_dir() {
+        // Include the directory entry itself (except filesystem root which maps to empty prefix).
+        if !prefix.is_empty()
+            && !exclude.is_match(&prefix)
+            && !exclude.is_match(format!("{prefix}/"))
+        {
+            write_dir_entry(
+                tar,
+                path,
+                &prefix,
+                source,
+                entries_writer,
+                entries_count,
+                issues,
+                seen_archive_paths,
+            )?;
+        }
+
+        let mut iter = WalkDir::new(path).follow_links(follow_links).into_iter();
+        while let Some(next) = iter.next() {
+            let entry = match next {
+                Ok(e) => e,
+                Err(error) => {
+                    let msg = if let Some(path) = error.path() {
+                        format!("walk error: {}: {}", path.display(), error)
+                    } else {
+                        format!("walk error: {error}")
+                    };
+                    if source.error_policy == FsErrorPolicy::FailFast {
+                        return Err(anyhow::anyhow!(msg));
+                    }
+                    issues.record_error(msg);
+                    continue;
+                }
+            };
+            if entry.path() == path {
+                continue;
+            }
+
+            let rel = match entry.path().strip_prefix(path) {
+                Ok(v) => v,
+                Err(error) => {
+                    let msg = format!(
+                        "path error: {} is not under root {}: {error}",
+                        entry.path().display(),
+                        path.display()
+                    );
+                    if source.error_policy == FsErrorPolicy::FailFast {
+                        return Err(anyhow::anyhow!(msg));
+                    }
+                    issues.record_error(msg);
+                    continue;
+                }
+            };
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            let archive_path = join_archive_path(&prefix, &rel_str);
+            if archive_path.is_empty() {
+                continue;
+            }
+
+            let is_dir = entry.file_type().is_dir();
+            if exclude.is_match(&archive_path)
+                || (is_dir && exclude.is_match(format!("{archive_path}/")))
+            {
+                if is_dir {
+                    iter.skip_current_dir();
+                }
+                continue;
+            }
+
+            let is_symlink_path = entry.path_is_symlink();
+            if is_symlink_path && source.symlink_policy == FsSymlinkPolicy::Skip {
+                let target = std::fs::read_link(entry.path())
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "<unknown>".to_string());
+                issues.record_warning(format!("skipped symlink: {archive_path} -> {target}"));
+                continue;
+            }
+
+            if entry.file_type().is_file() {
+                if has_includes && !include.is_match(&archive_path) {
+                    continue;
+                }
+
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(error) => {
+                        let msg = format!("metadata error: {archive_path}: {error}");
+                        if source.error_policy == FsErrorPolicy::FailFast {
+                            return Err(anyhow::anyhow!(msg));
+                        }
+                        issues.record_error(msg);
+                        continue;
+                    }
+                };
+
+                write_file_entry(
+                    tar,
+                    entry.path(),
+                    &archive_path,
+                    &meta,
+                    is_symlink_path,
+                    source,
+                    entries_writer,
+                    entries_count,
+                    issues,
+                    hardlink_index,
+                    seen_archive_paths,
+                )?;
+                continue;
+            }
+
+            if entry.file_type().is_dir() {
+                write_dir_entry(
+                    tar,
+                    entry.path(),
+                    &archive_path,
+                    source,
+                    entries_writer,
+                    entries_count,
+                    issues,
+                    seen_archive_paths,
+                )?;
+                continue;
+            }
+
+            if entry.file_type().is_symlink() {
+                write_symlink_entry(
+                    tar,
+                    entry.path(),
+                    &archive_path,
+                    source,
+                    entries_writer,
+                    entries_count,
+                    issues,
+                    seen_archive_paths,
+                )?;
+                continue;
+            }
+
+            let msg = format!("unsupported file type: {archive_path}");
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+        }
+        return Ok(());
+    }
+
+    // Single file / symlink source
+    let archive_path = prefix;
+    if archive_path.is_empty() {
+        let msg = format!("invalid source path: {} has no archive path", path.display());
+        if source.error_policy == FsErrorPolicy::FailFast {
+            return Err(anyhow::anyhow!(msg));
+        }
+        issues.record_error(msg);
+        return Ok(());
+    }
+
+    if exclude.is_match(&archive_path) {
+        return Ok(());
+    }
+    if meta.file_type().is_symlink() && source.symlink_policy == FsSymlinkPolicy::Skip {
+        let target = std::fs::read_link(path)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string());
+        issues.record_warning(format!("skipped symlink: {archive_path} -> {target}"));
+        return Ok(());
+    }
+
+    let is_symlink_path = std::fs::symlink_metadata(path)
+        .ok()
+        .is_some_and(|m| m.file_type().is_symlink());
+
+    if meta.is_file() {
+        if has_includes && !include.is_match(&archive_path) {
+            return Ok(());
+        }
+        write_file_entry(
+            tar,
+            path,
+            &archive_path,
+            &meta,
+            is_symlink_path,
+            source,
+            entries_writer,
+            entries_count,
+            issues,
+            hardlink_index,
+            seen_archive_paths,
+        )?;
+        return Ok(());
+    }
+
+    if meta.file_type().is_symlink() {
+        write_symlink_entry(
+            tar,
+            path,
+            &archive_path,
+            source,
+            entries_writer,
+            entries_count,
+            issues,
+            seen_archive_paths,
+        )?;
+        return Ok(());
+    }
+
+    let msg = format!("unsupported file type: {archive_path}");
+    if source.error_policy == FsErrorPolicy::FailFast {
+        return Err(anyhow::anyhow!(msg));
+    }
+    issues.record_error(msg);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_legacy_root<W: Write>(
+    tar: &mut tar::Builder<W>,
+    root: &Path,
+    source: &FilesystemSource,
+    exclude: &globset::GlobSet,
+    include: &globset::GlobSet,
+    has_includes: bool,
+    follow_links: bool,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
+    seen_archive_paths: &mut HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    if root.as_os_str().is_empty() {
+        anyhow::bail!("filesystem.source.root is required");
+    }
+
+    let meta = match source_meta_for_policy(root, source.symlink_policy) {
+        Ok(m) => m,
+        Err(error) => {
+            let msg = format!("metadata error: {}: {error}", root.display());
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+            return Ok(());
+        }
+    };
+
+    if meta.is_file() || meta.file_type().is_symlink() {
+        let name = root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or("file");
+
+        if exclude.is_match(name) {
+            return Ok(());
+        }
+        if meta.file_type().is_symlink() && source.symlink_policy == FsSymlinkPolicy::Skip {
+            let target = std::fs::read_link(root)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "<unknown>".to_string());
+            issues.record_warning(format!("skipped symlink: {name} -> {target}"));
+            return Ok(());
+        }
+
+        let is_symlink_path = std::fs::symlink_metadata(root)
+            .ok()
+            .is_some_and(|m| m.file_type().is_symlink());
+
+        if meta.is_file() {
+            if has_includes && !include.is_match(name) {
+                return Ok(());
+            }
+            write_file_entry(
+                tar,
+                root,
+                name,
+                &meta,
+                is_symlink_path,
+                source,
+                entries_writer,
+                entries_count,
+                issues,
+                hardlink_index,
+                seen_archive_paths,
+            )?;
+        } else {
+            write_symlink_entry(
+                tar,
+                root,
+                name,
+                source,
+                entries_writer,
+                entries_count,
+                issues,
+                seen_archive_paths,
+            )?;
+        }
+
+        return Ok(());
+    }
+
+    if !meta.is_dir() {
+        let msg = format!("unsupported root file type: {}", root.display());
+        if source.error_policy == FsErrorPolicy::FailFast {
+            return Err(anyhow::anyhow!(msg));
+        }
+        issues.record_error(msg);
+        return Ok(());
+    }
+
+    let mut iter = WalkDir::new(root).follow_links(follow_links).into_iter();
     while let Some(next) = iter.next() {
         let entry = match next {
             Ok(e) => e,
@@ -291,7 +723,7 @@ fn write_tar_entries<W: Write>(
             continue;
         }
 
-        let rel = match entry.path().strip_prefix(&root) {
+        let rel = match entry.path().strip_prefix(root) {
             Ok(v) => v,
             Err(error) => {
                 let msg = format!(
@@ -306,13 +738,15 @@ fn write_tar_entries<W: Write>(
                 continue;
             }
         };
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
-        if rel_str.is_empty() {
+        let archive_path = rel.to_string_lossy().replace('\\', "/");
+        if archive_path.is_empty() {
             continue;
         }
 
         let is_dir = entry.file_type().is_dir();
-        if exclude.is_match(&rel_str) || (is_dir && exclude.is_match(format!("{rel_str}/"))) {
+        if exclude.is_match(&archive_path)
+            || (is_dir && exclude.is_match(format!("{archive_path}/")))
+        {
             if is_dir {
                 iter.skip_current_dir();
             }
@@ -324,19 +758,19 @@ fn write_tar_entries<W: Write>(
             let target = std::fs::read_link(entry.path())
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|_| "<unknown>".to_string());
-            issues.record_warning(format!("skipped symlink: {rel_str} -> {target}"));
+            issues.record_warning(format!("skipped symlink: {archive_path} -> {target}"));
             continue;
         }
 
         if entry.file_type().is_file() {
-            if has_includes && !include.is_match(&rel_str) {
+            if has_includes && !include.is_match(&archive_path) {
                 continue;
             }
 
             let meta = match entry.metadata() {
                 Ok(m) => m,
                 Err(error) => {
-                    let msg = format!("metadata error: {rel_str}: {error}");
+                    let msg = format!("metadata error: {archive_path}: {error}");
                     if source.error_policy == FsErrorPolicy::FailFast {
                         return Err(anyhow::anyhow!(msg));
                     }
@@ -345,174 +779,51 @@ fn write_tar_entries<W: Write>(
                 }
             };
 
-            let size = meta.len();
-
-            if source.hardlink_policy == FsHardlinkPolicy::Keep
-                && !is_symlink_path
-                && hardlink_candidate(&meta)
-                && let Some(id) = file_id_for_meta(&meta)
-            {
-                if let Some(existing) = hardlink_index.get(&id) {
-                    let mut header = Header::new_gnu();
-                    header.set_metadata_in_mode(&meta, HeaderMode::Complete);
-                    header.set_entry_type(EntryType::hard_link());
-                    header.set_size(0);
-
-                    if let Err(error) = tar.append_link(
-                        &mut header,
-                        Path::new(&rel_str),
-                        Path::new(&existing.first_path),
-                    ) {
-                        let msg = format!("archive error (hardlink): {rel_str}: {error}");
-                        if source.error_policy == FsErrorPolicy::FailFast {
-                            return Err(anyhow::anyhow!(msg));
-                        }
-                        issues.record_error(msg);
-                        continue;
-                    }
-
-                    write_entry_record(
-                        entries_writer,
-                        entries_count,
-                        EntryRecord {
-                            path: rel_str,
-                            kind: "file".to_string(),
-                            size: existing.size,
-                            hash_alg: Some(HashAlgorithm::Blake3),
-                            hash: Some(existing.hash.clone()),
-                        },
-                    )?;
-                    continue;
-                }
-
-                let hash = match hash_file(entry.path()) {
-                    Ok(h) => h,
-                    Err(error) => {
-                        let msg = format!("hash error: {rel_str}: {error}");
-                        if source.error_policy == FsErrorPolicy::FailFast {
-                            return Err(anyhow::anyhow!(msg));
-                        }
-                        issues.record_error(msg);
-                        continue;
-                    }
-                };
-                hardlink_index.insert(
-                    id,
-                    HardlinkRecord {
-                        first_path: rel_str.clone(),
-                        size,
-                        hash: hash.clone(),
-                    },
-                );
-
-                if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str)) {
-                    let msg = format!("archive error: {rel_str}: {error}");
-                    if source.error_policy == FsErrorPolicy::FailFast {
-                        return Err(anyhow::anyhow!(msg));
-                    }
-                    issues.record_error(msg);
-                    continue;
-                }
-
-                write_entry_record(
-                    entries_writer,
-                    entries_count,
-                    EntryRecord {
-                        path: rel_str,
-                        kind: "file".to_string(),
-                        size,
-                        hash_alg: Some(HashAlgorithm::Blake3),
-                        hash: Some(hash),
-                    },
-                )?;
-                continue;
-            }
-
-            let hash = match hash_file(entry.path()) {
-                Ok(h) => h,
-                Err(error) => {
-                    let msg = format!("hash error: {rel_str}: {error}");
-                    if source.error_policy == FsErrorPolicy::FailFast {
-                        return Err(anyhow::anyhow!(msg));
-                    }
-                    issues.record_error(msg);
-                    continue;
-                }
-            };
-
-            if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str)) {
-                let msg = format!("archive error: {rel_str}: {error}");
-                if source.error_policy == FsErrorPolicy::FailFast {
-                    return Err(anyhow::anyhow!(msg));
-                }
-                issues.record_error(msg);
-                continue;
-            }
-
-            write_entry_record(
+            write_file_entry(
+                tar,
+                entry.path(),
+                &archive_path,
+                &meta,
+                is_symlink_path,
+                source,
                 entries_writer,
                 entries_count,
-                EntryRecord {
-                    path: rel_str,
-                    kind: "file".to_string(),
-                    size,
-                    hash_alg: Some(HashAlgorithm::Blake3),
-                    hash: Some(hash),
-                },
+                issues,
+                hardlink_index,
+                seen_archive_paths,
             )?;
             continue;
         }
 
         if entry.file_type().is_dir() {
-            if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str)) {
-                let msg = format!("archive error: {rel_str}: {error}");
-                if source.error_policy == FsErrorPolicy::FailFast {
-                    return Err(anyhow::anyhow!(msg));
-                }
-                issues.record_error(msg);
-                iter.skip_current_dir();
-                continue;
-            }
-
-            write_entry_record(
+            write_dir_entry(
+                tar,
+                entry.path(),
+                &archive_path,
+                source,
                 entries_writer,
                 entries_count,
-                EntryRecord {
-                    path: rel_str,
-                    kind: "dir".to_string(),
-                    size: 0,
-                    hash_alg: None,
-                    hash: None,
-                },
+                issues,
+                seen_archive_paths,
             )?;
             continue;
         }
 
         if entry.file_type().is_symlink() {
-            if let Err(error) = tar.append_path_with_name(entry.path(), Path::new(&rel_str)) {
-                let msg = format!("archive error: {rel_str}: {error}");
-                if source.error_policy == FsErrorPolicy::FailFast {
-                    return Err(anyhow::anyhow!(msg));
-                }
-                issues.record_error(msg);
-                continue;
-            }
-
-            write_entry_record(
+            write_symlink_entry(
+                tar,
+                entry.path(),
+                &archive_path,
+                source,
                 entries_writer,
                 entries_count,
-                EntryRecord {
-                    path: rel_str,
-                    kind: "symlink".to_string(),
-                    size: 0,
-                    hash_alg: None,
-                    hash: None,
-                },
+                issues,
+                seen_archive_paths,
             )?;
             continue;
         }
 
-        let msg = format!("unsupported file type: {rel_str}");
+        let msg = format!("unsupported file type: {archive_path}");
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));
         }
@@ -520,6 +831,294 @@ fn write_tar_entries<W: Write>(
     }
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_file_entry<W: Write>(
+    tar: &mut tar::Builder<W>,
+    fs_path: &Path,
+    archive_path: &str,
+    meta: &std::fs::Metadata,
+    is_symlink_path: bool,
+    source: &FilesystemSource,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
+    seen_archive_paths: &mut HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    if seen_archive_paths.contains(archive_path) {
+        issues.record_warning(format!("duplicate archive path (file): {archive_path}"));
+        return Ok(());
+    }
+
+    let size = meta.len();
+    if source.hardlink_policy == FsHardlinkPolicy::Keep
+        && !is_symlink_path
+        && hardlink_candidate(meta)
+        && let Some(id) = file_id_for_meta(meta)
+    {
+        if let Some(existing) = hardlink_index.get(&id) {
+            let mut header = Header::new_gnu();
+            header.set_metadata_in_mode(meta, HeaderMode::Complete);
+            header.set_entry_type(EntryType::hard_link());
+            header.set_size(0);
+
+            if let Err(error) = tar.append_link(
+                &mut header,
+                Path::new(archive_path),
+                Path::new(&existing.first_path),
+            ) {
+                let msg = format!("archive error (hardlink): {archive_path}: {error}");
+                if source.error_policy == FsErrorPolicy::FailFast {
+                    return Err(anyhow::anyhow!(msg));
+                }
+                issues.record_error(msg);
+                return Ok(());
+            }
+
+            seen_archive_paths.insert(archive_path.to_string());
+            write_entry_record(
+                entries_writer,
+                entries_count,
+                EntryRecord {
+                    path: archive_path.to_string(),
+                    kind: "file".to_string(),
+                    size: existing.size,
+                    hash_alg: Some(HashAlgorithm::Blake3),
+                    hash: Some(existing.hash.clone()),
+                },
+            )?;
+            return Ok(());
+        }
+
+        let hash = match hash_file(fs_path) {
+            Ok(h) => h,
+            Err(error) => {
+                let msg = format!("hash error: {archive_path}: {error}");
+                if source.error_policy == FsErrorPolicy::FailFast {
+                    return Err(anyhow::anyhow!(msg));
+                }
+                issues.record_error(msg);
+                return Ok(());
+            }
+        };
+        hardlink_index.insert(
+            id,
+            HardlinkRecord {
+                first_path: archive_path.to_string(),
+                size,
+                hash: hash.clone(),
+            },
+        );
+
+        if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
+            let msg = format!("archive error: {archive_path}: {error}");
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+            return Ok(());
+        }
+
+        seen_archive_paths.insert(archive_path.to_string());
+        write_entry_record(
+            entries_writer,
+            entries_count,
+            EntryRecord {
+                path: archive_path.to_string(),
+                kind: "file".to_string(),
+                size,
+                hash_alg: Some(HashAlgorithm::Blake3),
+                hash: Some(hash),
+            },
+        )?;
+        return Ok(());
+    }
+
+    let hash = match hash_file(fs_path) {
+        Ok(h) => h,
+        Err(error) => {
+            let msg = format!("hash error: {archive_path}: {error}");
+            if source.error_policy == FsErrorPolicy::FailFast {
+                return Err(anyhow::anyhow!(msg));
+            }
+            issues.record_error(msg);
+            return Ok(());
+        }
+    };
+
+    if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
+        let msg = format!("archive error: {archive_path}: {error}");
+        if source.error_policy == FsErrorPolicy::FailFast {
+            return Err(anyhow::anyhow!(msg));
+        }
+        issues.record_error(msg);
+        return Ok(());
+    }
+
+    seen_archive_paths.insert(archive_path.to_string());
+    write_entry_record(
+        entries_writer,
+        entries_count,
+        EntryRecord {
+            path: archive_path.to_string(),
+            kind: "file".to_string(),
+            size,
+            hash_alg: Some(HashAlgorithm::Blake3),
+            hash: Some(hash),
+        },
+    )?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_dir_entry<W: Write>(
+    tar: &mut tar::Builder<W>,
+    fs_path: &Path,
+    archive_path: &str,
+    source: &FilesystemSource,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    seen_archive_paths: &mut HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    if seen_archive_paths.contains(archive_path) {
+        issues.record_warning(format!("duplicate archive path (dir): {archive_path}"));
+        return Ok(());
+    }
+
+    if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
+        let msg = format!("archive error: {archive_path}: {error}");
+        if source.error_policy == FsErrorPolicy::FailFast {
+            return Err(anyhow::anyhow!(msg));
+        }
+        issues.record_error(msg);
+        return Ok(());
+    }
+
+    seen_archive_paths.insert(archive_path.to_string());
+    write_entry_record(
+        entries_writer,
+        entries_count,
+        EntryRecord {
+            path: archive_path.to_string(),
+            kind: "dir".to_string(),
+            size: 0,
+            hash_alg: None,
+            hash: None,
+        },
+    )?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_symlink_entry<W: Write>(
+    tar: &mut tar::Builder<W>,
+    fs_path: &Path,
+    archive_path: &str,
+    source: &FilesystemSource,
+    entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    seen_archive_paths: &mut HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    if seen_archive_paths.contains(archive_path) {
+        issues.record_warning(format!(
+            "duplicate archive path (symlink): {archive_path}"
+        ));
+        return Ok(());
+    }
+
+    if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
+        let msg = format!("archive error: {archive_path}: {error}");
+        if source.error_policy == FsErrorPolicy::FailFast {
+            return Err(anyhow::anyhow!(msg));
+        }
+        issues.record_error(msg);
+        return Ok(());
+    }
+
+    seen_archive_paths.insert(archive_path.to_string());
+    write_entry_record(
+        entries_writer,
+        entries_count,
+        EntryRecord {
+            path: archive_path.to_string(),
+            kind: "symlink".to_string(),
+            size: 0,
+            hash_alg: None,
+            hash: None,
+        },
+    )?;
+    Ok(())
+}
+
+fn source_meta_for_policy(
+    path: &Path,
+    policy: FsSymlinkPolicy,
+) -> Result<std::fs::Metadata, std::io::Error> {
+    if policy == FsSymlinkPolicy::Follow {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    }
+}
+
+fn join_archive_path(prefix: &str, rel: &str) -> String {
+    if prefix.is_empty() {
+        rel.to_string()
+    } else if rel.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{prefix}/{rel}")
+    }
+}
+
+fn archive_prefix_for_path(path: &Path) -> Result<String, anyhow::Error> {
+    let mut components = Vec::<String>::new();
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(prefix) => {
+                #[cfg(windows)]
+                {
+                use std::path::Prefix as P;
+                match prefix.kind() {
+                    P::Disk(letter) | P::VerbatimDisk(letter) => {
+                        components.push((letter as char).to_ascii_uppercase().to_string());
+                    }
+                    P::UNC(server, share) | P::VerbatimUNC(server, share) => {
+                        components.push("UNC".to_string());
+                        components.push(server.to_string_lossy().to_string());
+                        components.push(share.to_string_lossy().to_string());
+                    }
+                    _ => {
+                        components.push(prefix.as_os_str().to_string_lossy().to_string());
+                    }
+                }
+                }
+                #[cfg(not(windows))]
+                {
+                    components.push(prefix.as_os_str().to_string_lossy().to_string());
+                }
+            }
+            Component::RootDir => {}
+            Component::CurDir => {}
+            Component::ParentDir => anyhow::bail!(
+                "source path must not contain '..': {}",
+                path.display()
+            ),
+            Component::Normal(p) => {
+                let s = p.to_string_lossy();
+                if s.is_empty() {
+                    continue;
+                }
+                components.push(s.to_string());
+            }
+        }
+    }
+
+    Ok(components.join("/"))
 }
 
 fn write_entry_record(
@@ -599,4 +1198,185 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), anyhow::Error> 
     let bytes = serde_json::to_vec_pretty(value)?;
     std::fs::write(path, bytes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::path::Path;
+
+    use tempfile::tempdir;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    use crate::backup::PayloadEncryption;
+    use bastion_core::job_spec::{
+        FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy,
+    };
+
+    use super::{archive_prefix_for_path, build_filesystem_run};
+
+    fn list_tar_paths(part_path: &Path) -> Vec<String> {
+        let file = File::open(part_path).expect("open part");
+        let decoder = zstd::Decoder::new(file).expect("zstd decoder");
+        let mut archive = tar::Archive::new(decoder);
+        archive
+            .entries()
+            .expect("entries")
+            .map(|e| {
+                e.expect("entry")
+                    .path()
+                    .expect("path")
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn list_index_paths(entries_path: &Path) -> Vec<String> {
+        let raw = std::fs::read(entries_path).expect("read entries index");
+        let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
+        decoded
+            .split(|b| *b == b'\n')
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
+            .filter_map(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn filesystem_paths_can_backup_single_file() {
+        let tmp = tempdir().expect("tempdir");
+        let data_dir = tmp.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let src = tmp.path().join("hello.txt");
+        std::fs::write(&src, b"hi").unwrap();
+
+        let expected = archive_prefix_for_path(&src).unwrap();
+
+        let source = FilesystemSource {
+            paths: vec![src.to_string_lossy().to_string()],
+            root: String::new(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+            symlink_policy: FsSymlinkPolicy::Keep,
+            hardlink_policy: FsHardlinkPolicy::Copy,
+            error_policy: FsErrorPolicy::FailFast,
+        };
+
+        let build = build_filesystem_run(
+            &data_dir,
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            OffsetDateTime::now_utc(),
+            &source,
+            &PayloadEncryption::None,
+            4 * 1024 * 1024,
+        )
+        .unwrap();
+        assert_eq!(build.issues.errors_total, 0);
+
+        let part_paths = build
+            .artifacts
+            .parts
+            .iter()
+            .map(|p| p.path.as_path())
+            .collect::<Vec<_>>();
+        assert_eq!(part_paths.len(), 1);
+        let tar_paths = list_tar_paths(part_paths[0]);
+        assert!(tar_paths.contains(&expected));
+
+        let index_paths = list_index_paths(&build.artifacts.entries_index_path);
+        assert!(index_paths.contains(&expected));
+    }
+
+    #[test]
+    fn filesystem_paths_deduplicates_overlapping_sources() {
+        let tmp = tempdir().expect("tempdir");
+        let data_dir = tmp.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let dir = tmp.path().join("dir");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+
+        let expected = format!("{}/a.txt", archive_prefix_for_path(&dir).unwrap());
+
+        let source = FilesystemSource {
+            paths: vec![
+                dir.to_string_lossy().to_string(),
+                file.to_string_lossy().to_string(),
+            ],
+            root: String::new(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+            symlink_policy: FsSymlinkPolicy::Keep,
+            hardlink_policy: FsHardlinkPolicy::Copy,
+            error_policy: FsErrorPolicy::FailFast,
+        };
+
+        let build = build_filesystem_run(
+            &data_dir,
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            OffsetDateTime::now_utc(),
+            &source,
+            &PayloadEncryption::None,
+            4 * 1024 * 1024,
+        )
+        .unwrap();
+        assert_eq!(build.issues.errors_total, 0);
+        assert_eq!(build.issues.warnings_total, 1);
+        assert!(
+            build
+                .issues
+                .sample_warnings
+                .iter()
+                .any(|w| w.contains("deduplicated") && w.contains("overlapping source")),
+            "missing dedupe warning: {:?}",
+            build.issues.sample_warnings
+        );
+
+        let part = build.artifacts.parts[0].path.as_path();
+        let tar_paths = list_tar_paths(part);
+        assert_eq!(tar_paths.iter().filter(|p| *p == &expected).count(), 1);
+    }
+
+    #[test]
+    fn legacy_root_can_backup_single_file() {
+        let tmp = tempdir().expect("tempdir");
+        let data_dir = tmp.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let src = tmp.path().join("hello.txt");
+        std::fs::write(&src, b"hi").unwrap();
+
+        let source = FilesystemSource {
+            paths: Vec::new(),
+            root: src.to_string_lossy().to_string(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+            symlink_policy: FsSymlinkPolicy::Keep,
+            hardlink_policy: FsHardlinkPolicy::Copy,
+            error_policy: FsErrorPolicy::FailFast,
+        };
+
+        let build = build_filesystem_run(
+            &data_dir,
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            OffsetDateTime::now_utc(),
+            &source,
+            &PayloadEncryption::None,
+            4 * 1024 * 1024,
+        )
+        .unwrap();
+        assert_eq!(build.issues.errors_total, 0);
+
+        let part = build.artifacts.parts[0].path.as_path();
+        let tar_paths = list_tar_paths(part);
+        assert!(tar_paths.contains(&"hello.txt".to_string()));
+    }
 }

@@ -70,6 +70,9 @@ pub enum FsErrorPolicy {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilesystemSource {
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub root: String,
     #[serde(default)]
     pub include: Vec<String>,
@@ -187,8 +190,10 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
             validate_notifications(notifications)?;
-            if source.root.trim().is_empty() {
-                anyhow::bail!("filesystem.source.root is required");
+            let has_paths = source.paths.iter().any(|p| !p.trim().is_empty());
+            let has_root = !source.root.trim().is_empty();
+            if !has_paths && !has_root {
+                anyhow::bail!("filesystem.source.paths (or legacy filesystem.source.root) is required");
             }
             validate_globs(&source.include)?;
             validate_globs(&source.exclude)?;

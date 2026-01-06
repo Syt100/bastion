@@ -141,6 +141,7 @@ mod tests {
             pipeline: Default::default(),
             notifications: Default::default(),
             source: job_spec::FilesystemSource {
+                paths: vec![],
                 root: "/".to_string(),
                 include: vec![],
                 exclude: vec![],
@@ -188,6 +189,7 @@ mod tests {
             pipeline: Default::default(),
             notifications: Default::default(),
             source: job_spec::FilesystemSource {
+                paths: vec![],
                 root: "/".to_string(),
                 include: vec![],
                 exclude: vec![],
