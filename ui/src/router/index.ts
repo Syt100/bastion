@@ -29,7 +29,14 @@ const router = createRouter({
       component: AppShell,
       children: [
         { path: '', component: DashboardView, meta: { titleKey: 'dashboard.title' } },
-        { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
+        { path: 'jobs', redirect: '/n/hub/jobs' },
+        {
+          path: 'n/:nodeId',
+          children: [
+            { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
+            { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
+          ],
+        },
         { path: 'agents', component: AgentsView, meta: { titleKey: 'agents.title' } },
         {
           path: 'settings',

@@ -32,8 +32,8 @@ type FsHardlinkPolicy = 'copy' | 'keep'
 type FsErrorPolicy = 'fail_fast' | 'skip_fail' | 'skip_ok'
 
 export type JobEditorModalExpose = {
-  openCreate: () => void
-  openEdit: (jobId: string) => Promise<void>
+  openCreate: (ctx?: { nodeId?: 'hub' | string }) => void
+  openEdit: (jobId: string, ctx?: { nodeId?: 'hub' | string }) => Promise<void>
 }
 
 const emit = defineEmits<{
@@ -54,6 +54,7 @@ const show = ref<boolean>(false)
 const mode = ref<'create' | 'edit'>('create')
 const saving = ref<boolean>(false)
 const step = ref<number>(1)
+const lockedNodeId = ref<'hub' | string | null>(null)
 
 const EDITOR_STEPS_TOTAL = 6
 const stepTitles = computed(() => [
@@ -191,25 +192,33 @@ function formatJson(value: unknown): string {
   }
 }
 
-function openCreate(): void {
+function openCreateWithContext(ctx?: { nodeId?: 'hub' | string }): void {
   mode.value = 'create'
   step.value = 1
   resetForm()
+  lockedNodeId.value = ctx?.nodeId ?? null
+  if (lockedNodeId.value) {
+    form.node = lockedNodeId.value
+  }
   void notifications.refreshDestinations()
   show.value = true
 }
 
-async function openEdit(jobId: string): Promise<void> {
+async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promise<void> {
   mode.value = 'edit'
   step.value = 1
   show.value = true
   saving.value = true
+  lockedNodeId.value = ctx?.nodeId ?? null
   void notifications.refreshDestinations()
   try {
     const job = await jobs.getJob(jobId)
     form.id = job.id
     form.name = job.name
     form.node = job.agent_id ? job.agent_id : 'hub'
+    if (lockedNodeId.value) {
+      form.node = lockedNodeId.value
+    }
     form.schedule = job.schedule ?? ''
     form.overlapPolicy = job.overlap_policy
     form.jobType = job.spec.type
@@ -609,7 +618,7 @@ const disabledEmailSelected = computed(() => {
   return form.notifyEmails.filter((name) => enabled.get(name) === false)
 })
 
-defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
+defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit })
 </script>
 
 <template>
@@ -649,7 +658,7 @@ defineExpose<JobEditorModalExpose>({ openCreate, openEdit })
               <n-input v-model:value="form.name" />
             </n-form-item>
             <n-form-item :label="t('jobs.fields.node')">
-              <n-select v-model:value="form.node" :options="nodeOptions" filterable />
+              <n-select v-model:value="form.node" :options="nodeOptions" filterable :disabled="lockedNodeId !== null" />
             </n-form-item>
           </div>
 
