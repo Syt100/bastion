@@ -27,6 +27,10 @@ tracing = "0.1.41"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
+base64 = "0.22.1"
+chrono = "0.4.42"
+cron = "0.15.0"
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [features]
 default = []

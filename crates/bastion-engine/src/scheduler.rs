@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -12,17 +12,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use bastion_core::HUB_NODE_ID;
-use bastion_core::agent_protocol::{
-    BackupRunTaskV1, EncryptionResolvedV1, HubToAgentMessageV1, JobSpecResolvedV1,
-    PROTOCOL_VERSION, PipelineResolvedV1, TargetResolvedV1,
-};
+use bastion_core::agent_protocol::{BackupRunTaskV1, HubToAgentMessageV1, PROTOCOL_VERSION};
 use bastion_core::job_spec;
 use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::jobs_repo::{self, OverlapPolicy};
-use bastion_storage::notification_destinations_repo;
-use bastion_storage::notifications_repo;
-use bastion_storage::notifications_settings_repo;
 use bastion_storage::runs_repo::{self, RunStatus};
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -76,11 +70,13 @@ pub fn spawn(args: SchedulerArgs) {
         notifications_notify,
         shutdown,
     } = args;
+    let agent_manager_cron = agent_manager.clone();
     tokio::spawn(run_cron_loop(
         db.clone(),
         run_events_bus.clone(),
         run_queue_notify.clone(),
         jobs_notify.clone(),
+        agent_manager_cron,
         shutdown.clone(),
     ));
     tokio::spawn(run_worker_loop(WorkerLoopArgs {
@@ -170,6 +166,7 @@ async fn run_cron_loop(
     run_events_bus: Arc<RunEventsBus>,
     run_queue_notify: Arc<Notify>,
     jobs_notify: Arc<Notify>,
+    agent_manager: AgentManager,
     shutdown: CancellationToken,
 ) {
     let mut schedule_cache: HashMap<String, Schedule> = HashMap::new();
@@ -240,6 +237,17 @@ async fn run_cron_loop(
                     let Some(expr) = job.schedule.as_deref() else {
                         continue;
                     };
+
+                    if let Some(agent_id) = job.agent_id.as_deref()
+                        && !agent_manager.is_connected(agent_id).await
+                    {
+                        debug!(
+                            job_id = %job.id,
+                            agent_id = %agent_id,
+                            "agent offline; skip hub scheduling"
+                        );
+                        continue;
+                    }
 
                     match cron_matches_minute_cached(expr, minute_start, &mut schedule_cache) {
                         Ok(true) => {
@@ -524,7 +532,7 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     break;
                 };
                 if current.status != RunStatus::Running {
-                    match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                    match crate::notifications::enqueue_for_run_spec(&db, &spec, &run.id).await {
                         Ok(true) => notifications_notify.notify_one(),
                         Ok(false) => {}
                         Err(error) => {
@@ -597,7 +605,7 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     None,
                 )
                 .await;
-                match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                match crate::notifications::enqueue_for_run_spec(&db, &spec, &run.id).await {
                     Ok(true) => notifications_notify.notify_one(),
                     Ok(false) => {}
                     Err(error) => {
@@ -632,7 +640,7 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
                     Some(error_code),
                 )
                 .await;
-                match enqueue_notifications_for_run(&db, &spec, &run.id).await {
+                match crate::notifications::enqueue_for_run_spec(&db, &spec, &run.id).await {
                     Ok(true) => notifications_notify.notify_one(),
                     Ok(false) => {}
                     Err(error) => {
@@ -642,78 +650,6 @@ async fn run_worker_loop(args: WorkerLoopArgs) {
             }
         }
     }
-}
-
-async fn enqueue_notifications_for_run(
-    db: &SqlitePool,
-    spec: &job_spec::JobSpecV1,
-    run_id: &str,
-) -> Result<bool, anyhow::Error> {
-    let settings = notifications_settings_repo::get_or_default(db).await?;
-    if !settings.enabled {
-        return Ok(false);
-    }
-
-    let all = notification_destinations_repo::list_destinations(db).await?;
-
-    let mut enabled_wecom = Vec::new();
-    let mut enabled_email = Vec::new();
-    for d in &all {
-        if !d.enabled {
-            continue;
-        }
-        match d.channel.as_str() {
-            notifications_repo::CHANNEL_WECOM_BOT => enabled_wecom.push(d.name.clone()),
-            notifications_repo::CHANNEL_EMAIL => enabled_email.push(d.name.clone()),
-            _ => {}
-        }
-    }
-
-    let mut selected_wecom: Vec<String> = Vec::new();
-    let mut selected_email: Vec<String> = Vec::new();
-    match spec.notifications().mode {
-        job_spec::NotificationsModeV1::Inherit => {
-            selected_wecom = enabled_wecom;
-            selected_email = enabled_email;
-        }
-        job_spec::NotificationsModeV1::Custom => {
-            let wecom_set: HashSet<&str> = enabled_wecom.iter().map(|s| s.as_str()).collect();
-            let email_set: HashSet<&str> = enabled_email.iter().map(|s| s.as_str()).collect();
-
-            for name in &spec.notifications().wecom_bot {
-                if wecom_set.contains(name.as_str()) {
-                    selected_wecom.push(name.clone());
-                }
-            }
-            for name in &spec.notifications().email {
-                if email_set.contains(name.as_str()) {
-                    selected_email.push(name.clone());
-                }
-            }
-        }
-    }
-
-    let mut inserted = 0_i64;
-    if settings.channels.wecom_bot.enabled && !selected_wecom.is_empty() {
-        inserted += notifications_repo::enqueue_for_run(
-            db,
-            run_id,
-            notifications_repo::CHANNEL_WECOM_BOT,
-            &selected_wecom,
-        )
-        .await?;
-    }
-    if settings.channels.email.enabled && !selected_email.is_empty() {
-        inserted += notifications_repo::enqueue_for_run(
-            db,
-            run_id,
-            notifications_repo::CHANNEL_EMAIL,
-            &selected_email,
-        )
-        .await?;
-    }
-
-    Ok(inserted > 0)
 }
 
 struct DispatchRunToAgentArgs<'a> {
@@ -755,7 +691,8 @@ async fn dispatch_run_to_agent(args: DispatchRunToAgentArgs<'_>) -> Result<(), a
     )
     .await?;
 
-    let resolved = resolve_job_spec_for_agent(db, secrets, agent_id, spec).await?;
+    let resolved =
+        crate::agent_job_resolver::resolve_job_spec_for_agent(db, secrets, agent_id, spec).await?;
     let task = BackupRunTaskV1 {
         run_id: run_id.to_string(),
         job_id: job.id.clone(),
@@ -775,104 +712,6 @@ async fn dispatch_run_to_agent(args: DispatchRunToAgentArgs<'_>) -> Result<(), a
 
     agent_manager.send_json(agent_id, &msg).await?;
     Ok(())
-}
-
-async fn resolve_job_spec_for_agent(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    node_id: &str,
-    spec: job_spec::JobSpecV1,
-) -> Result<JobSpecResolvedV1, anyhow::Error> {
-    match spec {
-        job_spec::JobSpecV1::Filesystem {
-            v,
-            pipeline,
-            notifications: _,
-            source,
-            target,
-        } => Ok(JobSpecResolvedV1::Filesystem {
-            v,
-            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
-            source,
-            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
-        }),
-        job_spec::JobSpecV1::Sqlite {
-            v,
-            pipeline,
-            notifications: _,
-            source,
-            target,
-        } => Ok(JobSpecResolvedV1::Sqlite {
-            v,
-            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
-            source,
-            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
-        }),
-        job_spec::JobSpecV1::Vaultwarden {
-            v,
-            pipeline,
-            notifications: _,
-            source,
-            target,
-        } => Ok(JobSpecResolvedV1::Vaultwarden {
-            v,
-            pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
-            source,
-            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
-        }),
-    }
-}
-
-async fn resolve_pipeline_for_agent(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    pipeline: &job_spec::PipelineV1,
-) -> Result<PipelineResolvedV1, anyhow::Error> {
-    let encryption = backup_encryption::ensure_payload_encryption(db, secrets, pipeline).await?;
-    let encryption = match encryption {
-        backup::PayloadEncryption::None => EncryptionResolvedV1::None,
-        backup::PayloadEncryption::AgeX25519 {
-            recipient,
-            key_name,
-        } => EncryptionResolvedV1::AgeX25519 {
-            recipient,
-            key_name,
-        },
-    };
-    Ok(PipelineResolvedV1 { encryption })
-}
-
-async fn resolve_target_for_agent(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    node_id: &str,
-    target: job_spec::TargetV1,
-) -> Result<TargetResolvedV1, anyhow::Error> {
-    match target {
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            part_size_bytes,
-        } => {
-            let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", &secret_name)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-            Ok(TargetResolvedV1::Webdav {
-                base_url,
-                username: credentials.username,
-                password: credentials.password,
-                part_size_bytes,
-            })
-        }
-        job_spec::TargetV1::LocalDir {
-            base_dir,
-            part_size_bytes,
-        } => Ok(TargetResolvedV1::LocalDir {
-            base_dir,
-            part_size_bytes,
-        }),
-    }
 }
 
 struct ExecuteRunArgs<'a> {

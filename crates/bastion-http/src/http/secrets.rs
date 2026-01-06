@@ -14,6 +14,8 @@ use bastion_notify::smtp::{SmtpSecretPayload, SmtpTlsMode, is_valid_mailbox};
 use bastion_storage::notifications_repo;
 use bastion_storage::secrets_repo;
 
+use super::agents::send_node_config_snapshot;
+
 #[derive(Debug, Serialize)]
 pub(super) struct SecretListItem {
     name: String,
@@ -300,6 +302,20 @@ pub(super) async fn upsert_webdav_secret_node(
         secret_name = %name.trim(),
         "secret upserted"
     );
+
+    let node_id_trimmed = node_id.trim();
+    if node_id_trimmed != HUB_NODE_ID
+        && let Err(error) = send_node_config_snapshot(
+            &state.db,
+            state.secrets.as_ref(),
+            &state.agent_manager,
+            node_id_trimmed,
+        )
+        .await
+    {
+        tracing::warn!(node_id = %node_id_trimmed, error = %error, "failed to send agent config snapshot");
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -344,6 +360,20 @@ pub(super) async fn delete_webdav_secret_node(
         secret_name = %name,
         "secret deleted"
     );
+
+    let node_id_trimmed = node_id.trim();
+    if node_id_trimmed != HUB_NODE_ID
+        && let Err(error) = send_node_config_snapshot(
+            &state.db,
+            state.secrets.as_ref(),
+            &state.agent_manager,
+            node_id_trimmed,
+        )
+        .await
+    {
+        tracing::warn!(node_id = %node_id_trimmed, error = %error, "failed to send agent config snapshot");
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -144,6 +144,40 @@ pub async fn list_jobs(db: &SqlitePool) -> Result<Vec<Job>, anyhow::Error> {
     Ok(jobs)
 }
 
+pub async fn list_jobs_for_agent(
+    db: &SqlitePool,
+    agent_id: &str,
+) -> Result<Vec<Job>, anyhow::Error> {
+    let rows = sqlx::query(
+        "SELECT id, name, agent_id, schedule, overlap_policy, spec_json, created_at, updated_at FROM jobs WHERE agent_id = ? ORDER BY created_at DESC",
+    )
+    .bind(agent_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut jobs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let overlap_policy = row
+            .get::<String, _>("overlap_policy")
+            .parse::<OverlapPolicy>()?;
+        let spec_json = row.get::<String, _>("spec_json");
+        let spec = serde_json::from_str::<serde_json::Value>(&spec_json)?;
+
+        jobs.push(Job {
+            id: row.get::<String, _>("id"),
+            name: row.get::<String, _>("name"),
+            agent_id: row.get::<Option<String>, _>("agent_id"),
+            schedule: row.get::<Option<String>, _>("schedule"),
+            overlap_policy,
+            spec,
+            created_at: row.get::<i64, _>("created_at"),
+            updated_at: row.get::<i64, _>("updated_at"),
+        });
+    }
+
+    Ok(jobs)
+}
+
 pub async fn update_job(
     db: &SqlitePool,
     job_id: &str,
