@@ -506,7 +506,9 @@ async fn offline_cron_loop(
                                         &data_dir,
                                         &job.job_id,
                                         &job.name,
-                                    ) {
+                                    )
+                                    .await
+                                    {
                                         warn!(
                                             agent_id = %agent_id,
                                             job_id = %job.job_id,
@@ -661,18 +663,28 @@ struct OfflineRunEventV1 {
     fields: Option<serde_json::Value>,
 }
 
-struct OfflineRunWriter {
-    run_id: String,
-    job_id: String,
-    job_name: String,
-    started_at: i64,
-    run_path: PathBuf,
-    events_path: PathBuf,
-    next_seq: i64,
+#[derive(Debug)]
+enum OfflineWriterCommand {
+    AppendEvent {
+        level: String,
+        kind: String,
+        message: String,
+        fields: Option<serde_json::Value>,
+    },
+    Finish {
+        status: OfflineRunStatusV1,
+        summary: Option<serde_json::Value>,
+        error: Option<String>,
+        respond_to: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+    },
 }
 
-impl OfflineRunWriter {
-    fn start(
+struct OfflineRunWriterHandle {
+    tx: tokio::sync::mpsc::UnboundedSender<OfflineWriterCommand>,
+}
+
+impl OfflineRunWriterHandle {
+    async fn start(
         data_dir: &Path,
         run_id: &str,
         job_id: &str,
@@ -680,120 +692,190 @@ impl OfflineRunWriter {
         started_at: i64,
     ) -> Result<Self, anyhow::Error> {
         let run_dir = offline_run_dir(data_dir, run_id);
-        std::fs::create_dir_all(&run_dir)?;
+        tokio::fs::create_dir_all(&run_dir).await?;
 
         let run_path = run_dir.join("run.json");
         let events_path = run_dir.join("events.jsonl");
 
-        let writer = Self {
-            run_id: run_id.to_string(),
-            job_id: job_id.to_string(),
-            job_name: job_name.to_string(),
-            started_at,
-            run_path,
-            events_path,
-            next_seq: 1,
-        };
+        write_offline_run_file_atomic(
+            &run_path,
+            OfflineRunFileV1 {
+                v: 1,
+                id: run_id.to_string(),
+                job_id: job_id.to_string(),
+                job_name: job_name.to_string(),
+                status: OfflineRunStatusV1::Running,
+                started_at,
+                ended_at: None,
+                summary: None,
+                error: None,
+            },
+        )
+        .await?;
 
-        writer.write_run(OfflineRunStatusV1::Running, None, None, None)?;
-        Ok(writer)
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OfflineWriterCommand>();
+
+        let run_id = run_id.to_string();
+        let job_id = job_id.to_string();
+        let job_name = job_name.to_string();
+        tokio::spawn(async move {
+            let mut next_seq: i64 = 1;
+            while let Some(cmd) = rx.recv().await {
+                match cmd {
+                    OfflineWriterCommand::AppendEvent {
+                        level,
+                        kind,
+                        message,
+                        fields,
+                    } => {
+                        let event = OfflineRunEventV1 {
+                            seq: next_seq,
+                            ts: time::OffsetDateTime::now_utc().unix_timestamp(),
+                            level,
+                            kind,
+                            message,
+                            fields,
+                        };
+                        next_seq = next_seq.saturating_add(1);
+                        if let Err(error) = append_offline_event_line(&events_path, &event).await {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                job_id = %job_id,
+                                error = %error,
+                                "failed to persist offline run event"
+                            );
+                        }
+                    }
+                    OfflineWriterCommand::Finish {
+                        status,
+                        summary,
+                        error,
+                        respond_to,
+                    } => {
+                        let ended_at = time::OffsetDateTime::now_utc().unix_timestamp();
+                        let result = write_offline_run_file_atomic(
+                            &run_path,
+                            OfflineRunFileV1 {
+                                v: 1,
+                                id: run_id,
+                                job_id,
+                                job_name,
+                                status,
+                                started_at,
+                                ended_at: Some(ended_at),
+                                summary,
+                                error,
+                            },
+                        )
+                        .await;
+                        let _ = respond_to.send(result);
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(Self { tx })
     }
 
     fn append_event(
-        &mut self,
+        &self,
         level: &str,
         kind: &str,
         message: &str,
         fields: Option<serde_json::Value>,
     ) -> Result<(), anyhow::Error> {
-        let event = OfflineRunEventV1 {
-            seq: self.next_seq,
-            ts: time::OffsetDateTime::now_utc().unix_timestamp(),
-            level: level.to_string(),
-            kind: kind.to_string(),
-            message: message.to_string(),
-            fields,
-        };
-        self.next_seq = self.next_seq.saturating_add(1);
-
-        let line = serde_json::to_vec(&event)?;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.events_path)?;
-        use std::io::Write as _;
-        file.write_all(&line)?;
-        file.write_all(b"\n")?;
+        self.tx
+            .send(OfflineWriterCommand::AppendEvent {
+                level: level.to_string(),
+                kind: kind.to_string(),
+                message: message.to_string(),
+                fields,
+            })
+            .map_err(|_| anyhow::anyhow!("offline writer closed"))?;
         Ok(())
     }
 
-    fn finish_success(&mut self, summary: serde_json::Value) -> Result<(), anyhow::Error> {
-        let ended_at = time::OffsetDateTime::now_utc().unix_timestamp();
-        self.write_run(
-            OfflineRunStatusV1::Success,
-            Some(ended_at),
-            Some(summary),
-            None,
-        )?;
-        Ok(())
-    }
-
-    fn finish_failed(
-        &mut self,
-        error_code: &str,
-        summary: serde_json::Value,
-    ) -> Result<(), anyhow::Error> {
-        let ended_at = time::OffsetDateTime::now_utc().unix_timestamp();
-        self.write_run(
-            OfflineRunStatusV1::Failed,
-            Some(ended_at),
-            Some(summary),
-            Some(error_code.to_string()),
-        )?;
-        Ok(())
-    }
-
-    fn finish_rejected(&mut self) -> Result<(), anyhow::Error> {
-        let ended_at = time::OffsetDateTime::now_utc().unix_timestamp();
-        self.write_run(
-            OfflineRunStatusV1::Rejected,
-            Some(ended_at),
-            Some(serde_json::json!({ "executed_offline": true })),
-            Some("overlap_rejected".to_string()),
-        )?;
-        Ok(())
-    }
-
-    fn write_run(
-        &self,
+    async fn finish(
+        self,
         status: OfflineRunStatusV1,
-        ended_at: Option<i64>,
         summary: Option<serde_json::Value>,
         error: Option<String>,
     ) -> Result<(), anyhow::Error> {
-        let doc = OfflineRunFileV1 {
-            v: 1,
-            id: self.run_id.clone(),
-            job_id: self.job_id.clone(),
-            job_name: self.job_name.clone(),
-            status,
-            started_at: self.started_at,
-            ended_at,
-            summary,
-            error,
-        };
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), anyhow::Error>>();
+        self.tx
+            .send(OfflineWriterCommand::Finish {
+                status,
+                summary,
+                error,
+                respond_to: tx,
+            })
+            .map_err(|_| anyhow::anyhow!("offline writer closed"))?;
 
-        let bytes = serde_json::to_vec_pretty(&doc)?;
-        let tmp = self.run_path.with_extension("json.partial");
-        let _ = std::fs::remove_file(&tmp);
-        std::fs::write(&tmp, bytes)?;
-        std::fs::rename(&tmp, &self.run_path)?;
+        rx.await
+            .map_err(|_| anyhow::anyhow!("offline writer closed"))??;
         Ok(())
+    }
+
+    async fn finish_success(self, summary: serde_json::Value) -> Result<(), anyhow::Error> {
+        self.finish(OfflineRunStatusV1::Success, Some(summary), None)
+            .await
+    }
+
+    async fn finish_failed(
+        self,
+        error_code: &str,
+        summary: serde_json::Value,
+    ) -> Result<(), anyhow::Error> {
+        self.finish(
+            OfflineRunStatusV1::Failed,
+            Some(summary),
+            Some(error_code.to_string()),
+        )
+        .await
+    }
+
+    async fn finish_rejected(self) -> Result<(), anyhow::Error> {
+        self.finish(
+            OfflineRunStatusV1::Rejected,
+            Some(serde_json::json!({ "executed_offline": true })),
+            Some("overlap_rejected".to_string()),
+        )
+        .await
     }
 }
 
+async fn write_offline_run_file_atomic(
+    path: &Path,
+    doc: OfflineRunFileV1,
+) -> Result<(), anyhow::Error> {
+    let bytes = serde_json::to_vec_pretty(&doc)?;
+    let tmp = path.with_extension("json.partial");
+    let _ = tokio::fs::remove_file(&tmp).await;
+    tokio::fs::write(&tmp, bytes).await?;
+    tokio::fs::rename(&tmp, path).await?;
+    Ok(())
+}
+
+async fn append_offline_event_line(
+    path: &Path,
+    event: &OfflineRunEventV1,
+) -> Result<(), anyhow::Error> {
+    use tokio::io::AsyncWriteExt as _;
+
+    let line = serde_json::to_vec(event)?;
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await?;
+    file.write_all(&line).await?;
+    file.write_all(b"\n").await?;
+    Ok(())
+}
+
 struct OfflineSink {
-    writer: OfflineRunWriter,
+    writer: OfflineRunWriterHandle,
     task_summary: Option<serde_json::Value>,
 }
 
@@ -860,21 +942,22 @@ fn offline_run_dir(data_dir: &Path, run_id: &str) -> PathBuf {
     offline_runs_dir(data_dir).join(run_id)
 }
 
-fn persist_offline_rejected_run(
+async fn persist_offline_rejected_run(
     data_dir: &Path,
     job_id: &str,
     job_name: &str,
 ) -> Result<(), anyhow::Error> {
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_at = time::OffsetDateTime::now_utc().unix_timestamp();
-    let mut writer = OfflineRunWriter::start(data_dir, &run_id, job_id, job_name, started_at)?;
+    let writer =
+        OfflineRunWriterHandle::start(data_dir, &run_id, job_id, job_name, started_at).await?;
     let _ = writer.append_event(
         "info",
         "rejected",
         "rejected",
         Some(serde_json::json!({ "source": "schedule", "executed_offline": true })),
     );
-    writer.finish_rejected()?;
+    writer.finish_rejected().await?;
     Ok(())
 }
 
@@ -884,14 +967,17 @@ async fn execute_offline_run_task(
     task: &OfflineRunTask,
 ) -> Result<(), anyhow::Error> {
     let started_at = time::OffsetDateTime::now_utc();
+    let writer = OfflineRunWriterHandle::start(
+        data_dir,
+        &task.run_id,
+        &task.job_id,
+        &task.job_name,
+        started_at.unix_timestamp(),
+    )
+    .await?;
+
     let mut sink = OfflineSink {
-        writer: OfflineRunWriter::start(
-            data_dir,
-            &task.run_id,
-            &task.job_id,
-            &task.job_name,
-            started_at.unix_timestamp(),
-        )?,
+        writer,
         task_summary: None,
     };
 
@@ -910,11 +996,15 @@ async fn execute_offline_run_task(
     };
 
     let outcome = handle_backup_task(data_dir, &mut sink, &task.run_id, run_task).await;
+    let OfflineSink {
+        writer,
+        task_summary,
+    } = sink;
     match outcome {
         Ok(()) => {
-            let mut summary = sink.task_summary.unwrap_or_else(|| serde_json::json!({}));
+            let mut summary = task_summary.unwrap_or_else(|| serde_json::json!({}));
             mark_summary_executed_offline(&mut summary);
-            sink.writer.finish_success(summary)?;
+            writer.finish_success(summary).await?;
         }
         Err(error) => {
             let soft = error.downcast_ref::<RunFailedWithSummary>();
@@ -932,13 +1022,13 @@ async fn execute_offline_run_task(
             mark_summary_executed_offline(&mut summary);
 
             let message = format!("failed: {error}");
-            let _ = sink.writer.append_event(
+            let _ = writer.append_event(
                 "error",
                 "failed",
                 &message,
                 Some(serde_json::json!({ "agent_id": agent_id })),
             );
-            sink.writer.finish_failed(error_code, summary)?;
+            writer.finish_failed(error_code, summary).await?;
         }
     }
 
@@ -968,18 +1058,16 @@ async fn sync_offline_runs(
     data_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     let root = offline_runs_dir(data_dir);
-    let entries = match std::fs::read_dir(&root) {
+    let mut entries = match tokio::fs::read_dir(&root).await {
         Ok(v) => v,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error.into()),
     };
 
     let mut run_dirs = Vec::new();
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            run_dirs.push(path);
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            run_dirs.push(entry.path());
         }
     }
     run_dirs.sort();
@@ -991,7 +1079,7 @@ async fn sync_offline_runs(
 
     for dir in run_dirs {
         let run_path = dir.join("run.json");
-        let bytes = std::fs::read(&run_path)?;
+        let bytes = tokio::fs::read(&run_path).await?;
         let run: OfflineRunFileV1 = serde_json::from_slice(&bytes)?;
 
         if run.status == OfflineRunStatusV1::Running {
@@ -1007,15 +1095,22 @@ async fn sync_offline_runs(
 
         let events_path = dir.join("events.jsonl");
         let mut events = Vec::new();
-        if let Ok(text) = std::fs::read_to_string(&events_path) {
-            for line in text.lines() {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
+        match tokio::fs::File::open(&events_path).await {
+            Ok(file) => {
+                use tokio::io::AsyncBufReadExt as _;
+
+                let mut lines = tokio::io::BufReader::new(file).lines();
+                while let Some(line) = lines.next_line().await? {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let ev: OfflineRunEventV1 = serde_json::from_str(line)?;
+                    events.push(ev);
                 }
-                let ev: OfflineRunEventV1 = serde_json::from_str(line)?;
-                events.push(ev);
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
 
         let req = AgentIngestRunRequestV1 {
@@ -1784,8 +1879,8 @@ fn save_task_result(data_dir: &Path, msg: &AgentToHubMessageV1) -> Result<(), an
 mod tests {
     use super::{
         ManagedConfigFileV1, ManagedSecretsFileV1, agent_ws_url, managed_config_path,
-        managed_secrets_path, normalize_base_url, save_identity, save_managed_config_snapshot,
-        save_managed_secrets_snapshot,
+        managed_secrets_path, normalize_base_url, offline_run_dir, save_identity,
+        save_managed_config_snapshot, save_managed_secrets_snapshot, sync_offline_runs,
     };
 
     #[test]
@@ -1935,5 +2030,133 @@ mod tests {
         assert!(!saved.encrypted.ciphertext_b64.is_empty());
 
         assert!(tmp.path().join("master.key").exists());
+    }
+
+    #[tokio::test]
+    async fn sync_offline_runs_ingests_and_removes_dir() {
+        use axum::routing::post;
+        use axum::{Json, Router};
+        use serde::Deserialize;
+
+        #[derive(Debug, Deserialize)]
+        struct IngestReq {
+            run: IngestRun,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct IngestRun {
+            id: String,
+            job_id: String,
+            status: String,
+            started_at: i64,
+            ended_at: i64,
+            summary: Option<serde_json::Value>,
+            error: Option<String>,
+            events: Vec<super::OfflineRunEventV1>,
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path();
+
+        let run_id = "run1";
+        let run_dir = offline_run_dir(data_dir, run_id);
+        tokio::fs::create_dir_all(&run_dir).await.unwrap();
+
+        let run_file = super::OfflineRunFileV1 {
+            v: 1,
+            id: run_id.to_string(),
+            job_id: "job1".to_string(),
+            job_name: "job1".to_string(),
+            status: super::OfflineRunStatusV1::Success,
+            started_at: 1,
+            ended_at: Some(2),
+            summary: Some(serde_json::json!({ "k": "v" })),
+            error: None,
+        };
+        tokio::fs::write(
+            run_dir.join("run.json"),
+            serde_json::to_vec(&run_file).unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let ev1 = super::OfflineRunEventV1 {
+            seq: 1,
+            ts: 1,
+            level: "info".to_string(),
+            kind: "start".to_string(),
+            message: "start".to_string(),
+            fields: None,
+        };
+        let ev2 = super::OfflineRunEventV1 {
+            seq: 2,
+            ts: 2,
+            level: "info".to_string(),
+            kind: "done".to_string(),
+            message: "done".to_string(),
+            fields: Some(serde_json::json!({ "n": 1 })),
+        };
+        let events_jsonl = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&ev1).unwrap(),
+            serde_json::to_string(&ev2).unwrap()
+        );
+        tokio::fs::write(run_dir.join("events.jsonl"), events_jsonl)
+            .await
+            .unwrap();
+
+        let captured = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<IngestReq>::new()));
+        let captured_clone = captured.clone();
+        let agent_key = "agent-key";
+
+        let app = Router::new().route(
+            "/agent/runs/ingest",
+            post(
+                move |headers: axum::http::HeaderMap, Json(payload): Json<IngestReq>| {
+                    let captured = captured_clone.clone();
+                    async move {
+                        let auth = headers
+                            .get(axum::http::header::AUTHORIZATION)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default();
+                        assert_eq!(auth, format!("Bearer {agent_key}"));
+                        captured.lock().await.push(payload);
+                        axum::http::StatusCode::NO_CONTENT
+                    }
+                },
+            ),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = shutdown_rx.await;
+                })
+                .await;
+        });
+
+        let base_url = url::Url::parse(&format!("http://{addr}/")).unwrap();
+        sync_offline_runs(&base_url, agent_key, data_dir)
+            .await
+            .unwrap();
+        let _ = shutdown_tx.send(());
+
+        assert!(!run_dir.exists());
+        let captured = captured.lock().await;
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].run.id, "run1");
+        assert_eq!(captured[0].run.job_id, "job1");
+        assert_eq!(captured[0].run.status, "success");
+        assert_eq!(captured[0].run.started_at, 1);
+        assert_eq!(captured[0].run.ended_at, 2);
+        assert_eq!(
+            captured[0].run.summary.as_ref().and_then(|v| v.get("k")),
+            Some(&serde_json::Value::String("v".to_string()))
+        );
+        assert!(captured[0].run.error.is_none());
+        assert_eq!(captured[0].run.events.len(), 2);
     }
 }
