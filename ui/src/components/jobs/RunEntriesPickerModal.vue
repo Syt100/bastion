@@ -164,6 +164,9 @@ function pick(): void {
 
 const columns = computed<DataTableColumns<RunEntry>>(() => [
   {
+    type: 'selection',
+  },
+  {
     title: t('common.name'),
     key: 'name',
     render(row) {
@@ -219,7 +222,6 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         :columns="columns"
         :data="entries"
         :row-key="(row) => row.path"
-        checkable
         :checked-row-keys="checkedRowKeys"
         @update:checked-row-keys="updateCheckedRowKeys"
         :max-height="420"
