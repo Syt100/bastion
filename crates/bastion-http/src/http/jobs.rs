@@ -24,6 +24,8 @@ use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_engine::scheduler;
 
+use super::agents::send_node_config_snapshot;
+
 fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
     job_spec::validate_value(spec).map_err(|error| {
         AppError::bad_request("invalid_spec", format!("Invalid job spec: {error}"))
@@ -192,6 +194,19 @@ pub(super) async fn create_job(
         "job created"
     );
     state.jobs_notify.notify_one();
+
+    if let Some(agent_id) = job.agent_id.as_deref()
+        && let Err(error) = send_node_config_snapshot(
+            &state.db,
+            state.secrets.as_ref(),
+            &state.agent_manager,
+            agent_id,
+        )
+        .await
+    {
+        tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+    }
+
     Ok(Json(job))
 }
 
@@ -216,6 +231,11 @@ pub(super) async fn update_job(
 ) -> Result<Json<jobs_repo::Job>, AppError> {
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
+
+    let previous = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    let previous_agent_id = previous.agent_id.clone();
 
     if req.name.trim().is_empty() {
         return Err(AppError::bad_request(
@@ -278,6 +298,7 @@ pub(super) async fn update_job(
     let job = jobs_repo::get_job(&state.db, &job_id)
         .await?
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    let current_agent_id = job.agent_id.clone();
 
     tracing::info!(
         job_id = %job.id,
@@ -288,6 +309,29 @@ pub(super) async fn update_job(
         "job updated"
     );
     state.jobs_notify.notify_one();
+
+    let mut affected = Vec::new();
+    if let Some(agent_id) = previous_agent_id {
+        affected.push(agent_id);
+    }
+    if let Some(agent_id) = current_agent_id
+        && !affected.iter().any(|a| a == &agent_id)
+    {
+        affected.push(agent_id);
+    }
+    for agent_id in affected {
+        if let Err(error) = send_node_config_snapshot(
+            &state.db,
+            state.secrets.as_ref(),
+            &state.agent_manager,
+            &agent_id,
+        )
+        .await
+        {
+            tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+        }
+    }
+
     Ok(Json(job))
 }
 
@@ -300,12 +344,30 @@ pub(super) async fn delete_job(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
+    let previous = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    let previous_agent_id = previous.agent_id;
+
     let deleted = jobs_repo::delete_job(&state.db, &job_id).await?;
     if !deleted {
         return Err(AppError::not_found("job_not_found", "Job not found"));
     }
     tracing::info!(job_id = %job_id, "job deleted");
     state.jobs_notify.notify_one();
+
+    if let Some(agent_id) = previous_agent_id.as_deref()
+        && let Err(error) = send_node_config_snapshot(
+            &state.db,
+            state.secrets.as_ref(),
+            &state.agent_manager,
+            agent_id,
+        )
+        .await
+    {
+        tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -389,6 +451,7 @@ pub(super) struct RunListItem {
     started_at: i64,
     ended_at: Option<i64>,
     error: Option<String>,
+    executed_offline: bool,
 }
 
 pub(super) async fn list_job_runs(
@@ -412,6 +475,12 @@ pub(super) async fn list_job_runs(
                 started_at: r.started_at,
                 ended_at: r.ended_at,
                 error: r.error,
+                executed_offline: r
+                    .summary
+                    .as_ref()
+                    .and_then(|v| v.get("executed_offline"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             })
             .collect(),
     ))

@@ -70,6 +70,24 @@ pub struct BackupRunTaskV1 {
     pub spec: JobSpecResolvedV1,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OverlapPolicyV1 {
+    Reject,
+    Queue,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JobConfigV1 {
+    pub job_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub schedule: Option<String>,
+    pub overlap_policy: OverlapPolicyV1,
+    pub updated_at: i64,
+    pub spec: JobSpecResolvedV1,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WebdavSecretV1 {
     pub name: String,
@@ -85,6 +103,14 @@ pub enum HubToAgentMessageV1 {
         v: u32,
         task_id: String,
         task: Box<BackupRunTaskV1>,
+    },
+    ConfigSnapshot {
+        v: u32,
+        node_id: String,
+        snapshot_id: String,
+        issued_at: i64,
+        #[serde(default)]
+        jobs: Vec<JobConfigV1>,
     },
     SecretsSnapshot {
         v: u32,
@@ -110,6 +136,10 @@ pub enum AgentToHubMessageV1 {
         info: serde_json::Value,
         #[serde(default)]
         capabilities: serde_json::Value,
+    },
+    ConfigAck {
+        v: u32,
+        snapshot_id: String,
     },
     Ping {
         v: u32,

@@ -15,16 +15,21 @@ use tower_cookies::Cookies;
 
 use bastion_core::agent;
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION, WebdavSecretV1,
+    AgentToHubMessageV1, HubToAgentMessageV1, JobConfigV1, OverlapPolicyV1, PROTOCOL_VERSION,
+    WebdavSecretV1,
 };
+use bastion_core::job_spec;
 
 use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
+use bastion_engine::agent_job_resolver;
 use bastion_engine::agent_manager::AgentManager;
+use bastion_engine::notifications;
 use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::agents_repo;
+use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -176,6 +181,182 @@ pub(super) async fn rotate_agent_key(
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct AgentIngestRunRequest {
+    run: AgentIngestRun,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AgentIngestRunStatus {
+    Success,
+    Failed,
+    Rejected,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentIngestRun {
+    id: String,
+    job_id: String,
+    status: AgentIngestRunStatus,
+    started_at: i64,
+    ended_at: i64,
+    #[serde(default)]
+    summary: Option<serde_json::Value>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    events: Vec<AgentIngestRunEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentIngestRunEvent {
+    seq: i64,
+    ts: i64,
+    level: String,
+    kind: String,
+    message: String,
+    #[serde(default)]
+    fields: Option<serde_json::Value>,
+}
+
+pub(super) async fn agent_ingest_runs(
+    state: axum::extract::State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<AgentIngestRunRequest>,
+) -> Result<StatusCode, AppError> {
+    const MAX_EVENTS_PER_RUN: usize = 2000;
+
+    let agent_id = authenticate_agent(&state.db, &headers).await?;
+
+    let run = req.run;
+    if run.id.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_run_id",
+            "Run id is required",
+        ));
+    }
+    if run.job_id.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_job_id",
+            "Job id is required",
+        ));
+    }
+    if run.events.len() > MAX_EVENTS_PER_RUN {
+        return Err(AppError::bad_request(
+            "too_many_events",
+            "Too many run events",
+        ));
+    }
+
+    let row = sqlx::query("SELECT agent_id, spec_json FROM jobs WHERE id = ? LIMIT 1")
+        .bind(&run.job_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let Some(row) = row else {
+        return Err(AppError::bad_request("invalid_job_id", "Job not found"));
+    };
+    let job_agent_id = row.get::<Option<String>, _>("agent_id");
+    if job_agent_id.as_deref() != Some(agent_id.as_str()) {
+        return Err(AppError::bad_request(
+            "invalid_job_id",
+            "Job is not assigned to this Agent",
+        ));
+    }
+    let spec_json = row.get::<String, _>("spec_json");
+
+    let status = match run.status {
+        AgentIngestRunStatus::Success => runs_repo::RunStatus::Success,
+        AgentIngestRunStatus::Failed => runs_repo::RunStatus::Failed,
+        AgentIngestRunStatus::Rejected => runs_repo::RunStatus::Rejected,
+    };
+
+    let summary_json = run
+        .summary
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+
+    let mut inserted_events = Vec::new();
+    let mut tx = state.db.begin().await?;
+
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO runs (id, job_id, status, started_at, ended_at, summary_json, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&run.id)
+    .bind(&run.job_id)
+    .bind(status.as_str())
+    .bind(run.started_at)
+    .bind(run.ended_at)
+    .bind(summary_json)
+    .bind(run.error.as_deref())
+    .execute(&mut *tx)
+    .await?;
+
+    for ev in &run.events {
+        if ev.seq <= 0 {
+            continue;
+        }
+        let fields_json = ev.fields.as_ref().map(serde_json::to_string).transpose()?;
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO run_events (run_id, seq, ts, level, kind, message, fields_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&run.id)
+        .bind(ev.seq)
+        .bind(ev.ts)
+        .bind(ev.level.trim())
+        .bind(ev.kind.trim())
+        .bind(ev.message.trim())
+        .bind(fields_json)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() > 0 {
+            inserted_events.push(runs_repo::RunEvent {
+                run_id: run.id.clone(),
+                seq: ev.seq,
+                ts: ev.ts,
+                level: ev.level.clone(),
+                kind: ev.kind.clone(),
+                message: ev.message.clone(),
+                fields: ev.fields.clone(),
+            });
+        }
+    }
+
+    tx.commit().await?;
+
+    for ev in &inserted_events {
+        state.run_events_bus.publish(ev);
+    }
+
+    // Enqueue notifications after ingestion (may be delayed while offline).
+    if let Ok(spec_value) = serde_json::from_str::<serde_json::Value>(&spec_json)
+        && let Ok(spec) = job_spec::parse_value(&spec_value)
+        && job_spec::validate(&spec).is_ok()
+    {
+        match notifications::enqueue_for_run_spec(&state.db, &spec, &run.id).await {
+            Ok(true) => state.notifications_notify.notify_one(),
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(run_id = %run.id, error = %error, "failed to enqueue notifications for ingested run");
+            }
+        }
+    }
+
+    tracing::info!(
+        agent_id = %agent_id,
+        run_id = %run.id,
+        job_id = %run.job_id,
+        status = ?status,
+        events = run.events.len(),
+        inserted_events = inserted_events.len(),
+        "agent run ingested"
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct AgentEnrollRequest {
     token: String,
     name: Option<String>,
@@ -274,24 +455,7 @@ pub(super) async fn agent_ws(
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     ws: WebSocketUpgrade,
 ) -> Result<Response, AppError> {
-    let agent_key = bearer_token(&headers)
-        .ok_or_else(|| AppError::unauthorized("unauthorized", "Unauthorized"))?;
-    let key_hash = agent::sha256_urlsafe_token(&agent_key)
-        .map_err(|_| AppError::unauthorized("unauthorized", "Unauthorized"))?;
-
-    let row = sqlx::query("SELECT id, revoked_at FROM agents WHERE key_hash = ? LIMIT 1")
-        .bind(key_hash)
-        .fetch_optional(&state.db)
-        .await?;
-
-    let Some(row) = row else {
-        return Err(AppError::unauthorized("unauthorized", "Unauthorized"));
-    };
-    if row.get::<Option<i64>, _>("revoked_at").is_some() {
-        return Err(AppError::unauthorized("revoked", "Agent revoked"));
-    }
-
-    let agent_id = row.get::<String, _>("id");
+    let agent_id = authenticate_agent(&state.db, &headers).await?;
 
     let db = state.db.clone();
     let secrets = state.secrets.clone();
@@ -314,6 +478,27 @@ fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let header = headers.get("authorization")?.to_str().ok()?;
     let token = header.strip_prefix("Bearer ")?;
     Some(token.trim().to_string())
+}
+
+async fn authenticate_agent(db: &SqlitePool, headers: &HeaderMap) -> Result<String, AppError> {
+    let agent_key = bearer_token(headers)
+        .ok_or_else(|| AppError::unauthorized("unauthorized", "Unauthorized"))?;
+    let key_hash = agent::sha256_urlsafe_token(&agent_key)
+        .map_err(|_| AppError::unauthorized("unauthorized", "Unauthorized"))?;
+
+    let row = sqlx::query("SELECT id, revoked_at FROM agents WHERE key_hash = ? LIMIT 1")
+        .bind(key_hash)
+        .fetch_optional(db)
+        .await?;
+
+    let Some(row) = row else {
+        return Err(AppError::unauthorized("unauthorized", "Unauthorized"));
+    };
+    if row.get::<Option<i64>, _>("revoked_at").is_some() {
+        return Err(AppError::unauthorized("revoked", "Agent revoked"));
+    }
+
+    Ok(row.get::<String, _>("id"))
 }
 
 async fn handle_agent_socket(
@@ -405,6 +590,26 @@ async fn handle_agent_socket(
                                 "failed to send secrets snapshot"
                             );
                         }
+
+                        if let Err(error) =
+                            send_node_config_snapshot(&db, &secrets, &agent_manager, &agent_id)
+                                .await
+                        {
+                            tracing::warn!(
+                                agent_id = %agent_id,
+                                error = %error,
+                                "failed to send config snapshot"
+                            );
+                        }
+                    }
+                    Ok(AgentToHubMessageV1::ConfigAck { v, snapshot_id })
+                        if v == PROTOCOL_VERSION =>
+                    {
+                        tracing::info!(
+                            agent_id = %agent_id,
+                            snapshot_id = %snapshot_id,
+                            "agent config snapshot ack"
+                        );
                     }
                     Ok(AgentToHubMessageV1::Ack { v, task_id }) if v == PROTOCOL_VERSION => {
                         let _ = agent_tasks_repo::ack_task(&db, &task_id).await;
@@ -541,6 +746,68 @@ async fn send_node_secrets_snapshot(
         node_id: node_id.to_string(),
         issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
         webdav,
+    };
+
+    agent_manager.send_json(node_id, &msg).await?;
+    Ok(())
+}
+
+pub(super) async fn send_node_config_snapshot(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
+    node_id: &str,
+) -> Result<(), anyhow::Error> {
+    let jobs = jobs_repo::list_jobs_for_agent(db, node_id).await?;
+
+    let mut configs = Vec::with_capacity(jobs.len());
+    for job in jobs {
+        let spec = match job_spec::parse_value(&job.spec) {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    node_id = %node_id,
+                    job_id = %job.id,
+                    error = %error,
+                    "invalid job spec; skipping agent config snapshot job"
+                );
+                continue;
+            }
+        };
+        if let Err(error) = job_spec::validate(&spec) {
+            tracing::warn!(
+                node_id = %node_id,
+                job_id = %job.id,
+                error = %error,
+                "invalid job spec; skipping agent config snapshot job"
+            );
+            continue;
+        }
+
+        let resolved =
+            agent_job_resolver::resolve_job_spec_for_agent(db, secrets, node_id, spec).await?;
+
+        let overlap_policy = match job.overlap_policy {
+            jobs_repo::OverlapPolicy::Reject => OverlapPolicyV1::Reject,
+            jobs_repo::OverlapPolicy::Queue => OverlapPolicyV1::Queue,
+        };
+
+        configs.push(JobConfigV1 {
+            job_id: job.id,
+            name: job.name,
+            schedule: job.schedule,
+            overlap_policy,
+            updated_at: job.updated_at,
+            spec: resolved,
+        });
+    }
+
+    let msg = HubToAgentMessageV1::ConfigSnapshot {
+        v: PROTOCOL_VERSION,
+        node_id: node_id.to_string(),
+        snapshot_id: agent::generate_token_b64_urlsafe(16),
+        issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
+        jobs: configs,
     };
 
     agent_manager.send_json(node_id, &msg).await?;

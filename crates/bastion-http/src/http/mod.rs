@@ -179,6 +179,7 @@ pub fn router(state: AppState) -> Router {
             get(operations::list_operation_events),
         )
         .route("/agent/enroll", post(agents::agent_enroll))
+        .route("/agent/runs/ingest", post(agents::agent_ingest_runs))
         .route("/agent/ws", get(agents::agent_ws))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -395,3 +396,6 @@ mod ws_tests;
 
 #[cfg(test)]
 mod error_feedback_tests;
+
+#[cfg(test)]
+mod agents_ingest_tests;
