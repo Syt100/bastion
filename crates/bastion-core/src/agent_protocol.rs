@@ -4,6 +4,16 @@ use crate::job_spec::{FilesystemSource, SqliteSource, VaultwardenSource};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FsDirEntryV1 {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size: u64,
+    #[serde(default)]
+    pub mtime: Option<i64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EncryptionResolvedV1 {
@@ -104,6 +114,11 @@ pub enum HubToAgentMessageV1 {
         task_id: String,
         task: Box<BackupRunTaskV1>,
     },
+    FsList {
+        v: u32,
+        request_id: String,
+        path: String,
+    },
     ConfigSnapshot {
         v: u32,
         node_id: String,
@@ -164,6 +179,14 @@ pub enum AgentToHubMessageV1 {
         status: String,
         #[serde(default)]
         summary: Option<serde_json::Value>,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    FsListResult {
+        v: u32,
+        request_id: String,
+        #[serde(default)]
+        entries: Vec<FsDirEntryV1>,
         #[serde(default)]
         error: Option<String>,
     },
