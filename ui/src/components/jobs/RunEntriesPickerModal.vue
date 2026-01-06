@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { formatToastError } from '@/lib/errors'
 
 export type RunEntriesSelection = {
   files: string[]
@@ -81,8 +82,7 @@ async function refresh(): Promise<void> {
   try {
     await fetchPage(0, false)
   } catch (error) {
-    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : ''
-    message.error(msg || t('errors.runEntriesFailed'))
+    message.error(formatToastError(t('errors.runEntriesFailed'), error, t))
   } finally {
     loading.value = false
   }
@@ -95,8 +95,7 @@ async function loadMore(): Promise<void> {
   try {
     await fetchPage(cur, true)
   } catch (error) {
-    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : ''
-    message.error(msg || t('errors.runEntriesFailed'))
+    message.error(formatToastError(t('errors.runEntriesFailed'), error, t))
   } finally {
     loadingMore.value = false
   }

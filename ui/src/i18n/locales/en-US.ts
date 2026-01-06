@@ -24,6 +24,7 @@ const messages = {
     dir: 'Directory',
     file: 'File',
     symlink: 'Symlink',
+    requestId: 'Request ID',
     stepOf: 'Step {current}/{total}',
     back: 'Back',
     return: 'Back',
@@ -505,6 +506,7 @@ const messages = {
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',
     fs_list_failed: 'Failed to list files',
+    not_found: 'Not found',
   },
   errors: {
     loginFailed: 'Login failed',

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useOperationsStore, type ConflictPolicy } from '@/stores/operations'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { formatToastError } from '@/lib/errors'
 import RunEntriesPickerModal, {
   type RunEntriesPickerModalExpose,
   type RunEntriesSelection,
@@ -81,11 +82,7 @@ async function start(): Promise<void> {
     show.value = false
     emit('started', opId)
   } catch (error) {
-    const msg =
-      error && typeof error === 'object' && 'message' in error
-        ? String((error as { message: unknown }).message)
-        : t('errors.restoreStartFailed')
-    message.error(msg)
+    message.error(formatToastError(t('errors.restoreStartFailed'), error, t))
   } finally {
     starting.value = false
   }
