@@ -43,10 +43,12 @@ pub async fn enqueue_wecom_bots_for_run(
     db: &SqlitePool,
     run_id: &str,
 ) -> Result<i64, anyhow::Error> {
-    let bots = sqlx::query("SELECT name FROM secrets WHERE kind = ? ORDER BY updated_at DESC")
-        .bind("wecom_bot")
-        .fetch_all(db)
-        .await?;
+    let bots = sqlx::query(
+        "SELECT name FROM secrets WHERE node_id = 'hub' AND kind = ? ORDER BY updated_at DESC",
+    )
+    .bind("wecom_bot")
+    .fetch_all(db)
+    .await?;
 
     if bots.is_empty() {
         return Ok(0);
@@ -60,11 +62,12 @@ pub async fn enqueue_wecom_bots_for_run(
 }
 
 pub async fn enqueue_emails_for_run(db: &SqlitePool, run_id: &str) -> Result<i64, anyhow::Error> {
-    let destinations =
-        sqlx::query("SELECT name FROM secrets WHERE kind = ? ORDER BY updated_at DESC")
-            .bind("smtp")
-            .fetch_all(db)
-            .await?;
+    let destinations = sqlx::query(
+        "SELECT name FROM secrets WHERE node_id = 'hub' AND kind = ? ORDER BY updated_at DESC",
+    )
+    .bind("smtp")
+    .fetch_all(db)
+    .await?;
 
     if destinations.is_empty() {
         return Ok(0);
@@ -417,7 +420,7 @@ mod tests {
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
         for name in ["a", "b"] {
             sqlx::query(
-                "INSERT INTO secrets (id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'wecom_bot', ?, 1, X'00', X'00', ?, ?)",
+                "INSERT INTO secrets (id, node_id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'hub', 'wecom_bot', ?, 1, X'00', X'00', ?, ?)",
             )
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(name)
@@ -474,7 +477,7 @@ mod tests {
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
         for name in ["a", "b"] {
             sqlx::query(
-                "INSERT INTO secrets (id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'smtp', ?, 1, X'00', X'00', ?, ?)",
+                "INSERT INTO secrets (id, node_id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'hub', 'smtp', ?, 1, X'00', X'00', ?, ?)",
             )
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(name)
@@ -530,7 +533,7 @@ mod tests {
         // Seed smtp destination.
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
         sqlx::query(
-            "INSERT INTO secrets (id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'smtp', ?, 1, X'00', X'00', ?, ?)",
+            "INSERT INTO secrets (id, node_id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'hub', 'smtp', ?, 1, X'00', X'00', ?, ?)",
         )
         .bind(uuid::Uuid::new_v4().to_string())
         .bind("smtp1")

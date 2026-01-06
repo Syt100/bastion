@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use bastion_core::HUB_NODE_ID;
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -201,10 +202,12 @@ async fn restore_operation(
     let job = bastion_storage::jobs_repo::get_job(db, &run.job_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("job not found"))?;
+    let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
     let spec = job_spec::parse_value(&job.spec)?;
     job_spec::validate(&spec)?;
 
-    let access = open_target_access(db, secrets, &run.job_id, run_id, target_ref(&spec)).await?;
+    let access =
+        open_target_access(db, secrets, node_id, &run.job_id, run_id, target_ref(&spec)).await?;
     ensure_complete(&access).await?;
 
     let op_dir = operation_dir(data_dir, op_id);
@@ -283,10 +286,12 @@ async fn verify_operation(
     let job = bastion_storage::jobs_repo::get_job(db, &run.job_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("job not found"))?;
+    let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
     let spec = job_spec::parse_value(&job.spec)?;
     job_spec::validate(&spec)?;
 
-    let access = open_target_access(db, secrets, &run.job_id, run_id, target_ref(&spec)).await?;
+    let access =
+        open_target_access(db, secrets, node_id, &run.job_id, run_id, target_ref(&spec)).await?;
     ensure_complete(&access).await?;
 
     let op_dir = operation_dir(data_dir, op_id);
@@ -411,6 +416,7 @@ fn target_ref(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {
 async fn open_target_access(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    node_id: &str,
     job_id: &str,
     run_id: &str,
     target: &job_spec::TargetV1,
@@ -421,7 +427,7 @@ async fn open_target_access(
             secret_name,
             ..
         } => {
-            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
+            let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;

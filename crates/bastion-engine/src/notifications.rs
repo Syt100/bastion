@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use bastion_core::HUB_NODE_ID;
 use bastion_storage::notification_destinations_repo;
 use bastion_storage::notifications_repo;
 use bastion_storage::notifications_settings_repo;
@@ -202,9 +203,14 @@ async fn send_one(
                 });
             }
 
-            let secret_bytes =
-                secrets_repo::get_secret(db, secrets, "wecom_bot", &notification.secret_name)
-                    .await?;
+            let secret_bytes = secrets_repo::get_secret(
+                db,
+                secrets,
+                HUB_NODE_ID,
+                "wecom_bot",
+                &notification.secret_name,
+            )
+            .await?;
             let Some(secret_bytes) = secret_bytes else {
                 return Ok(SendOutcome::Canceled {
                     reason: "canceled: destination deleted".to_string(),
@@ -260,8 +266,14 @@ async fn send_one(
                 });
             }
 
-            let secret_bytes =
-                secrets_repo::get_secret(db, secrets, "smtp", &notification.secret_name).await?;
+            let secret_bytes = secrets_repo::get_secret(
+                db,
+                secrets,
+                HUB_NODE_ID,
+                "smtp",
+                &notification.secret_name,
+            )
+            .await?;
             let Some(secret_bytes) = secret_bytes else {
                 return Ok(SendOutcome::Canceled {
                     reason: "canceled: destination deleted".to_string(),

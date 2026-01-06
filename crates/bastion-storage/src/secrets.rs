@@ -96,6 +96,7 @@ impl SecretsCrypto {
 
     pub fn encrypt(
         &self,
+        node_id: &str,
         kind: &str,
         name: &str,
         plaintext: &[u8],
@@ -111,7 +112,7 @@ impl SecretsCrypto {
         let mut nonce = [0_u8; 24];
         rand::rng().fill_bytes(&mut nonce);
 
-        let aad = format!("{kind}:{name}");
+        let aad = format!("{node_id}:{kind}:{name}");
         let ciphertext = cipher
             .encrypt(
                 XNonce::from_slice(&nonce),
@@ -131,6 +132,7 @@ impl SecretsCrypto {
 
     pub fn decrypt(
         &self,
+        node_id: &str,
         kind: &str,
         name: &str,
         secret: &EncryptedSecret,
@@ -143,17 +145,33 @@ impl SecretsCrypto {
         let derived = derive_secrets_key(&key.key)?;
         let cipher = XChaCha20Poly1305::new((&derived).into());
 
-        let aad = format!("{kind}:{name}");
-        let plaintext = cipher
-            .decrypt(
-                XNonce::from_slice(&secret.nonce),
-                Payload {
-                    msg: &secret.ciphertext,
-                    aad: aad.as_bytes(),
-                },
-            )
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        Ok(plaintext)
+        // v2 AAD includes node_id to prevent cross-node credential mixups.
+        // v1 fallback: {kind}:{name} (kept for backward compatibility with existing databases).
+        let aad_v2 = format!("{node_id}:{kind}:{name}");
+        let try_v2 = cipher.decrypt(
+            XNonce::from_slice(&secret.nonce),
+            Payload {
+                msg: &secret.ciphertext,
+                aad: aad_v2.as_bytes(),
+            },
+        );
+
+        match try_v2 {
+            Ok(plaintext) => Ok(plaintext),
+            Err(_) => {
+                let aad_v1 = format!("{kind}:{name}");
+                let plaintext = cipher
+                    .decrypt(
+                        XNonce::from_slice(&secret.nonce),
+                        Payload {
+                            msg: &secret.ciphertext,
+                            aad: aad_v1.as_bytes(),
+                        },
+                    )
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                Ok(plaintext)
+            }
+        }
     }
 }
 
@@ -474,7 +492,9 @@ mod tests {
         let data_dir = temp.path();
 
         let crypto1 = SecretsCrypto::load_or_create(data_dir).unwrap();
-        let encrypted: EncryptedSecret = crypto1.encrypt("webdav", "primary", b"secret").unwrap();
+        let encrypted: EncryptedSecret = crypto1
+            .encrypt("hub", "webdav", "primary", b"secret")
+            .unwrap();
 
         let pack_path = data_dir.join("keypack.json");
         export_keypack(data_dir, &pack_path, "pw1").unwrap();
@@ -483,7 +503,9 @@ mod tests {
         import_keypack(temp2.path(), &pack_path, "pw1", false).unwrap();
 
         let crypto2 = SecretsCrypto::load_or_create(temp2.path()).unwrap();
-        let plain = crypto2.decrypt("webdav", "primary", &encrypted).unwrap();
+        let plain = crypto2
+            .decrypt("hub", "webdav", "primary", &encrypted)
+            .unwrap();
         assert_eq!(plain, b"secret");
 
         assert!(import_keypack(temp2.path(), &pack_path, "pw1", false).is_err());
@@ -508,18 +530,24 @@ mod tests {
         let data_dir = temp.path();
 
         let crypto1 = SecretsCrypto::load_or_create(data_dir).unwrap();
-        let encrypted1: EncryptedSecret = crypto1.encrypt("webdav", "primary", b"secret").unwrap();
+        let encrypted1: EncryptedSecret = crypto1
+            .encrypt("hub", "webdav", "primary", b"secret")
+            .unwrap();
         assert_eq!(encrypted1.kid, crypto1.active_kid());
 
         let rotated = rotate_master_key(data_dir).unwrap();
         assert_ne!(rotated.previous_kid, rotated.active_kid);
 
         let crypto2 = SecretsCrypto::load_or_create(data_dir).unwrap();
-        let encrypted2: EncryptedSecret = crypto2.encrypt("webdav", "primary", b"secret2").unwrap();
+        let encrypted2: EncryptedSecret = crypto2
+            .encrypt("hub", "webdav", "primary", b"secret2")
+            .unwrap();
         assert_eq!(encrypted2.kid, crypto2.active_kid());
         assert_ne!(encrypted1.kid, encrypted2.kid);
 
-        let plain = crypto2.decrypt("webdav", "primary", &encrypted1).unwrap();
+        let plain = crypto2
+            .decrypt("hub", "webdav", "primary", &encrypted1)
+            .unwrap();
         assert_eq!(plain, b"secret");
     }
 }

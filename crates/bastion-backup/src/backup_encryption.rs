@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use tracing::{debug, info};
 
 use crate::backup::PayloadEncryption;
+use bastion_core::HUB_NODE_ID;
 use bastion_core::job_spec;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -20,7 +21,8 @@ pub async fn get_age_identity(
     }
 
     let Some(bytes) =
-        secrets_repo::get_secret(db, secrets, BACKUP_AGE_IDENTITY_KIND, key_name).await?
+        secrets_repo::get_secret(db, secrets, HUB_NODE_ID, BACKUP_AGE_IDENTITY_KIND, key_name)
+            .await?
     else {
         return Ok(None);
     };
@@ -52,6 +54,7 @@ pub async fn ensure_age_identity(
     secrets_repo::upsert_secret(
         db,
         secrets,
+        HUB_NODE_ID,
         BACKUP_AGE_IDENTITY_KIND,
         key_name,
         identity_str.expose_secret().as_bytes(),

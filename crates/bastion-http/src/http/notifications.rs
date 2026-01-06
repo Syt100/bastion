@@ -9,6 +9,7 @@ use tower_cookies::Cookies;
 
 use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
+use bastion_core::HUB_NODE_ID;
 use bastion_notify::{smtp, wecom};
 use bastion_storage::notification_destinations_repo;
 use bastion_storage::notifications_repo;
@@ -35,11 +36,13 @@ async fn destination_exists(
     let Some(kind) = notification_destinations_repo::secret_kind_for_channel(channel) else {
         return Ok(false);
     };
-    let row = sqlx::query("SELECT 1 FROM secrets WHERE kind = ? AND name = ? LIMIT 1")
-        .bind(kind)
-        .bind(name)
-        .fetch_optional(db)
-        .await?;
+    let row =
+        sqlx::query("SELECT 1 FROM secrets WHERE node_id = ? AND kind = ? AND name = ? LIMIT 1")
+            .bind(HUB_NODE_ID)
+            .bind(kind)
+            .bind(name)
+            .fetch_optional(db)
+            .await?;
     Ok(row.is_some())
 }
 
@@ -227,12 +230,15 @@ pub(super) async fn test_destination(
 
     match channel.as_str() {
         notifications_repo::CHANNEL_WECOM_BOT => {
-            let secret =
-                secrets_repo::get_secret(&state.db, &state.secrets, "wecom_bot", name.trim())
-                    .await?
-                    .ok_or_else(|| {
-                        AppError::not_found("destination_not_found", "Destination not found")
-                    })?;
+            let secret = secrets_repo::get_secret(
+                &state.db,
+                &state.secrets,
+                HUB_NODE_ID,
+                "wecom_bot",
+                name.trim(),
+            )
+            .await?
+            .ok_or_else(|| AppError::not_found("destination_not_found", "Destination not found"))?;
             #[derive(Deserialize)]
             struct Payload {
                 webhook_url: String,
@@ -246,11 +252,15 @@ pub(super) async fn test_destination(
             wecom::send_markdown(&payload.webhook_url, &content).await?;
         }
         notifications_repo::CHANNEL_EMAIL => {
-            let secret = secrets_repo::get_secret(&state.db, &state.secrets, "smtp", name.trim())
-                .await?
-                .ok_or_else(|| {
-                    AppError::not_found("destination_not_found", "Destination not found")
-                })?;
+            let secret = secrets_repo::get_secret(
+                &state.db,
+                &state.secrets,
+                HUB_NODE_ID,
+                "smtp",
+                name.trim(),
+            )
+            .await?
+            .ok_or_else(|| AppError::not_found("destination_not_found", "Destination not found"))?;
             let payload: smtp::SmtpSecretPayload = serde_json::from_slice(&secret)?;
             let subject = "Bastion 测试通知".to_string();
             let body = format!(
