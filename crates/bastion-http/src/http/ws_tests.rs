@@ -64,6 +64,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         bind: "127.0.0.1:0".parse().expect("bind"),
         data_dir: temp.path().to_path_buf(),
         insecure_http: true,
+        debug_errors: false,
         run_retention_days: 180,
         incomplete_cleanup_days: 7,
         trusted_proxies: vec![

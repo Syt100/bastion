@@ -120,7 +120,10 @@ pub async fn list_run_entries_children(
     let entries_path = fetch_entries_index(&access, &cache_dir).await?;
 
     let prefix = prefix.unwrap_or("").trim();
-    let prefix = prefix.trim_start_matches('/').trim_end_matches('/').to_string();
+    let prefix = prefix
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .to_string();
     let limit = limit.clamp(1, 1000) as usize;
     let cursor = cursor as usize;
 
@@ -174,6 +177,7 @@ async fn resolve_payload_decryption(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn spawn_restore_operation(
     db: SqlitePool,
     secrets: std::sync::Arc<SecretsCrypto>,
@@ -244,6 +248,7 @@ pub async fn spawn_verify_operation(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn restore_operation(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
@@ -721,7 +726,11 @@ fn list_children_from_entries_index(
     let start = cursor.min(total);
     let end = start.saturating_add(limit).min(total);
     let next_cursor = if end < total { Some(end as u64) } else { None };
-    let page = entries.into_iter().skip(start).take(limit).collect::<Vec<_>>();
+    let page = entries
+        .into_iter()
+        .skip(start)
+        .take(limit)
+        .collect::<Vec<_>>();
 
     Ok(RunEntriesChildrenResponse {
         prefix: prefix.to_string(),
@@ -814,9 +823,7 @@ fn restore_from_parts(
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(destination_dir)?;
 
-    let selection = selection
-        .map(normalize_restore_selection)
-        .transpose()?;
+    let selection = selection.map(normalize_restore_selection).transpose()?;
 
     let files = part_paths
         .iter()
@@ -894,7 +901,8 @@ impl NormalizedRestoreSelection {
             if archive_path == dir {
                 return true;
             }
-            if archive_path.starts_with(dir) && archive_path.as_bytes().get(dir.len()) == Some(&b'/')
+            if archive_path.starts_with(dir)
+                && archive_path.as_bytes().get(dir.len()) == Some(&b'/')
             {
                 return true;
             }
@@ -951,7 +959,7 @@ fn normalize_restore_selection(
     }
 
     let mut dirs = dirs.into_iter().collect::<Vec<_>>();
-    dirs.sort_by(|a, b| b.len().cmp(&a.len())); // longest first for prefix checks
+    dirs.sort_by_key(|v| std::cmp::Reverse(v.len())); // longest first for prefix checks
     Ok(NormalizedRestoreSelection { files, dirs })
 }
 
@@ -1327,8 +1335,10 @@ mod tests {
             std::fs::write(&a, b"a").unwrap();
             std::fs::write(&b, b"b").unwrap();
             std::fs::write(&c, b"c").unwrap();
-            tar.append_path_with_name(&a, Path::new("dir/a.txt")).unwrap();
-            tar.append_path_with_name(&b, Path::new("dir/b.txt")).unwrap();
+            tar.append_path_with_name(&a, Path::new("dir/a.txt"))
+                .unwrap();
+            tar.append_path_with_name(&b, Path::new("dir/b.txt"))
+                .unwrap();
             tar.append_path_with_name(&c, Path::new("c.txt")).unwrap();
             tar.finish().unwrap();
         }
@@ -1481,12 +1491,28 @@ mod tests {
 
         let root = list_children_from_entries_index(&entries_path, "", 0, 100).unwrap();
         assert_eq!(root.prefix, "");
-        assert!(root.entries.iter().any(|e| e.path == "etc" && e.kind == "dir"));
-        assert!(root.entries.iter().any(|e| e.path == "var" && e.kind == "dir"));
+        assert!(
+            root.entries
+                .iter()
+                .any(|e| e.path == "etc" && e.kind == "dir")
+        );
+        assert!(
+            root.entries
+                .iter()
+                .any(|e| e.path == "var" && e.kind == "dir")
+        );
 
         let etc = list_children_from_entries_index(&entries_path, "etc", 0, 100).unwrap();
-        assert!(etc.entries.iter().any(|e| e.path == "etc/hosts" && e.kind == "file"));
-        assert!(etc.entries.iter().any(|e| e.path == "etc/ssh" && e.kind == "dir"));
+        assert!(
+            etc.entries
+                .iter()
+                .any(|e| e.path == "etc/hosts" && e.kind == "file")
+        );
+        assert!(
+            etc.entries
+                .iter()
+                .any(|e| e.path == "etc/ssh" && e.kind == "dir")
+        );
 
         let ssh = list_children_from_entries_index(&entries_path, "etc/ssh", 0, 100).unwrap();
         assert!(

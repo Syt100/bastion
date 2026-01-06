@@ -542,7 +542,10 @@ fn write_source_entry<W: Write>(
     // Single file / symlink source
     let archive_path = prefix;
     if archive_path.is_empty() {
-        let msg = format!("invalid source path: {} has no archive path", path.display());
+        let msg = format!(
+            "invalid source path: {} has no archive path",
+            path.display()
+        );
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));
         }
@@ -1024,9 +1027,7 @@ fn write_symlink_entry<W: Write>(
     seen_archive_paths: &mut HashSet<String>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
-        issues.record_warning(format!(
-            "duplicate archive path (symlink): {archive_path}"
-        ));
+        issues.record_warning(format!("duplicate archive path (symlink): {archive_path}"));
         return Ok(());
     }
 
@@ -1082,20 +1083,20 @@ fn archive_prefix_for_path(path: &Path) -> Result<String, anyhow::Error> {
             Component::Prefix(prefix) => {
                 #[cfg(windows)]
                 {
-                use std::path::Prefix as P;
-                match prefix.kind() {
-                    P::Disk(letter) | P::VerbatimDisk(letter) => {
-                        components.push((letter as char).to_ascii_uppercase().to_string());
+                    use std::path::Prefix as P;
+                    match prefix.kind() {
+                        P::Disk(letter) | P::VerbatimDisk(letter) => {
+                            components.push((letter as char).to_ascii_uppercase().to_string());
+                        }
+                        P::UNC(server, share) | P::VerbatimUNC(server, share) => {
+                            components.push("UNC".to_string());
+                            components.push(server.to_string_lossy().to_string());
+                            components.push(share.to_string_lossy().to_string());
+                        }
+                        _ => {
+                            components.push(prefix.as_os_str().to_string_lossy().to_string());
+                        }
                     }
-                    P::UNC(server, share) | P::VerbatimUNC(server, share) => {
-                        components.push("UNC".to_string());
-                        components.push(server.to_string_lossy().to_string());
-                        components.push(share.to_string_lossy().to_string());
-                    }
-                    _ => {
-                        components.push(prefix.as_os_str().to_string_lossy().to_string());
-                    }
-                }
                 }
                 #[cfg(not(windows))]
                 {
@@ -1104,10 +1105,9 @@ fn archive_prefix_for_path(path: &Path) -> Result<String, anyhow::Error> {
             }
             Component::RootDir => {}
             Component::CurDir => {}
-            Component::ParentDir => anyhow::bail!(
-                "source path must not contain '..': {}",
-                path.display()
-            ),
+            Component::ParentDir => {
+                anyhow::bail!("source path must not contain '..': {}", path.display())
+            }
             Component::Normal(p) => {
                 let s = p.to_string_lossy();
                 if s.is_empty() {
@@ -1240,7 +1240,11 @@ mod tests {
             .split(|b| *b == b'\n')
             .filter(|line| !line.is_empty())
             .filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
-            .filter_map(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.to_string()))
+            .filter_map(|v| {
+                v.get("path")
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect()
     }
 
