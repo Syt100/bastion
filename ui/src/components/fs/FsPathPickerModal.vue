@@ -3,7 +3,7 @@ import { computed, h, ref } from 'vue'
 import { NButton, NDataTable, NInput, NModal, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import { apiFetch } from '@/lib/api'
+import { ApiError, apiFetch } from '@/lib/api'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -99,12 +99,35 @@ async function refresh(): Promise<void> {
 
   loading.value = true
   try {
-    const res = await apiFetch<FsListResponse>(
-      `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(p)}`,
-    )
+    const url = (path: string) =>
+      `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(path)}`
+
+    const res = await apiFetch<FsListResponse>(url(p))
     currentPath.value = res.path
     entries.value = res.entries
   } catch (error) {
+    const code = error instanceof ApiError ? error.body?.error : undefined
+    const msg = (error instanceof ApiError ? error.body?.message || error.message : '') || ''
+    const shouldFallback =
+      code === 'not_directory' || (code === 'agent_fs_list_failed' && msg.toLowerCase().includes('not a directory'))
+
+    if (shouldFallback) {
+      const parent = computeParentPath(p)
+      if (parent && parent !== p) {
+        try {
+          const res = await apiFetch<FsListResponse>(
+            `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(parent)}`,
+          )
+          currentPath.value = res.path
+          entries.value = res.entries
+          return
+        } catch (error2) {
+          message.error(formatToastError(t('errors.fsListFailed'), error2, t))
+          return
+        }
+      }
+    }
+
     message.error(formatToastError(t('errors.fsListFailed'), error, t))
   } finally {
     loading.value = false
