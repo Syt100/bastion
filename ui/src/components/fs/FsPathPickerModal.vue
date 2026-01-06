@@ -143,6 +143,9 @@ function pick(): void {
 
 const columns = computed<DataTableColumns<FsListEntry>>(() => [
   {
+    type: 'selection',
+  },
+  {
     title: t('common.name'),
     key: 'name',
     render(row) {
@@ -227,7 +230,6 @@ defineExpose<FsPathPickerModalExpose>({ open })
         :columns="columns"
         :data="entries"
         :row-key="(row) => row.path"
-        checkable
         v-model:checked-row-keys="checked"
         :max-height="420"
       />
