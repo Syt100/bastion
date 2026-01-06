@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, ref, watch, watchEffect } from 'vue'
+import { computed, h, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
@@ -13,6 +13,7 @@ import {
   NLayoutHeader,
   NLayoutSider,
   NMenu,
+  NSelect,
   NTag,
   type MenuOption,
   useMessage,
@@ -28,6 +29,7 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import { useAuthStore } from '@/stores/auth'
+import { useAgentsStore } from '@/stores/agents'
 import { useUiStore } from '@/stores/ui'
 import type { SupportedLocale } from '@/i18n'
 import { useSystemStore } from '@/stores/system'
@@ -45,10 +47,22 @@ const { t } = useI18n()
 
 const ui = useUiStore()
 const auth = useAuthStore()
+const agents = useAgentsStore()
 const system = useSystemStore()
 
+const nodeIdParam = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
+const nodeSuffix = computed(() => {
+  if (!route.path.startsWith('/n/')) return null
+  const suffix = route.path.replace(/^\/n\/[^/]+/, '')
+  return suffix === '' ? '/jobs' : suffix
+})
+const selectedNodeId = computed({
+  get: () => nodeIdParam.value ?? 'hub',
+  set: (value: string) => void onSelectNode(value),
+})
+
 const activeKey = computed(() => {
-  const path = route.path
+  const path = route.path.startsWith('/n/') ? route.path.replace(/^\/n\/[^/]+/, '') || '/' : route.path
   const ordered = [...menuRouteKeys].sort((a, b) => b.length - a.length)
   for (const key of ordered) {
     if (key === '/') {
@@ -118,6 +132,10 @@ function navigateMenu(key: unknown): void {
   if (typeof key !== 'string') return
   if (!menuRouteKeySet.has(key)) return
   if (key === activeKey.value) return
+  if (key === '/jobs') {
+    void router.push(`/n/${encodeURIComponent(selectedNodeId.value)}/jobs`)
+    return
+  }
   void router.push(key)
 }
 
@@ -154,6 +172,42 @@ async function onLogout(): Promise<void> {
     message.error(formatToastError(t('errors.logoutFailed'), error, t))
   }
 }
+
+async function onSelectNode(nodeId: string): Promise<void> {
+  const suffix = nodeSuffix.value ?? '/jobs'
+  const target = `/n/${encodeURIComponent(nodeId)}/${suffix.replace(/^\/+/, '')}`
+  if (route.path === target) return
+  void router.push(target)
+}
+
+function formatNodeLabel(agentId: string | null): string {
+  if (!agentId) return t('jobs.nodes.hub')
+  const agent = agents.items.find((a) => a.id === agentId)
+  if (!agent) return agentId
+  const status = agent.revoked
+    ? t('agents.status.revoked')
+    : agent.online
+      ? t('agents.status.online')
+      : t('agents.status.offline')
+  return agent.name ? `${agent.name} — ${status}` : `${agent.id} — ${status}`
+}
+
+const nodeOptions = computed(() => [
+  { label: formatNodeLabel(null), value: 'hub' },
+  ...agents.items.map((a) => ({
+    label: formatNodeLabel(a.id),
+    value: a.id,
+    disabled: a.revoked,
+  })),
+])
+
+onMounted(async () => {
+  try {
+    await agents.refresh()
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
+  }
+})
 </script>
 
 <template>
@@ -169,6 +223,10 @@ async function onLogout(): Promise<void> {
       <div class="h-14 px-4 flex items-center gap-3 border-b border-black/5 dark:border-white/10">
         <AppLogo />
         <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
+      </div>
+
+      <div class="px-4 py-3 border-b border-black/5 dark:border-white/10">
+        <n-select v-model:value="selectedNodeId" :options="nodeOptions" filterable />
       </div>
 
       <n-menu
@@ -238,6 +296,15 @@ async function onLogout(): Promise<void> {
           <AppLogo size="sm" />
           <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
         </div>
+      </n-card>
+
+      <n-card class="mb-3" :bordered="false">
+        <n-select
+          v-model:value="selectedNodeId"
+          :options="nodeOptions"
+          filterable
+          @update:value="mobileMenuOpen = false"
+        />
       </n-card>
 
       <n-menu

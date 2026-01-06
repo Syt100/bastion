@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { NButton, NCard, NDataTable, NPopconfirm, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -28,6 +29,7 @@ const ui = useUiStore()
 const jobs = useJobsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
+const route = useRoute()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -39,6 +41,16 @@ const verifyModal = ref<VerifyWizardModalExpose | null>(null)
 const opModal = ref<OperationModalExpose | null>(null)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+
+const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
+const inNodeContext = computed(() => nodeId.value !== null)
+
+const visibleJobs = computed(() => {
+  const id = nodeId.value
+  if (!id) return jobs.items
+  if (id === 'hub') return jobs.items.filter((j) => j.agent_id === null)
+  return jobs.items.filter((j) => j.agent_id === id)
+})
 
 function formatJobNode(agentId: string | null): string {
   if (!agentId) return t('jobs.nodes.hub')
@@ -82,11 +94,13 @@ async function runNow(jobId: string): Promise<void> {
 }
 
 function openCreate(): void {
-  editorModal.value?.openCreate()
+  const currentNode = nodeId.value
+  editorModal.value?.openCreate(currentNode ? { nodeId: currentNode } : undefined)
 }
 
 async function openEdit(jobId: string): Promise<void> {
-  await editorModal.value?.openEdit(jobId)
+  const currentNode = nodeId.value
+  await editorModal.value?.openEdit(jobId, currentNode ? { nodeId: currentNode } : undefined)
 }
 
 async function openRuns(jobId: string): Promise<void> {
@@ -109,76 +123,84 @@ async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
 
-const columns = computed<DataTableColumns<JobListItem>>(() => [
-  { title: t('jobs.columns.name'), key: 'name' },
-  {
-    title: t('jobs.columns.node'),
-    key: 'agent_id',
-    render: (row) => {
-      return formatJobNode(row.agent_id)
+const columns = computed<DataTableColumns<JobListItem>>(() => {
+  const cols: DataTableColumns<JobListItem> = [{ title: t('jobs.columns.name'), key: 'name' }]
+
+  if (!inNodeContext.value) {
+    cols.push({
+      title: t('jobs.columns.node'),
+      key: 'agent_id',
+      render: (row) => {
+        return formatJobNode(row.agent_id)
+      },
+    })
+  }
+
+  cols.push(
+    {
+      title: t('jobs.columns.schedule'),
+      key: 'schedule',
+      render: (row) => row.schedule ?? '-',
     },
-  },
-  {
-    title: t('jobs.columns.schedule'),
-    key: 'schedule',
-    render: (row) => row.schedule ?? '-',
-  },
-  {
-    title: t('jobs.columns.overlap'),
-    key: 'overlap_policy',
-    render: (row) => formatOverlap(row.overlap_policy),
-  },
-  {
-    title: t('jobs.columns.updatedAt'),
-    key: 'updated_at',
-    render: (row) => formatUnixSeconds(row.updated_at),
-  },
-  {
-    title: t('jobs.columns.actions'),
-    key: 'actions',
-    render: (row) =>
-      h(
-        NSpace,
-        { size: 8 },
-        {
-          default: () => [
-            h(
-              NButton,
-              { size: 'small', type: 'primary', onClick: () => void runNow(row.id) },
-              { default: () => t('jobs.actions.runNow') },
-            ),
-            h(
-              NButton,
-              { size: 'small', onClick: () => void openRuns(row.id) },
-              { default: () => t('jobs.actions.runs') },
-            ),
-            h(
-              NButton,
-              { size: 'small', onClick: () => void openEdit(row.id) },
-              { default: () => t('common.edit') },
-            ),
-            h(
-              NPopconfirm,
-              {
-                onPositiveClick: () => void removeJob(row.id),
-                positiveText: t('common.delete'),
-                negativeText: t('common.cancel'),
-              },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    { size: 'small', type: 'error', tertiary: true },
-                    { default: () => t('common.delete') },
-                  ),
-                default: () => t('jobs.deleteConfirm'),
-              },
-            ),
-          ],
-        },
-      ),
-  },
-])
+    {
+      title: t('jobs.columns.overlap'),
+      key: 'overlap_policy',
+      render: (row) => formatOverlap(row.overlap_policy),
+    },
+    {
+      title: t('jobs.columns.updatedAt'),
+      key: 'updated_at',
+      render: (row) => formatUnixSeconds(row.updated_at),
+    },
+    {
+      title: t('jobs.columns.actions'),
+      key: 'actions',
+      render: (row) =>
+        h(
+          NSpace,
+          { size: 8 },
+          {
+            default: () => [
+              h(
+                NButton,
+                { size: 'small', type: 'primary', onClick: () => void runNow(row.id) },
+                { default: () => t('jobs.actions.runNow') },
+              ),
+              h(
+                NButton,
+                { size: 'small', onClick: () => void openRuns(row.id) },
+                { default: () => t('jobs.actions.runs') },
+              ),
+              h(
+                NButton,
+                { size: 'small', onClick: () => void openEdit(row.id) },
+                { default: () => t('common.edit') },
+              ),
+              h(
+                NPopconfirm,
+                {
+                  onPositiveClick: () => void removeJob(row.id),
+                  positiveText: t('common.delete'),
+                  negativeText: t('common.cancel'),
+                },
+                {
+                  trigger: () =>
+                    h(
+                      NButton,
+                      { size: 'small', type: 'error', tertiary: true },
+                      { default: () => t('common.delete') },
+                    ),
+                  default: () => t('jobs.deleteConfirm'),
+                },
+              ),
+            ],
+          },
+        ),
+    },
+  )
+
+  return cols
+})
 
 onMounted(async () => {
   await refresh()
@@ -203,11 +225,11 @@ onMounted(async () => {
     </PageHeader>
 
     <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
-      <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!jobs.loading && jobs.items.length === 0" :title="t('common.noData')" />
+      <AppEmptyState v-if="jobs.loading && visibleJobs.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!jobs.loading && visibleJobs.length === 0" :title="t('common.noData')" />
 
       <n-card
-        v-for="job in jobs.items"
+        v-for="job in visibleJobs"
         :key="job.id"
         size="small"
         class="app-card"
@@ -219,7 +241,7 @@ onMounted(async () => {
         </template>
 
         <div class="text-sm">
-          <div class="flex items-start justify-between gap-4 py-1">
+          <div v-if="!inNodeContext" class="flex items-start justify-between gap-4 py-1">
             <div class="opacity-70">{{ t('jobs.columns.node') }}</div>
             <div class="text-right">{{ formatJobNode(job.agent_id) }}</div>
           </div>
@@ -260,7 +282,7 @@ onMounted(async () => {
     <div v-else data-testid="jobs-table">
       <n-card class="app-card">
         <div class="overflow-x-auto">
-          <n-data-table :loading="jobs.loading" :columns="columns" :data="jobs.items" />
+          <n-data-table :loading="jobs.loading" :columns="columns" :data="visibleJobs" />
         </div>
       </n-card>
     </div>

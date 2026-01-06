@@ -13,7 +13,7 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['value', 'show', 'loading'],
+      props: ['value', 'show', 'loading', 'columns', 'data'],
       emits: ['update:value', 'update:show'],
       setup(_, { slots }) {
         return () => vue.h('div', { 'data-stub': name }, slots.default?.())
@@ -47,8 +47,15 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }))
 
+const routeApi = {
+  params: {} as Record<string, unknown>,
+}
+vi.mock('vue-router', () => ({
+  useRoute: () => routeApi,
+}))
+
 const jobsApi = {
-  items: [],
+  items: [] as any[],
   loading: false,
   refresh: vi.fn().mockResolvedValue(undefined),
   listRunEvents: vi.fn(),
@@ -121,6 +128,8 @@ describe('JobsView responsive lists', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     stubMatchMedia(true)
+    routeApi.params = {}
+    jobsApi.items = []
   })
 
   it('shows desktop table when viewport is >= md', () => {
@@ -135,5 +144,33 @@ describe('JobsView responsive lists', () => {
     const wrapper = mount(JobsView)
     expect(wrapper.find('[data-testid=\"jobs-cards\"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid=\"jobs-table\"]').exists()).toBe(false)
+  })
+
+  it('filters jobs by node context', () => {
+    routeApi.params = { nodeId: 'hub' }
+    jobsApi.items = [
+      { id: '1', name: 'Hub', agent_id: null, schedule: null, overlap_policy: 'queue', updated_at: 0 },
+      { id: '2', name: 'Agent', agent_id: 'a1', schedule: null, overlap_policy: 'queue', updated_at: 0 },
+    ]
+
+    const wrapper = mount(JobsView)
+    const dataTable = wrapper.findComponent({ name: 'NDataTable' })
+
+    expect(dataTable.exists()).toBe(true)
+    expect((dataTable.props('data') as unknown[]).length).toBe(1)
+    expect(((dataTable.props('data') as unknown[])[0] as { id: string }).id).toBe('1')
+  })
+
+  it('hides node column in node context', () => {
+    routeApi.params = { nodeId: 'a1' }
+    jobsApi.items = [
+      { id: '2', name: 'Agent', agent_id: 'a1', schedule: null, overlap_policy: 'queue', updated_at: 0 },
+    ]
+
+    const wrapper = mount(JobsView)
+    const dataTable = wrapper.findComponent({ name: 'NDataTable' })
+    const columns = dataTable.props('columns') as Array<{ key?: string }>
+
+    expect(columns.some((c) => c.key === 'agent_id')).toBe(false)
   })
 })
