@@ -43,7 +43,19 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
   {
     title: t('runs.columns.status'),
     key: 'status',
-    render: (row) => h(NTag, { type: statusTagType(row.status) }, { default: () => row.status }),
+    render: (row) =>
+      h(
+        NSpace,
+        { size: 8, align: 'center', wrapItem: false },
+        {
+          default: () => [
+            h(NTag, { type: statusTagType(row.status) }, { default: () => row.status }),
+            row.executed_offline
+              ? h(NTag, { size: 'small', type: 'info' }, { default: () => t('runs.badges.offline') })
+              : null,
+          ],
+        },
+      ),
   },
   { title: t('runs.columns.startedAt'), key: 'started_at', render: (row) => formatUnixSeconds(row.started_at) },
   { title: t('runs.columns.endedAt'), key: 'ended_at', render: (row) => formatUnixSeconds(row.ended_at) },

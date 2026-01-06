@@ -358,6 +358,9 @@ const messages = {
   },
   runs: {
     title: '运行记录',
+    badges: {
+      offline: '离线',
+    },
     columns: {
       status: '状态',
       startedAt: '开始时间',
