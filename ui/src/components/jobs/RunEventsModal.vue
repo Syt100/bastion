@@ -19,6 +19,8 @@ import { useJobsStore, type RunEvent } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { MQ } from '@/lib/breakpoints'
+import { useMediaQuery } from '@/lib/media'
 
 export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
@@ -38,7 +40,33 @@ const wsStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('dis
 let lastSeq = 0
 let socket: WebSocket | null = null
 
-const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+const isDesktop = useMediaQuery(MQ.mdUp)
+const locale = computed(() => ui.locale)
+const { formatUnixSeconds } = useUnixSecondsFormatter(locale)
+
+const listTsFormatter = computed(() => {
+  const options: Intl.DateTimeFormatOptions = isDesktop.value
+    ? {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }
+    : {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }
+
+  return new Intl.DateTimeFormat(locale.value, options)
+})
+
+function formatListUnixSeconds(ts: number | null): string {
+  if (!ts) return '-'
+  return listTsFormatter.value.format(new Date(ts * 1000))
+}
 
 const follow = ref<boolean>(true)
 const hasUnseen = ref<boolean>(false)
@@ -230,9 +258,15 @@ defineExpose<RunEventsModalExpose>({ open })
         <template #default="{ item }">
           <div
             data-testid="run-event-row"
-            class="h-7 px-2 border-b last:border-b-0 font-mono text-xs opacity-90 flex items-center gap-2"
+            class="h-7 px-2 py-1 border-b last:border-b-0 font-mono text-xs opacity-90 flex items-center gap-2"
           >
-            <span class="opacity-70 shrink-0 tabular-nums w-28">{{ formatUnixSeconds(item.ts) }}</span>
+            <span
+              class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
+              :class="isDesktop ? 'w-32' : 'w-14'"
+              :title="formatUnixSeconds(item.ts)"
+            >
+              {{ formatListUnixSeconds(item.ts) }}
+            </span>
             <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
             <span class="opacity-70 shrink-0 w-24 truncate">{{ item.kind }}</span>
             <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
