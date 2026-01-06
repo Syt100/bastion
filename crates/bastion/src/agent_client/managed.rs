@@ -341,6 +341,7 @@ mod tests {
                 v: 1,
                 pipeline: Default::default(),
                 source: bastion_core::job_spec::FilesystemSource {
+                    paths: vec![],
                     root: "/".to_string(),
                     include: vec![],
                     exclude: vec![],

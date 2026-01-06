@@ -78,6 +78,7 @@ pub fn build_sqlite_run(
     };
 
     let fs_source = FilesystemSource {
+        paths: Vec::new(),
         root: source_dir.to_string_lossy().to_string(),
         include: Vec::new(),
         exclude: Vec::new(),

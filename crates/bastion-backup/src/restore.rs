@@ -983,6 +983,7 @@ mod tests {
         let job_id = Uuid::new_v4().to_string();
         let run_id = Uuid::new_v4().to_string();
         let source = FilesystemSource {
+            paths: Vec::new(),
             root: src_root.to_string_lossy().to_string(),
             include: Vec::new(),
             exclude: Vec::new(),
