@@ -33,9 +33,9 @@
 - [x] 5.3 Commit agent I/O improvements (detailed message)
 
 ## 6. Refactor - Agent Client Modularity
-- [ ] 6.1 Split Agent client code into focused modules (ws, managed cache, offline scheduler, persistence, sync)
-- [ ] 6.2 Keep behavior unchanged and keep tests passing
-- [ ] 6.3 Commit refactor (detailed message)
+- [x] 6.1 Split Agent client code into focused modules (ws, managed cache, offline scheduler, persistence, sync)
+- [x] 6.2 Keep behavior unchanged and keep tests passing
+- [x] 6.3 Commit refactor (detailed message)
 
 ## 7. Final Validation
 - [ ] 7.1 Re-run backend checks
