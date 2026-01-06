@@ -6,7 +6,7 @@
 ## 2. Backend + Agent Protocol
 - [x] 2.1 Add node-scoped target/credential storage model (Hub DB)
 - [x] 2.2 Add APIs to CRUD node-scoped targets/credentials
-- [ ] 2.3 Add protocol support to sync node-scoped targets/credentials to Agents (for later offline execution)
+- [x] 2.3 Add protocol support to sync node-scoped targets/credentials to Agents (for later offline execution)
 - [x] 2.4 Add/adjust tests for schema and APIs
 
 ## 3. Web UI

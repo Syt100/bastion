@@ -14,7 +14,9 @@ use sqlx::SqlitePool;
 use tower_cookies::Cookies;
 
 use bastion_core::agent;
-use bastion_core::agent_protocol::{AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION};
+use bastion_core::agent_protocol::{
+    AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION, WebdavSecretV1,
+};
 
 use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
@@ -24,6 +26,8 @@ use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::agents_repo;
 use bastion_storage::runs_repo;
+use bastion_storage::secrets::SecretsCrypto;
+use bastion_storage::secrets_repo;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct CreateEnrollmentTokenRequest {
@@ -290,6 +294,7 @@ pub(super) async fn agent_ws(
     let agent_id = row.get::<String, _>("id");
 
     let db = state.db.clone();
+    let secrets = state.secrets.clone();
     let agent_manager = state.agent_manager.clone();
     let run_events_bus = state.run_events_bus.clone();
     Ok(ws.on_upgrade(move |socket| {
@@ -297,6 +302,7 @@ pub(super) async fn agent_ws(
             db,
             agent_id,
             peer.ip(),
+            secrets,
             agent_manager,
             run_events_bus,
             socket,
@@ -314,6 +320,7 @@ async fn handle_agent_socket(
     db: SqlitePool,
     agent_id: String,
     peer_ip: std::net::IpAddr,
+    secrets: Arc<SecretsCrypto>,
     agent_manager: AgentManager,
     run_events_bus: Arc<RunEventsBus>,
     socket: WebSocket,
@@ -387,6 +394,17 @@ async fn handle_agent_socket(
                         .bind(&agent_id)
                         .execute(&db)
                         .await;
+
+                        if let Err(error) =
+                            send_node_secrets_snapshot(&db, &secrets, &agent_manager, &agent_id)
+                                .await
+                        {
+                            tracing::warn!(
+                                agent_id = %agent_id,
+                                error = %error,
+                                "failed to send secrets snapshot"
+                            );
+                        }
                     }
                     Ok(AgentToHubMessageV1::Ack { v, task_id }) if v == PROTOCOL_VERSION => {
                         let _ = agent_tasks_repo::ack_task(&db, &task_id).await;
@@ -486,6 +504,47 @@ async fn handle_agent_socket(
     send_task.abort();
 
     tracing::info!(agent_id = %agent_id, "agent disconnected");
+}
+
+#[derive(Debug, Deserialize)]
+struct WebdavSecretPayload {
+    username: String,
+    password: String,
+}
+
+async fn send_node_secrets_snapshot(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
+    node_id: &str,
+) -> Result<(), anyhow::Error> {
+    let list = secrets_repo::list_secrets(db, node_id, "webdav").await?;
+
+    let mut webdav = Vec::with_capacity(list.len());
+    for entry in list {
+        let Some(bytes) =
+            secrets_repo::get_secret(db, secrets, node_id, "webdav", &entry.name).await?
+        else {
+            continue;
+        };
+        let payload: WebdavSecretPayload = serde_json::from_slice(&bytes)?;
+        webdav.push(WebdavSecretV1 {
+            name: entry.name,
+            username: payload.username,
+            password: payload.password,
+            updated_at: entry.updated_at,
+        });
+    }
+
+    let msg = HubToAgentMessageV1::SecretsSnapshot {
+        v: PROTOCOL_VERSION,
+        node_id: node_id.to_string(),
+        issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
+        webdav,
+    };
+
+    agent_manager.send_json(node_id, &msg).await?;
+    Ok(())
 }
 
 #[cfg(test)]

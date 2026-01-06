@@ -14,6 +14,7 @@ use bastion_core::agent_protocol::{
     PROTOCOL_VERSION, TargetResolvedV1,
 };
 use bastion_core::run_failure::RunFailedWithSummary;
+use bastion_storage::secrets::SecretsCrypto;
 use bastion_targets::WebdavCredentials;
 
 use crate::config::AgentArgs;
@@ -21,6 +22,7 @@ use bastion_backup as backup;
 use bastion_targets as targets;
 
 const IDENTITY_FILE_NAME: &str = "agent.json";
+const MANAGED_SECRETS_FILE_NAME: &str = "secrets.json";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AgentIdentityV1 {
@@ -187,6 +189,33 @@ async fn connect_and_run(
                         match serde_json::from_str::<HubToAgentMessageV1>(&text) {
                             Ok(HubToAgentMessageV1::Pong { .. }) => {
                                 last_pong = tokio::time::Instant::now();
+                            }
+                            Ok(HubToAgentMessageV1::SecretsSnapshot {
+                                v,
+                                node_id,
+                                issued_at,
+                                webdav,
+                            }) if v == PROTOCOL_VERSION => {
+                                if node_id != identity.agent_id {
+                                    warn!(
+                                        agent_id = %identity.agent_id,
+                                        node_id = %node_id,
+                                        "received secrets snapshot for unexpected node_id; ignoring"
+                                    );
+                                    continue;
+                                }
+
+                                if let Err(error) =
+                                    save_managed_secrets_snapshot(data_dir, &node_id, issued_at, &webdav)
+                                {
+                                    warn!(agent_id = %identity.agent_id, error = %error, "failed to persist secrets snapshot");
+                                } else {
+                                    debug!(
+                                        agent_id = %identity.agent_id,
+                                        webdav = webdav.len(),
+                                        "persisted secrets snapshot"
+                                    );
+                                }
                             }
                             Ok(HubToAgentMessageV1::Task { v, task_id, task }) if v == PROTOCOL_VERSION => {
                                 let run_id = task.run_id.clone();
@@ -713,11 +742,97 @@ fn task_results_dir(data_dir: &Path) -> std::path::PathBuf {
     data_dir.join("agent").join("task_results")
 }
 
+fn managed_secrets_path(data_dir: &Path) -> std::path::PathBuf {
+    data_dir
+        .join("agent")
+        .join("managed")
+        .join(MANAGED_SECRETS_FILE_NAME)
+}
+
 fn task_result_path(data_dir: &Path, task_id: &str) -> Option<std::path::PathBuf> {
     if !is_safe_task_id(task_id) {
         return None;
     }
     Some(task_results_dir(data_dir).join(format!("{task_id}.json")))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ManagedSecretsFileV1 {
+    v: u32,
+    node_id: String,
+    issued_at: i64,
+    saved_at: i64,
+    #[serde(default)]
+    webdav: Vec<ManagedWebdavSecretV1>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ManagedWebdavSecretV1 {
+    name: String,
+    updated_at: i64,
+    kid: u32,
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WebdavSecretPayload {
+    username: String,
+    password: String,
+}
+
+fn save_managed_secrets_snapshot(
+    data_dir: &Path,
+    node_id: &str,
+    issued_at: i64,
+    webdav: &[bastion_core::agent_protocol::WebdavSecretV1],
+) -> Result<(), anyhow::Error> {
+    let crypto = SecretsCrypto::load_or_create(data_dir)?;
+
+    let saved_at = time::OffsetDateTime::now_utc().unix_timestamp();
+    let mut entries = Vec::with_capacity(webdav.len());
+    for secret in webdav {
+        let payload = WebdavSecretPayload {
+            username: secret.username.clone(),
+            password: secret.password.clone(),
+        };
+        let bytes = serde_json::to_vec(&payload)?;
+        let encrypted = crypto.encrypt(node_id, "webdav", &secret.name, &bytes)?;
+        entries.push(ManagedWebdavSecretV1 {
+            name: secret.name.clone(),
+            updated_at: secret.updated_at,
+            kid: encrypted.kid,
+            nonce: encrypted.nonce.to_vec(),
+            ciphertext: encrypted.ciphertext,
+        });
+    }
+
+    let doc = ManagedSecretsFileV1 {
+        v: 1,
+        node_id: node_id.to_string(),
+        issued_at,
+        saved_at,
+        webdav: entries,
+    };
+
+    let path = managed_secrets_path(data_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let bytes = serde_json::to_vec_pretty(&doc)?;
+    let tmp = path.with_extension("json.partial");
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(&tmp, bytes)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+
+    std::fs::rename(&tmp, path)?;
+    Ok(())
 }
 
 fn load_cached_task_result(
@@ -770,7 +885,10 @@ fn save_task_result(data_dir: &Path, msg: &AgentToHubMessageV1) -> Result<(), an
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_ws_url, normalize_base_url, save_identity};
+    use super::{
+        ManagedSecretsFileV1, agent_ws_url, managed_secrets_path, normalize_base_url,
+        save_identity, save_managed_secrets_snapshot,
+    };
 
     #[test]
     fn normalize_base_url_appends_slash() {
@@ -801,5 +919,37 @@ mod tests {
         save_identity(&path, &id).unwrap();
         let saved = std::fs::read_to_string(&path).unwrap();
         assert!(saved.contains("\"agent_id\""));
+    }
+
+    #[test]
+    fn managed_secrets_snapshot_is_persisted_encrypted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let webdav = vec![bastion_core::agent_protocol::WebdavSecretV1 {
+            name: "primary".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            updated_at: 10,
+        }];
+
+        save_managed_secrets_snapshot(tmp.path(), "a", 123, &webdav).unwrap();
+
+        let path = managed_secrets_path(tmp.path());
+        assert!(path.exists());
+
+        let bytes = std::fs::read(&path).unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(!text.contains("pass"));
+
+        let saved: ManagedSecretsFileV1 = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(saved.v, 1);
+        assert_eq!(saved.node_id, "a");
+        assert_eq!(saved.issued_at, 123);
+        assert_eq!(saved.webdav.len(), 1);
+        assert_eq!(saved.webdav[0].name, "primary");
+        assert_eq!(saved.webdav[0].updated_at, 10);
+        assert_eq!(saved.webdav[0].nonce.len(), 24);
+        assert!(!saved.webdav[0].ciphertext.is_empty());
+
+        assert!(tmp.path().join("master.key").exists());
     }
 }
