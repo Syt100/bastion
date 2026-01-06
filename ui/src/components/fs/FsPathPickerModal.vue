@@ -1,0 +1,185 @@
+<script setup lang="ts">
+import { computed, h, ref } from 'vue'
+import { NButton, NDataTable, NInput, NModal, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
+
+import { apiFetch } from '@/lib/api'
+import { MODAL_WIDTH } from '@/lib/modal'
+
+type FsListEntry = {
+  name: string
+  path: string
+  kind: string
+  size: number
+  mtime?: number | null
+}
+
+type FsListResponse = {
+  path: string
+  entries: FsListEntry[]
+}
+
+export type FsPathPickerModalExpose = {
+  open: (nodeId: 'hub' | string, initialPath?: string) => void
+}
+
+const emit = defineEmits<{
+  (e: 'picked', paths: string[]): void
+}>()
+
+const { t } = useI18n()
+const message = useMessage()
+
+const show = ref<boolean>(false)
+const loading = ref<boolean>(false)
+const nodeId = ref<'hub' | string>('hub')
+const currentPath = ref<string>('/')
+const entries = ref<FsListEntry[]>([])
+const checked = ref<string[]>([])
+
+const selectedCount = computed(() => checked.value.length)
+
+function normalizePath(p: string): string {
+  return p.trim()
+}
+
+function computeParentPath(p: string): string {
+  const raw = p.trim()
+  if (!raw) return raw
+
+  const trimmed = raw.replace(/[\\/]+$/, '')
+  if (trimmed === '' || trimmed === '/') return '/'
+  if (/^[A-Za-z]:$/.test(trimmed)) return `${trimmed}\\`
+
+  const idxSlash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (idxSlash <= 0) {
+    if (/^[A-Za-z]:/.test(trimmed)) return trimmed.slice(0, 2) + '\\'
+    return '/'
+  }
+  return trimmed.slice(0, idxSlash) || '/'
+}
+
+async function refresh(): Promise<void> {
+  const p = normalizePath(currentPath.value)
+  if (!p) {
+    message.error(t('errors.fsPathRequired'))
+    return
+  }
+
+  loading.value = true
+  try {
+    const res = await apiFetch<FsListResponse>(
+      `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(p)}`,
+    )
+    currentPath.value = res.path
+    entries.value = res.entries
+  } catch (error) {
+    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : ''
+    message.error(msg || t('errors.fsListFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
+function open(nextNodeId: 'hub' | string, initialPath?: string): void {
+  nodeId.value = nextNodeId
+  currentPath.value = initialPath?.trim() || '/'
+  entries.value = []
+  checked.value = []
+  show.value = true
+  void refresh()
+}
+
+function addCurrentDirToSelection(): void {
+  const p = normalizePath(currentPath.value)
+  if (!p) return
+  if (!checked.value.includes(p)) checked.value = [...checked.value, p]
+}
+
+function up(): void {
+  currentPath.value = computeParentPath(currentPath.value)
+  void refresh()
+}
+
+function pick(): void {
+  const unique = Array.from(new Set(checked.value.map((v) => v.trim()).filter((v) => v.length > 0)))
+  if (unique.length === 0) {
+    message.error(t('errors.sourcePathsRequired'))
+    return
+  }
+  show.value = false
+  emit('picked', unique)
+}
+
+const columns = computed<DataTableColumns<FsListEntry>>(() => [
+  {
+    title: t('common.name'),
+    key: 'name',
+    render(row) {
+      const label = row.kind === 'dir' ? `📁 ${row.name}` : row.kind === 'symlink' ? `🔗 ${row.name}` : `📄 ${row.name}`
+      if (row.kind === 'dir') {
+        return h(
+          'button',
+          {
+            class: 'text-left w-full text-[var(--n-primary-color)] hover:underline',
+            onClick: () => {
+              currentPath.value = row.path
+              void refresh()
+            },
+          },
+          label,
+        )
+      }
+      return h('span', null, label)
+    },
+  },
+  {
+    title: t('common.type'),
+    key: 'kind',
+    width: 110,
+    render(row) {
+      if (row.kind === 'dir') return t('common.dir')
+      if (row.kind === 'symlink') return t('common.symlink')
+      if (row.kind === 'file') return t('common.file')
+      return row.kind
+    },
+  },
+])
+
+defineExpose<FsPathPickerModalExpose>({ open })
+</script>
+
+<template>
+  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('fsPicker.title')">
+    <div class="space-y-3">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-2">
+          <n-button size="small" @click="up">{{ t('fsPicker.up') }}</n-button>
+          <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
+          <n-button size="small" @click="addCurrentDirToSelection">{{ t('fsPicker.selectCurrentDir') }}</n-button>
+        </div>
+        <div class="text-xs opacity-70">{{ t('fsPicker.selectedCount', { count: selectedCount }) }}</div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-xs opacity-70">{{ t('fsPicker.currentPath') }}</div>
+        <n-input v-model:value="currentPath" @keyup.enter="refresh" />
+      </div>
+
+      <n-data-table
+        :loading="loading"
+        :columns="columns"
+        :data="entries"
+        :row-key="(row) => row.path"
+        checkable
+        v-model:checked-row-keys="checked"
+        :max-height="420"
+      />
+
+      <n-space justify="end">
+        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :disabled="checked.length === 0" @click="pick">{{ t('fsPicker.addSelected') }}</n-button>
+      </n-space>
+    </div>
+  </n-modal>
+</template>

@@ -5,6 +5,10 @@ import { useI18n } from 'vue-i18n'
 
 import { useOperationsStore, type ConflictPolicy } from '@/stores/operations'
 import { MODAL_WIDTH } from '@/lib/modal'
+import RunEntriesPickerModal, {
+  type RunEntriesPickerModalExpose,
+  type RunEntriesSelection,
+} from '@/components/jobs/RunEntriesPickerModal.vue'
 
 export type RestoreWizardModalExpose = {
   open: (runId: string) => void
@@ -24,6 +28,8 @@ const starting = ref<boolean>(false)
 const runId = ref<string | null>(null)
 const destinationDir = ref<string>('')
 const conflictPolicy = ref<ConflictPolicy>('overwrite')
+const selection = ref<RunEntriesSelection | null>(null)
+const entriesPicker = ref<RunEntriesPickerModalExpose | null>(null)
 
 const conflictOptions = computed(() => [
   { label: t('restore.conflict.overwrite'), value: 'overwrite' },
@@ -31,11 +37,32 @@ const conflictOptions = computed(() => [
   { label: t('restore.conflict.fail'), value: 'fail' },
 ])
 
+const selectionSummary = computed(() => {
+  const v = selection.value
+  if (!v) return null
+  return t('restore.selectionSummary', { files: v.files.length, dirs: v.dirs.length })
+})
+
 function open(nextRunId: string): void {
   runId.value = nextRunId
   destinationDir.value = ''
   conflictPolicy.value = 'overwrite'
+  selection.value = null
   show.value = true
+}
+
+function openPicker(): void {
+  const id = runId.value
+  if (!id) return
+  entriesPicker.value?.open(id)
+}
+
+function clearSelection(): void {
+  selection.value = null
+}
+
+function onPicked(next: RunEntriesSelection): void {
+  selection.value = next
 }
 
 async function start(): Promise<void> {
@@ -50,7 +77,7 @@ async function start(): Promise<void> {
 
   starting.value = true
   try {
-    const opId = await operations.startRestore(id, destination, conflictPolicy.value)
+    const opId = await operations.startRestore(id, destination, conflictPolicy.value, selection.value)
     show.value = false
     emit('started', opId)
   } catch (error) {
@@ -81,6 +108,22 @@ defineExpose<RestoreWizardModalExpose>({ open })
         <n-form-item :label="t('restore.fields.conflictPolicy')">
           <n-select v-model:value="conflictPolicy" :options="conflictOptions" />
         </n-form-item>
+        <n-form-item :label="t('restore.fields.selection')">
+          <div class="space-y-2 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs opacity-70">{{ t('restore.fields.selectionHelp') }}</div>
+              <div class="flex items-center gap-2">
+                <n-button size="small" @click="openPicker">{{ t('restore.actions.pick') }}</n-button>
+                <n-button size="small" :disabled="selection == null" @click="clearSelection">
+                  {{ t('restore.actions.clearSelection') }}
+                </n-button>
+              </div>
+            </div>
+            <div v-if="selectionSummary" class="text-sm">
+              {{ selectionSummary }}
+            </div>
+          </div>
+        </n-form-item>
       </n-form>
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
@@ -88,5 +131,6 @@ defineExpose<RestoreWizardModalExpose>({ open })
       </n-space>
     </div>
   </n-modal>
-</template>
 
+  <RunEntriesPickerModal ref="entriesPicker" @picked="onPicked" />
+</template>

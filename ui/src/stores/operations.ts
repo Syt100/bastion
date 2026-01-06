@@ -30,15 +30,37 @@ export type OperationEvent = {
 export type ConflictPolicy = 'overwrite' | 'skip' | 'fail'
 
 export const useOperationsStore = defineStore('operations', () => {
-  async function startRestore(runId: string, destinationDir: string, conflictPolicy: ConflictPolicy): Promise<string> {
+  async function startRestore(
+    runId: string,
+    destinationDir: string,
+    conflictPolicy: ConflictPolicy,
+    selection?: { files: string[]; dirs: string[] } | null,
+  ): Promise<string> {
     const csrf = await ensureCsrfToken()
+    const normalizedSelection =
+      selection == null
+        ? null
+        : {
+            files: Array.from(new Set(selection.files.map((v) => v.trim()).filter((v) => v.length > 0))),
+            dirs: Array.from(
+              new Set(
+                selection.dirs
+                  .map((v) => v.trim().replace(/[\\/]+$/, ''))
+                  .filter((v) => v.length > 0),
+              ),
+            ),
+          }
     const res = await apiFetch<{ op_id: string }>(`/api/runs/${encodeURIComponent(runId)}/restore`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': csrf,
       },
-      body: JSON.stringify({ destination_dir: destinationDir, conflict_policy: conflictPolicy }),
+      body: JSON.stringify({
+        destination_dir: destinationDir,
+        conflict_policy: conflictPolicy,
+        ...(normalizedSelection ? { selection: normalizedSelection } : {}),
+      }),
     })
     return res.op_id
   }
