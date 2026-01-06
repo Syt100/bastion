@@ -28,6 +28,7 @@ mod jobs;
 mod middleware;
 mod notifications;
 mod operations;
+mod runs;
 mod secrets;
 mod shared;
 
@@ -152,6 +153,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/jobs/{id}/runs", get(jobs::list_job_runs))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
+        .route("/api/runs/{id}/entries", get(runs::list_run_entries))
         .route("/api/runs/{id}/restore", post(operations::start_restore))
         .route("/api/runs/{id}/verify", post(operations::start_verify))
         .route(
