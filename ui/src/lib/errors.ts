@@ -6,6 +6,7 @@ export type ApiErrorInfo = {
   message: string
   field?: string
   details?: unknown
+  requestId?: string
 }
 
 type Translator = (key: string, params?: Record<string, unknown>) => string
@@ -37,6 +38,7 @@ export function toApiErrorInfo(error: unknown, t?: Translator): ApiErrorInfo {
     const details = error.body?.details
     const field = extractField(details)
     const retryAfterSeconds = extractRetryAfter(details)
+    const requestId = error.requestId && error.requestId.trim() ? error.requestId.trim() : undefined
 
     if (t && code) {
       const key = `apiErrors.${code}`
@@ -46,22 +48,31 @@ export function toApiErrorInfo(error: unknown, t?: Translator): ApiErrorInfo {
           : translateOrNull(t, key)
 
       if (localized) {
+        const message = withRequestIdSuffix(localized, requestId, error.status, t)
         return {
           status: error.status,
           code,
-          message: localized,
+          message,
           field,
           details,
+          requestId,
         }
       }
     }
 
+    const message = withRequestIdSuffix(
+      error.body?.message?.trim() || error.message || `HTTP ${error.status}`,
+      requestId,
+      error.status,
+      t,
+    )
     return {
       status: error.status,
       code,
-      message: error.body?.message?.trim() || error.message || `HTTP ${error.status}`,
+      message,
       field,
       details,
+      requestId,
     }
   }
 
@@ -73,6 +84,19 @@ export function toApiErrorInfo(error: unknown, t?: Translator): ApiErrorInfo {
   return { message: 'Unknown error' }
 }
 
+function withRequestIdSuffix(
+  message: string,
+  requestId: string | undefined,
+  status: number | undefined,
+  t?: Translator,
+): string {
+  if (!message) return message
+  if (!requestId) return message
+  if (!status || status < 500) return message
+  const label = (t && translateOrNull(t, 'common.requestId')) || 'Request ID'
+  return `${message} (${label}: ${requestId})`
+}
+
 export function formatToastError(
   title: string,
   error: unknown,
@@ -82,4 +106,3 @@ export function formatToastError(
   if (!info.message || info.message === title) return title
   return `${title}: ${info.message}`
 }
-

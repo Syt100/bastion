@@ -599,11 +599,7 @@ async function save(): Promise<void> {
     show.value = false
     emit('saved')
   } catch (error) {
-    const msg =
-      error && typeof error === 'object' && 'message' in error
-        ? String((error as { message: unknown }).message)
-        : t('errors.saveJobFailed')
-    message.error(msg)
+    message.error(formatToastError(t('errors.saveJobFailed'), error, t))
   } finally {
     saving.value = false
   }

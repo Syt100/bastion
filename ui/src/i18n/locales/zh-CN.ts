@@ -24,6 +24,7 @@ const messages = {
     dir: '目录',
     file: '文件',
     symlink: '符号链接',
+    requestId: '请求 ID',
     stepOf: '步骤 {current}/{total}',
     back: '上一步',
     return: '返回',
@@ -505,6 +506,7 @@ const messages = {
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',
     fs_list_failed: '列出文件失败',
+    not_found: '资源不存在',
   },
   errors: {
     loginFailed: '登录失败',

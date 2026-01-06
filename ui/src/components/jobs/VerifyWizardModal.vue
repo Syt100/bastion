@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useOperationsStore } from '@/stores/operations'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { formatToastError } from '@/lib/errors'
 
 export type VerifyWizardModalExpose = {
   open: (runId: string) => void
@@ -38,11 +39,7 @@ async function start(): Promise<void> {
     show.value = false
     emit('started', opId)
   } catch (error) {
-    const msg =
-      error && typeof error === 'object' && 'message' in error
-        ? String((error as { message: unknown }).message)
-        : t('errors.verifyStartFailed')
-    message.error(msg)
+    message.error(formatToastError(t('errors.verifyStartFailed'), error, t))
   } finally {
     starting.value = false
   }
@@ -65,4 +62,3 @@ defineExpose<VerifyWizardModalExpose>({ open })
     </div>
   </n-modal>
 </template>
-

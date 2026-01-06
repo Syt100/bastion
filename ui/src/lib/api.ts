@@ -7,12 +7,14 @@ export type ApiErrorBody = {
 export class ApiError extends Error {
   status: number
   body?: ApiErrorBody
+  requestId?: string
 
-  constructor(status: number, message: string, body?: ApiErrorBody) {
+  constructor(status: number, message: string, body?: ApiErrorBody, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.body = body
+    this.requestId = requestId
   }
 }
 
@@ -32,6 +34,8 @@ export async function apiFetch<T>(
   })
 
   if (response.status !== expectedStatus) {
+    const requestId = response.headers.get('x-request-id')?.trim() || undefined
+
     if (response.status === 401 && typeof window !== 'undefined') {
       try {
         window.dispatchEvent(new CustomEvent('bastion:unauthorized'))
@@ -46,7 +50,7 @@ export async function apiFetch<T>(
     } catch {
       // ignore
     }
-    throw new ApiError(response.status, body?.message ?? `HTTP ${response.status}`, body)
+    throw new ApiError(response.status, body?.message ?? `HTTP ${response.status}`, body, requestId)
   }
 
   if (expectedStatus === 204) {
