@@ -358,6 +358,9 @@ const messages = {
   },
   runs: {
     title: 'Runs',
+    badges: {
+      offline: 'Offline',
+    },
     columns: {
       status: 'Status',
       startedAt: 'Started',

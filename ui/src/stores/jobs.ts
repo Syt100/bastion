@@ -41,6 +41,7 @@ export type RunListItem = {
   started_at: number
   ended_at: number | null
   error: string | null
+  executed_offline?: boolean
 }
 
 export type RunEvent = {
