@@ -1,10 +1,10 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
 
 use bastion_core::HUB_NODE_ID;
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use url::Url;
@@ -62,6 +62,66 @@ struct EntryRecord {
     size: u64,
     hash_alg: Option<HashAlgorithm>,
     hash: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RunEntriesChild {
+    pub path: String,
+    pub kind: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RunEntriesChildrenResponse {
+    pub prefix: String,
+    pub cursor: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<u64>,
+    pub entries: Vec<RunEntriesChild>,
+}
+
+pub async fn list_run_entries_children(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    data_dir: &Path,
+    run_id: &str,
+    prefix: Option<&str>,
+    cursor: u64,
+    limit: u64,
+) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
+    let run = runs_repo::get_run(db, run_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+    if run.status != runs_repo::RunStatus::Success {
+        anyhow::bail!("run is not successful");
+    }
+
+    let job = bastion_storage::jobs_repo::get_job(db, &run.job_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("job not found"))?;
+    let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
+    let spec = job_spec::parse_value(&job.spec)?;
+    job_spec::validate(&spec)?;
+
+    let access =
+        open_target_access(db, secrets, node_id, &run.job_id, run_id, target_ref(&spec)).await?;
+    ensure_complete(&access).await?;
+
+    let cache_dir = data_dir.join("cache").join("entries").join(run_id);
+    tokio::fs::create_dir_all(&cache_dir).await?;
+    let entries_path = fetch_entries_index(&access, &cache_dir).await?;
+
+    let prefix = prefix.unwrap_or("").trim();
+    let prefix = prefix.trim_start_matches('/').trim_end_matches('/').to_string();
+    let limit = limit.clamp(1, 1000) as usize;
+    let cursor = cursor as usize;
+
+    let entries = tokio::task::spawn_blocking(move || {
+        list_children_from_entries_index(&entries_path, &prefix, cursor, limit)
+    })
+    .await??;
+
+    Ok(entries)
 }
 
 #[derive(Debug)]
@@ -522,6 +582,140 @@ async fn fetch_entries_index(
     }
 }
 
+fn list_children_from_entries_index(
+    entries_path: &Path,
+    prefix: &str,
+    cursor: usize,
+    limit: usize,
+) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
+    use std::collections::HashMap;
+
+    #[derive(Debug)]
+    struct ChildAgg {
+        kind: String,
+        size: u64,
+    }
+
+    let file = File::open(entries_path)?;
+    let decoder = zstd::Decoder::new(file)?;
+    let reader = std::io::BufReader::new(decoder);
+
+    let prefix = prefix.trim().trim_start_matches('/').trim_end_matches('/');
+    let prefix_slash = if prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}/")
+    };
+
+    let mut children = HashMap::<String, ChildAgg>::new();
+    for line in reader.lines() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let rec: EntryRecord = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let path = rec.path;
+        let remainder: &str = if prefix.is_empty() {
+            path.as_str()
+        } else if path == prefix {
+            continue;
+        } else if let Some(rest) = path.strip_prefix(&prefix_slash) {
+            rest
+        } else {
+            continue;
+        };
+
+        if remainder.is_empty() {
+            continue;
+        }
+
+        let (child_name, has_more) = match remainder.split_once('/') {
+            Some((first, _rest)) => (first, true),
+            None => (remainder, false),
+        };
+        if child_name.is_empty() {
+            continue;
+        }
+
+        let child_path = if prefix.is_empty() {
+            child_name.to_string()
+        } else {
+            format!("{prefix}/{child_name}")
+        };
+
+        let inferred_dir = has_more;
+        let kind = if inferred_dir {
+            "dir".to_string()
+        } else {
+            rec.kind
+        };
+        let kind = if matches!(kind.as_str(), "file" | "dir" | "symlink") {
+            kind
+        } else if inferred_dir {
+            "dir".to_string()
+        } else {
+            "file".to_string()
+        };
+        let size = if kind == "file" { rec.size } else { 0 };
+
+        children
+            .entry(child_path)
+            .and_modify(|existing| {
+                if existing.kind != "dir" && kind == "dir" {
+                    existing.kind = "dir".to_string();
+                    existing.size = 0;
+                    return;
+                }
+                if existing.kind == kind && kind == "file" {
+                    existing.size = existing.size.max(size);
+                }
+            })
+            .or_insert(ChildAgg { kind, size });
+    }
+
+    let mut entries = children
+        .into_iter()
+        .map(|(path, agg)| RunEntriesChild {
+            path,
+            kind: agg.kind,
+            size: agg.size,
+        })
+        .collect::<Vec<_>>();
+
+    fn kind_rank(kind: &str) -> u8 {
+        match kind {
+            "dir" => 0,
+            "file" => 1,
+            "symlink" => 2,
+            _ => 3,
+        }
+    }
+
+    entries.sort_by(|a, b| {
+        kind_rank(&a.kind)
+            .cmp(&kind_rank(&b.kind))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+
+    let total = entries.len();
+    let start = cursor.min(total);
+    let end = start.saturating_add(limit).min(total);
+    let next_cursor = if end < total { Some(end as u64) } else { None };
+    let page = entries.into_iter().skip(start).take(limit).collect::<Vec<_>>();
+
+    Ok(RunEntriesChildrenResponse {
+        prefix: prefix.to_string(),
+        cursor: start as u64,
+        next_cursor,
+        entries: page,
+    })
+}
+
 async fn fetch_parts(
     access: &TargetAccess,
     manifest: &ManifestV1,
@@ -911,13 +1105,17 @@ fn sqlite_integrity_check(path: &Path) -> Result<IntegrityCheck, anyhow::Error> 
 #[cfg(test)]
 mod tests {
     use std::fs::File;
+    use std::io::Write;
     use std::path::Path;
 
     use tempfile::tempdir;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
-    use super::{ConflictPolicy, PayloadDecryption, restore_from_parts, safe_join};
+    use super::{
+        ConflictPolicy, PayloadDecryption, list_children_from_entries_index, restore_from_parts,
+        safe_join,
+    };
     use crate::backup::PayloadEncryption;
     use bastion_core::job_spec::{
         FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy,
@@ -1030,5 +1228,74 @@ mod tests {
 
         let out = std::fs::read(dest.join("hello.txt")).unwrap();
         assert_eq!(out, b"hi");
+    }
+
+    #[test]
+    fn entries_children_lists_unique_children() {
+        #[derive(serde::Serialize)]
+        struct Rec<'a> {
+            path: &'a str,
+            kind: &'a str,
+            size: u64,
+            hash_alg: Option<&'a str>,
+            hash: Option<&'a str>,
+        }
+
+        let tmp = tempdir().unwrap();
+        let entries_path = tmp.path().join("entries.jsonl.zst");
+
+        let file = File::create(&entries_path).unwrap();
+        let mut enc = zstd::Encoder::new(file, 3).unwrap();
+        for rec in [
+            Rec {
+                path: "etc",
+                kind: "dir",
+                size: 0,
+                hash_alg: None,
+                hash: None,
+            },
+            Rec {
+                path: "etc/hosts",
+                kind: "file",
+                size: 2,
+                hash_alg: Some("blake3"),
+                hash: Some("x"),
+            },
+            Rec {
+                path: "etc/ssh/sshd_config",
+                kind: "file",
+                size: 3,
+                hash_alg: Some("blake3"),
+                hash: Some("y"),
+            },
+            Rec {
+                path: "var/log/syslog",
+                kind: "file",
+                size: 4,
+                hash_alg: Some("blake3"),
+                hash: Some("z"),
+            },
+        ] {
+            let line = serde_json::to_vec(&rec).unwrap();
+            enc.write_all(&line).unwrap();
+            enc.write_all(b"\n").unwrap();
+        }
+        enc.finish().unwrap();
+
+        let root = list_children_from_entries_index(&entries_path, "", 0, 100).unwrap();
+        assert_eq!(root.prefix, "");
+        assert!(root.entries.iter().any(|e| e.path == "etc" && e.kind == "dir"));
+        assert!(root.entries.iter().any(|e| e.path == "var" && e.kind == "dir"));
+
+        let etc = list_children_from_entries_index(&entries_path, "etc", 0, 100).unwrap();
+        assert!(etc.entries.iter().any(|e| e.path == "etc/hosts" && e.kind == "file"));
+        assert!(etc.entries.iter().any(|e| e.path == "etc/ssh" && e.kind == "dir"));
+
+        let ssh = list_children_from_entries_index(&entries_path, "etc/ssh", 0, 100).unwrap();
+        assert!(
+            ssh.entries
+                .iter()
+                .any(|e| e.path == "etc/ssh/sshd_config" && e.kind == "file")
+        );
     }
 }
