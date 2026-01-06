@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::body::Body;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -66,6 +67,9 @@ async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStat
 }
 
 pub fn router(state: AppState) -> Router {
+    const API_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
+    const AGENT_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+
     let request_id_header = axum::http::HeaderName::from_static("x-request-id");
     let trace_layer =
         TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
@@ -83,7 +87,7 @@ pub fn router(state: AppState) -> Router {
             )
         });
 
-    Router::new()
+    let api_router = Router::new()
         .route("/api/health", get(health))
         .route("/api/system", get(system_status))
         .route("/api/setup/status", get(auth::setup_status))
@@ -178,9 +182,16 @@ pub fn router(state: AppState) -> Router {
             "/api/operations/{id}/events",
             get(operations::list_operation_events),
         )
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT_BYTES));
+
+    let agent_router = Router::new()
         .route("/agent/enroll", post(agents::agent_enroll))
         .route("/agent/runs/ingest", post(agents::agent_ingest_runs))
         .route("/agent/ws", get(agents::agent_ws))
+        .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT_BYTES));
+
+    api_router
+        .merge(agent_router)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::require_secure_middleware,
