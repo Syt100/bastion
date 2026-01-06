@@ -71,12 +71,27 @@ pub struct BackupRunTaskV1 {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WebdavSecretV1 {
+    pub name: String,
+    pub username: String,
+    pub password: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HubToAgentMessageV1 {
     Task {
         v: u32,
         task_id: String,
         task: Box<BackupRunTaskV1>,
+    },
+    SecretsSnapshot {
+        v: u32,
+        node_id: String,
+        issued_at: i64,
+        #[serde(default)]
+        webdav: Vec<WebdavSecretV1>,
     },
     Pong {
         v: u32,
