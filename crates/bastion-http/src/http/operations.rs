@@ -14,6 +14,8 @@ use bastion_storage::runs_repo;
 pub(super) struct StartRestoreRequest {
     destination_dir: String,
     conflict_policy: String,
+    #[serde(default)]
+    selection: Option<restore::RestoreSelection>,
 }
 
 #[derive(Debug, Serialize)]
@@ -44,6 +46,19 @@ pub(super) async fn start_restore(
         .parse::<restore::ConflictPolicy>()
         .map_err(|_| AppError::bad_request("invalid_conflict_policy", "Invalid conflict policy"))?;
 
+    if let Some(selection) = req.selection.as_ref()
+        && selection
+            .files
+            .iter()
+            .chain(selection.dirs.iter())
+            .all(|v| v.trim().is_empty())
+    {
+        return Err(AppError::bad_request(
+            "invalid_selection",
+            "restore selection is empty",
+        ));
+    }
+
     let run = runs_repo::get_run(&state.db, &run_id)
         .await?
         .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
@@ -66,6 +81,10 @@ pub(super) async fn start_restore(
             "run_id": run_id.clone(),
             "destination_dir": destination_dir,
             "conflict_policy": conflict.as_str(),
+            "selection": req.selection.as_ref().map(|s| serde_json::json!({
+                "files": s.files.len(),
+                "dirs": s.dirs.len(),
+            })),
         })),
     )
     .await;
@@ -78,6 +97,7 @@ pub(super) async fn start_restore(
         run_id.clone(),
         std::path::PathBuf::from(destination_dir),
         conflict,
+        req.selection,
     )
     .await;
 

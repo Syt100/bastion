@@ -55,6 +55,14 @@ impl std::str::FromStr for ConflictPolicy {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct RestoreSelection {
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub dirs: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct EntryRecord {
     path: String,
@@ -174,6 +182,7 @@ pub async fn spawn_restore_operation(
     run_id: String,
     destination_dir: PathBuf,
     conflict: ConflictPolicy,
+    selection: Option<RestoreSelection>,
 ) {
     tokio::spawn(async move {
         if let Err(error) = restore_operation(
@@ -184,6 +193,7 @@ pub async fn spawn_restore_operation(
             &run_id,
             &destination_dir,
             conflict,
+            selection,
         )
         .await
         {
@@ -242,12 +252,15 @@ async fn restore_operation(
     run_id: &str,
     destination_dir: &Path,
     conflict: ConflictPolicy,
+    selection: Option<RestoreSelection>,
 ) -> Result<(), anyhow::Error> {
     info!(
         op_id = %op_id,
         run_id = %run_id,
         destination_dir = %destination_dir.display(),
         conflict = %conflict.as_str(),
+        selection_files = selection.as_ref().map(|s| s.files.len()).unwrap_or(0),
+        selection_dirs = selection.as_ref().map(|s| s.dirs.len()).unwrap_or(0),
         "restore operation started"
     );
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
@@ -301,8 +314,9 @@ async fn restore_operation(
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let dest = destination_dir.to_path_buf();
+    let selection = selection.clone();
     let summary = tokio::task::spawn_blocking(move || {
-        restore_from_parts(&parts, &dest, conflict, decryption)?;
+        restore_from_parts(&parts, &dest, conflict, decryption, selection.as_ref())?;
         Ok::<_, anyhow::Error>(serde_json::json!({
             "destination_dir": dest.to_string_lossy().to_string(),
             "conflict_policy": conflict.as_str(),
@@ -397,6 +411,7 @@ async fn verify_operation(
             &temp_restore_dir,
             ConflictPolicy::Overwrite,
             decryption,
+            None,
         )?;
         let verify = verify_restored(&entries_path, &temp_restore_dir, record_count)?;
 
@@ -795,8 +810,13 @@ fn restore_from_parts(
     destination_dir: &Path,
     conflict: ConflictPolicy,
     decryption: PayloadDecryption,
+    selection: Option<&RestoreSelection>,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(destination_dir)?;
+
+    let selection = selection
+        .map(normalize_restore_selection)
+        .transpose()?;
 
     let files = part_paths
         .iter()
@@ -823,6 +843,15 @@ fn restore_from_parts(
     for entry in archive.entries()? {
         let mut entry = entry?;
         let rel = entry.path()?.to_path_buf();
+
+        let rel_match = archive_path_for_match(&rel)
+            .ok_or_else(|| anyhow::anyhow!("invalid entry path: {}", rel.display()))?;
+        if let Some(selection) = selection.as_ref()
+            && !selection.matches(&rel_match)
+        {
+            continue;
+        }
+
         let dest_path = safe_join(destination_dir, &rel)
             .ok_or_else(|| anyhow::anyhow!("invalid entry path: {}", rel.display()))?;
 
@@ -850,6 +879,82 @@ fn restore_from_parts(
     Ok(())
 }
 
+#[derive(Debug)]
+struct NormalizedRestoreSelection {
+    files: std::collections::HashSet<String>,
+    dirs: Vec<String>,
+}
+
+impl NormalizedRestoreSelection {
+    fn matches(&self, archive_path: &str) -> bool {
+        if self.files.contains(archive_path) {
+            return true;
+        }
+        for dir in &self.dirs {
+            if archive_path == dir {
+                return true;
+            }
+            if archive_path.starts_with(dir) && archive_path.as_bytes().get(dir.len()) == Some(&b'/')
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn normalize_restore_path(path: &str, allow_trailing_slash: bool) -> Option<String> {
+    let mut s = path.trim().replace('\\', "/");
+    if s.is_empty() {
+        return None;
+    }
+    while s.starts_with("./") {
+        s = s.trim_start_matches("./").to_string();
+    }
+    while s.starts_with('/') {
+        s = s.trim_start_matches('/').to_string();
+    }
+    if !allow_trailing_slash {
+        while s.ends_with('/') {
+            s = s.trim_end_matches('/').to_string();
+        }
+    }
+    let s = s.trim_matches('/').to_string();
+    if s.is_empty() {
+        return None;
+    }
+    if s.split('/').any(|seg| seg == "..") {
+        return None;
+    }
+    Some(s)
+}
+
+fn normalize_restore_selection(
+    selection: &RestoreSelection,
+) -> Result<NormalizedRestoreSelection, anyhow::Error> {
+    let mut files = std::collections::HashSet::<String>::new();
+    let mut dirs = std::collections::HashSet::<String>::new();
+
+    for f in &selection.files {
+        if let Some(v) = normalize_restore_path(f, false) {
+            files.insert(v);
+        }
+    }
+    for d in &selection.dirs {
+        if let Some(v) = normalize_restore_path(d, true) {
+            dirs.insert(v.trim_end_matches('/').to_string());
+        }
+    }
+
+    if files.is_empty() && dirs.is_empty() {
+        anyhow::bail!("restore selection is empty");
+    }
+
+    let mut dirs = dirs.into_iter().collect::<Vec<_>>();
+    dirs.sort_by(|a, b| b.len().cmp(&a.len())); // longest first for prefix checks
+    Ok(NormalizedRestoreSelection { files, dirs })
+}
+
 fn safe_join(base: &Path, rel: &Path) -> Option<PathBuf> {
     let mut out = PathBuf::from(base);
     for c in rel.components() {
@@ -860,6 +965,18 @@ fn safe_join(base: &Path, rel: &Path) -> Option<PathBuf> {
         }
     }
     Some(out)
+}
+
+fn archive_path_for_match(rel: &Path) -> Option<String> {
+    let mut parts = Vec::<String>::new();
+    for c in rel.components() {
+        match c {
+            std::path::Component::Normal(p) => parts.push(p.to_string_lossy().to_string()),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(parts.join("/"))
 }
 
 fn remove_existing_path(path: &Path) -> Result<(), anyhow::Error> {
@@ -1113,8 +1230,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        ConflictPolicy, PayloadDecryption, list_children_from_entries_index, restore_from_parts,
-        safe_join,
+        ConflictPolicy, PayloadDecryption, RestoreSelection, list_children_from_entries_index,
+        restore_from_parts, safe_join,
     };
     use crate::backup::PayloadEncryption;
     use bastion_core::job_spec::{
@@ -1151,10 +1268,89 @@ mod tests {
             &dest,
             ConflictPolicy::Overwrite,
             PayloadDecryption::None,
+            None,
         )
         .unwrap();
         let out = std::fs::read(dest.join("hello.txt")).unwrap();
         assert_eq!(out, b"hi");
+    }
+
+    #[test]
+    fn restore_from_parts_respects_selected_files() {
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("payload.part000001");
+
+        let file = File::create(&part).unwrap();
+        let mut encoder = zstd::Encoder::new(file, 3).unwrap();
+        {
+            let mut tar = tar::Builder::new(&mut encoder);
+            let a = tmp.path().join("a.txt");
+            let b = tmp.path().join("b.txt");
+            std::fs::write(&a, b"a").unwrap();
+            std::fs::write(&b, b"b").unwrap();
+            tar.append_path_with_name(&a, Path::new("a.txt")).unwrap();
+            tar.append_path_with_name(&b, Path::new("b.txt")).unwrap();
+            tar.finish().unwrap();
+        }
+        encoder.finish().unwrap();
+
+        let dest = tmp.path().join("out_partial_file");
+        let sel = RestoreSelection {
+            files: vec!["a.txt".to_string()],
+            dirs: vec![],
+        };
+        restore_from_parts(
+            &[part],
+            &dest,
+            ConflictPolicy::Overwrite,
+            PayloadDecryption::None,
+            Some(&sel),
+        )
+        .unwrap();
+
+        assert!(dest.join("a.txt").exists());
+        assert!(!dest.join("b.txt").exists());
+    }
+
+    #[test]
+    fn restore_from_parts_respects_selected_dirs() {
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("payload.part000001");
+
+        let file = File::create(&part).unwrap();
+        let mut encoder = zstd::Encoder::new(file, 3).unwrap();
+        {
+            let mut tar = tar::Builder::new(&mut encoder);
+            let a = tmp.path().join("a.txt");
+            let b = tmp.path().join("b.txt");
+            let c = tmp.path().join("c.txt");
+            std::fs::write(&a, b"a").unwrap();
+            std::fs::write(&b, b"b").unwrap();
+            std::fs::write(&c, b"c").unwrap();
+            tar.append_path_with_name(&a, Path::new("dir/a.txt")).unwrap();
+            tar.append_path_with_name(&b, Path::new("dir/b.txt")).unwrap();
+            tar.append_path_with_name(&c, Path::new("c.txt")).unwrap();
+            tar.finish().unwrap();
+        }
+        encoder.finish().unwrap();
+
+        let dest = tmp.path().join("out_partial_dir");
+        let sel = RestoreSelection {
+            files: vec![],
+            dirs: vec!["dir".to_string()],
+        };
+        restore_from_parts(
+            &[part],
+            &dest,
+            ConflictPolicy::Overwrite,
+            PayloadDecryption::None,
+            Some(&sel),
+        )
+        .unwrap();
+
+        assert!(dest.join("dir").join("a.txt").exists());
+        assert!(dest.join("dir").join("b.txt").exists());
+        assert!(!dest.join("c.txt").exists());
     }
 
     #[test]
@@ -1223,6 +1419,7 @@ mod tests {
             PayloadDecryption::AgeX25519 {
                 identity: identity_str,
             },
+            None,
         )
         .unwrap();
 
