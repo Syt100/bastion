@@ -36,6 +36,33 @@ describe('useOperationsStore', () => {
     expect(init.body).toBe(JSON.stringify({ destination_dir: '/tmp/restore', conflict_policy: 'overwrite' }))
   })
 
+  it('starts restore with selection when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ op_id: 'op-3' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-abc'
+
+    const ops = useOperationsStore()
+    const opId = await ops.startRestore('run-1', '/tmp/restore', 'overwrite', {
+      files: ['a', ' a ', ''],
+      dirs: ['b/', 'b', ''],
+    })
+
+    expect(opId).toBe('op-3')
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(init.body).toBe(
+      JSON.stringify({
+        destination_dir: '/tmp/restore',
+        conflict_policy: 'overwrite',
+        selection: { files: ['a'], dirs: ['b'] },
+      }),
+    )
+  })
+
   it('starts verify with CSRF header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ op_id: 'op-2' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
@@ -55,4 +82,3 @@ describe('useOperationsStore', () => {
     expect(headers['X-CSRF-Token']).toBe('csrf-xyz')
   })
 })
-

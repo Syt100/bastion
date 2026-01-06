@@ -14,6 +14,7 @@ import {
   NStep,
   NSteps,
   NSwitch,
+  NTag,
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -26,6 +27,7 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
+import FsPathPickerModal, { type FsPathPickerModalExpose } from '@/components/fs/FsPathPickerModal.vue'
 
 type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 type FsHardlinkPolicy = 'copy' | 'keep'
@@ -55,6 +57,8 @@ const mode = ref<'create' | 'edit'>('create')
 const saving = ref<boolean>(false)
 const step = ref<number>(1)
 const lockedNodeId = ref<'hub' | string | null>(null)
+const fsPicker = ref<FsPathPickerModalExpose | null>(null)
+const fsPathDraft = ref<string>('')
 
 const EDITOR_STEPS_TOTAL = 6
 const stepTitles = computed(() => [
@@ -82,7 +86,7 @@ const form = reactive<{
   jobType: JobType
   encryptionEnabled: boolean
   encryptionKeyName: string
-  fsRoot: string
+  fsPaths: string[]
   fsInclude: string
   fsExclude: string
   fsSymlinkPolicy: FsSymlinkPolicy
@@ -108,7 +112,7 @@ const form = reactive<{
   jobType: 'filesystem',
   encryptionEnabled: false,
   encryptionKeyName: 'default',
-  fsRoot: '',
+  fsPaths: [],
   fsInclude: '',
   fsExclude: '',
   fsSymlinkPolicy: 'keep',
@@ -136,7 +140,7 @@ function resetForm(): void {
   form.jobType = 'filesystem'
   form.encryptionEnabled = false
   form.encryptionKeyName = 'default'
-  form.fsRoot = ''
+  form.fsPaths = []
   form.fsInclude = ''
   form.fsExclude = ''
   form.fsSymlinkPolicy = 'keep'
@@ -165,6 +169,25 @@ function parseLines(text: string): string[] {
 function parseStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((v): v is string => typeof v === 'string')
+}
+
+function mergeUniqueStrings(target: string[], next: string[]): { merged: string[]; added: number; skipped: number } {
+  const existing = new Set(target.map((v) => v.trim()).filter((v) => v.length > 0))
+  const out = [...target]
+  let added = 0
+  let skipped = 0
+  for (const raw of next) {
+    const v = raw.trim()
+    if (!v) continue
+    if (existing.has(v)) {
+      skipped += 1
+      continue
+    }
+    existing.add(v)
+    out.push(v)
+    added += 1
+  }
+  return { merged: out, added, skipped }
 }
 
 function normalizeSymlinkPolicy(value: unknown): FsSymlinkPolicy {
@@ -246,7 +269,13 @@ async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promi
         : 256
 
     const source = (job.spec as Record<string, unknown>).source as Record<string, unknown> | undefined
-    form.fsRoot = typeof source?.root === 'string' ? source.root : ''
+    const paths = parseStringArray(source?.paths)
+    if (paths.length > 0) {
+      form.fsPaths = paths
+    } else {
+      const legacyRoot = typeof source?.root === 'string' ? source.root : ''
+      form.fsPaths = legacyRoot.trim() ? [legacyRoot] : []
+    }
     form.fsInclude = parseStringArray(source?.include).join('\n')
     form.fsExclude = parseStringArray(source?.exclude).join('\n')
     form.fsSymlinkPolicy = normalizeSymlinkPolicy(source?.symlink_policy)
@@ -279,8 +308,8 @@ function validateEditorStep(targetStep: number): boolean {
   }
 
   if (targetStep >= 2) {
-    if (form.jobType === 'filesystem' && !form.fsRoot.trim()) {
-      message.error(t('errors.sourceRootRequired'))
+    if (form.jobType === 'filesystem' && form.fsPaths.every((p) => !p.trim())) {
+      message.error(t('errors.sourcePathsRequired'))
       return false
     }
     if (form.jobType === 'sqlite' && !form.sqlitePath.trim()) {
@@ -336,6 +365,37 @@ function nextStep(): void {
   step.value = Math.min(EDITOR_STEPS_TOTAL, step.value + 1)
 }
 
+function openFsPicker(): void {
+  const initial = form.fsPaths.find((p) => p.trim()) ?? '/'
+  fsPicker.value?.open(form.node, initial)
+}
+
+function addFsPathsFromList(paths: string[]): void {
+  const { merged, added, skipped } = mergeUniqueStrings(form.fsPaths, paths)
+  form.fsPaths = merged
+  if (added > 0) {
+    message.success(t('messages.sourcePathsAdded', { count: added }))
+  }
+  if (skipped > 0) {
+    message.warning(t('messages.sourcePathsSkipped', { count: skipped }))
+  }
+}
+
+function addFsPathsFromDraft(): void {
+  const lines = parseLines(fsPathDraft.value)
+  if (lines.length === 0) return
+  fsPathDraft.value = ''
+  addFsPathsFromList(lines)
+}
+
+function removeFsPath(path: string): void {
+  form.fsPaths = form.fsPaths.filter((p) => p !== path)
+}
+
+function clearFsPaths(): void {
+  form.fsPaths = []
+}
+
 const previewPayload = computed(() => {
   const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB || 1))
   const partSizeBytes = partSizeMiB * 1024 * 1024
@@ -358,7 +418,7 @@ const previewPayload = computed(() => {
   const source =
     form.jobType === 'filesystem'
       ? {
-          root: form.fsRoot.trim(),
+          paths: form.fsPaths.map((p) => p.trim()).filter((p) => p.length > 0),
           include: parseLines(form.fsInclude),
           exclude: parseLines(form.fsExclude),
           symlink_policy: form.fsSymlinkPolicy,
@@ -455,31 +515,46 @@ async function save(): Promise<void> {
         }
       : ({ mode: 'inherit' as const } as const)
 
-  const source =
-    form.jobType === 'filesystem'
-      ? {
-          root: form.fsRoot.trim(),
-          include: parseLines(form.fsInclude),
-          exclude: parseLines(form.fsExclude),
-          symlink_policy: form.fsSymlinkPolicy,
-          hardlink_policy: form.fsHardlinkPolicy,
-          error_policy: form.fsErrorPolicy,
-        }
-      : form.jobType === 'sqlite'
-        ? { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
-        : { data_dir: form.vaultwardenDataDir.trim() }
+  type FsSource = {
+    paths: string[]
+    include: string[]
+    exclude: string[]
+    symlink_policy: FsSymlinkPolicy
+    hardlink_policy: FsHardlinkPolicy
+    error_policy: FsErrorPolicy
+  }
+  type SqliteSource = { path: string; integrity_check: boolean }
+  type VaultwardenSource = { data_dir: string }
 
-  if (form.jobType === 'filesystem' && !source.root) {
-    message.error(t('errors.sourceRootRequired'))
-    return
-  }
-  if (form.jobType === 'sqlite' && !source.path) {
-    message.error(t('errors.sqlitePathRequired'))
-    return
-  }
-  if (form.jobType === 'vaultwarden' && !source.data_dir) {
-    message.error(t('errors.vaultwardenDataDirRequired'))
-    return
+  let source: FsSource | SqliteSource | VaultwardenSource
+  if (form.jobType === 'filesystem') {
+    const fsSource: FsSource = {
+      paths: form.fsPaths.map((p) => p.trim()).filter((p) => p.length > 0),
+      include: parseLines(form.fsInclude),
+      exclude: parseLines(form.fsExclude),
+      symlink_policy: form.fsSymlinkPolicy,
+      hardlink_policy: form.fsHardlinkPolicy,
+      error_policy: form.fsErrorPolicy,
+    }
+    if (fsSource.paths.length === 0) {
+      message.error(t('errors.sourcePathsRequired'))
+      return
+    }
+    source = fsSource
+  } else if (form.jobType === 'sqlite') {
+    const sqliteSource: SqliteSource = { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
+    if (!sqliteSource.path) {
+      message.error(t('errors.sqlitePathRequired'))
+      return
+    }
+    source = sqliteSource
+  } else {
+    const vaultwardenSource: VaultwardenSource = { data_dir: form.vaultwardenDataDir.trim() }
+    if (!vaultwardenSource.data_dir) {
+      message.error(t('errors.vaultwardenDataDirRequired'))
+      return
+    }
+    source = vaultwardenSource
   }
 
   saving.value = true
@@ -683,8 +758,34 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </n-alert>
 
           <template v-if="form.jobType === 'filesystem'">
-            <n-form-item :label="t('jobs.fields.sourceRoot')">
-              <n-input v-model:value="form.fsRoot" :placeholder="t('jobs.fields.sourceRootPlaceholder')" />
+            <n-form-item :label="t('jobs.fields.sourcePaths')">
+              <div class="space-y-2 w-full">
+                <div class="flex flex-wrap items-center gap-2 justify-between">
+                  <div class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
+                  <div class="flex items-center gap-2">
+                    <n-button size="small" @click="openFsPicker">{{ t('jobs.actions.browseFs') }}</n-button>
+                    <n-button size="small" :disabled="form.fsPaths.length === 0" @click="clearFsPaths">
+                      {{ t('common.clear') }}
+                    </n-button>
+                  </div>
+                </div>
+
+                <div v-if="form.fsPaths.length === 0" class="text-sm opacity-60">
+                  {{ t('jobs.fields.sourcePathsEmpty') }}
+                </div>
+                <div v-else class="flex flex-wrap gap-2">
+                  <n-tag v-for="p in form.fsPaths" :key="p" closable @close="removeFsPath(p)">{{ p }}</n-tag>
+                </div>
+
+                <div class="flex gap-2">
+                  <n-input
+                    v-model:value="fsPathDraft"
+                    :placeholder="t('jobs.fields.sourcePathsPlaceholder')"
+                    @keyup.enter="addFsPathsFromDraft"
+                  />
+                  <n-button @click="addFsPathsFromDraft">{{ t('common.add') }}</n-button>
+                </div>
+              </div>
             </n-form-item>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <n-form-item :label="t('jobs.fields.fsSymlinkPolicy')">
@@ -878,4 +979,5 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
       </n-space>
     </div>
   </n-modal>
+  <FsPathPickerModal ref="fsPicker" @picked="addFsPathsFromList" />
 </template>
