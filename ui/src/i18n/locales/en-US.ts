@@ -19,6 +19,8 @@ const messages = {
     clear: 'Clear',
     name: 'Name',
     type: 'Type',
+    size: 'Size',
+    modified: 'Modified',
     dir: 'Directory',
     file: 'File',
     symlink: 'Symlink',

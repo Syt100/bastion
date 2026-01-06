@@ -19,6 +19,8 @@ const messages = {
     clear: '清空',
     name: '名称',
     type: '类型',
+    size: '大小',
+    modified: '修改时间',
     dir: '目录',
     file: '文件',
     symlink: '符号链接',

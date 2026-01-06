@@ -5,6 +5,10 @@ import { useI18n } from 'vue-i18n'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { useMediaQuery } from '@/lib/media'
+import { MQ } from '@/lib/breakpoints'
+import { formatBytes } from '@/lib/format'
+import { useUiStore } from '@/stores/ui'
 
 type FsListEntry = {
   name: string
@@ -29,6 +33,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const message = useMessage()
+const ui = useUiStore()
+const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
@@ -38,6 +44,30 @@ const entries = ref<FsListEntry[]>([])
 const checked = ref<string[]>([])
 
 const selectedCount = computed(() => checked.value.length)
+
+const timeFormatDesktop = computed(
+  () => new Intl.DateTimeFormat(ui.locale, { dateStyle: 'medium', timeStyle: 'medium' }),
+)
+const timeFormatMobile = computed(
+  () => new Intl.DateTimeFormat(ui.locale, { dateStyle: 'medium', timeStyle: 'short' }),
+)
+
+function formatMtimeDesktop(ts?: number | null): string {
+  if (!Number.isFinite(ts as number) || !ts) return '-'
+  return timeFormatDesktop.value.format(new Date(ts * 1000))
+}
+
+function formatMtimeMobile(ts?: number | null): string {
+  if (!Number.isFinite(ts as number) || !ts) return '-'
+  return timeFormatMobile.value.format(new Date(ts * 1000))
+}
+
+function kindLabel(kind: string): string {
+  if (kind === 'dir') return t('common.dir')
+  if (kind === 'symlink') return t('common.symlink')
+  if (kind === 'file') return t('common.file')
+  return kind
+}
 
 function normalizePath(p: string): string {
   return p.trim()
@@ -117,33 +147,59 @@ const columns = computed<DataTableColumns<FsListEntry>>(() => [
     key: 'name',
     render(row) {
       const label = row.kind === 'dir' ? `📁 ${row.name}` : row.kind === 'symlink' ? `🔗 ${row.name}` : `📄 ${row.name}`
-      if (row.kind === 'dir') {
-        return h(
-          'button',
-          {
-            class: 'text-left w-full text-[var(--n-primary-color)] hover:underline',
-            onClick: () => {
-              currentPath.value = row.path
-              void refresh()
-            },
-          },
-          label,
-        )
-      }
-      return h('span', null, label)
+
+      const nameNode =
+        row.kind === 'dir'
+          ? h(
+              'button',
+              {
+                class: 'text-left w-full text-[var(--n-primary-color)] hover:underline truncate',
+                onClick: () => {
+                  currentPath.value = row.path
+                  void refresh()
+                },
+              },
+              label,
+            )
+          : h('div', { class: 'truncate' }, label)
+
+      if (isDesktop.value) return nameNode
+
+      const parts: string[] = []
+      parts.push(kindLabel(row.kind))
+      if (row.kind === 'file') parts.push(formatBytes(row.size))
+      parts.push(formatMtimeMobile(row.mtime))
+      const meta = parts.join(' · ')
+
+      return h('div', { class: 'space-y-1 min-w-0' }, [
+        h('div', { class: 'min-w-0' }, [nameNode]),
+        h('div', { class: 'text-xs opacity-70 truncate' }, meta),
+      ])
     },
   },
-  {
-    title: t('common.type'),
-    key: 'kind',
-    width: 110,
-    render(row) {
-      if (row.kind === 'dir') return t('common.dir')
-      if (row.kind === 'symlink') return t('common.symlink')
-      if (row.kind === 'file') return t('common.file')
-      return row.kind
-    },
-  },
+  ...(isDesktop.value
+    ? ([
+        {
+          title: t('common.type'),
+          key: 'kind',
+          width: 110,
+          render: (row: FsListEntry) => kindLabel(row.kind),
+        },
+        {
+          title: t('common.size'),
+          key: 'size',
+          width: 120,
+          align: 'right',
+          render: (row: FsListEntry) => (row.kind === 'file' ? formatBytes(row.size) : '-'),
+        },
+        {
+          title: t('common.modified'),
+          key: 'mtime',
+          width: 190,
+          render: (row: FsListEntry) => formatMtimeDesktop(row.mtime),
+        },
+      ] as const)
+    : []),
 ])
 
 defineExpose<FsPathPickerModalExpose>({ open })
