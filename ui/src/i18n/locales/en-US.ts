@@ -501,6 +501,10 @@ const messages = {
     invalid_host: 'SMTP host is required',
     invalid_port: 'Invalid SMTP port',
     invalid_password: 'Password is required',
+    permission_denied: 'Permission denied',
+    path_not_found: 'Path not found',
+    not_directory: 'Path is not a directory',
+    fs_list_failed: 'Failed to list files',
   },
   errors: {
     loginFailed: 'Login failed',
