@@ -755,6 +755,21 @@ async fn handle_agent_socket(
                         )
                         .await;
                     }
+                    Ok(AgentToHubMessageV1::FsListResult {
+                        v,
+                        request_id,
+                        entries,
+                        error,
+                    }) if v == PROTOCOL_VERSION => {
+                        let result = if let Some(error) = error {
+                            Err(error)
+                        } else {
+                            Ok(entries)
+                        };
+                        agent_manager
+                            .complete_fs_list(&agent_id, &request_id, result)
+                            .await;
+                    }
                     _ => {}
                 }
             }

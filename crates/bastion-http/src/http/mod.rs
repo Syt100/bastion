@@ -23,6 +23,7 @@ use bastion_storage::secrets::SecretsCrypto;
 mod agents;
 mod auth;
 mod error;
+mod fs;
 mod jobs;
 mod middleware;
 mod notifications;
@@ -112,6 +113,7 @@ pub fn router(state: AppState) -> Router {
                 .put(secrets::upsert_webdav_secret_node)
                 .delete(secrets::delete_webdav_secret_node),
         )
+        .route("/api/nodes/{node_id}/fs/list", get(fs::fs_list))
         .route(
             "/api/secrets/wecom-bot",
             get(secrets::list_wecom_bot_secrets),
