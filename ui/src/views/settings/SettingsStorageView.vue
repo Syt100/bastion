@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NAlert,
   NButton,
@@ -27,10 +28,13 @@ import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 
 const ui = useUiStore()
 const secrets = useSecretsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
+
+const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
@@ -48,7 +52,7 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 async function refresh(): Promise<void> {
   try {
-    await secrets.refreshWebdav()
+    await secrets.refreshWebdav(nodeId.value)
   } catch (error) {
     message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
   }
@@ -80,7 +84,7 @@ async function openEdit(name: string): Promise<void> {
   editorFieldErrors.name = undefined
   editorFieldErrors.username = undefined
   try {
-    const secret = await secrets.getWebdav(name)
+    const secret = await secrets.getWebdav(nodeId.value, name)
     form.name = secret.name
     form.username = secret.username
     form.password = secret.password
@@ -107,7 +111,7 @@ async function save(): Promise<void> {
   editorFieldErrors.username = undefined
   editorSaving.value = true
   try {
-    await secrets.upsertWebdav(name, username, form.password)
+    await secrets.upsertWebdav(nodeId.value, name, username, form.password)
     message.success(t('messages.webdavSecretSaved'))
     editorOpen.value = false
     await refresh()
@@ -123,7 +127,7 @@ async function save(): Promise<void> {
 
 async function remove(name: string): Promise<void> {
   try {
-    await secrets.deleteWebdav(name)
+    await secrets.deleteWebdav(nodeId.value, name)
     message.success(t('messages.webdavSecretDeleted'))
     await refresh()
   } catch (error) {
@@ -173,6 +177,11 @@ const columns = computed<DataTableColumns<SecretListItem>>(() => [
 ])
 
 onMounted(refresh)
+
+watch(nodeId, async () => {
+  editorOpen.value = false
+  await refresh()
+})
 </script>
 
 <template>

@@ -55,7 +55,7 @@ vi.mock('vue-router', () => ({
 }))
 
 const jobsApi = {
-  items: [] as any[],
+  items: [] as unknown[],
   loading: false,
   refresh: vi.fn().mockResolvedValue(undefined),
   listRunEvents: vi.fn(),

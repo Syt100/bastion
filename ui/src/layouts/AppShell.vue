@@ -51,6 +51,7 @@ const agents = useAgentsStore()
 const system = useSystemStore()
 
 const nodeIdParam = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
+const menuPath = computed(() => (route.path.startsWith('/n/') ? route.path.replace(/^\/n\/[^/]+/, '') || '/' : route.path))
 const nodeSuffix = computed(() => {
   if (!route.path.startsWith('/n/')) return null
   const suffix = route.path.replace(/^\/n\/[^/]+/, '')
@@ -62,16 +63,15 @@ const selectedNodeId = computed({
 })
 
 const activeKey = computed(() => {
-  const path = route.path.startsWith('/n/') ? route.path.replace(/^\/n\/[^/]+/, '') || '/' : route.path
   const ordered = [...menuRouteKeys].sort((a, b) => b.length - a.length)
   for (const key of ordered) {
     if (key === '/') {
-      if (path === '/') return '/'
+      if (menuPath.value === '/') return '/'
       continue
     }
-    if (path === key || path.startsWith(`${key}/`)) return key
+    if (menuPath.value === key || menuPath.value.startsWith(`${key}/`)) return key
   }
-  return path
+  return menuPath.value
 })
 const mobileMenuOpen = ref(false)
 const isDesktop = useMediaQuery(MQ.mdUp)
@@ -94,7 +94,7 @@ const expandedKeys = ref<string[]>([])
 
 watchEffect(() => {
   if (!isDesktop.value) return
-  if (!route.path.startsWith('/settings')) return
+  if (!menuPath.value.startsWith('/settings')) return
   if (expandedKeys.value.includes(settingsParentKey)) return
   expandedKeys.value = [...expandedKeys.value, settingsParentKey]
 })
@@ -134,6 +134,10 @@ function navigateMenu(key: unknown): void {
   if (key === activeKey.value) return
   if (key === '/jobs') {
     void router.push(`/n/${encodeURIComponent(selectedNodeId.value)}/jobs`)
+    return
+  }
+  if (key === '/settings/storage') {
+    void router.push(`/n/${encodeURIComponent(selectedNodeId.value)}/settings/storage`)
     return
   }
   void router.push(key)
