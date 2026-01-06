@@ -28,9 +28,9 @@
 - [x] 4.4 Commit hub/agent sync improvements (detailed message)
 
 ## 5. Agent - Non-Blocking Offline Run I/O
-- [ ] 5.1 Ensure offline run persistence/sync does not block the async runtime hot path
-- [ ] 5.2 Add/extend unit tests where appropriate
-- [ ] 5.3 Commit agent I/O improvements (detailed message)
+- [x] 5.1 Ensure offline run persistence/sync does not block the async runtime hot path
+- [x] 5.2 Add/extend unit tests where appropriate
+- [x] 5.3 Commit agent I/O improvements (detailed message)
 
 ## 6. Refactor - Agent Client Modularity
 - [ ] 6.1 Split Agent client code into focused modules (ws, managed cache, offline scheduler, persistence, sync)
