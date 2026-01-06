@@ -17,3 +17,7 @@ The system SHALL support filesystem backups whose source is a set of selected pa
 - **THEN** the system deduplicates the selection
 - **AND** records a warning summary describing what was deduplicated
 
+#### Scenario: Legacy single-root source remains supported
+- **WHEN** a filesystem job is configured using `filesystem.source.root` (without `paths`)
+- **THEN** the job remains runnable
+- **AND** archive paths are root-relative
