@@ -6,6 +6,7 @@ use axum::extract::Path;
 use axum::extract::Query;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
+use tracing::debug;
 
 use bastion_core::HUB_NODE_ID;
 
@@ -83,25 +84,52 @@ pub(super) async fn fs_list(
     }))
 }
 
-fn list_dir_entries(path: &str) -> Result<Vec<FsListEntry>, anyhow::Error> {
+fn list_dir_entries(path: &str) -> Result<Vec<FsListEntry>, AppError> {
+    use std::io::ErrorKind;
     use std::time::UNIX_EPOCH;
 
-    let dir = PathBuf::from(path);
-    let meta = std::fs::metadata(&dir)?;
+    fn map_io(path: &str, error: std::io::Error) -> AppError {
+        match error.kind() {
+            ErrorKind::NotFound => AppError::not_found("path_not_found", "Path not found")
+                .with_details(serde_json::json!({ "path": path })),
+            ErrorKind::PermissionDenied => AppError::forbidden("permission_denied", "Permission denied")
+                .with_details(serde_json::json!({ "path": path })),
+            _ => AppError::bad_request("fs_list_failed", format!("Filesystem list failed: {error}"))
+                .with_details(serde_json::json!({ "path": path })),
+        }
+    }
+
+    let dir_path = path;
+    let dir = PathBuf::from(dir_path);
+    let meta = std::fs::metadata(&dir).map_err(|e| map_io(dir_path, e))?;
     if !meta.is_dir() {
-        anyhow::bail!("path is not a directory");
+        return Err(AppError::bad_request("not_directory", "path is not a directory")
+            .with_details(serde_json::json!({ "path": dir_path })));
     }
 
     let mut out = Vec::<FsListEntry>::new();
-    for entry in std::fs::read_dir(&dir)? {
-        let entry = entry?;
+    let iter = std::fs::read_dir(&dir).map_err(|e| map_io(dir_path, e))?;
+    for entry in iter {
+        let entry = match entry {
+            Ok(v) => v,
+            Err(error) => {
+                debug!(dir = %dir_path, error = %error, "fs list entry failed");
+                continue;
+            }
+        };
         let name = entry.file_name().to_string_lossy().to_string();
         if name.trim().is_empty() {
             continue;
         }
 
-        let path = entry.path().to_string_lossy().to_string();
-        let ft = entry.file_type()?;
+        let entry_path = entry.path().to_string_lossy().to_string();
+        let ft = match entry.file_type() {
+            Ok(v) => v,
+            Err(error) => {
+                debug!(dir = %dir_path, error = %error, "fs list file_type failed");
+                continue;
+            }
+        };
         let kind = if ft.is_dir() {
             "dir"
         } else if ft.is_file() {
@@ -122,7 +150,7 @@ fn list_dir_entries(path: &str) -> Result<Vec<FsListEntry>, anyhow::Error> {
 
         out.push(FsListEntry {
             name,
-            path,
+            path: entry_path,
             kind: kind.to_string(),
             size,
             mtime,

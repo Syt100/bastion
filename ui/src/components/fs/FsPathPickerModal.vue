@@ -8,6 +8,7 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
+import { formatToastError } from '@/lib/errors'
 import { useUiStore } from '@/stores/ui'
 
 type FsListEntry = {
@@ -104,8 +105,7 @@ async function refresh(): Promise<void> {
     currentPath.value = res.path
     entries.value = res.entries
   } catch (error) {
-    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : ''
-    message.error(msg || t('errors.fsListFailed'))
+    message.error(formatToastError(t('errors.fsListFailed'), error, t))
   } finally {
     loading.value = false
   }

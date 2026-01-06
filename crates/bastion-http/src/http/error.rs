@@ -42,6 +42,15 @@ impl AppError {
         }
     }
 
+    pub(in crate::http) fn forbidden(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            code,
+            message: message.into(),
+            details: None,
+        }
+    }
+
     pub(in crate::http) fn conflict(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
