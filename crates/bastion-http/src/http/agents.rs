@@ -225,17 +225,22 @@ pub(super) async fn agent_ingest_runs(
     Json(req): Json<AgentIngestRunRequest>,
 ) -> Result<StatusCode, AppError> {
     const MAX_EVENTS_PER_RUN: usize = 2000;
+    const MAX_ID_LEN: usize = 128;
+    const MAX_EVENT_LEVEL_LEN: usize = 16;
+    const MAX_EVENT_KIND_LEN: usize = 64;
+    const MAX_EVENT_MESSAGE_LEN: usize = 4096;
+    const MAX_ERROR_LEN: usize = 4096;
 
     let agent_id = authenticate_agent(&state.db, &headers).await?;
 
     let run = req.run;
-    if run.id.trim().is_empty() {
+    if run.id.trim().is_empty() || run.id.len() > MAX_ID_LEN {
         return Err(AppError::bad_request(
             "invalid_run_id",
             "Run id is required",
         ));
     }
-    if run.job_id.trim().is_empty() {
+    if run.job_id.trim().is_empty() || run.job_id.len() > MAX_ID_LEN {
         return Err(AppError::bad_request(
             "invalid_job_id",
             "Job id is required",
@@ -246,6 +251,38 @@ pub(super) async fn agent_ingest_runs(
             "too_many_events",
             "Too many run events",
         ));
+    }
+    if run.started_at < 0 {
+        return Err(AppError::bad_request(
+            "invalid_started_at",
+            "started_at is invalid",
+        ));
+    }
+    if run.ended_at < run.started_at {
+        return Err(AppError::bad_request(
+            "invalid_ended_at",
+            "ended_at is invalid",
+        ));
+    }
+    if run.error.as_ref().is_some_and(|v| v.len() > MAX_ERROR_LEN) {
+        return Err(AppError::bad_request("invalid_error", "error is too long"));
+    }
+    for ev in &run.events {
+        if ev.seq <= 0 {
+            continue;
+        }
+        let level = ev.level.trim();
+        let kind = ev.kind.trim();
+        let message = ev.message.trim();
+        if level.is_empty()
+            || kind.is_empty()
+            || message.is_empty()
+            || level.len() > MAX_EVENT_LEVEL_LEN
+            || kind.len() > MAX_EVENT_KIND_LEN
+            || message.len() > MAX_EVENT_MESSAGE_LEN
+        {
+            return Err(AppError::bad_request("invalid_event", "Invalid run event"));
+        }
     }
 
     let row = sqlx::query("SELECT agent_id, spec_json FROM jobs WHERE id = ? LIMIT 1")
@@ -265,6 +302,18 @@ pub(super) async fn agent_ingest_runs(
     }
     let spec_json = row.get::<String, _>("spec_json");
 
+    if let Some(row) = sqlx::query("SELECT job_id FROM runs WHERE id = ? LIMIT 1")
+        .bind(&run.id)
+        .fetch_optional(&state.db)
+        .await?
+        && row.get::<String, _>("job_id") != run.job_id
+    {
+        return Err(AppError::bad_request(
+            "invalid_run_id",
+            "Run id is already associated with a different job",
+        ));
+    }
+
     let status = match run.status {
         AgentIngestRunStatus::Success => runs_repo::RunStatus::Success,
         AgentIngestRunStatus::Failed => runs_repo::RunStatus::Failed,
@@ -281,7 +330,16 @@ pub(super) async fn agent_ingest_runs(
     let mut tx = state.db.begin().await?;
 
     let _ = sqlx::query(
-        "INSERT OR IGNORE INTO runs (id, job_id, status, started_at, ended_at, summary_json, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        r#"
+        INSERT INTO runs (id, job_id, status, started_at, ended_at, summary_json, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          status = excluded.status,
+          started_at = excluded.started_at,
+          ended_at = excluded.ended_at,
+          summary_json = excluded.summary_json,
+          error = excluded.error
+        "#,
     )
     .bind(&run.id)
     .bind(&run.job_id)
