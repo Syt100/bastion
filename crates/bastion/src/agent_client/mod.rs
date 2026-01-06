@@ -10,8 +10,8 @@ use tracing::{debug, info, warn};
 use url::Url;
 
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, EncryptionResolvedV1, FsDirEntryV1, HubToAgentMessageV1, JobSpecResolvedV1,
-    PROTOCOL_VERSION, TargetResolvedV1,
+    AgentToHubMessageV1, EncryptionResolvedV1, FsDirEntryV1, HubToAgentMessageV1,
+    JobSpecResolvedV1, PROTOCOL_VERSION, TargetResolvedV1,
 };
 use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_targets::WebdavCredentials;

@@ -69,6 +69,8 @@ async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStat
 }
 
 pub fn router(state: AppState) -> Router {
+    error::set_debug_errors(state.config.debug_errors);
+
     const API_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
     const AGENT_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
 

@@ -47,6 +47,12 @@ pub struct HubArgs {
     #[arg(long, env = "BASTION_INSECURE_HTTP")]
     pub insecure_http: bool,
 
+    /// Include debug-only error diagnostics in API responses (dev only).
+    ///
+    /// When enabled, HTTP 500 `internal_error` responses may include safe diagnostics in `details.debug`.
+    #[arg(long, env = "BASTION_DEBUG_ERRORS")]
+    pub debug_errors: bool,
+
     /// Run history retention in days (default: 180).
     #[arg(long, default_value_t = 180, env = "BASTION_RUN_RETENTION_DAYS")]
     pub run_retention_days: i64,
@@ -180,6 +186,7 @@ impl HubArgs {
             bind: SocketAddr::new(self.host, self.port),
             data_dir,
             insecure_http: self.insecure_http,
+            debug_errors: self.debug_errors,
             run_retention_days: self.run_retention_days,
             incomplete_cleanup_days: self.incomplete_cleanup_days,
             trusted_proxies,

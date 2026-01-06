@@ -193,7 +193,9 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             let has_paths = source.paths.iter().any(|p| !p.trim().is_empty());
             let has_root = !source.root.trim().is_empty();
             if !has_paths && !has_root {
-                anyhow::bail!("filesystem.source.paths (or legacy filesystem.source.root) is required");
+                anyhow::bail!(
+                    "filesystem.source.paths (or legacy filesystem.source.root) is required"
+                );
             }
             validate_globs(&source.include)?;
             validate_globs(&source.exclude)?;

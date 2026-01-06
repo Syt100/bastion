@@ -66,7 +66,10 @@ pub(super) async fn fs_list(
         .fs_list(&node_id, path.to_string(), Duration::from_secs(5))
         .await
         .map_err(|error| {
-            AppError::bad_request("agent_fs_list_failed", format!("Agent filesystem list failed: {error}"))
+            AppError::bad_request(
+                "agent_fs_list_failed",
+                format!("Agent filesystem list failed: {error}"),
+            )
         })?;
 
     Ok(Json(FsListResponse {
@@ -92,10 +95,14 @@ fn list_dir_entries(path: &str) -> Result<Vec<FsListEntry>, AppError> {
         match error.kind() {
             ErrorKind::NotFound => AppError::not_found("path_not_found", "Path not found")
                 .with_details(serde_json::json!({ "path": path })),
-            ErrorKind::PermissionDenied => AppError::forbidden("permission_denied", "Permission denied")
-                .with_details(serde_json::json!({ "path": path })),
-            _ => AppError::bad_request("fs_list_failed", format!("Filesystem list failed: {error}"))
-                .with_details(serde_json::json!({ "path": path })),
+            ErrorKind::PermissionDenied => {
+                AppError::forbidden("permission_denied", "Permission denied")
+                    .with_details(serde_json::json!({ "path": path }))
+            }
+            _ => {
+                AppError::bad_request("fs_list_failed", format!("Filesystem list failed: {error}"))
+                    .with_details(serde_json::json!({ "path": path }))
+            }
         }
     }
 
@@ -103,8 +110,10 @@ fn list_dir_entries(path: &str) -> Result<Vec<FsListEntry>, AppError> {
     let dir = PathBuf::from(dir_path);
     let meta = std::fs::metadata(&dir).map_err(|e| map_io(dir_path, e))?;
     if !meta.is_dir() {
-        return Err(AppError::bad_request("not_directory", "path is not a directory")
-            .with_details(serde_json::json!({ "path": dir_path })));
+        return Err(
+            AppError::bad_request("not_directory", "path is not a directory")
+                .with_details(serde_json::json!({ "path": dir_path })),
+        );
     }
 
     let mut out = Vec::<FsListEntry>::new();

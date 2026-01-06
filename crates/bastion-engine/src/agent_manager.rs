@@ -7,6 +7,11 @@ use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use bastion_core::agent;
 use bastion_core::agent_protocol::{FsDirEntryV1, HubToAgentMessageV1, PROTOCOL_VERSION};
 
+type FsListKey = (String, String); // (agent_id, request_id)
+type FsListResult = Result<Vec<FsDirEntryV1>, String>;
+type FsListSender = oneshot::Sender<FsListResult>;
+type PendingFsList = HashMap<FsListKey, FsListSender>;
+
 #[derive(Debug, Clone)]
 struct AgentConnection {
     sender: mpsc::UnboundedSender<Message>,
@@ -16,7 +21,7 @@ struct AgentConnection {
 #[derive(Clone, Default)]
 pub struct AgentManager {
     inner: Arc<RwLock<HashMap<String, AgentConnection>>>,
-    pending_fs_list: Arc<Mutex<HashMap<(String, String), oneshot::Sender<Result<Vec<FsDirEntryV1>, String>>>>>,
+    pending_fs_list: Arc<Mutex<PendingFsList>>,
 }
 
 impl AgentManager {
@@ -125,11 +130,10 @@ impl AgentManager {
             return Err(error);
         }
 
-        let result =
-            tokio::time::timeout(timeout, rx)
-                .await
-                .map_err(|_| anyhow::anyhow!("agent fs list timeout"))?
-                .map_err(|_| anyhow::anyhow!("agent fs list channel closed"))?;
+        let result = tokio::time::timeout(timeout, rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("agent fs list timeout"))?
+            .map_err(|_| anyhow::anyhow!("agent fs list channel closed"))?;
 
         // Remove in case the response arrived after a timeout and the slot is still present.
         let _ = self
