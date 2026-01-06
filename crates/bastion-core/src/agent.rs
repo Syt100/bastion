@@ -8,6 +8,12 @@ pub fn generate_token_b64_urlsafe(size: usize) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+pub fn sha256_b64_urlsafe(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize())
+}
+
 pub fn sha256_urlsafe_token(token: &str) -> Result<Vec<u8>, anyhow::Error> {
     let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(token)
