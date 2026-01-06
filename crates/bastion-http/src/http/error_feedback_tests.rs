@@ -279,3 +279,83 @@ async fn agent_enroll_invalid_token_format_returns_401_with_details() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn create_job_missing_webdav_secret_returns_400_with_details_field() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/jobs", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "name": "job1",
+          "agent_id": null,
+          "schedule": null,
+          "overlap_policy": "queue",
+          "spec": {
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/data" },
+            "target": {
+              "type": "webdav",
+              "base_url": "http://example.com/backup",
+              "secret_name": "missing",
+              "part_size_bytes": 268435456
+            }
+          }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_webdav_secret"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "spec.target.secret_name"
+    );
+
+    server.abort();
+}

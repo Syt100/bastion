@@ -11,6 +11,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use bastion_core::HUB_NODE_ID;
 use bastion_core::agent_protocol::{
     BackupRunTaskV1, EncryptionResolvedV1, HubToAgentMessageV1, JobSpecResolvedV1,
     PROTOCOL_VERSION, PipelineResolvedV1, TargetResolvedV1,
@@ -754,7 +755,7 @@ async fn dispatch_run_to_agent(args: DispatchRunToAgentArgs<'_>) -> Result<(), a
     )
     .await?;
 
-    let resolved = resolve_job_spec_for_agent(db, secrets, spec).await?;
+    let resolved = resolve_job_spec_for_agent(db, secrets, agent_id, spec).await?;
     let task = BackupRunTaskV1 {
         run_id: run_id.to_string(),
         job_id: job.id.clone(),
@@ -779,6 +780,7 @@ async fn dispatch_run_to_agent(args: DispatchRunToAgentArgs<'_>) -> Result<(), a
 async fn resolve_job_spec_for_agent(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    node_id: &str,
     spec: job_spec::JobSpecV1,
 ) -> Result<JobSpecResolvedV1, anyhow::Error> {
     match spec {
@@ -792,7 +794,7 @@ async fn resolve_job_spec_for_agent(
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
             source,
-            target: resolve_target_for_agent(db, secrets, target).await?,
+            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
         }),
         job_spec::JobSpecV1::Sqlite {
             v,
@@ -804,7 +806,7 @@ async fn resolve_job_spec_for_agent(
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
             source,
-            target: resolve_target_for_agent(db, secrets, target).await?,
+            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
         }),
         job_spec::JobSpecV1::Vaultwarden {
             v,
@@ -816,7 +818,7 @@ async fn resolve_job_spec_for_agent(
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
             source,
-            target: resolve_target_for_agent(db, secrets, target).await?,
+            target: resolve_target_for_agent(db, secrets, node_id, target).await?,
         }),
     }
 }
@@ -843,6 +845,7 @@ async fn resolve_pipeline_for_agent(
 async fn resolve_target_for_agent(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    node_id: &str,
     target: job_spec::TargetV1,
 ) -> Result<TargetResolvedV1, anyhow::Error> {
     match target {
@@ -851,7 +854,7 @@ async fn resolve_target_for_agent(
             secret_name,
             part_size_bytes,
         } => {
-            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", &secret_name)
+            let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", &secret_name)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
@@ -1176,9 +1179,10 @@ async fn store_run_artifacts_to_target(
             secret_name,
             ..
         } => {
-            let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let cred_bytes =
+                secrets_repo::get_secret(db, secrets, HUB_NODE_ID, "webdav", secret_name)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
 
             let run_url =
@@ -1310,9 +1314,11 @@ async fn run_incomplete_cleanup_loop(
                         secret_name,
                         ..
                     } => {
+                        let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
                         let removed = match cleanup_webdav_run(
                             &db,
                             &secrets,
+                            node_id,
                             base_url,
                             secret_name,
                             &job.id,
@@ -1395,6 +1401,7 @@ fn cleanup_local_dir_run(
 async fn cleanup_webdav_run(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    node_id: &str,
     base_url: &str,
     secret_name: &str,
     job_id: &str,
@@ -1402,7 +1409,7 @@ async fn cleanup_webdav_run(
 ) -> Result<bool, anyhow::Error> {
     use bastion_backup::COMPLETE_NAME;
 
-    let cred_bytes = secrets_repo::get_secret(db, secrets, "webdav", secret_name)
+    let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
         .await?
         .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
     let credentials = WebdavCredentials::from_json(&cred_bytes)?;

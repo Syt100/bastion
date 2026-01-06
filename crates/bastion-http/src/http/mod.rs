@@ -99,6 +99,16 @@ pub fn router(state: AppState) -> Router {
                 .delete(secrets::delete_webdav_secret),
         )
         .route(
+            "/api/nodes/{node_id}/secrets/webdav",
+            get(secrets::list_webdav_secrets_node),
+        )
+        .route(
+            "/api/nodes/{node_id}/secrets/webdav/{name}",
+            get(secrets::get_webdav_secret_node)
+                .put(secrets::upsert_webdav_secret_node)
+                .delete(secrets::delete_webdav_secret_node),
+        )
+        .route(
             "/api/secrets/wecom-bot",
             get(secrets::list_wecom_bot_secrets),
         )

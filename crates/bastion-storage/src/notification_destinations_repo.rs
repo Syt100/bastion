@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use time::OffsetDateTime;
 
 use crate::notifications_repo;
+use bastion_core::HUB_NODE_ID;
 
 pub const SECRET_KIND_WECOM_BOT: &str = "wecom_bot";
 pub const SECRET_KIND_SMTP: &str = "smtp";
@@ -41,8 +42,9 @@ pub async fn is_enabled(
     };
 
     let row = sqlx::query(
-        "SELECT enabled FROM notification_destinations WHERE secret_kind = ? AND secret_name = ? LIMIT 1",
+        "SELECT enabled FROM notification_destinations WHERE node_id = ? AND secret_kind = ? AND secret_name = ? LIMIT 1",
     )
+    .bind(HUB_NODE_ID)
     .bind(secret_kind)
     .bind(secret_name)
     .fetch_optional(db)
@@ -64,11 +66,12 @@ pub async fn set_enabled(
     let now = OffsetDateTime::now_utc().unix_timestamp();
     sqlx::query(
         r#"
-        INSERT INTO notification_destinations (secret_kind, secret_name, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(secret_kind, secret_name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
+        INSERT INTO notification_destinations (node_id, secret_kind, secret_name, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id, secret_kind, secret_name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
         "#,
     )
+    .bind(HUB_NODE_ID)
     .bind(secret_kind)
     .bind(secret_name)
     .bind(if enabled { 1 } else { 0 })
@@ -87,13 +90,13 @@ pub async fn list_destinations(
         r#"
         SELECT 'wecom_bot' AS channel, s.name AS name, COALESCE(d.enabled, 1) AS enabled, s.updated_at AS updated_at
           FROM secrets s
-          LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.secret_name = s.name
-         WHERE s.kind = 'wecom_bot'
+          LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.node_id = s.node_id AND d.secret_name = s.name
+         WHERE s.node_id = 'hub' AND s.kind = 'wecom_bot'
         UNION ALL
         SELECT 'email' AS channel, s.name AS name, COALESCE(d.enabled, 1) AS enabled, s.updated_at AS updated_at
           FROM secrets s
-          LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.secret_name = s.name
-         WHERE s.kind = 'smtp'
+          LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.node_id = s.node_id AND d.secret_name = s.name
+         WHERE s.node_id = 'hub' AND s.kind = 'smtp'
          ORDER BY updated_at DESC
         "#,
     )
@@ -130,10 +133,10 @@ mod tests {
         let crypto = SecretsCrypto::load_or_create(temp.path()).expect("crypto");
 
         // Seed one wecom and one smtp secret (destination).
-        secrets_repo::upsert_secret(&pool, &crypto, "wecom_bot", "w1", b"{}")
+        secrets_repo::upsert_secret(&pool, &crypto, "hub", "wecom_bot", "w1", b"{}")
             .await
             .expect("upsert wecom");
-        secrets_repo::upsert_secret(&pool, &crypto, "smtp", "s1", b"{}")
+        secrets_repo::upsert_secret(&pool, &crypto, "hub", "smtp", "s1", b"{}")
             .await
             .expect("upsert smtp");
 
