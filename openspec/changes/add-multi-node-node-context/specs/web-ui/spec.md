@@ -22,7 +22,7 @@ The node switcher SHOULD display basic status (e.g. online/offline) for Agents.
 
 ### Requirement: Per-Node UX Matches Single-Node Behavior
 In node context, the Web UI SHALL behave like a single-node app for the selected node:
-- lists are filtered to the selected node,
+- node-scoped lists (e.g. Jobs and their run history) are filtered to the selected node,
 - create/edit defaults to the selected node,
 - cross-node selection controls are hidden or disabled.
 
@@ -30,10 +30,13 @@ In node context, the Web UI SHALL behave like a single-node app for the selected
 - **WHEN** the user is on `/n/<agent_id>/jobs` and opens the Create Job wizard
 - **THEN** the job is created for that Agent node without requiring a separate node selection step
 
+#### Scenario: Job run history is filtered by node context
+- **WHEN** the user is on `/n/<agent_id>/jobs` and opens run history for a job
+- **THEN** the run history shown belongs to jobs on that Agent node
+
 ### Requirement: Global Pages Are Clearly Separated
 The Web UI SHALL keep global management pages outside node-scoped routes (e.g. Agents management, global notifications/settings).
 
 #### Scenario: Agents page is global
 - **WHEN** the user opens the Agents page
 - **THEN** it shows all enrolled Agents regardless of the current node context
-
