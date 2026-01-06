@@ -9,6 +9,7 @@ Today, filesystem backups only support a single `filesystem.source.root` directo
 
 ## What Changes
 - Extend filesystem source to support selecting **multiple paths** (files and directories).
+- Keep `filesystem.source.root` as a legacy single-root form (root-relative tar paths) for backward compatibility and internal packaging; Web UI will write `paths`.
 - Define a stable **archive path** mapping for each selected source so backups preserve path structure and avoid collisions.
 - Apply filesystem `include` / `exclude` rules against the **archive path** (tar-internal path) instead of root-relative paths.
 - Automatically **deduplicate** overlapping selections and record a warning summary (without per-file spam).
@@ -21,7 +22,6 @@ Today, filesystem backups only support a single `filesystem.source.root` directo
   - Restore wizard: browse + select a subset (files and directories).
 
 ## Impact
-- Job spec schema changes for filesystem sources (`root` → `paths`).
+- Job spec schema changes for filesystem sources (add `paths`, keep `root` legacy).
 - Entries index `path` semantics become **archive paths** (used by browsing + partial restore).
 - Hub↔Agent control plane may need an extension to support node-scoped filesystem browsing on Agent nodes.
-

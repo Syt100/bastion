@@ -1,11 +1,14 @@
 # Design
 
 ## Filesystem Source Schema
-- Replace the single `filesystem.source.root` with `filesystem.source.paths: string[]`.
-- For development convenience, accept legacy `root` as an input alias and treat it as `paths=[root]` (UI will only write `paths`).
+- Add `filesystem.source.paths: string[]` to support selecting multiple source paths.
+- Keep legacy `filesystem.source.root` (single-root, root-relative tar paths) for backward compatibility and internal packaging.
+- Resolution rule:
+  - If `paths` is non-empty, it is used.
+  - Else if `root` is present, it is treated as a single source root.
 
 ## Archive Path Mapping
-Each selected source path is mapped to an **archive path prefix**:
+For `paths` (multi-path mode), each selected source path is mapped to an **archive path prefix**:
 - Normalize separators to `/`.
 - Ensure archive paths are **relative** (no leading `/`) and contain no `..` segments.
 - Unix absolute path `/var/log/syslog` → `var/log/syslog`
@@ -14,6 +17,8 @@ Each selected source path is mapped to an **archive path prefix**:
 
 For directory sources, all descendants are archived under `<archive_prefix>/<relative_to_source_dir>`.
 For file sources, the file is archived at `<archive_prefix>` (no extra nesting).
+
+For legacy `root` (single-root mode), tar paths are root-relative (equivalent to using an empty archive prefix for that root).
 
 ## Include / Exclude Semantics
 - `include`/`exclude` glob rules are matched against the **archive path**.
@@ -45,4 +50,3 @@ Deduplicate in two layers:
   - forward the request to the Agent over the existing websocket control channel,
   - await a response with a short timeout,
   - if the Agent is offline, return a clear error suitable for UI inline display.
-
