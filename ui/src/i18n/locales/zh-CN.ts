@@ -377,6 +377,17 @@ const messages = {
   runEvents: {
     title: '运行事件',
     noEvents: '暂无事件',
+    badges: {
+      new: '新消息',
+    },
+    actions: {
+      follow: '跟随',
+      latest: '最新',
+      details: '详情',
+    },
+    details: {
+      title: '事件详情',
+    },
     ws: {
       disconnected: '未连接',
       connecting: '连接中',

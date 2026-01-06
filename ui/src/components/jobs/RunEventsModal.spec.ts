@@ -20,13 +20,29 @@ vi.mock('naive-ui', async () => {
       },
     })
 
+  const VirtualList = vue.defineComponent({
+    name: 'NVirtualList',
+    props: ['items'],
+    setup(props, { slots, expose }) {
+      expose({ scrollTo: vi.fn() })
+      return () =>
+        vue.h(
+          'div',
+          { 'data-stub': 'NVirtualList' },
+          (props.items as unknown[] | undefined)?.map((item, index) => slots.default?.({ item, index })),
+        )
+    },
+  })
+
   return {
     NButton: stub('NButton'),
     NCode: stub('NCode'),
     NModal: stub('NModal'),
     NSpin: stub('NSpin'),
     NSpace: stub('NSpace'),
+    NSwitch: stub('NSwitch'),
     NTag: stub('NTag'),
+    NVirtualList: VirtualList,
     useMessage: () => messageApi,
   }
 })
@@ -81,24 +97,19 @@ describe('RunEventsModal', () => {
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
   })
 
-  it('dedupes websocket events by seq and autoscrolls', async () => {
+  it('uses after_seq and dedupes websocket events by seq', async () => {
     jobsApi.listRunEvents.mockResolvedValue([
       { run_id: 'run1', seq: 1, ts: 1, level: 'info', kind: 'start', message: 'start', fields: null },
     ])
 
     const wrapper = mount(RunEventsModal)
 
-    const scroll = wrapper.get('#run-events-scroll').element as HTMLElement
-    Object.defineProperty(scroll, 'scrollHeight', { value: 123, configurable: true })
-    scroll.scrollTop = 0
-
     const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
     await vm.open('run1')
 
-    expect(scroll.scrollTop).toBe(123)
-
     expect(MockWebSocket.instances).toHaveLength(1)
     const sock = MockWebSocket.instances[0]!
+    expect(sock.url).toContain('after_seq=1')
     sock.triggerOpen()
     await Promise.resolve()
     await Promise.resolve()
@@ -110,7 +121,7 @@ describe('RunEventsModal', () => {
     )
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.findAll('#run-events-scroll .font-mono')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="run-event-row"]')).toHaveLength(1)
 
     // New seq appended.
     sock.triggerMessage(
@@ -118,7 +129,6 @@ describe('RunEventsModal', () => {
     )
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.findAll('#run-events-scroll .font-mono')).toHaveLength(2)
-    expect(scroll.scrollTop).toBe(123)
+    expect(wrapper.findAll('[data-testid="run-event-row"]')).toHaveLength(2)
   })
 })

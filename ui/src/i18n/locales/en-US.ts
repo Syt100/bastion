@@ -377,6 +377,17 @@ const messages = {
   runEvents: {
     title: 'Run events',
     noEvents: 'No events yet',
+    badges: {
+      new: 'New',
+    },
+    actions: {
+      follow: 'Follow',
+      latest: 'Latest',
+      details: 'Details',
+    },
+    details: {
+      title: 'Event details',
+    },
     ws: {
       disconnected: 'Disconnected',
       connecting: 'Connecting',
