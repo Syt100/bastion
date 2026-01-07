@@ -19,6 +19,8 @@ export function formatUnixSecondsYmdHms(ts: number | null): string {
 }
 
 export function useUnixSecondsFormatter(_locale: MaybeRef<string>) {
+  void _locale
+
   function formatUnixSeconds(ts: number | null): string {
     return formatUnixSecondsYmdHms(ts)
   }

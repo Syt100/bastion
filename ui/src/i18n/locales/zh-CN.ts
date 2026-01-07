@@ -546,6 +546,7 @@ const messages = {
     deleteJobFailed: '删除任务失败',
     runNowFailed: '触发运行失败',
     fetchRunsFailed: '获取运行记录失败',
+    formInvalid: '请完善必填项',
     jobNameRequired: '任务名称不能为空',
     fetchWebdavSecretsFailed: '获取 WebDAV 凭据列表失败',
     fetchWebdavSecretFailed: '获取 WebDAV 凭据失败',
