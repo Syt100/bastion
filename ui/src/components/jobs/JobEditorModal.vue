@@ -61,6 +61,39 @@ const fsPicker = ref<FsPathPickerModalExpose | null>(null)
 const fsPickerPurpose = ref<'source_paths' | 'local_base_dir'>('source_paths')
 const fsPathDraft = ref<string>('')
 
+type JobEditorField =
+  | 'name'
+  | 'fsPaths'
+  | 'sqlitePath'
+  | 'vaultwardenDataDir'
+  | 'webdavBaseUrl'
+  | 'webdavSecretName'
+  | 'localBaseDir'
+  | 'partSizeMiB'
+  | 'encryptionKeyName'
+
+const fieldErrors = reactive<Record<JobEditorField, string | null>>({
+  name: null,
+  fsPaths: null,
+  sqlitePath: null,
+  vaultwardenDataDir: null,
+  webdavBaseUrl: null,
+  webdavSecretName: null,
+  localBaseDir: null,
+  partSizeMiB: null,
+  encryptionKeyName: null,
+})
+
+function clearFieldError(field: JobEditorField): void {
+  fieldErrors[field] = null
+}
+
+function clearAllFieldErrors(): void {
+  for (const key of Object.keys(fieldErrors) as JobEditorField[]) {
+    fieldErrors[key] = null
+  }
+}
+
 const EDITOR_STEPS_TOTAL = 6
 const stepTitles = computed(() => [
   t('jobs.steps.basics'),
@@ -158,6 +191,7 @@ function resetForm(): void {
   form.notifyMode = 'inherit'
   form.notifyWecomBots = []
   form.notifyEmails = []
+  clearAllFieldErrors()
 }
 
 function parseLines(text: string): string[] {
@@ -233,6 +267,7 @@ async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promi
   step.value = 1
   show.value = true
   saving.value = true
+  clearAllFieldErrors()
   lockedNodeId.value = ctx?.nodeId ?? null
   void notifications.refreshDestinations()
   try {
@@ -300,61 +335,80 @@ async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promi
 }
 
 function validateEditorStep(targetStep: number): boolean {
+  clearAllFieldErrors()
+
+  const errors: Array<{ field: JobEditorField; message: string }> = []
+
   if (targetStep >= 1) {
     const name = form.name.trim()
     if (!name) {
-      message.error(t('errors.jobNameRequired'))
-      return false
+      errors.push({ field: 'name', message: t('errors.jobNameRequired') })
     }
   }
 
   if (targetStep >= 2) {
     if (form.jobType === 'filesystem' && form.fsPaths.every((p) => !p.trim())) {
-      message.error(t('errors.sourcePathsRequired'))
-      return false
+      errors.push({ field: 'fsPaths', message: t('errors.sourcePathsRequired') })
     }
     if (form.jobType === 'sqlite' && !form.sqlitePath.trim()) {
-      message.error(t('errors.sqlitePathRequired'))
-      return false
+      errors.push({ field: 'sqlitePath', message: t('errors.sqlitePathRequired') })
     }
     if (form.jobType === 'vaultwarden' && !form.vaultwardenDataDir.trim()) {
-      message.error(t('errors.vaultwardenDataDirRequired'))
-      return false
+      errors.push({ field: 'vaultwardenDataDir', message: t('errors.vaultwardenDataDirRequired') })
     }
   }
 
   if (targetStep >= 3) {
     if (form.targetType === 'webdav') {
       if (!form.webdavBaseUrl.trim()) {
-        message.error(t('errors.webdavBaseUrlRequired'))
-        return false
+        errors.push({ field: 'webdavBaseUrl', message: t('errors.webdavBaseUrlRequired') })
       }
       if (!form.webdavSecretName.trim()) {
-        message.error(t('errors.webdavSecretRequired'))
-        return false
+        errors.push({ field: 'webdavSecretName', message: t('errors.webdavSecretRequired') })
       }
     } else {
       if (!form.localBaseDir.trim()) {
-        message.error(t('errors.localBaseDirRequired'))
-        return false
+        errors.push({ field: 'localBaseDir', message: t('errors.localBaseDirRequired') })
       }
     }
 
     if (!Number.isFinite(form.partSizeMiB) || form.partSizeMiB <= 0) {
-      message.error(t('errors.partSizeInvalid'))
-      return false
+      errors.push({ field: 'partSizeMiB', message: t('errors.partSizeInvalid') })
     }
   }
 
   if (targetStep >= 4) {
     const encryptionKeyName = form.encryptionKeyName.trim()
     if (form.encryptionEnabled && !encryptionKeyName) {
-      message.error(t('errors.encryptionKeyNameRequired'))
-      return false
+      errors.push({ field: 'encryptionKeyName', message: t('errors.encryptionKeyNameRequired') })
     }
   }
 
+  if (errors.length > 0) {
+    for (const err of errors) {
+      fieldErrors[err.field] = err.message
+    }
+    message.error(t('errors.formInvalid'))
+    return false
+  }
+
   return true
+}
+
+function onJobTypeChanged(): void {
+  clearFieldError('fsPaths')
+  clearFieldError('sqlitePath')
+  clearFieldError('vaultwardenDataDir')
+}
+
+function onTargetTypeChanged(): void {
+  clearFieldError('webdavBaseUrl')
+  clearFieldError('webdavSecretName')
+  clearFieldError('localBaseDir')
+}
+
+function onEncryptionEnabledChanged(): void {
+  clearFieldError('encryptionKeyName')
 }
 
 function prevStep(): void {
@@ -380,6 +434,7 @@ function openLocalBaseDirPicker(): void {
 function addFsPathsFromList(paths: string[]): void {
   const { merged, added, skipped } = mergeUniqueStrings(form.fsPaths, paths)
   form.fsPaths = merged
+  if (added > 0) clearFieldError('fsPaths')
   if (added > 0) {
     message.success(t('messages.sourcePathsAdded', { count: added }))
   }
@@ -391,6 +446,7 @@ function addFsPathsFromList(paths: string[]): void {
 function onFsPickerPicked(paths: string[]): void {
   if (fsPickerPurpose.value === 'local_base_dir') {
     form.localBaseDir = paths[0] || ''
+    clearFieldError('localBaseDir')
     return
   }
   addFsPathsFromList(paths)
@@ -417,7 +473,7 @@ const previewPayload = computed(() => {
 
   const pipeline = {
     encryption: form.encryptionEnabled
-      ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() || 'default' } as const)
+      ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() } as const)
       : ({ type: 'none' as const } as const),
   }
 
@@ -477,131 +533,9 @@ const previewPayload = computed(() => {
 async function save(): Promise<void> {
   if (!validateEditorStep(5)) return
 
-  const name = form.name.trim()
-  if (!name) {
-    message.error(t('errors.jobNameRequired'))
-    return
-  }
-
-  const agentId = form.node === 'hub' ? null : form.node
-
-  const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB))
-  const partSizeBytes = partSizeMiB * 1024 * 1024
-
-  const targetType = form.targetType
-  const webdavBaseUrl = form.webdavBaseUrl.trim()
-  const webdavSecretName = form.webdavSecretName.trim()
-  const localBaseDir = form.localBaseDir.trim()
-
-  if (targetType === 'webdav') {
-    if (!webdavBaseUrl) {
-      message.error(t('errors.webdavBaseUrlRequired'))
-      return
-    }
-    if (!webdavSecretName) {
-      message.error(t('errors.webdavSecretRequired'))
-      return
-    }
-  } else {
-    if (!localBaseDir) {
-      message.error(t('errors.localBaseDirRequired'))
-      return
-    }
-  }
-
-  const encryptionKeyName = form.encryptionKeyName.trim()
-  if (form.encryptionEnabled && !encryptionKeyName) {
-    message.error(t('errors.encryptionKeyNameRequired'))
-    return
-  }
-
-  const pipeline = {
-    encryption: form.encryptionEnabled
-      ? ({ type: 'age_x25519' as const, key_name: encryptionKeyName } as const)
-      : ({ type: 'none' as const } as const),
-  }
-
-  const notifications =
-    form.notifyMode === 'custom'
-      ? {
-          mode: 'custom' as const,
-          wecom_bot: form.notifyWecomBots,
-          email: form.notifyEmails,
-        }
-      : ({ mode: 'inherit' as const } as const)
-
-  type FsSource = {
-    paths: string[]
-    include: string[]
-    exclude: string[]
-    symlink_policy: FsSymlinkPolicy
-    hardlink_policy: FsHardlinkPolicy
-    error_policy: FsErrorPolicy
-  }
-  type SqliteSource = { path: string; integrity_check: boolean }
-  type VaultwardenSource = { data_dir: string }
-
-  let source: FsSource | SqliteSource | VaultwardenSource
-  if (form.jobType === 'filesystem') {
-    const fsSource: FsSource = {
-      paths: form.fsPaths.map((p) => p.trim()).filter((p) => p.length > 0),
-      include: parseLines(form.fsInclude),
-      exclude: parseLines(form.fsExclude),
-      symlink_policy: form.fsSymlinkPolicy,
-      hardlink_policy: form.fsHardlinkPolicy,
-      error_policy: form.fsErrorPolicy,
-    }
-    if (fsSource.paths.length === 0) {
-      message.error(t('errors.sourcePathsRequired'))
-      return
-    }
-    source = fsSource
-  } else if (form.jobType === 'sqlite') {
-    const sqliteSource: SqliteSource = { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
-    if (!sqliteSource.path) {
-      message.error(t('errors.sqlitePathRequired'))
-      return
-    }
-    source = sqliteSource
-  } else {
-    const vaultwardenSource: VaultwardenSource = { data_dir: form.vaultwardenDataDir.trim() }
-    if (!vaultwardenSource.data_dir) {
-      message.error(t('errors.vaultwardenDataDirRequired'))
-      return
-    }
-    source = vaultwardenSource
-  }
-
   saving.value = true
   try {
-    const target =
-      targetType === 'webdav'
-        ? ({
-            type: 'webdav' as const,
-            base_url: webdavBaseUrl,
-            secret_name: webdavSecretName,
-            part_size_bytes: partSizeBytes,
-          } as const)
-        : ({
-            type: 'local_dir' as const,
-            base_dir: localBaseDir,
-            part_size_bytes: partSizeBytes,
-          } as const)
-
-    const payload = {
-      name,
-      agent_id: agentId,
-      schedule: form.schedule.trim() ? form.schedule.trim() : null,
-      overlap_policy: form.overlapPolicy,
-      spec: {
-        v: 1 as const,
-        type: form.jobType,
-        pipeline,
-        notifications,
-        source,
-        target,
-      },
-    }
+    const payload = previewPayload.value
 
     if (mode.value === 'create') {
       await jobs.createJob(payload)
@@ -737,11 +671,16 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
         </div>
       </div>
 
-      <n-form label-placement="top">
+      <n-form label-placement="top" :show-require-mark="true">
         <template v-if="step === 1">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item :label="t('jobs.fields.name')">
-              <n-input v-model:value="form.name" />
+            <n-form-item
+              :label="t('jobs.fields.name')"
+              required
+              :validation-status="fieldErrors.name ? 'error' : undefined"
+              :feedback="fieldErrors.name || undefined"
+            >
+              <n-input v-model:value="form.name" @update:value="clearFieldError('name')" />
             </n-form-item>
             <n-form-item :label="t('jobs.fields.node')">
               <n-select v-model:value="form.node" :options="nodeOptions" filterable :disabled="lockedNodeId !== null" />
@@ -750,7 +689,7 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
             <n-form-item :label="t('jobs.fields.type')">
-              <n-select v-model:value="form.jobType" :options="jobTypeOptions" />
+              <n-select v-model:value="form.jobType" :options="jobTypeOptions" @update:value="onJobTypeChanged" />
             </n-form-item>
             <n-form-item :label="t('jobs.fields.overlap')">
               <n-select v-model:value="form.overlapPolicy" :options="overlapOptions" />
@@ -758,8 +697,10 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </div>
 
           <n-form-item :label="t('jobs.fields.schedule')">
-            <n-input v-model:value="form.schedule" :placeholder="t('jobs.fields.schedulePlaceholder')" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.scheduleHelp') }}</div>
+            <div class="space-y-1 w-full">
+              <n-input v-model:value="form.schedule" :placeholder="t('jobs.fields.schedulePlaceholder')" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
+            </div>
           </n-form-item>
         </template>
 
@@ -769,10 +710,15 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </n-alert>
 
           <template v-if="form.jobType === 'filesystem'">
-            <n-form-item :label="t('jobs.fields.sourcePaths')">
+            <n-form-item
+              :label="t('jobs.fields.sourcePaths')"
+              required
+              :validation-status="fieldErrors.fsPaths ? 'error' : undefined"
+              :feedback="fieldErrors.fsPaths || undefined"
+            >
               <div class="space-y-3 w-full app-border-subtle rounded-lg p-3">
                 <div class="flex flex-wrap items-center gap-2 justify-between">
-                  <div class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
+                  <div v-if="!fieldErrors.fsPaths" class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
                   <div class="flex items-center gap-2">
                     <n-button size="small" type="primary" @click="openFsPicker">
                       {{ t('jobs.actions.browseFs') }}
@@ -809,8 +755,10 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
               </n-form-item>
             </div>
             <n-form-item :label="t('jobs.fields.fsErrorPolicy')">
-              <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
-              <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
+              <div class="space-y-1 w-full">
+                <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
+                <div class="text-xs opacity-70">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
+              </div>
             </n-form-item>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <n-form-item :label="t('jobs.fields.fsInclude')">
@@ -839,10 +787,19 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </template>
 
           <template v-else-if="form.jobType === 'sqlite'">
-            <n-form-item :label="t('jobs.fields.sqlitePath')">
-              <div class="space-y-1">
-                <n-input v-model:value="form.sqlitePath" :placeholder="t('jobs.fields.sqlitePathPlaceholder')" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.sqlitePathHelp') }}</div>
+            <n-form-item
+              :label="t('jobs.fields.sqlitePath')"
+              required
+              :validation-status="fieldErrors.sqlitePath ? 'error' : undefined"
+              :feedback="fieldErrors.sqlitePath || undefined"
+            >
+              <div class="space-y-1 w-full">
+                <n-input
+                  v-model:value="form.sqlitePath"
+                  :placeholder="t('jobs.fields.sqlitePathPlaceholder')"
+                  @update:value="clearFieldError('sqlitePath')"
+                />
+                <div v-if="!fieldErrors.sqlitePath" class="text-xs opacity-70">{{ t('jobs.fields.sqlitePathHelp') }}</div>
               </div>
             </n-form-item>
             <n-form-item :label="t('jobs.fields.sqliteIntegrityCheck')">
@@ -854,13 +811,21 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </template>
 
           <template v-else>
-            <n-form-item :label="t('jobs.fields.vaultwardenDataDir')">
-              <div class="space-y-1">
+            <n-form-item
+              :label="t('jobs.fields.vaultwardenDataDir')"
+              required
+              :validation-status="fieldErrors.vaultwardenDataDir ? 'error' : undefined"
+              :feedback="fieldErrors.vaultwardenDataDir || undefined"
+            >
+              <div class="space-y-1 w-full">
                 <n-input
                   v-model:value="form.vaultwardenDataDir"
                   :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')"
+                  @update:value="clearFieldError('vaultwardenDataDir')"
                 />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.vaultwardenDataDirHelp') }}</div>
+                <div v-if="!fieldErrors.vaultwardenDataDir" class="text-xs opacity-70">
+                  {{ t('jobs.fields.vaultwardenDataDirHelp') }}
+                </div>
               </div>
             </n-form-item>
           </template>
@@ -869,35 +834,72 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
         <template v-else-if="step === 3">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
             <n-form-item :label="t('jobs.fields.targetType')">
-              <n-select v-model:value="form.targetType" :options="targetTypeOptions" />
+              <n-select v-model:value="form.targetType" :options="targetTypeOptions" @update:value="onTargetTypeChanged" />
             </n-form-item>
 
-            <n-form-item :label="t('jobs.fields.partSizeMiB')">
-              <n-input-number v-model:value="form.partSizeMiB" :min="1" class="w-full" />
-              <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
+            <n-form-item
+              :label="t('jobs.fields.partSizeMiB')"
+              required
+              :validation-status="fieldErrors.partSizeMiB ? 'error' : undefined"
+              :feedback="fieldErrors.partSizeMiB || undefined"
+            >
+              <div class="space-y-1 w-full">
+                <n-input-number
+                  v-model:value="form.partSizeMiB"
+                  :min="1"
+                  class="w-full"
+                  @update:value="clearFieldError('partSizeMiB')"
+                />
+                <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">{{ t('jobs.fields.partSizeMiBHelp') }}</div>
+              </div>
             </n-form-item>
           </div>
 
           <template v-if="form.targetType === 'webdav'">
-            <n-form-item :label="t('jobs.fields.webdavBaseUrl')">
-              <n-input v-model:value="form.webdavBaseUrl" :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')" />
+            <n-form-item
+              :label="t('jobs.fields.webdavBaseUrl')"
+              required
+              :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
+              :feedback="fieldErrors.webdavBaseUrl || undefined"
+            >
+              <n-input
+                v-model:value="form.webdavBaseUrl"
+                :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')"
+                @update:value="clearFieldError('webdavBaseUrl')"
+              />
             </n-form-item>
-            <n-form-item :label="t('jobs.fields.webdavSecret')">
-              <n-select v-model:value="form.webdavSecretName" :options="webdavSecretOptions" filterable />
+            <n-form-item
+              :label="t('jobs.fields.webdavSecret')"
+              required
+              :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
+              :feedback="fieldErrors.webdavSecretName || undefined"
+            >
+              <n-select
+                v-model:value="form.webdavSecretName"
+                :options="webdavSecretOptions"
+                filterable
+                @update:value="clearFieldError('webdavSecretName')"
+              />
             </n-form-item>
           </template>
           <template v-else>
-            <n-form-item :label="t('jobs.fields.localBaseDir')">
-              <div class="space-y-1">
+            <n-form-item
+              :label="t('jobs.fields.localBaseDir')"
+              required
+              :validation-status="fieldErrors.localBaseDir ? 'error' : undefined"
+              :feedback="fieldErrors.localBaseDir || undefined"
+            >
+              <div class="space-y-1 w-full">
                 <div class="flex gap-2">
                   <n-input
                     v-model:value="form.localBaseDir"
                     class="flex-1"
                     :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
+                    @update:value="clearFieldError('localBaseDir')"
                   />
                   <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
                 </div>
-                <div class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
+                <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
               </div>
             </n-form-item>
           </template>
@@ -906,17 +908,26 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
         <template v-else-if="step === 4">
           <n-form-item :label="t('jobs.fields.encryptionEnabled')">
             <div class="space-y-1">
-              <n-switch v-model:value="form.encryptionEnabled" />
+              <n-switch v-model:value="form.encryptionEnabled" @update:value="onEncryptionEnabledChanged" />
               <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionHelp') }}</div>
             </div>
           </n-form-item>
-          <n-form-item v-if="form.encryptionEnabled" :label="t('jobs.fields.encryptionKeyName')">
+          <n-form-item
+            v-if="form.encryptionEnabled"
+            :label="t('jobs.fields.encryptionKeyName')"
+            required
+            :validation-status="fieldErrors.encryptionKeyName ? 'error' : undefined"
+            :feedback="fieldErrors.encryptionKeyName || undefined"
+          >
             <div class="space-y-1 w-full">
               <n-input
                 v-model:value="form.encryptionKeyName"
                 :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
+                @update:value="clearFieldError('encryptionKeyName')"
               />
-              <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionKeyNameHelp') }}</div>
+              <div v-if="!fieldErrors.encryptionKeyName" class="text-xs opacity-70">
+                {{ t('jobs.fields.encryptionKeyNameHelp') }}
+              </div>
             </div>
           </n-form-item>
         </template>
@@ -927,8 +938,10 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           </n-alert>
 
           <n-form-item :label="t('jobs.fields.notificationsMode')">
-            <n-select v-model:value="form.notifyMode" :options="notifyModeOptions" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.fields.notificationsModeHelp') }}</div>
+            <div class="space-y-1 w-full">
+              <n-select v-model:value="form.notifyMode" :options="notifyModeOptions" />
+              <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsModeHelp') }}</div>
+            </div>
           </n-form-item>
 
           <template v-if="form.notifyMode === 'custom'">
