@@ -52,10 +52,8 @@ pub(super) async fn list_run_entries(
         None => None,
         Some(v) if matches!(v, "file" | "dir" | "symlink") => Some(v),
         Some(_) => {
-            return Err(
-                AppError::bad_request("invalid_kind", "invalid kind")
-                    .with_details(serde_json::json!({ "field": "kind" })),
-            );
+            return Err(AppError::bad_request("invalid_kind", "invalid kind")
+                .with_details(serde_json::json!({ "field": "kind" })));
         }
     };
     let hide_dotfiles = query.hide_dotfiles.unwrap_or(false);
@@ -63,7 +61,11 @@ pub(super) async fn list_run_entries(
         (Some(a), Some(b)) if a > b => (Some(b), Some(a)),
         other => other,
     };
-    let type_sort = query.type_sort.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let type_sort = query
+        .type_sort
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
     let type_sort_file_first = match type_sort {
         None | Some("dir_first") => false,
         Some("file_first") => true,
