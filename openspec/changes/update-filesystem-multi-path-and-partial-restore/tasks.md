@@ -31,7 +31,7 @@
 - [x] 4.2c Polish Job Editor step layouts (modern, concise)
 - [x] 4.3 Update Restore wizard to browse archived paths and select subset
 - [x] 4.4 Add “single directory” mode and use it for LocalDir `base_dir` browse
-- [ ] 4.5 Update/extend unit tests
+- [x] 4.5 Update/extend unit tests
 - [x] 4.6 Commit UI changes (detailed message)
 
 ## 5. Validation
