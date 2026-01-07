@@ -325,24 +325,23 @@ defineExpose<FsPathPickerModalExpose>({ open })
         <n-input v-model:value="currentPath" @keyup.enter="refresh" />
       </div>
 
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-1">
-          <div class="flex items-center gap-2 sm:flex-1">
-            <n-input
-              v-model:value="searchDraft"
-              :placeholder="t('fsPicker.searchPlaceholder')"
-              @keyup.enter="applySearch"
-            />
-            <n-button size="small" :disabled="!hasSearchDraftChanges" @click="applySearch">
-              {{ t('fsPicker.search') }}
-            </n-button>
-          </div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <n-select v-model:value="kindFilter" size="small" :options="kindOptions" />
-            <div class="flex items-center gap-2 shrink-0">
-              <n-switch v-model:value="hideDotfiles" size="small" />
-              <div class="text-xs opacity-70 whitespace-nowrap">{{ t('common.hideDotfiles') }}</div>
-            </div>
+      <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <n-input
+            v-model:value="searchDraft"
+            class="flex-1 min-w-0"
+            :placeholder="t('fsPicker.searchPlaceholder')"
+            @keyup.enter="applySearch"
+          />
+          <n-button size="small" :disabled="!hasSearchDraftChanges" @click="applySearch">
+            {{ t('fsPicker.search') }}
+          </n-button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap sm:justify-end">
+          <n-select v-model:value="kindFilter" class="w-44" size="small" :options="kindOptions" />
+          <div class="flex items-center gap-2 shrink-0">
+            <n-switch v-model:value="hideDotfiles" size="small" />
+            <div class="text-xs opacity-70 whitespace-nowrap">{{ t('common.hideDotfiles') }}</div>
           </div>
         </div>
       </div>
