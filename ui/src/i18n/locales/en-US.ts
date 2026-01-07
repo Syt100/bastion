@@ -249,6 +249,9 @@ const messages = {
       runNow: 'Run now',
       runs: 'Runs',
       browseFs: 'Browse local files',
+      showJson: 'View JSON',
+      hideJson: 'Hide JSON',
+      copyJson: 'Copy JSON',
     },
   },
   fsPicker: {
