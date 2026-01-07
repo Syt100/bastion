@@ -50,9 +50,30 @@ The browser modals SHALL support:
 ### Requirement: Job Editor Wizard
 The Web UI SHALL support creating and editing filesystem jobs with multi-path sources (files and directories) and SHALL provide a browse UI to pick paths from the selected node.
 
+The Job Editor SHALL:
+- indicate required fields with a require mark (`*`),
+- show validation errors inline at the corresponding fields when “Next” / “Save” validation fails,
+- show a short toast notification on validation failure (in addition to inline errors), and
+- hide a field’s helper text while that field is in an error state.
+
 #### Scenario: Pick multiple filesystem sources
 - **WHEN** the user edits a filesystem job and selects multiple source paths
 - **THEN** the job spec is saved with all selected paths
+
+#### Scenario: Required fields are clearly indicated
+- **WHEN** the user views a Job Editor step containing required inputs (e.g. job name, required target fields)
+- **THEN** the required fields show a `*` require mark
+- **AND** optional fields are not labeled as “optional” in the field title
+
+#### Scenario: Step validation shows inline errors and a short toast
+- **WHEN** the user clicks “Next” or “Save” with missing/invalid required inputs
+- **THEN** the editor remains on the current step
+- **AND** the invalid fields show inline error feedback
+- **AND** the UI displays a short toast notification
+
+#### Scenario: Helper text is hidden while a field has an error
+- **WHEN** a form field is displaying an inline error
+- **THEN** the helper text for that field is not shown
 
 #### Scenario: Browse local target directory
 - **WHEN** the user configures a job target of type `local_dir`
