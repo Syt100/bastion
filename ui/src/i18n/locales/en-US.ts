@@ -19,6 +19,7 @@ const messages = {
     clear: 'Clear',
     search: 'Search',
     filters: 'Filters',
+    browse: 'Browse',
     name: 'Name',
     type: 'Type',
     size: 'Size',
@@ -252,10 +253,12 @@ const messages = {
   },
   fsPicker: {
     title: 'Select files/directories',
+    dirTitle: 'Select a directory',
     up: 'Up',
     selectCurrentDir: 'Select current directory',
     selectedCount: '{count} selected',
     currentPath: 'Current path',
+    dirNotFoundWillCreate: 'Directory not found; it will be created on the first run (if permitted)',
     searchPlaceholder: 'Search (name)',
     search: 'Search',
     kindAll: 'All types',
@@ -523,6 +526,7 @@ const messages = {
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',
     fs_list_failed: 'Failed to list files',
+    agent_offline: 'Agent is offline',
     not_found: 'Not found',
   },
   errors: {

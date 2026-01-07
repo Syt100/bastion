@@ -58,6 +58,7 @@ const saving = ref<boolean>(false)
 const step = ref<number>(1)
 const lockedNodeId = ref<'hub' | string | null>(null)
 const fsPicker = ref<FsPathPickerModalExpose | null>(null)
+const fsPickerPurpose = ref<'source_paths' | 'local_base_dir'>('source_paths')
 const fsPathDraft = ref<string>('')
 
 const EDITOR_STEPS_TOTAL = 6
@@ -366,7 +367,14 @@ function nextStep(): void {
 }
 
 function openFsPicker(): void {
+  fsPickerPurpose.value = 'source_paths'
   fsPicker.value?.open(form.node)
+}
+
+function openLocalBaseDirPicker(): void {
+  fsPickerPurpose.value = 'local_base_dir'
+  const path = form.localBaseDir.trim() || undefined
+  fsPicker.value?.open(form.node, { mode: 'single_dir', path })
 }
 
 function addFsPathsFromList(paths: string[]): void {
@@ -378,6 +386,14 @@ function addFsPathsFromList(paths: string[]): void {
   if (skipped > 0) {
     message.warning(t('messages.sourcePathsSkipped', { count: skipped }))
   }
+}
+
+function onFsPickerPicked(paths: string[]): void {
+  if (fsPickerPurpose.value === 'local_base_dir') {
+    form.localBaseDir = paths[0] || ''
+    return
+  }
+  addFsPathsFromList(paths)
 }
 
 function addFsPathsFromDraft(): void {
@@ -873,7 +889,14 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           <template v-else>
             <n-form-item :label="t('jobs.fields.localBaseDir')">
               <div class="space-y-1">
-                <n-input v-model:value="form.localBaseDir" :placeholder="t('jobs.fields.localBaseDirPlaceholder')" />
+                <div class="flex gap-2">
+                  <n-input
+                    v-model:value="form.localBaseDir"
+                    class="flex-1"
+                    :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
+                  />
+                  <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
+                </div>
                 <div class="text-xs opacity-70">{{ t('jobs.fields.localBaseDirHelp') }}</div>
               </div>
             </n-form-item>
@@ -976,5 +999,5 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
       </n-space>
     </div>
   </n-modal>
-  <FsPathPickerModal ref="fsPicker" @picked="addFsPathsFromList" />
+  <FsPathPickerModal ref="fsPicker" @picked="onFsPickerPicked" />
 </template>

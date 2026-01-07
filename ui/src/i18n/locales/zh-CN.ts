@@ -19,6 +19,7 @@ const messages = {
     clear: '清空',
     search: '搜索',
     filters: '筛选',
+    browse: '浏览',
     name: '名称',
     type: '类型',
     size: '大小',
@@ -252,10 +253,12 @@ const messages = {
   },
   fsPicker: {
     title: '选择文件/目录',
+    dirTitle: '选择目录',
     up: '上一级',
     selectCurrentDir: '选择当前目录',
     selectedCount: '已选 {count} 项',
     currentPath: '当前路径',
+    dirNotFoundWillCreate: '目录不存在，将在首次运行时自动创建（需权限）',
     searchPlaceholder: '搜索（名称）',
     search: '搜索',
     kindAll: '全部类型',
@@ -523,6 +526,7 @@ const messages = {
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',
     fs_list_failed: '列出文件失败',
+    agent_offline: '客户端离线',
     not_found: '资源不存在',
   },
   errors: {
