@@ -256,6 +256,7 @@ const messages = {
     dirTitle: 'Select a directory',
     up: 'Up',
     selectCurrentDir: 'Select current directory',
+    selectDirAnyway: 'Use this directory anyway',
     selectedCount: '{count} selected',
     currentPath: 'Current path',
     dirNotFoundWillCreate: 'Directory not found; it will be created on the first run (if permitted)',

@@ -24,7 +24,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
 
-import { ApiError, apiFetch } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -96,8 +96,17 @@ const filtersDrawerOpen = ref<boolean>(false)
 type SingleDirStatus = 'unknown' | 'ok' | 'not_found' | 'not_directory' | 'permission_denied' | 'agent_offline' | 'error'
 const singleDirStatus = ref<SingleDirStatus>('unknown')
 const singleDirMessage = ref<string>('')
+const singleDirValidatedPath = ref<string>('')
+const singleDirNotFoundConfirmPath = ref<string>('')
 
 const modalTitle = computed(() => (isSingleDirMode.value ? t('fsPicker.dirTitle') : t('fsPicker.title')))
+const singleDirConfirmLabel = computed(() =>
+  isSingleDirMode.value &&
+  singleDirStatus.value === 'not_found' &&
+  singleDirNotFoundConfirmPath.value === normalizePath(currentPath.value)
+    ? t('fsPicker.selectDirAnyway')
+    : t('fsPicker.selectCurrentDir'),
+)
 
 const selectedCount = computed(() => checked.value.length)
 
@@ -255,6 +264,15 @@ function normalizePath(p: string): string {
   return p.trim()
 }
 
+function onCurrentPathEdited(): void {
+  if (!isSingleDirMode.value) return
+  singleDirStatus.value = 'unknown'
+  singleDirMessage.value = ''
+  singleDirValidatedPath.value = ''
+  singleDirNotFoundConfirmPath.value = ''
+  entries.value = []
+}
+
 function applySizeFilter(): void {
   const min = sizeMinDraft.value
   const max = sizeMaxDraft.value
@@ -359,6 +377,8 @@ async function refresh(): Promise<void> {
   if (isSingleDirMode.value) {
     singleDirStatus.value = 'unknown'
     singleDirMessage.value = ''
+    singleDirValidatedPath.value = p
+    singleDirNotFoundConfirmPath.value = ''
   }
   try {
     const url = (path: string) =>
@@ -371,42 +391,13 @@ async function refresh(): Promise<void> {
     if (isSingleDirMode.value) {
       singleDirStatus.value = 'ok'
       singleDirMessage.value = ''
+      singleDirValidatedPath.value = normalizePath(res.path)
+      singleDirNotFoundConfirmPath.value = ''
     }
   } catch (error) {
     const info = toApiErrorInfo(error, t)
     const code = info.code
     const msgLower = info.message.toLowerCase()
-    const shouldFallback = code === 'not_directory' || (code === 'agent_fs_list_failed' && msgLower.includes('not a directory'))
-
-    if (shouldFallback) {
-      const parent = computeParentPath(p)
-      if (parent && parent !== p) {
-        try {
-          const res = await apiFetch<FsListResponse>(
-            `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(parent)}`,
-          )
-          currentPath.value = res.path
-          entries.value = res.entries
-          saveLastDir(nodeId.value, currentPath.value)
-          if (isSingleDirMode.value) {
-            singleDirStatus.value = 'ok'
-            singleDirMessage.value = ''
-          }
-          return
-        } catch (error2) {
-          if (isSingleDirMode.value) {
-            const info2 = toApiErrorInfo(error2, t)
-            singleDirStatus.value = 'error'
-            singleDirMessage.value = info2.message
-            entries.value = []
-          } else {
-            message.error(formatToastError(t('errors.fsListFailed'), error2, t))
-          }
-          return
-        }
-      }
-    }
-
     if (isSingleDirMode.value) {
       const errorText = info.message || t('errors.fsListFailed')
 
@@ -462,6 +453,27 @@ async function refresh(): Promise<void> {
       return
     }
 
+    const shouldFallback =
+      code === 'not_directory' || (code === 'agent_fs_list_failed' && msgLower.includes('not a directory'))
+
+    if (shouldFallback) {
+      const parent = computeParentPath(p)
+      if (parent && parent !== p) {
+        try {
+          const res = await apiFetch<FsListResponse>(
+            `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(parent)}`,
+          )
+          currentPath.value = res.path
+          entries.value = res.entries
+          saveLastDir(nodeId.value, currentPath.value)
+          return
+        } catch (error2) {
+          message.error(formatToastError(t('errors.fsListFailed'), error2, t))
+          return
+        }
+      }
+    }
+
     message.error(formatToastError(t('errors.fsListFailed'), error, t))
   } finally {
     loading.value = false
@@ -506,17 +518,28 @@ function up(): void {
 
 async function pick(): Promise<void> {
   if (isSingleDirMode.value) {
-    if (singleDirStatus.value === 'unknown') {
-      await refresh()
-    }
-
-    const p = normalizePath(currentPath.value)
+    let p = normalizePath(currentPath.value)
     if (!p) {
       message.error(t('errors.fsPathRequired'))
       return
     }
 
-    if (singleDirStatus.value !== 'ok' && singleDirStatus.value !== 'not_found') {
+    const validated = normalizePath(singleDirValidatedPath.value)
+    if (!validated || validated !== p) {
+      await refresh()
+      p = normalizePath(currentPath.value)
+      if (!p) {
+        message.error(t('errors.fsPathRequired'))
+        return
+      }
+    }
+
+    if (singleDirStatus.value === 'not_found') {
+      if (singleDirNotFoundConfirmPath.value !== p) {
+        singleDirNotFoundConfirmPath.value = p
+        return
+      }
+    } else if (singleDirStatus.value !== 'ok') {
       return
     }
 
@@ -644,7 +667,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
 
       <div class="space-y-2">
         <div class="text-xs opacity-70">{{ t('fsPicker.currentPath') }}</div>
-        <n-input v-model:value="currentPath" @keyup.enter="refresh" />
+        <n-input v-model:value="currentPath" @update:value="onCurrentPathEdited" @keyup.enter="refresh" />
         <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
           {{ t('fsPicker.dirNotFoundWillCreate') }}
         </n-alert>
@@ -811,7 +834,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
           :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
           @click="pick"
         >
-          {{ t('fsPicker.selectCurrentDir') }}
+          {{ singleDirConfirmLabel }}
         </n-button>
         <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
           {{ t('fsPicker.addSelected') }}
