@@ -366,8 +366,7 @@ function nextStep(): void {
 }
 
 function openFsPicker(): void {
-  const initial = form.fsPaths.find((p) => p.trim()) ?? '/'
-  fsPicker.value?.open(form.node, initial)
+  fsPicker.value?.open(form.node)
 }
 
 function addFsPathsFromList(paths: string[]): void {
@@ -755,11 +754,13 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
 
           <template v-if="form.jobType === 'filesystem'">
             <n-form-item :label="t('jobs.fields.sourcePaths')">
-              <div class="space-y-2 w-full">
+              <div class="space-y-3 w-full app-border-subtle rounded-lg p-3">
                 <div class="flex flex-wrap items-center gap-2 justify-between">
                   <div class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
                   <div class="flex items-center gap-2">
-                    <n-button size="small" @click="openFsPicker">{{ t('jobs.actions.browseFs') }}</n-button>
+                    <n-button size="small" type="primary" @click="openFsPicker">
+                      {{ t('jobs.actions.browseFs') }}
+                    </n-button>
                     <n-button size="small" :disabled="form.fsPaths.length === 0" @click="clearFsPaths">
                       {{ t('common.clear') }}
                     </n-button>

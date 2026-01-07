@@ -24,6 +24,7 @@ const messages = {
     dir: 'Directory',
     file: 'File',
     symlink: 'Symlink',
+    hideDotfiles: 'Hide dotfiles',
     requestId: 'Request ID',
     stepOf: 'Step {current}/{total}',
     back: 'Back',
@@ -245,6 +246,9 @@ const messages = {
     selectCurrentDir: 'Select current directory',
     selectedCount: '{count} selected',
     currentPath: 'Current path',
+    searchPlaceholder: 'Search (name)',
+    search: 'Search',
+    kindAll: 'All types',
     addSelected: 'Add selected',
   },
   settings: {
@@ -441,6 +445,9 @@ const messages = {
     pick: {
       title: 'Pick files/directories to restore',
       currentPrefix: 'Current path (inside archive)',
+      searchPlaceholder: 'Search (name)',
+      search: 'Search',
+      kindAll: 'All types',
       confirm: 'Confirm',
     },
     selectionSummary: 'Selected: {files} files, {dirs} dirs',

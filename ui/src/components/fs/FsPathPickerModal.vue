@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
-import { NButton, NDataTable, NInput, NModal, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
+import {
+  NButton,
+  NDataTable,
+  NInput,
+  NModal,
+  NSelect,
+  NSpace,
+  NSwitch,
+  useMessage,
+  type DataTableColumns,
+} from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { ApiError, apiFetch } from '@/lib/api'
@@ -44,7 +54,31 @@ const currentPath = ref<string>('/')
 const entries = ref<FsListEntry[]>([])
 const checked = ref<string[]>([])
 
+const searchDraft = ref<string>('')
+const searchApplied = ref<string>('')
+const kindFilter = ref<'all' | 'dir' | 'file' | 'symlink'>('all')
+const hideDotfiles = ref<boolean>(false)
+
 const selectedCount = computed(() => checked.value.length)
+
+const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
+
+const kindOptions = computed(() => [
+  { label: t('fsPicker.kindAll'), value: 'all' as const },
+  { label: t('common.dir'), value: 'dir' as const },
+  { label: t('common.file'), value: 'file' as const },
+  { label: t('common.symlink'), value: 'symlink' as const },
+])
+
+const visibleEntries = computed(() => {
+  const needle = searchApplied.value.trim().toLowerCase()
+  return entries.value.filter((e) => {
+    if (hideDotfiles.value && e.name.startsWith('.')) return false
+    if (kindFilter.value !== 'all' && e.kind !== kindFilter.value) return false
+    if (needle) return e.name.toLowerCase().includes(needle)
+    return true
+  })
+})
 
 const timeFormatDesktop = computed(
   () => new Intl.DateTimeFormat(ui.locale, { dateStyle: 'medium', timeStyle: 'medium' }),
@@ -90,6 +124,38 @@ function computeParentPath(p: string): string {
   return trimmed.slice(0, idxSlash) || '/'
 }
 
+const tableMaxHeight = computed(() => (isDesktop.value ? 420 : 'calc(100vh - 390px)'))
+const modalStyle = computed(() =>
+  isDesktop.value
+    ? { width: MODAL_WIDTH.lg }
+    : { width: '100vw', height: '100vh', borderRadius: '0', margin: '0' },
+)
+
+const LAST_DIR_KEY_PREFIX = 'bastion.fsPicker.lastDir.'
+
+function lastDirStorageKey(id: string): string {
+  return `${LAST_DIR_KEY_PREFIX}${encodeURIComponent(id)}`
+}
+
+function loadLastDir(id: string): string | null {
+  try {
+    const v = localStorage.getItem(lastDirStorageKey(id))
+    return v && v.trim() ? v.trim() : null
+  } catch {
+    return null
+  }
+}
+
+function saveLastDir(id: string, path: string): void {
+  try {
+    const v = path.trim()
+    if (!v) return
+    localStorage.setItem(lastDirStorageKey(id), v)
+  } catch {
+    // ignore
+  }
+}
+
 async function refresh(): Promise<void> {
   const p = normalizePath(currentPath.value)
   if (!p) {
@@ -105,6 +171,7 @@ async function refresh(): Promise<void> {
     const res = await apiFetch<FsListResponse>(url(p))
     currentPath.value = res.path
     entries.value = res.entries
+    saveLastDir(nodeId.value, currentPath.value)
   } catch (error) {
     const code = error instanceof ApiError ? error.body?.error : undefined
     const msg = (error instanceof ApiError ? error.body?.message || error.message : '') || ''
@@ -120,6 +187,7 @@ async function refresh(): Promise<void> {
           )
           currentPath.value = res.path
           entries.value = res.entries
+          saveLastDir(nodeId.value, currentPath.value)
           return
         } catch (error2) {
           message.error(formatToastError(t('errors.fsListFailed'), error2, t))
@@ -136,11 +204,20 @@ async function refresh(): Promise<void> {
 
 function open(nextNodeId: 'hub' | string, initialPath?: string): void {
   nodeId.value = nextNodeId
-  currentPath.value = initialPath?.trim() || '/'
+  const remembered = loadLastDir(nextNodeId)
+  currentPath.value = remembered ?? (initialPath?.trim() || '/')
   entries.value = []
   checked.value = []
+  searchDraft.value = ''
+  searchApplied.value = ''
+  kindFilter.value = 'all'
+  hideDotfiles.value = false
   show.value = true
   void refresh()
+}
+
+function applySearch(): void {
+  searchApplied.value = searchDraft.value.trim()
 }
 
 function addCurrentDirToSelection(): void {
@@ -232,7 +309,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('fsPicker.title')">
+  <n-modal v-model:show="show" preset="card" :style="modalStyle" :title="t('fsPicker.title')">
     <div class="space-y-3">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-2">
@@ -248,13 +325,35 @@ defineExpose<FsPathPickerModalExpose>({ open })
         <n-input v-model:value="currentPath" @keyup.enter="refresh" />
       </div>
 
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-1">
+          <div class="flex items-center gap-2 sm:flex-1">
+            <n-input
+              v-model:value="searchDraft"
+              :placeholder="t('fsPicker.searchPlaceholder')"
+              @keyup.enter="applySearch"
+            />
+            <n-button size="small" :disabled="!hasSearchDraftChanges" @click="applySearch">
+              {{ t('fsPicker.search') }}
+            </n-button>
+          </div>
+          <div class="flex items-center gap-2">
+            <n-select v-model:value="kindFilter" size="small" :options="kindOptions" />
+            <div class="flex items-center gap-2">
+              <n-switch v-model:value="hideDotfiles" size="small" />
+              <div class="text-xs opacity-70">{{ t('common.hideDotfiles') }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <n-data-table
         :loading="loading"
         :columns="columns"
-        :data="entries"
+        :data="visibleEntries"
         :row-key="(row) => row.path"
         v-model:checked-row-keys="checked"
-        :max-height="420"
+        :max-height="tableMaxHeight"
       />
 
       <n-space justify="end">

@@ -24,6 +24,7 @@ const messages = {
     dir: '目录',
     file: '文件',
     symlink: '符号链接',
+    hideDotfiles: '隐藏点文件',
     requestId: '请求 ID',
     stepOf: '步骤 {current}/{total}',
     back: '上一步',
@@ -245,6 +246,9 @@ const messages = {
     selectCurrentDir: '选择当前目录',
     selectedCount: '已选 {count} 项',
     currentPath: '当前路径',
+    searchPlaceholder: '搜索（名称）',
+    search: '搜索',
+    kindAll: '全部类型',
     addSelected: '添加已选',
   },
   settings: {
@@ -441,6 +445,9 @@ const messages = {
     pick: {
       title: '选择要恢复的文件/目录',
       currentPrefix: '当前路径（归档内）',
+      searchPlaceholder: '搜索（名称）',
+      search: '搜索',
+      kindAll: '全部类型',
       confirm: '确认选择',
     },
     selectionSummary: '已选：{files} 文件，{dirs} 目录',
