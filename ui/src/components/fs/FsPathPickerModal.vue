@@ -337,11 +337,11 @@ defineExpose<FsPathPickerModalExpose>({ open })
               {{ t('fsPicker.search') }}
             </n-button>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <n-select v-model:value="kindFilter" size="small" :options="kindOptions" />
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 shrink-0">
               <n-switch v-model:value="hideDotfiles" size="small" />
-              <div class="text-xs opacity-70">{{ t('common.hideDotfiles') }}</div>
+              <div class="text-xs opacity-70 whitespace-nowrap">{{ t('common.hideDotfiles') }}</div>
             </div>
           </div>
         </div>
