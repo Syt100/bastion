@@ -133,7 +133,10 @@ pub async fn list_run_entries_children(
     let limit = limit.clamp(1, 1000) as usize;
     let cursor = cursor as usize;
 
-    let q = q.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let q = q
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
     let kind = kind
         .map(str::trim)
         .filter(|v| !v.is_empty())
@@ -1574,7 +1577,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(root.prefix, "");
-        assert!(root.entries.iter().any(|e| e.path == ".env" && e.kind == "file"));
+        assert!(
+            root.entries
+                .iter()
+                .any(|e| e.path == ".env" && e.kind == "file")
+        );
         assert!(
             root.entries
                 .iter()
@@ -1642,7 +1649,10 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(etc_files.entries.iter().filter(|e| e.kind == "dir").count(), 0);
+        assert_eq!(
+            etc_files.entries.iter().filter(|e| e.kind == "dir").count(),
+            0
+        );
         assert!(etc_files.entries.iter().any(|e| e.path == "etc/hosts"));
 
         let etc_search = list_children_from_entries_index(
@@ -1689,7 +1699,12 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(root_min_size.entries.iter().any(|e| e.path == "etc" && e.kind == "dir"));
+        assert!(
+            root_min_size
+                .entries
+                .iter()
+                .any(|e| e.path == "etc" && e.kind == "dir")
+        );
         assert!(!root_min_size.entries.iter().any(|e| e.path == ".env"));
 
         let root_file_first = list_children_from_entries_index(
