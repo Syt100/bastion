@@ -41,7 +41,9 @@ Deduplicate in two layers:
 - The run-entries browsing API supports optional filtering for restore picking:
   - `q` (matched against the child name in the current prefix),
   - `kind` (file/dir/symlink),
-  - `hide_dotfiles` (names starting with `.`).
+  - `hide_dotfiles` (names starting with `.`),
+  - `min_size_bytes` / `max_size_bytes` (applies to file-like entries; directories remain browsable),
+  - `type_sort` (dir_first/file_first; symlink treated as file).
 - Allow starting a restore with an optional selection filter:
   - Selecting a **file** restores only that path.
   - Selecting a **directory** restores the entire subtree (`dir/**` by prefix match).
@@ -57,3 +59,4 @@ Deduplicate in two layers:
 - Web UI UX:
   - Filesystem browser tracks “last successfully listed directory” per node and uses it as the next open location (separate from selected paths).
   - For restore browsing, the search query is applied only on explicit action (Search button / Enter); type/hide-dotfiles filters apply immediately.
+  - Browser toolbar stays compact (search + filter icon); applied options are shown as clearable chips.

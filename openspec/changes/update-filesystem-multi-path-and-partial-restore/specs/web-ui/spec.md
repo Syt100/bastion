@@ -7,7 +7,9 @@ The Web UI SHALL provide reusable browser modals for:
 
 The browser modals SHALL support:
 - multi-select (files and directories),
-- search and filters (type filter; hide dotfiles),
+- search and filters (type filter; hide dotfiles; file-size range),
+- type sorting (directory-first or file-first),
+- a compact toolbar UX (search + filter icon) and “active filter” chips,
 - a mobile-friendly layout.
 
 #### Scenario: Mobile browser modal is full-screen
@@ -23,6 +25,11 @@ The browser modals SHALL support:
 - **WHEN** the user types a search query in the restore browser
 - **THEN** the query is applied only when the user clicks “Search” or presses Enter
 - **AND** changing filters like type / hide-dotfiles applies immediately
+
+#### Scenario: Active filters are visible and clearable
+- **WHEN** any search/filter/sort option is applied in a browser modal
+- **THEN** the modal shows “active filter” chips (including the applied search query)
+- **AND** the user can clear an active option by closing its chip
 
 ## MODIFIED Requirements
 
