@@ -256,6 +256,7 @@ const messages = {
     dirTitle: '选择目录',
     up: '上一级',
     selectCurrentDir: '选择当前目录',
+    selectDirAnyway: '仍然选择此目录',
     selectedCount: '已选 {count} 项',
     currentPath: '当前路径',
     dirNotFoundWillCreate: '目录不存在，将在首次运行时自动创建（需权限）',
