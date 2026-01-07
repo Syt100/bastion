@@ -9,6 +9,7 @@ The browser modals SHALL support:
 - multi-select (files and directories),
 - search and filters (type filter; hide dotfiles; file-size range),
 - type sorting (directory-first or file-first),
+- a single-directory selection mode for directory-only pickers (no multi-select, no filters),
 - a compact toolbar UX (search + filter icon) and “active filter” chips,
 - a mobile-friendly layout.
 
@@ -31,6 +32,18 @@ The browser modals SHALL support:
 - **THEN** the modal shows “active filter” chips (including the applied search query)
 - **AND** the user can clear an active option by closing its chip
 
+#### Scenario: Filesystem browser supports single-directory mode
+- **WHEN** the user opens the filesystem browser in “single directory” mode
+- **THEN** the modal lists only directories and supports click-to-enter navigation
+- **AND** the modal hides search/filters and multi-select UI
+- **AND** the user confirms by selecting the current directory
+
+#### Scenario: Single-directory mode allows selecting a non-existent directory
+- **WHEN** the user enters a directory path that does not exist
+- **AND** directory listing returns a `path_not_found` error
+- **THEN** the modal shows an inline warning that the directory will be created on the first run (if permitted)
+- **AND** the user can still select that directory path
+
 ## MODIFIED Requirements
 
 ### Requirement: Job Editor Wizard
@@ -39,6 +52,12 @@ The Web UI SHALL support creating and editing filesystem jobs with multi-path so
 #### Scenario: Pick multiple filesystem sources
 - **WHEN** the user edits a filesystem job and selects multiple source paths
 - **THEN** the job spec is saved with all selected paths
+
+#### Scenario: Browse local target directory
+- **WHEN** the user configures a job target of type `local_dir`
+- **AND** clicks “Browse” for `base_dir`
+- **THEN** the Web UI opens the filesystem browser in “single directory” mode for the selected node
+- **AND** saves the selected directory as `target.base_dir`
 
 ### Requirement: Restore Wizard
 The Web UI SHALL allow browsing the archived paths of a completed run and selecting a subset of files/directories to restore.

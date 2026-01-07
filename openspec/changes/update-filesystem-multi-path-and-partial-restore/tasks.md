@@ -27,8 +27,9 @@
 - [ ] 4.1 Add reusable filesystem/archive browser modals (responsive, search/filters, hide dotfiles)
 - [ ] 4.2 Update Job Editor filesystem source to support multiple paths + browse
 - [ ] 4.3 Update Restore wizard to browse archived paths and select subset
-- [ ] 4.4 Update/extend unit tests
-- [ ] 4.5 Commit UI changes (detailed message)
+- [ ] 4.4 Add “single directory” mode and use it for LocalDir `base_dir` browse
+- [ ] 4.5 Update/extend unit tests
+- [ ] 4.6 Commit UI changes (detailed message)
 
 ## 5. Validation
 - [ ] 5.1 Run `cargo fmt --all`
