@@ -40,9 +40,10 @@ The browser modals SHALL support:
 
 #### Scenario: Single-directory mode allows selecting a non-existent directory
 - **WHEN** the user enters a directory path that does not exist
-- **AND** directory listing returns a `path_not_found` error
-- **THEN** the modal shows an inline warning that the directory will be created on the first run (if permitted)
-- **AND** the user can still select that directory path
+- **AND** clicks “Select current directory”
+- **THEN** the modal validates the current path (by attempting a directory listing)
+- **AND** if validation returns a `path_not_found` error the modal shows an inline warning that the directory will be created on the first run (if permitted)
+- **AND** the user can still select that directory path after confirming
 
 ## MODIFIED Requirements
 
