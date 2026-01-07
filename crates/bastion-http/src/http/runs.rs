@@ -17,6 +17,12 @@ pub(super) struct ListRunEntriesQuery {
     cursor: Option<u64>,
     #[serde(default)]
     limit: Option<u64>,
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    hide_dotfiles: Option<bool>,
 }
 
 pub(super) async fn list_run_entries(
@@ -30,6 +36,23 @@ pub(super) async fn list_run_entries(
     let prefix = query.prefix.as_deref();
     let cursor = query.cursor.unwrap_or(0);
     let limit = query.limit.unwrap_or(200);
+    let q = query.q.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let kind = query
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let kind = match kind {
+        None => None,
+        Some(v) if matches!(v, "file" | "dir" | "symlink") => Some(v),
+        Some(_) => {
+            return Err(
+                AppError::bad_request("invalid_kind", "invalid kind")
+                    .with_details(serde_json::json!({ "field": "kind" })),
+            );
+        }
+    };
+    let hide_dotfiles = query.hide_dotfiles.unwrap_or(false);
 
     let result = restore::list_run_entries_children(
         &state.db,
@@ -39,6 +62,9 @@ pub(super) async fn list_run_entries(
         prefix,
         cursor,
         limit,
+        q,
+        kind,
+        hide_dotfiles,
     )
     .await;
 

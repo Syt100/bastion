@@ -96,6 +96,9 @@ pub async fn list_run_entries_children(
     prefix: Option<&str>,
     cursor: u64,
     limit: u64,
+    q: Option<&str>,
+    kind: Option<&str>,
+    hide_dotfiles: bool,
 ) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
     let run = runs_repo::get_run(db, run_id)
         .await?
@@ -127,8 +130,22 @@ pub async fn list_run_entries_children(
     let limit = limit.clamp(1, 1000) as usize;
     let cursor = cursor as usize;
 
+    let q = q.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let kind = kind
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+
     let entries = tokio::task::spawn_blocking(move || {
-        list_children_from_entries_index(&entries_path, &prefix, cursor, limit)
+        list_children_from_entries_index(
+            &entries_path,
+            &prefix,
+            cursor,
+            limit,
+            q.as_deref(),
+            kind.as_deref(),
+            hide_dotfiles,
+        )
     })
     .await??;
 
@@ -607,6 +624,9 @@ fn list_children_from_entries_index(
     prefix: &str,
     cursor: usize,
     limit: usize,
+    q: Option<&str>,
+    kind: Option<&str>,
+    hide_dotfiles: bool,
 ) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
     use std::collections::HashMap;
 
@@ -661,6 +681,9 @@ fn list_children_from_entries_index(
         if child_name.is_empty() {
             continue;
         }
+        if hide_dotfiles && child_name.starts_with('.') {
+            continue;
+        }
 
         let child_path = if prefix.is_empty() {
             child_name.to_string()
@@ -706,6 +729,19 @@ fn list_children_from_entries_index(
             size: agg.size,
         })
         .collect::<Vec<_>>();
+
+    if let Some(kind) = kind.map(str::trim).filter(|v| !v.is_empty()) {
+        entries.retain(|e| e.kind == kind);
+    }
+
+    let q = q.map(str::trim).filter(|v| !v.is_empty());
+    if let Some(q) = q {
+        let needle = q.to_lowercase();
+        entries.retain(|e| {
+            let name = e.path.rsplit('/').next().unwrap_or(e.path.as_str());
+            name.to_lowercase().contains(&needle)
+        });
+    }
 
     fn kind_rank(kind: &str) -> u8 {
         match kind {
@@ -1455,6 +1491,13 @@ mod tests {
         let mut enc = zstd::Encoder::new(file, 3).unwrap();
         for rec in [
             Rec {
+                path: ".env",
+                kind: "file",
+                size: 1,
+                hash_alg: Some("blake3"),
+                hash: Some("dot"),
+            },
+            Rec {
                 path: "etc",
                 kind: "dir",
                 size: 0,
@@ -1489,8 +1532,9 @@ mod tests {
         }
         enc.finish().unwrap();
 
-        let root = list_children_from_entries_index(&entries_path, "", 0, 100).unwrap();
+        let root = list_children_from_entries_index(&entries_path, "", 0, 100, None, None, false).unwrap();
         assert_eq!(root.prefix, "");
+        assert!(root.entries.iter().any(|e| e.path == ".env" && e.kind == "file"));
         assert!(
             root.entries
                 .iter()
@@ -1502,7 +1546,8 @@ mod tests {
                 .any(|e| e.path == "var" && e.kind == "dir")
         );
 
-        let etc = list_children_from_entries_index(&entries_path, "etc", 0, 100).unwrap();
+        let etc =
+            list_children_from_entries_index(&entries_path, "etc", 0, 100, None, None, false).unwrap();
         assert!(
             etc.entries
                 .iter()
@@ -1514,11 +1559,26 @@ mod tests {
                 .any(|e| e.path == "etc/ssh" && e.kind == "dir")
         );
 
-        let ssh = list_children_from_entries_index(&entries_path, "etc/ssh", 0, 100).unwrap();
+        let ssh =
+            list_children_from_entries_index(&entries_path, "etc/ssh", 0, 100, None, None, false).unwrap();
         assert!(
             ssh.entries
                 .iter()
                 .any(|e| e.path == "etc/ssh/sshd_config" && e.kind == "file")
         );
+
+        let etc_files =
+            list_children_from_entries_index(&entries_path, "etc", 0, 100, None, Some("file"), false).unwrap();
+        assert_eq!(etc_files.entries.iter().filter(|e| e.kind == "dir").count(), 0);
+        assert!(etc_files.entries.iter().any(|e| e.path == "etc/hosts"));
+
+        let etc_search =
+            list_children_from_entries_index(&entries_path, "etc", 0, 100, Some("SSH"), None, false).unwrap();
+        assert_eq!(etc_search.entries.len(), 1);
+        assert_eq!(etc_search.entries[0].path, "etc/ssh");
+
+        let root_hide =
+            list_children_from_entries_index(&entries_path, "", 0, 100, None, None, true).unwrap();
+        assert!(!root_hide.entries.iter().any(|e| e.path == ".env"));
     }
 }
