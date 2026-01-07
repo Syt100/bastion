@@ -18,7 +18,9 @@ The system SHALL provide an API to browse archived paths for a completed run to 
 - **WHEN** the user requests `GET /api/runs/<run_id>/entries` with optional filters:
   - `q` (search query; matched against the entry name for the current prefix level, case-insensitive),
   - `kind` (one of `file|dir|symlink`),
-  - `hide_dotfiles` (boolean; hides names starting with `.`)
+  - `hide_dotfiles` (boolean; hides names starting with `.`),
+  - `min_size_bytes` / `max_size_bytes` (u64; filters file-like entries by size range; directories remain browsable),
+  - `type_sort` (one of `dir_first|file_first`; symlinks are treated as files for type sorting)
 - **THEN** the API returns only children that match the applied filters
 - **AND** pagination (`cursor`, `limit`) is applied after filtering and sorting so results are stable
 
