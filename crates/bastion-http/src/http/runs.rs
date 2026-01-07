@@ -23,6 +23,12 @@ pub(super) struct ListRunEntriesQuery {
     kind: Option<String>,
     #[serde(default)]
     hide_dotfiles: Option<bool>,
+    #[serde(default)]
+    min_size_bytes: Option<u64>,
+    #[serde(default)]
+    max_size_bytes: Option<u64>,
+    #[serde(default)]
+    type_sort: Option<String>,
 }
 
 pub(super) async fn list_run_entries(
@@ -53,6 +59,21 @@ pub(super) async fn list_run_entries(
         }
     };
     let hide_dotfiles = query.hide_dotfiles.unwrap_or(false);
+    let (min_size_bytes, max_size_bytes) = match (query.min_size_bytes, query.max_size_bytes) {
+        (Some(a), Some(b)) if a > b => (Some(b), Some(a)),
+        other => other,
+    };
+    let type_sort = query.type_sort.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let type_sort_file_first = match type_sort {
+        None | Some("dir_first") => false,
+        Some("file_first") => true,
+        Some(_) => {
+            return Err(
+                AppError::bad_request("invalid_type_sort", "invalid type_sort")
+                    .with_details(serde_json::json!({ "field": "type_sort" })),
+            );
+        }
+    };
 
     let result = restore::list_run_entries_children(
         &state.db,
@@ -65,6 +86,9 @@ pub(super) async fn list_run_entries(
         q,
         kind,
         hide_dotfiles,
+        min_size_bytes,
+        max_size_bytes,
+        type_sort_file_first,
     )
     .await;
 
