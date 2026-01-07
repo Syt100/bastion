@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
 import {
+  NAlert,
   NBadge,
   NButton,
   NDataTable,
@@ -28,7 +29,7 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
-import { formatToastError } from '@/lib/errors'
+import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
 
 type FsListEntry = {
@@ -45,7 +46,7 @@ type FsListResponse = {
 }
 
 export type FsPathPickerModalExpose = {
-  open: (nodeId: 'hub' | string, initialPath?: string) => void
+  open: (nodeId: 'hub' | string, initialPath?: string | FsPathPickerOpenOptions) => void
 }
 
 const emit = defineEmits<{
@@ -59,6 +60,15 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
 const nodeId = ref<'hub' | string>('hub')
+export type FsPathPickerMode = 'multi_paths' | 'single_dir'
+export type FsPathPickerOpenOptions = {
+  path?: string
+  mode?: FsPathPickerMode
+}
+
+const pickerMode = ref<FsPathPickerMode>('multi_paths')
+const isSingleDirMode = computed(() => pickerMode.value === 'single_dir')
+
 const currentPath = ref<string>('/')
 const entries = ref<FsListEntry[]>([])
 const checked = ref<string[]>([])
@@ -82,6 +92,12 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+
+type SingleDirStatus = 'unknown' | 'ok' | 'not_found' | 'not_directory' | 'permission_denied' | 'agent_offline' | 'error'
+const singleDirStatus = ref<SingleDirStatus>('unknown')
+const singleDirMessage = ref<string>('')
+
+const modalTitle = computed(() => (isSingleDirMode.value ? t('fsPicker.dirTitle') : t('fsPicker.title')))
 
 const selectedCount = computed(() => checked.value.length)
 
@@ -340,6 +356,10 @@ async function refresh(): Promise<void> {
   }
 
   loading.value = true
+  if (isSingleDirMode.value) {
+    singleDirStatus.value = 'unknown'
+    singleDirMessage.value = ''
+  }
   try {
     const url = (path: string) =>
       `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(path)}`
@@ -348,11 +368,15 @@ async function refresh(): Promise<void> {
     currentPath.value = res.path
     entries.value = res.entries
     saveLastDir(nodeId.value, currentPath.value)
+    if (isSingleDirMode.value) {
+      singleDirStatus.value = 'ok'
+      singleDirMessage.value = ''
+    }
   } catch (error) {
-    const code = error instanceof ApiError ? error.body?.error : undefined
-    const msg = (error instanceof ApiError ? error.body?.message || error.message : '') || ''
-    const shouldFallback =
-      code === 'not_directory' || (code === 'agent_fs_list_failed' && msg.toLowerCase().includes('not a directory'))
+    const info = toApiErrorInfo(error, t)
+    const code = info.code
+    const msgLower = info.message.toLowerCase()
+    const shouldFallback = code === 'not_directory' || (code === 'agent_fs_list_failed' && msgLower.includes('not a directory'))
 
     if (shouldFallback) {
       const parent = computeParentPath(p)
@@ -364,12 +388,78 @@ async function refresh(): Promise<void> {
           currentPath.value = res.path
           entries.value = res.entries
           saveLastDir(nodeId.value, currentPath.value)
+          if (isSingleDirMode.value) {
+            singleDirStatus.value = 'ok'
+            singleDirMessage.value = ''
+          }
           return
         } catch (error2) {
-          message.error(formatToastError(t('errors.fsListFailed'), error2, t))
+          if (isSingleDirMode.value) {
+            const info2 = toApiErrorInfo(error2, t)
+            singleDirStatus.value = 'error'
+            singleDirMessage.value = info2.message
+            entries.value = []
+          } else {
+            message.error(formatToastError(t('errors.fsListFailed'), error2, t))
+          }
           return
         }
       }
+    }
+
+    if (isSingleDirMode.value) {
+      const errorText = info.message || t('errors.fsListFailed')
+
+      if (code === 'path_not_found') {
+        singleDirStatus.value = 'not_found'
+        singleDirMessage.value = ''
+        entries.value = []
+        return
+      }
+      if (code === 'permission_denied') {
+        singleDirStatus.value = 'permission_denied'
+        singleDirMessage.value = errorText
+        entries.value = []
+        return
+      }
+      if (code === 'agent_offline') {
+        singleDirStatus.value = 'agent_offline'
+        singleDirMessage.value = errorText
+        entries.value = []
+        return
+      }
+      if (code === 'not_directory') {
+        singleDirStatus.value = 'not_directory'
+        singleDirMessage.value = errorText
+        entries.value = []
+        return
+      }
+
+      if (code === 'agent_fs_list_failed') {
+        if (msgLower.includes('no such file') || msgLower.includes('not found') || msgLower.includes('cannot find the')) {
+          singleDirStatus.value = 'not_found'
+          singleDirMessage.value = ''
+          entries.value = []
+          return
+        }
+        if (msgLower.includes('permission denied') || msgLower.includes('access is denied')) {
+          singleDirStatus.value = 'permission_denied'
+          singleDirMessage.value = errorText
+          entries.value = []
+          return
+        }
+        if (msgLower.includes('not a directory')) {
+          singleDirStatus.value = 'not_directory'
+          singleDirMessage.value = errorText
+          entries.value = []
+          return
+        }
+      }
+
+      singleDirStatus.value = 'error'
+      singleDirMessage.value = errorText
+      entries.value = []
+      return
     }
 
     message.error(formatToastError(t('errors.fsListFailed'), error, t))
@@ -378,13 +468,25 @@ async function refresh(): Promise<void> {
   }
 }
 
-function open(nextNodeId: 'hub' | string, initialPath?: string): void {
+function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpenOptions): void {
+  const opts =
+    typeof initialPath === 'string' ? ({ path: initialPath } satisfies FsPathPickerOpenOptions) : initialPath
+
   nodeId.value = nextNodeId
-  const remembered = loadLastDir(nextNodeId)
-  currentPath.value = remembered ?? (initialPath?.trim() || '/')
+  pickerMode.value = opts?.mode ?? 'multi_paths'
+
+  const explicitPath = opts?.path?.trim()
+  if (explicitPath) {
+    currentPath.value = explicitPath
+  } else {
+    const remembered = loadLastDir(nextNodeId)
+    currentPath.value = remembered ?? '/'
+  }
   entries.value = []
   checked.value = []
   resetAllFilters()
+  singleDirStatus.value = 'unknown'
+  singleDirMessage.value = ''
   filtersPopoverOpen.value = false
   filtersDrawerOpen.value = false
   show.value = true
@@ -402,7 +504,27 @@ function up(): void {
   void refresh()
 }
 
-function pick(): void {
+async function pick(): Promise<void> {
+  if (isSingleDirMode.value) {
+    if (singleDirStatus.value === 'unknown') {
+      await refresh()
+    }
+
+    const p = normalizePath(currentPath.value)
+    if (!p) {
+      message.error(t('errors.fsPathRequired'))
+      return
+    }
+
+    if (singleDirStatus.value !== 'ok' && singleDirStatus.value !== 'not_found') {
+      return
+    }
+
+    show.value = false
+    emit('picked', [p])
+    return
+  }
+
   const unique = Array.from(new Set(checked.value.map((v) => v.trim()).filter((v) => v.length > 0)))
   if (unique.length === 0) {
     message.error(t('errors.sourcePathsRequired'))
@@ -412,14 +534,20 @@ function pick(): void {
   emit('picked', unique)
 }
 
-const columns = computed<DataTableColumns<FsListEntry>>(() => [
-  {
-    type: 'selection',
-  },
-  {
+const tableData = computed(() => {
+  if (isSingleDirMode.value) {
+    const dirs = entries.value.filter((e) => e.kind === 'dir')
+    dirs.sort((a, b) => a.name.localeCompare(b.name))
+    return dirs
+  }
+  return visibleEntries.value
+})
+
+const columns = computed<DataTableColumns<FsListEntry>>(() => {
+  const nameColumn = {
     title: t('common.name'),
     key: 'name',
-    render(row) {
+    render(row: FsListEntry) {
       const label = row.kind === 'dir' ? `📁 ${row.name}` : row.kind === 'symlink' ? `🔗 ${row.name}` : `📄 ${row.name}`
 
       const nameNode =
@@ -450,53 +578,86 @@ const columns = computed<DataTableColumns<FsListEntry>>(() => [
         h('div', { class: 'text-xs opacity-70 truncate' }, meta),
       ])
     },
-  },
-  ...(isDesktop.value
-    ? ([
-        {
-          title: t('common.type'),
-          key: 'kind',
-          width: 110,
-          render: (row: FsListEntry) => kindLabel(row.kind),
-        },
-        {
-          title: t('common.size'),
-          key: 'size',
-          width: 120,
-          align: 'right',
-          render: (row: FsListEntry) => (row.kind === 'file' ? formatBytes(row.size) : '-'),
-        },
-        {
-          title: t('common.modified'),
-          key: 'mtime',
-          width: 190,
-          render: (row: FsListEntry) => formatMtimeDesktop(row.mtime),
-        },
-      ] as const)
-    : []),
-])
+  } as const
+
+  if (isSingleDirMode.value) {
+    return [
+      nameColumn,
+      ...(isDesktop.value
+        ? ([
+            {
+              title: t('common.modified'),
+              key: 'mtime',
+              width: 190,
+              render: (row: FsListEntry) => formatMtimeDesktop(row.mtime),
+            },
+          ] as const)
+        : []),
+    ]
+  }
+
+  return [
+    { type: 'selection' },
+    nameColumn,
+    ...(isDesktop.value
+      ? ([
+          {
+            title: t('common.type'),
+            key: 'kind',
+            width: 110,
+            render: (row: FsListEntry) => kindLabel(row.kind),
+          },
+          {
+            title: t('common.size'),
+            key: 'size',
+            width: 120,
+            align: 'right',
+            render: (row: FsListEntry) => (row.kind === 'file' ? formatBytes(row.size) : '-'),
+          },
+          {
+            title: t('common.modified'),
+            key: 'mtime',
+            width: 190,
+            render: (row: FsListEntry) => formatMtimeDesktop(row.mtime),
+          },
+        ] as const)
+      : []),
+  ]
+})
 
 defineExpose<FsPathPickerModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="modalStyle" :title="t('fsPicker.title')">
+  <n-modal v-model:show="show" preset="card" :style="modalStyle" :title="modalTitle">
     <div class="space-y-3">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-2">
           <n-button size="small" @click="up">{{ t('fsPicker.up') }}</n-button>
           <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
-          <n-button size="small" @click="addCurrentDirToSelection">{{ t('fsPicker.selectCurrentDir') }}</n-button>
+          <n-button v-if="!isSingleDirMode" size="small" @click="addCurrentDirToSelection">
+            {{ t('fsPicker.selectCurrentDir') }}
+          </n-button>
         </div>
-        <div class="text-xs opacity-70">{{ t('fsPicker.selectedCount', { count: selectedCount }) }}</div>
+        <div v-if="!isSingleDirMode" class="text-xs opacity-70">{{ t('fsPicker.selectedCount', { count: selectedCount }) }}</div>
       </div>
 
       <div class="space-y-2">
         <div class="text-xs opacity-70">{{ t('fsPicker.currentPath') }}</div>
         <n-input v-model:value="currentPath" @keyup.enter="refresh" />
+        <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
+          {{ t('fsPicker.dirNotFoundWillCreate') }}
+        </n-alert>
+        <n-alert
+          v-else-if="isSingleDirMode && singleDirStatus !== 'ok' && singleDirStatus !== 'unknown'"
+          type="error"
+          :bordered="false"
+        >
+          {{ singleDirMessage || t('errors.fsListFailed') }}
+        </n-alert>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div v-if="!isSingleDirMode" class="flex items-center gap-2">
         <n-input
           v-model:value="searchDraft"
           class="flex-1 min-w-0"
@@ -583,14 +744,14 @@ defineExpose<FsPathPickerModalExpose>({ open })
         </n-badge>
       </div>
 
-      <div v-if="activeChips.length > 0" class="flex flex-wrap gap-2 items-center">
+      <div v-if="!isSingleDirMode && activeChips.length > 0" class="flex flex-wrap gap-2 items-center">
         <n-tag v-for="chip in activeChips" :key="chip.key" size="small" closable @close="chip.onClose">
           {{ chip.label }}
         </n-tag>
         <n-button size="tiny" tertiary @click="resetAllFilters">{{ t('common.clear') }}</n-button>
       </div>
 
-      <n-drawer v-model:show="filtersDrawerOpen" placement="bottom" height="80vh">
+      <n-drawer v-if="!isSingleDirMode" v-model:show="filtersDrawerOpen" placement="bottom" height="80vh">
         <n-drawer-content :title="t('common.filters')" closable>
           <n-form label-placement="top" size="small">
             <n-form-item :label="t('common.type')">
@@ -635,7 +796,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
       <n-data-table
         :loading="loading"
         :columns="columns"
-        :data="visibleEntries"
+        :data="tableData"
         :row-key="(row) => row.path"
         v-model:checked-row-keys="checked"
         :max-height="tableMaxHeight"
@@ -643,7 +804,18 @@ defineExpose<FsPathPickerModalExpose>({ open })
 
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-button type="primary" :disabled="checked.length === 0" @click="pick">{{ t('fsPicker.addSelected') }}</n-button>
+        <n-button
+          v-if="isSingleDirMode"
+          type="primary"
+          :loading="loading"
+          :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
+          @click="pick"
+        >
+          {{ t('fsPicker.selectCurrentDir') }}
+        </n-button>
+        <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
+          {{ t('fsPicker.addSelected') }}
+        </n-button>
       </n-space>
     </div>
   </n-modal>
