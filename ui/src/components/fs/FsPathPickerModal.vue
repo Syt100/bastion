@@ -29,7 +29,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
-import { useUiStore } from '@/stores/ui'
+import { formatUnixSecondsYmdHms } from '@/lib/datetime'
 
 type FsListEntry = {
   name: string
@@ -54,7 +54,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const message = useMessage()
-const ui = useUiStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
@@ -219,21 +218,14 @@ const visibleEntries = computed(() => {
   return filtered
 })
 
-const timeFormatDesktop = computed(
-  () => new Intl.DateTimeFormat(ui.locale, { dateStyle: 'medium', timeStyle: 'medium' }),
-)
-const timeFormatMobile = computed(
-  () => new Intl.DateTimeFormat(ui.locale, { dateStyle: 'medium', timeStyle: 'short' }),
-)
-
 function formatMtimeDesktop(ts?: number | null): string {
   if (!Number.isFinite(ts as number) || !ts) return '-'
-  return timeFormatDesktop.value.format(new Date(ts * 1000))
+  return formatUnixSecondsYmdHms(ts)
 }
 
 function formatMtimeMobile(ts?: number | null): string {
   if (!Number.isFinite(ts as number) || !ts) return '-'
-  return timeFormatMobile.value.format(new Date(ts * 1000))
+  return formatUnixSecondsYmdHms(ts)
 }
 
 function kindLabel(kind: string): string {
