@@ -99,6 +99,9 @@ pub async fn list_run_entries_children(
     q: Option<&str>,
     kind: Option<&str>,
     hide_dotfiles: bool,
+    min_size_bytes: Option<u64>,
+    max_size_bytes: Option<u64>,
+    type_sort_file_first: bool,
 ) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
     let run = runs_repo::get_run(db, run_id)
         .await?
@@ -145,6 +148,9 @@ pub async fn list_run_entries_children(
             q.as_deref(),
             kind.as_deref(),
             hide_dotfiles,
+            min_size_bytes,
+            max_size_bytes,
+            type_sort_file_first,
         )
     })
     .await??;
@@ -627,6 +633,9 @@ fn list_children_from_entries_index(
     q: Option<&str>,
     kind: Option<&str>,
     hide_dotfiles: bool,
+    min_size_bytes: Option<u64>,
+    max_size_bytes: Option<u64>,
+    type_sort_file_first: bool,
 ) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
     use std::collections::HashMap;
 
@@ -704,7 +713,11 @@ fn list_children_from_entries_index(
         } else {
             "file".to_string()
         };
-        let size = if kind == "file" { rec.size } else { 0 };
+        let size = if matches!(kind.as_str(), "file" | "symlink") {
+            rec.size
+        } else {
+            0
+        };
 
         children
             .entry(child_path)
@@ -714,7 +727,7 @@ fn list_children_from_entries_index(
                     existing.size = 0;
                     return;
                 }
-                if existing.kind == kind && kind == "file" {
+                if existing.kind == kind && existing.kind != "dir" {
                     existing.size = existing.size.max(size);
                 }
             })
@@ -743,18 +756,33 @@ fn list_children_from_entries_index(
         });
     }
 
-    fn kind_rank(kind: &str) -> u8 {
-        match kind {
-            "dir" => 0,
-            "file" => 1,
-            "symlink" => 2,
+    if min_size_bytes.is_some() || max_size_bytes.is_some() {
+        let min = min_size_bytes.unwrap_or(0);
+        let max = max_size_bytes.unwrap_or(u64::MAX);
+        entries.retain(|e| {
+            if e.kind == "dir" {
+                true
+            } else {
+                e.size >= min && e.size <= max
+            }
+        });
+    }
+
+    fn kind_rank(kind: &str, file_first: bool) -> u8 {
+        match (file_first, kind) {
+            (false, "dir") => 0,
+            (false, "file") => 1,
+            (false, "symlink") => 2,
+            (true, "file") => 0,
+            (true, "symlink") => 0,
+            (true, "dir") => 1,
             _ => 3,
         }
     }
 
     entries.sort_by(|a, b| {
-        kind_rank(&a.kind)
-            .cmp(&kind_rank(&b.kind))
+        kind_rank(&a.kind, type_sort_file_first)
+            .cmp(&kind_rank(&b.kind, type_sort_file_first))
             .then_with(|| a.path.cmp(&b.path))
     });
 
@@ -1532,7 +1560,19 @@ mod tests {
         }
         enc.finish().unwrap();
 
-        let root = list_children_from_entries_index(&entries_path, "", 0, 100, None, None, false).unwrap();
+        let root = list_children_from_entries_index(
+            &entries_path,
+            "",
+            0,
+            100,
+            None,
+            None,
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(root.prefix, "");
         assert!(root.entries.iter().any(|e| e.path == ".env" && e.kind == "file"));
         assert!(
@@ -1546,8 +1586,19 @@ mod tests {
                 .any(|e| e.path == "var" && e.kind == "dir")
         );
 
-        let etc =
-            list_children_from_entries_index(&entries_path, "etc", 0, 100, None, None, false).unwrap();
+        let etc = list_children_from_entries_index(
+            &entries_path,
+            "etc",
+            0,
+            100,
+            None,
+            None,
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert!(
             etc.entries
                 .iter()
@@ -1559,26 +1610,101 @@ mod tests {
                 .any(|e| e.path == "etc/ssh" && e.kind == "dir")
         );
 
-        let ssh =
-            list_children_from_entries_index(&entries_path, "etc/ssh", 0, 100, None, None, false).unwrap();
+        let ssh = list_children_from_entries_index(
+            &entries_path,
+            "etc/ssh",
+            0,
+            100,
+            None,
+            None,
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert!(
             ssh.entries
                 .iter()
                 .any(|e| e.path == "etc/ssh/sshd_config" && e.kind == "file")
         );
 
-        let etc_files =
-            list_children_from_entries_index(&entries_path, "etc", 0, 100, None, Some("file"), false).unwrap();
+        let etc_files = list_children_from_entries_index(
+            &entries_path,
+            "etc",
+            0,
+            100,
+            None,
+            Some("file"),
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(etc_files.entries.iter().filter(|e| e.kind == "dir").count(), 0);
         assert!(etc_files.entries.iter().any(|e| e.path == "etc/hosts"));
 
-        let etc_search =
-            list_children_from_entries_index(&entries_path, "etc", 0, 100, Some("SSH"), None, false).unwrap();
+        let etc_search = list_children_from_entries_index(
+            &entries_path,
+            "etc",
+            0,
+            100,
+            Some("SSH"),
+            None,
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(etc_search.entries.len(), 1);
         assert_eq!(etc_search.entries[0].path, "etc/ssh");
 
-        let root_hide =
-            list_children_from_entries_index(&entries_path, "", 0, 100, None, None, true).unwrap();
+        let root_hide = list_children_from_entries_index(
+            &entries_path,
+            "",
+            0,
+            100,
+            None,
+            None,
+            true,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert!(!root_hide.entries.iter().any(|e| e.path == ".env"));
+
+        let root_min_size = list_children_from_entries_index(
+            &entries_path,
+            "",
+            0,
+            100,
+            None,
+            None,
+            false,
+            Some(2),
+            None,
+            false,
+        )
+        .unwrap();
+        assert!(root_min_size.entries.iter().any(|e| e.path == "etc" && e.kind == "dir"));
+        assert!(!root_min_size.entries.iter().any(|e| e.path == ".env"));
+
+        let root_file_first = list_children_from_entries_index(
+            &entries_path,
+            "",
+            0,
+            100,
+            None,
+            None,
+            false,
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+        assert_eq!(root_file_first.entries[0].path, ".env");
     }
 }
