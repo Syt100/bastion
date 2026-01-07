@@ -18,13 +18,13 @@
 ## 3. Backend: Browse APIs + Partial Restore (Rust)
 - [ ] 3.1 Add node-scoped filesystem list API (hub implementation)
 - [ ] 3.2 Extend Hub↔Agent protocol to support agent filesystem listing (request/response + timeout)
-- [ ] 3.3 Add run entries browsing API (prefix + pagination)
+- [ ] 3.3 Add run entries browsing API (prefix + pagination + search/filters)
 - [ ] 3.4 Add restore request support for path selection; implement partial restore filtering
 - [ ] 3.5 Add/extend unit tests for APIs + restore filtering
 - [ ] 3.6 Commit backend changes (detailed message)
 
 ## 4. Web UI: Multi-Source Picker + Partial Restore
-- [ ] 4.1 Add reusable filesystem browser modal (responsive)
+- [ ] 4.1 Add reusable filesystem/archive browser modals (responsive, search/filters, hide dotfiles)
 - [ ] 4.2 Update Job Editor filesystem source to support multiple paths + browse
 - [ ] 4.3 Update Restore wizard to browse archived paths and select subset
 - [ ] 4.4 Update/extend unit tests
@@ -37,4 +37,3 @@
 - [ ] 5.4 Run `npm run lint --prefix ui`
 - [ ] 5.5 Run `npm run test --prefix ui`
 - [ ] 5.6 Run `npm run build --prefix ui`
-

@@ -38,6 +38,10 @@ Deduplicate in two layers:
 
 ## Restore: Browse + Partial Restore
 - Expose the entries index to the UI for browsing archived paths.
+- The run-entries browsing API supports optional filtering for restore picking:
+  - `q` (matched against the child name in the current prefix),
+  - `kind` (file/dir/symlink),
+  - `hide_dotfiles` (names starting with `.`).
 - Allow starting a restore with an optional selection filter:
   - Selecting a **file** restores only that path.
   - Selecting a **directory** restores the entire subtree (`dir/**` by prefix match).
@@ -50,3 +54,6 @@ Deduplicate in two layers:
   - forward the request to the Agent over the existing websocket control channel,
   - await a response with a short timeout,
   - if the Agent is offline, return a clear error suitable for UI inline display.
+- Web UI UX:
+  - Filesystem browser tracks “last successfully listed directory” per node and uses it as the next open location (separate from selected paths).
+  - For restore browsing, the search query is applied only on explicit action (Search button / Enter); type/hide-dotfiles filters apply immediately.
