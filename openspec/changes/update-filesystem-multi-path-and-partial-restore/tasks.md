@@ -27,6 +27,8 @@
 - [ ] 4.1 Add reusable filesystem/archive browser modals (responsive, search/filters, hide dotfiles)
 - [ ] 4.2 Update Job Editor filesystem source to support multiple paths + browse
 - [ ] 4.2a Improve Job Editor validation UX (required marks, inline errors, help text layout)
+- [ ] 4.2b Improve Job Editor review step (human-readable summary)
+- [ ] 4.2c Polish Job Editor step layouts (modern, concise)
 - [ ] 4.3 Update Restore wizard to browse archived paths and select subset
 - [ ] 4.4 Add “single directory” mode and use it for LocalDir `base_dir` browse
 - [ ] 4.5 Update/extend unit tests

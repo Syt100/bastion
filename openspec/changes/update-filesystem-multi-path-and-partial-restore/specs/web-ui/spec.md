@@ -52,6 +52,7 @@ The Web UI SHALL support creating and editing filesystem jobs with multi-path so
 
 The Job Editor SHALL:
 - indicate required fields with a require mark (`*`),
+- show the require mark ONLY on fields that are required for the current configuration (job type / target type),
 - show validation errors inline at the corresponding fields when “Next” / “Save” validation fails,
 - show a short toast notification on validation failure (in addition to inline errors), and
 - hide a field’s helper text while that field is in an error state.
@@ -65,6 +66,10 @@ The Job Editor SHALL:
 - **THEN** the required fields show a `*` require mark
 - **AND** optional fields are not labeled as “optional” in the field title
 
+#### Scenario: Optional fields do not show a require mark
+- **WHEN** the user views a Job Editor step containing optional inputs (e.g. schedule, include/exclude patterns)
+- **THEN** those optional fields do not show a `*` require mark
+
 #### Scenario: Step validation shows inline errors and a short toast
 - **WHEN** the user clicks “Next” or “Save” with missing/invalid required inputs
 - **THEN** the editor remains on the current step
@@ -74,6 +79,11 @@ The Job Editor SHALL:
 #### Scenario: Helper text is hidden while a field has an error
 - **WHEN** a form field is displaying an inline error
 - **THEN** the helper text for that field is not shown
+
+#### Scenario: Review step is human-readable
+- **WHEN** the user reaches the “Review” step
+- **THEN** the editor shows a human-readable summary grouped by the editor steps (Basics / Source / Target / Security / Notifications)
+- **AND** the raw JSON payload is not the primary presentation
 
 #### Scenario: Browse local target directory
 - **WHEN** the user configures a job target of type `local_dir`
