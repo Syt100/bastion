@@ -26,6 +26,7 @@
 ## 4. Web UI: Multi-Source Picker + Partial Restore
 - [ ] 4.1 Add reusable filesystem/archive browser modals (responsive, search/filters, hide dotfiles)
 - [ ] 4.2 Update Job Editor filesystem source to support multiple paths + browse
+- [ ] 4.2a Improve Job Editor validation UX (required marks, inline errors, help text layout)
 - [ ] 4.3 Update Restore wizard to browse archived paths and select subset
 - [ ] 4.4 Add “single directory” mode and use it for LocalDir `base_dir` browse
 - [ ] 4.5 Update/extend unit tests
