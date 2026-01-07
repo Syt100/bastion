@@ -15,11 +15,11 @@ Today, filesystem backups only support a single `filesystem.source.root` directo
 - Automatically **deduplicate** overlapping selections and record a warning summary (without per-file spam).
 - Add APIs to:
   - browse a node’s filesystem for multi-select source picking,
-  - browse a run’s archived paths for restore selection,
+  - browse a run’s archived paths for restore selection (with search + filters),
   - start a restore operation with an optional “selected paths” filter.
 - Update Web UI:
   - Job editor: multi-source picker (manual input + browse),
-  - Restore wizard: browse + select a subset (files and directories).
+  - Restore wizard: browse + select a subset (files and directories), with explicit search and immediate filters (type / hide-dotfiles).
 
 ## Impact
 - Job spec schema changes for filesystem sources (add `paths`, keep `root` legacy).
