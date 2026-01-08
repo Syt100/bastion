@@ -1,0 +1,54 @@
+use serde::{Deserialize, Serialize};
+
+mod access;
+mod entries_index;
+mod operations;
+mod parts;
+mod unpack;
+mod verify;
+pub use entries_index::{
+    ListRunEntriesChildrenOptions, RunEntriesChild, RunEntriesChildrenResponse,
+    list_run_entries_children, list_run_entries_children_with_options,
+};
+pub use operations::{spawn_restore_operation, spawn_verify_operation};
+
+#[derive(Debug, Clone, Copy)]
+pub enum ConflictPolicy {
+    Overwrite,
+    Skip,
+    Fail,
+}
+
+impl ConflictPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Overwrite => "overwrite",
+            Self::Skip => "skip",
+            Self::Fail => "fail",
+        }
+    }
+}
+
+impl std::str::FromStr for ConflictPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "overwrite" => Ok(Self::Overwrite),
+            "skip" => Ok(Self::Skip),
+            "fail" => Ok(Self::Fail),
+            _ => Err(anyhow::anyhow!("invalid conflict policy")),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct RestoreSelection {
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub dirs: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests;
