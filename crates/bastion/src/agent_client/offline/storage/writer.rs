@@ -1,46 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use serde::{Deserialize, Serialize};
-
-pub(super) fn offline_runs_dir(data_dir: &Path) -> PathBuf {
-    data_dir.join("agent").join("offline_runs")
-}
-
-pub(super) fn offline_run_dir(data_dir: &Path, run_id: &str) -> PathBuf {
-    offline_runs_dir(data_dir).join(run_id)
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum OfflineRunStatusV1 {
-    Running,
-    Success,
-    Failed,
-    Rejected,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct OfflineRunFileV1 {
-    pub(super) v: u32,
-    pub(super) id: String,
-    pub(super) job_id: String,
-    pub(super) job_name: String,
-    pub(super) status: OfflineRunStatusV1,
-    pub(super) started_at: i64,
-    pub(super) ended_at: Option<i64>,
-    pub(super) summary: Option<serde_json::Value>,
-    pub(super) error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct OfflineRunEventV1 {
-    pub(super) seq: i64,
-    pub(super) ts: i64,
-    pub(super) level: String,
-    pub(super) kind: String,
-    pub(super) message: String,
-    pub(super) fields: Option<serde_json::Value>,
-}
+use super::io::{append_offline_event_line, write_offline_run_file_atomic};
+use super::types::{OfflineRunEventV1, OfflineRunFileV1, OfflineRunStatusV1};
 
 #[derive(Debug)]
 enum OfflineWriterCommand {
@@ -58,19 +19,19 @@ enum OfflineWriterCommand {
     },
 }
 
-pub(super) struct OfflineRunWriterHandle {
+pub(in super::super) struct OfflineRunWriterHandle {
     tx: tokio::sync::mpsc::UnboundedSender<OfflineWriterCommand>,
 }
 
 impl OfflineRunWriterHandle {
-    pub(super) async fn start(
+    pub(in super::super) async fn start(
         data_dir: &Path,
         run_id: &str,
         job_id: &str,
         job_name: &str,
         started_at: i64,
     ) -> Result<Self, anyhow::Error> {
-        let run_dir = offline_run_dir(data_dir, run_id);
+        let run_dir = super::offline_run_dir(data_dir, run_id);
         tokio::fs::create_dir_all(&run_dir).await?;
 
         let run_path = run_dir.join("run.json");
@@ -157,7 +118,7 @@ impl OfflineRunWriterHandle {
         Ok(Self { tx })
     }
 
-    pub(super) fn append_event(
+    pub(in super::super) fn append_event(
         &self,
         level: &str,
         kind: &str,
@@ -196,7 +157,7 @@ impl OfflineRunWriterHandle {
         Ok(())
     }
 
-    pub(super) async fn finish_success(
+    pub(in super::super) async fn finish_success(
         self,
         summary: serde_json::Value,
     ) -> Result<(), anyhow::Error> {
@@ -204,7 +165,7 @@ impl OfflineRunWriterHandle {
             .await
     }
 
-    pub(super) async fn finish_failed(
+    pub(in super::super) async fn finish_failed(
         self,
         error_code: &str,
         summary: serde_json::Value,
@@ -217,7 +178,7 @@ impl OfflineRunWriterHandle {
         .await
     }
 
-    pub(super) async fn finish_rejected(self) -> Result<(), anyhow::Error> {
+    pub(in super::super) async fn finish_rejected(self) -> Result<(), anyhow::Error> {
         self.finish(
             OfflineRunStatusV1::Rejected,
             Some(serde_json::json!({ "executed_offline": true })),
@@ -225,33 +186,4 @@ impl OfflineRunWriterHandle {
         )
         .await
     }
-}
-
-async fn write_offline_run_file_atomic(
-    path: &Path,
-    doc: OfflineRunFileV1,
-) -> Result<(), anyhow::Error> {
-    let bytes = serde_json::to_vec_pretty(&doc)?;
-    let tmp = path.with_extension("json.partial");
-    let _ = tokio::fs::remove_file(&tmp).await;
-    tokio::fs::write(&tmp, bytes).await?;
-    tokio::fs::rename(&tmp, path).await?;
-    Ok(())
-}
-
-async fn append_offline_event_line(
-    path: &Path,
-    event: &OfflineRunEventV1,
-) -> Result<(), anyhow::Error> {
-    use tokio::io::AsyncWriteExt as _;
-
-    let line = serde_json::to_vec(event)?;
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .await?;
-    file.write_all(&line).await?;
-    file.write_all(b"\n").await?;
-    Ok(())
 }
