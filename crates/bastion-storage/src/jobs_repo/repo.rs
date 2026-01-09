@@ -1,47 +1,8 @@
-use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OverlapPolicy {
-    Reject,
-    Queue,
-}
-
-impl OverlapPolicy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Reject => "reject",
-            Self::Queue => "queue",
-        }
-    }
-}
-
-impl std::str::FromStr for OverlapPolicy {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "reject" => Ok(Self::Reject),
-            "queue" => Ok(Self::Queue),
-            _ => Err(anyhow::anyhow!("invalid overlap_policy")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Job {
-    pub id: String,
-    pub name: String,
-    pub agent_id: Option<String>,
-    pub schedule: Option<String>,
-    pub overlap_policy: OverlapPolicy,
-    pub spec: serde_json::Value,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
+use super::types::{Job, OverlapPolicy};
 
 pub async fn create_job(
     db: &SqlitePool,
@@ -216,64 +177,4 @@ pub async fn delete_job(db: &SqlitePool, job_id: &str) -> Result<bool, anyhow::E
         .execute(db)
         .await?;
     Ok(result.rows_affected() > 0)
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use crate::db;
-
-    use super::{OverlapPolicy, create_job, get_job, list_jobs, update_job};
-
-    #[tokio::test]
-    async fn jobs_crud_round_trip() {
-        let temp = TempDir::new().expect("tempdir");
-        let pool = db::init(temp.path()).await.expect("db init");
-
-        let spec = serde_json::json!({ "v": 1, "type": "filesystem" });
-        let job = create_job(
-            &pool,
-            "job1",
-            None,
-            Some("0 */6 * * *"),
-            OverlapPolicy::Queue,
-            spec,
-        )
-        .await
-        .expect("create");
-
-        let fetched = get_job(&pool, &job.id)
-            .await
-            .expect("get")
-            .expect("present");
-        assert_eq!(fetched.name, "job1");
-        assert_eq!(fetched.overlap_policy, OverlapPolicy::Queue);
-
-        let listed = list_jobs(&pool).await.expect("list");
-        assert_eq!(listed.len(), 1);
-
-        let updated_spec = serde_json::json!({ "v": 1, "type": "sqlite" });
-        let updated = update_job(
-            &pool,
-            &job.id,
-            "job2",
-            Some("agent-1"),
-            None,
-            OverlapPolicy::Reject,
-            updated_spec,
-        )
-        .await
-        .expect("update");
-        assert!(updated);
-
-        let fetched = get_job(&pool, &job.id)
-            .await
-            .expect("get2")
-            .expect("present2");
-        assert_eq!(fetched.name, "job2");
-        assert_eq!(fetched.agent_id.as_deref(), Some("agent-1"));
-        assert_eq!(fetched.overlap_policy, OverlapPolicy::Reject);
-        assert!(fetched.schedule.is_none());
-    }
 }
