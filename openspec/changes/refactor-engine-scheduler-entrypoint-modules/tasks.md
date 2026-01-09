@@ -3,6 +3,6 @@
 - [x] 1.2 Run `openspec validate refactor-engine-scheduler-entrypoint-modules --strict`
 
 ## 2. Engine - Scheduler entrypoint relocation
-- [ ] 2.1 Identify module boundaries (`cron`, `worker`, queueing, retention, cleanup, scheduler entrypoint)
-- [ ] 2.2 Move `crates/bastion-engine/src/scheduler.rs` to `crates/bastion-engine/src/scheduler/mod.rs`
-- [ ] 2.3 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
+- [x] 2.1 Identify module boundaries (`cron`, `worker`, queueing, retention, cleanup, scheduler entrypoint)
+- [x] 2.2 Move `crates/bastion-engine/src/scheduler.rs` to `crates/bastion-engine/src/scheduler/mod.rs`
+- [x] 2.3 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
