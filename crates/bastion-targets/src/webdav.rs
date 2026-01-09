@@ -7,16 +7,7 @@ use bastion_core::backup_format::{
     COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
 };
 
-use crate::webdav_client::{WebdavClient, WebdavCredentials};
-
-fn redact_url(url: &Url) -> String {
-    let mut redacted = url.clone();
-    let _ = redacted.set_username("");
-    let _ = redacted.set_password(None);
-    redacted.set_query(None);
-    redacted.set_fragment(None);
-    redacted.to_string()
-}
+use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
 
 pub async fn store_run(
     base_url: &str,
