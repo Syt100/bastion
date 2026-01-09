@@ -13,6 +13,68 @@ use super::super::{AppError, AppState};
 use super::validation::{validate_job_spec, validate_job_target_scope};
 use bastion_engine::scheduler;
 
+fn require_job_name(name: &str) -> Result<&str, AppError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_name",
+            "Job name is required",
+        ));
+    }
+    Ok(name)
+}
+
+fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+}
+
+fn validate_schedule(schedule: Option<&str>) -> Result<(), AppError> {
+    if let Some(schedule) = schedule {
+        scheduler::validate_cron(schedule)
+            .map_err(|_| AppError::bad_request("invalid_schedule", "Invalid cron schedule"))?;
+    }
+    Ok(())
+}
+
+async fn validate_agent_id(db: &sqlx::SqlitePool, agent_id: Option<&str>) -> Result<(), AppError> {
+    let Some(agent_id) = agent_id else {
+        return Ok(());
+    };
+
+    let row = sqlx::query("SELECT revoked_at FROM agents WHERE id = ? LIMIT 1")
+        .bind(agent_id)
+        .fetch_optional(db)
+        .await?;
+
+    let Some(row) = row else {
+        return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
+    };
+    if row.get::<Option<i64>, _>("revoked_at").is_some() {
+        return Err(AppError::bad_request(
+            "invalid_agent_id",
+            "Agent is revoked",
+        ));
+    }
+
+    Ok(())
+}
+
+async fn try_send_agent_config_snapshot(state: &AppState, agent_id: &str) {
+    if let Err(error) = send_node_config_snapshot(
+        &state.db,
+        state.secrets.as_ref(),
+        &state.agent_manager,
+        agent_id,
+    )
+    .await
+    {
+        tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct CreateJobRequest {
     name: String,
@@ -73,54 +135,21 @@ pub(in crate::http) async fn create_job(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
-    if req.name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Job name is required",
-        ));
-    }
+    let name = require_job_name(&req.name)?;
 
-    let schedule = req
-        .schedule
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| v.to_string());
+    let schedule = normalize_optional_string(req.schedule.as_deref());
 
-    let agent_id = req
-        .agent_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty());
-    if let Some(agent_id) = agent_id {
-        let row = sqlx::query("SELECT revoked_at FROM agents WHERE id = ? LIMIT 1")
-            .bind(agent_id)
-            .fetch_optional(&state.db)
-            .await?;
-
-        let Some(row) = row else {
-            return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
-        };
-        if row.get::<Option<i64>, _>("revoked_at").is_some() {
-            return Err(AppError::bad_request(
-                "invalid_agent_id",
-                "Agent is revoked",
-            ));
-        }
-    }
+    let agent_id = normalize_optional_string(req.agent_id.as_deref());
+    validate_agent_id(&state.db, agent_id.as_deref()).await?;
 
     validate_job_spec(&req.spec)?;
-    validate_job_target_scope(&state.db, agent_id, &req.spec).await?;
-
-    if let Some(schedule) = schedule.as_deref() {
-        scheduler::validate_cron(schedule)
-            .map_err(|_| AppError::bad_request("invalid_schedule", "Invalid cron schedule"))?;
-    }
+    validate_job_target_scope(&state.db, agent_id.as_deref(), &req.spec).await?;
+    validate_schedule(schedule.as_deref())?;
 
     let job = jobs_repo::create_job(
         &state.db,
-        req.name.trim(),
-        agent_id,
+        name,
+        agent_id.as_deref(),
         schedule.as_deref(),
         req.overlap_policy,
         req.spec,
@@ -137,16 +166,8 @@ pub(in crate::http) async fn create_job(
     );
     state.jobs_notify.notify_one();
 
-    if let Some(agent_id) = job.agent_id.as_deref()
-        && let Err(error) = send_node_config_snapshot(
-            &state.db,
-            state.secrets.as_ref(),
-            &state.agent_manager,
-            agent_id,
-        )
-        .await
-    {
-        tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+    if let Some(agent_id) = job.agent_id.as_deref() {
+        try_send_agent_config_snapshot(&state, agent_id).await;
     }
 
     Ok(Json(job))
@@ -179,55 +200,22 @@ pub(in crate::http) async fn update_job(
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
     let previous_agent_id = previous.agent_id.clone();
 
-    if req.name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Job name is required",
-        ));
-    }
+    let name = require_job_name(&req.name)?;
 
-    let schedule = req
-        .schedule
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| v.to_string());
+    let schedule = normalize_optional_string(req.schedule.as_deref());
 
-    let agent_id = req
-        .agent_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty());
-    if let Some(agent_id) = agent_id {
-        let row = sqlx::query("SELECT revoked_at FROM agents WHERE id = ? LIMIT 1")
-            .bind(agent_id)
-            .fetch_optional(&state.db)
-            .await?;
-
-        let Some(row) = row else {
-            return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
-        };
-        if row.get::<Option<i64>, _>("revoked_at").is_some() {
-            return Err(AppError::bad_request(
-                "invalid_agent_id",
-                "Agent is revoked",
-            ));
-        }
-    }
+    let agent_id = normalize_optional_string(req.agent_id.as_deref());
+    validate_agent_id(&state.db, agent_id.as_deref()).await?;
 
     validate_job_spec(&req.spec)?;
-    validate_job_target_scope(&state.db, agent_id, &req.spec).await?;
-
-    if let Some(schedule) = schedule.as_deref() {
-        scheduler::validate_cron(schedule)
-            .map_err(|_| AppError::bad_request("invalid_schedule", "Invalid cron schedule"))?;
-    }
+    validate_job_target_scope(&state.db, agent_id.as_deref(), &req.spec).await?;
+    validate_schedule(schedule.as_deref())?;
 
     let updated = jobs_repo::update_job(
         &state.db,
         &job_id,
-        req.name.trim(),
-        agent_id,
+        name,
+        agent_id.as_deref(),
         schedule.as_deref(),
         req.overlap_policy,
         req.spec,
@@ -262,16 +250,7 @@ pub(in crate::http) async fn update_job(
         affected.push(agent_id);
     }
     for agent_id in affected {
-        if let Err(error) = send_node_config_snapshot(
-            &state.db,
-            state.secrets.as_ref(),
-            &state.agent_manager,
-            &agent_id,
-        )
-        .await
-        {
-            tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
-        }
+        try_send_agent_config_snapshot(&state, &agent_id).await;
     }
 
     Ok(Json(job))
@@ -298,16 +277,8 @@ pub(in crate::http) async fn delete_job(
     tracing::info!(job_id = %job_id, "job deleted");
     state.jobs_notify.notify_one();
 
-    if let Some(agent_id) = previous_agent_id.as_deref()
-        && let Err(error) = send_node_config_snapshot(
-            &state.db,
-            state.secrets.as_ref(),
-            &state.agent_manager,
-            agent_id,
-        )
-        .await
-    {
-        tracing::warn!(agent_id = %agent_id, error = %error, "failed to send agent config snapshot");
+    if let Some(agent_id) = previous_agent_id.as_deref() {
+        try_send_agent_config_snapshot(&state, agent_id).await;
     }
 
     Ok(StatusCode::NO_CONTENT)
