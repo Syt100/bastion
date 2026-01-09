@@ -19,16 +19,7 @@ pub(in crate::http) async fn list_webdav_secrets(
     cookies: Cookies,
 ) -> Result<Json<Vec<SecretListItem>>, AppError> {
     let _session = require_session(&state, &cookies).await?;
-    let secrets = secrets_repo::list_secrets(&state.db, HUB_NODE_ID, "webdav").await?;
-    Ok(Json(
-        secrets
-            .into_iter()
-            .map(|s| SecretListItem {
-                name: s.name,
-                updated_at: s.updated_at,
-            })
-            .collect(),
-    ))
+    list_webdav_secrets_for_node(&state, HUB_NODE_ID).await
 }
 
 pub(in crate::http) async fn list_webdav_secrets_node(
@@ -39,17 +30,7 @@ pub(in crate::http) async fn list_webdav_secrets_node(
     let _session = require_session(&state, &cookies).await?;
     validate_node_id(&state.db, &node_id).await?;
 
-    let node_id = node_id.trim();
-    let secrets = secrets_repo::list_secrets(&state.db, node_id, "webdav").await?;
-    Ok(Json(
-        secrets
-            .into_iter()
-            .map(|s| SecretListItem {
-                name: s.name,
-                updated_at: s.updated_at,
-            })
-            .collect(),
-    ))
+    list_webdav_secrets_for_node(&state, node_id.trim()).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,34 +62,7 @@ pub(in crate::http) async fn upsert_webdav_secret(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
-    if name.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_name", "Secret name is required")
-                .with_details(json!({ "field": "name" })),
-        );
-    }
-    if req.username.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_username", "Username is required")
-                .with_details(json!({ "field": "username" })),
-        );
-    }
-
-    let payload = WebdavSecretPayload {
-        username: req.username.trim().to_string(),
-        password: req.password,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-
-    secrets_repo::upsert_secret(
-        &state.db,
-        &state.secrets,
-        HUB_NODE_ID,
-        "webdav",
-        name.trim(),
-        &bytes,
-    )
-    .await?;
+    upsert_webdav_secret_for_node(&state, HUB_NODE_ID, &name, req).await?;
     tracing::info!(secret_kind = "webdav", secret_name = %name.trim(), "secret upserted");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -119,12 +73,7 @@ pub(in crate::http) async fn get_webdav_secret(
     Path(name): Path<String>,
 ) -> Result<Json<WebdavSecretResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
-
-    let bytes = secrets_repo::get_secret(&state.db, &state.secrets, HUB_NODE_ID, "webdav", &name)
-        .await?
-        .ok_or_else(|| AppError::not_found("secret_not_found", "Secret not found"))?;
-
-    let payload: WebdavSecretPayload = serde_json::from_slice(&bytes)?;
+    let payload = load_webdav_secret_payload(&state, HUB_NODE_ID, &name).await?;
     Ok(Json(WebdavSecretResponse {
         name,
         username: payload.username,
@@ -140,11 +89,7 @@ pub(in crate::http) async fn delete_webdav_secret(
 ) -> Result<StatusCode, AppError> {
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
-
-    let deleted = secrets_repo::delete_secret(&state.db, HUB_NODE_ID, "webdav", &name).await?;
-    if !deleted {
-        return Err(AppError::not_found("secret_not_found", "Secret not found"));
-    }
+    delete_webdav_secret_for_node(&state, HUB_NODE_ID, &name).await?;
     tracing::info!(secret_kind = "webdav", secret_name = %name, "secret deleted");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -161,53 +106,15 @@ pub(in crate::http) async fn upsert_webdav_secret_node(
 
     validate_node_id(&state.db, &node_id).await?;
 
-    if name.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_name", "Secret name is required")
-                .with_details(json!({ "field": "name" })),
-        );
-    }
-    if req.username.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_username", "Username is required")
-                .with_details(json!({ "field": "username" })),
-        );
-    }
-
-    let payload = WebdavSecretPayload {
-        username: req.username.trim().to_string(),
-        password: req.password,
-    };
-    let bytes = serde_json::to_vec(&payload)?;
-
-    secrets_repo::upsert_secret(
-        &state.db,
-        &state.secrets,
-        node_id.trim(),
-        "webdav",
-        name.trim(),
-        &bytes,
-    )
-    .await?;
+    let node_id_trimmed = node_id.trim();
+    upsert_webdav_secret_for_node(&state, node_id_trimmed, &name, req).await?;
     tracing::info!(
-        node_id = %node_id.trim(),
+        node_id = %node_id_trimmed,
         secret_kind = "webdav",
         secret_name = %name.trim(),
         "secret upserted"
     );
-
-    let node_id_trimmed = node_id.trim();
-    if node_id_trimmed != HUB_NODE_ID
-        && let Err(error) = send_node_config_snapshot(
-            &state.db,
-            state.secrets.as_ref(),
-            &state.agent_manager,
-            node_id_trimmed,
-        )
-        .await
-    {
-        tracing::warn!(node_id = %node_id_trimmed, error = %error, "failed to send agent config snapshot");
-    }
+    maybe_send_node_config_snapshot(&state, node_id_trimmed).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -219,13 +126,7 @@ pub(in crate::http) async fn get_webdav_secret_node(
 ) -> Result<Json<WebdavSecretResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
     validate_node_id(&state.db, &node_id).await?;
-
-    let bytes =
-        secrets_repo::get_secret(&state.db, &state.secrets, node_id.trim(), "webdav", &name)
-            .await?
-            .ok_or_else(|| AppError::not_found("secret_not_found", "Secret not found"))?;
-
-    let payload: WebdavSecretPayload = serde_json::from_slice(&bytes)?;
+    let payload = load_webdav_secret_payload(&state, node_id.trim(), &name).await?;
     Ok(Json(WebdavSecretResponse {
         name,
         username: payload.username,
@@ -243,29 +144,117 @@ pub(in crate::http) async fn delete_webdav_secret_node(
     require_csrf(&headers, &session)?;
     validate_node_id(&state.db, &node_id).await?;
 
-    let deleted = secrets_repo::delete_secret(&state.db, node_id.trim(), "webdav", &name).await?;
-    if !deleted {
-        return Err(AppError::not_found("secret_not_found", "Secret not found"));
-    }
+    let node_id_trimmed = node_id.trim();
+    delete_webdav_secret_for_node(&state, node_id_trimmed, &name).await?;
     tracing::info!(
-        node_id = %node_id.trim(),
+        node_id = %node_id_trimmed,
         secret_kind = "webdav",
         secret_name = %name,
         "secret deleted"
     );
-
-    let node_id_trimmed = node_id.trim();
-    if node_id_trimmed != HUB_NODE_ID
-        && let Err(error) = send_node_config_snapshot(
-            &state.db,
-            state.secrets.as_ref(),
-            &state.agent_manager,
-            node_id_trimmed,
-        )
-        .await
-    {
-        tracing::warn!(node_id = %node_id_trimmed, error = %error, "failed to send agent config snapshot");
-    }
+    maybe_send_node_config_snapshot(&state, node_id_trimmed).await;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_webdav_secrets_for_node(
+    state: &AppState,
+    node_id: &str,
+) -> Result<Json<Vec<SecretListItem>>, AppError> {
+    let secrets = secrets_repo::list_secrets(&state.db, node_id, "webdav").await?;
+    Ok(Json(
+        secrets
+            .into_iter()
+            .map(|s| SecretListItem {
+                name: s.name,
+                updated_at: s.updated_at,
+            })
+            .collect(),
+    ))
+}
+
+fn validate_webdav_secret_name(name: &str) -> Result<&str, AppError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(
+            AppError::bad_request("invalid_name", "Secret name is required")
+                .with_details(json!({ "field": "name" })),
+        );
+    }
+    Ok(name)
+}
+
+fn validate_webdav_secret_username(username: &str) -> Result<&str, AppError> {
+    let username = username.trim();
+    if username.is_empty() {
+        return Err(
+            AppError::bad_request("invalid_username", "Username is required")
+                .with_details(json!({ "field": "username" })),
+        );
+    }
+    Ok(username)
+}
+
+async fn upsert_webdav_secret_for_node(
+    state: &AppState,
+    node_id: &str,
+    name: &str,
+    req: UpsertWebdavSecretRequest,
+) -> Result<(), AppError> {
+    let name = validate_webdav_secret_name(name)?;
+    let username = validate_webdav_secret_username(&req.username)?;
+
+    let payload = WebdavSecretPayload {
+        username: username.to_string(),
+        password: req.password,
+    };
+    let bytes = serde_json::to_vec(&payload)?;
+
+    secrets_repo::upsert_secret(&state.db, &state.secrets, node_id, "webdav", name, &bytes).await?;
+    Ok(())
+}
+
+async fn load_webdav_secret_payload(
+    state: &AppState,
+    node_id: &str,
+    name: &str,
+) -> Result<WebdavSecretPayload, AppError> {
+    let bytes = secrets_repo::get_secret(&state.db, &state.secrets, node_id, "webdav", name)
+        .await?
+        .ok_or_else(|| AppError::not_found("secret_not_found", "Secret not found"))?;
+
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+async fn delete_webdav_secret_for_node(
+    state: &AppState,
+    node_id: &str,
+    name: &str,
+) -> Result<(), AppError> {
+    let deleted = secrets_repo::delete_secret(&state.db, node_id, "webdav", name).await?;
+    if !deleted {
+        return Err(AppError::not_found("secret_not_found", "Secret not found"));
+    }
+    Ok(())
+}
+
+async fn maybe_send_node_config_snapshot(state: &AppState, node_id: &str) {
+    if node_id == HUB_NODE_ID {
+        return;
+    }
+
+    if let Err(error) = send_node_config_snapshot(
+        &state.db,
+        state.secrets.as_ref(),
+        &state.agent_manager,
+        node_id,
+    )
+    .await
+    {
+        tracing::warn!(
+            node_id = %node_id,
+            error = %error,
+            "failed to send agent config snapshot"
+        );
+    }
 }
