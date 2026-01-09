@@ -59,6 +59,13 @@ impl WebdavClient {
         })
     }
 
+    fn authed(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        req.basic_auth(
+            self.credentials.username.clone(),
+            Some(self.credentials.password.clone()),
+        )
+    }
+
     #[allow(dead_code)]
     pub fn base_url(&self) -> &Url {
         &self.base_url
@@ -67,11 +74,9 @@ impl WebdavClient {
     pub async fn ensure_collection(&self, url: &Url) -> Result<(), anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav mkcol");
         let res = self
-            .http
-            .request(Method::from_bytes(b"MKCOL")?, url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
+            .authed(
+                self.http
+                    .request(Method::from_bytes(b"MKCOL")?, url.clone()),
             )
             .send()
             .await?;
@@ -84,15 +89,7 @@ impl WebdavClient {
 
     pub async fn head_size(&self, url: &Url) -> Result<Option<u64>, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav head");
-        let res = self
-            .http
-            .head(url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
-            )
-            .send()
-            .await?;
+        let res = self.authed(self.http.head(url.clone())).send().await?;
 
         match res.status() {
             StatusCode::OK => {
@@ -121,12 +118,7 @@ impl WebdavClient {
         let body = reqwest::Body::wrap_stream(stream);
 
         let res = self
-            .http
-            .put(url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
-            )
+            .authed(self.http.put(url.clone()))
             .header(CONTENT_TYPE, "application/octet-stream")
             .header(CONTENT_LENGTH, size)
             .body(body)
@@ -172,15 +164,7 @@ impl WebdavClient {
 
     pub async fn get_bytes(&self, url: &Url) -> Result<Vec<u8>, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav get bytes");
-        let res = self
-            .http
-            .get(url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
-            )
-            .send()
-            .await?;
+        let res = self.authed(self.http.get(url.clone())).send().await?;
 
         match res.status() {
             StatusCode::OK => Ok(res.bytes().await?.to_vec()),
@@ -191,15 +175,7 @@ impl WebdavClient {
 
     pub async fn delete(&self, url: &Url) -> Result<bool, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav delete");
-        let res = self
-            .http
-            .delete(url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
-            )
-            .send()
-            .await?;
+        let res = self.authed(self.http.delete(url.clone())).send().await?;
 
         match res.status() {
             StatusCode::NOT_FOUND => Ok(false),
@@ -247,15 +223,7 @@ impl WebdavClient {
         expected_size: Option<u64>,
     ) -> Result<u64, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), dest = %dest.display(), "webdav get to file");
-        let res = self
-            .http
-            .get(url.clone())
-            .basic_auth(
-                self.credentials.username.clone(),
-                Some(self.credentials.password.clone()),
-            )
-            .send()
-            .await?;
+        let res = self.authed(self.http.get(url.clone())).send().await?;
 
         if res.status() != StatusCode::OK {
             anyhow::bail!("GET failed: HTTP {}", res.status());
