@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use url::Url;
 
-fn redact_url(url: &Url) -> String {
+pub(crate) fn redact_url(url: &Url) -> String {
     let mut redacted = url.clone();
     let _ = redacted.set_username("");
     let _ = redacted.set_password(None);
