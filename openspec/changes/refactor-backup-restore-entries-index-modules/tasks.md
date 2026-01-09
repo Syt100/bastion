@@ -3,9 +3,9 @@
 - [x] 1.2 Run `openspec validate refactor-backup-restore-entries-index-modules --strict`
 
 ## 2. Backup - Restore entries index module split
-- [ ] 2.1 Identify responsibilities and module boundaries (types, fetch/cache, listing/filtering)
-- [ ] 2.2 Convert `restore/entries_index.rs` into folder module and keep exports stable
-- [ ] 2.3 Extract listing logic into `restore/entries_index/list.rs`
-- [ ] 2.4 Extract index fetch/cache logic into `restore/entries_index/fetch.rs`
-- [ ] 2.5 Extract shared types into `restore/entries_index/types.rs`
-- [ ] 2.6 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
+- [x] 2.1 Identify responsibilities and module boundaries (types, fetch/cache, listing/filtering)
+- [x] 2.2 Convert `restore/entries_index.rs` into folder module and keep exports stable
+- [x] 2.3 Extract listing logic into `restore/entries_index/list.rs`
+- [x] 2.4 Extract index fetch/cache logic into `restore/entries_index/fetch.rs`
+- [x] 2.5 Extract shared types into `restore/entries_index/types.rs`
+- [x] 2.6 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`

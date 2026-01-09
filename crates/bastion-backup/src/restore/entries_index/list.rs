@@ -1,52 +1,16 @@
 use std::fs::File;
 use std::io::BufRead;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use bastion_core::manifest::HashAlgorithm;
-use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use bastion_storage::secrets::SecretsCrypto;
 
-use super::access::TargetAccess;
-
-#[derive(Debug, Deserialize)]
-pub(super) struct EntryRecord {
-    pub(super) path: String,
-    pub(super) kind: String,
-    pub(super) size: u64,
-    pub(super) hash_alg: Option<HashAlgorithm>,
-    pub(super) hash: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunEntriesChild {
-    pub path: String,
-    pub kind: String,
-    pub size: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunEntriesChildrenResponse {
-    pub prefix: String,
-    pub cursor: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<u64>,
-    pub entries: Vec<RunEntriesChild>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ListRunEntriesChildrenOptions {
-    pub prefix: Option<String>,
-    pub cursor: u64,
-    pub limit: u64,
-    pub q: Option<String>,
-    pub kind: Option<String>,
-    pub hide_dotfiles: bool,
-    pub min_size_bytes: Option<u64>,
-    pub max_size_bytes: Option<u64>,
-    pub type_sort_file_first: bool,
-}
+use super::super::access;
+use super::ListChildrenFromEntriesIndexOptions;
+use super::fetch_entries_index;
+use super::types::EntryRecord;
+use super::{ListRunEntriesChildrenOptions, RunEntriesChild, RunEntriesChildrenResponse};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn list_run_entries_children(
@@ -103,8 +67,8 @@ pub async fn list_run_entries_children_with_options(
         type_sort_file_first,
     } = options;
 
-    let super::access::ResolvedRunAccess { access, .. } =
-        super::access::resolve_success_run_access(db, secrets, run_id).await?;
+    let access::ResolvedRunAccess { access, .. } =
+        access::resolve_success_run_access(db, secrets, run_id).await?;
 
     let cache_dir = data_dir.join("cache").join("entries").join(run_id);
     tokio::fs::create_dir_all(&cache_dir).await?;
@@ -131,47 +95,12 @@ pub async fn list_run_entries_children_with_options(
         type_sort_file_first,
     };
     tokio::task::spawn_blocking(move || {
-        list_children_from_entries_index(&entries_path, list_options)
+        super::list_children_from_entries_index(&entries_path, list_options)
     })
     .await?
 }
 
-pub(super) async fn fetch_entries_index(
-    access: &TargetAccess,
-    staging_dir: &Path,
-) -> Result<PathBuf, anyhow::Error> {
-    let dst = staging_dir.join(crate::backup::ENTRIES_INDEX_NAME);
-    match access {
-        TargetAccess::Webdav { client, run_url } => {
-            let url = run_url.join(crate::backup::ENTRIES_INDEX_NAME)?;
-            let expected = client.head_size(&url).await?;
-            if let Some(size) = expected
-                && let Ok(meta) = tokio::fs::metadata(&dst).await
-                && meta.len() == size
-            {
-                return Ok(dst);
-            }
-            client.get_to_file(&url, &dst, expected, 3).await?;
-            Ok(dst)
-        }
-        TargetAccess::LocalDir { run_dir } => Ok(run_dir.join(crate::backup::ENTRIES_INDEX_NAME)),
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct ListChildrenFromEntriesIndexOptions {
-    pub(super) prefix: String,
-    pub(super) cursor: usize,
-    pub(super) limit: usize,
-    pub(super) q: Option<String>,
-    pub(super) kind: Option<String>,
-    pub(super) hide_dotfiles: bool,
-    pub(super) min_size_bytes: Option<u64>,
-    pub(super) max_size_bytes: Option<u64>,
-    pub(super) type_sort_file_first: bool,
-}
-
-pub(super) fn list_children_from_entries_index(
+pub(in crate::restore) fn list_children_from_entries_index(
     entries_path: &Path,
     options: ListChildrenFromEntriesIndexOptions,
 ) -> Result<RunEntriesChildrenResponse, anyhow::Error> {
