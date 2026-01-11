@@ -72,9 +72,8 @@ describe('useNotificationsStore', () => {
     await store.listQueue({ status: 'failed', channel: 'email', page: 2, pageSize: 10 })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/notifications/queue?status=failed&channel=email&page=2&page_size=10',
+      '/api/notifications/queue?status%5B%5D=failed&channel%5B%5D=email&page=2&page_size=10',
       expect.objectContaining({ credentials: 'include' }),
     )
   })
 })
-

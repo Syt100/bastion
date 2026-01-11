@@ -133,11 +133,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const q = new URLSearchParams()
     if (params.status) {
       const values = Array.isArray(params.status) ? params.status : [params.status]
-      for (const value of values) q.append('status', value)
+      for (const value of values) q.append('status[]', value)
     }
     if (params.channel) {
       const values = Array.isArray(params.channel) ? params.channel : [params.channel]
-      for (const value of values) q.append('channel', value)
+      for (const value of values) q.append('channel[]', value)
     }
     if (params.page) q.set('page', String(params.page))
     if (params.pageSize) q.set('page_size', String(params.pageSize))

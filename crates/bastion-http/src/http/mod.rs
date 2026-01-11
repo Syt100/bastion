@@ -240,3 +240,6 @@ mod error_feedback_tests;
 
 #[cfg(test)]
 mod agents_ingest_tests;
+
+#[cfg(test)]
+mod filter_multiselect_tests;
