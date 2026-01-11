@@ -31,10 +31,7 @@ pub(in crate::http) struct ListIncompleteCleanupTasksResponse {
 fn validate_status(status: &str) -> Result<(), AppError> {
     match status {
         "queued" | "running" | "retrying" | "blocked" | "done" | "ignored" | "abandoned" => Ok(()),
-        _ => Err(AppError::bad_request(
-            "invalid_status",
-            "Invalid status",
-        )),
+        _ => Err(AppError::bad_request("invalid_status", "Invalid status")),
     }
 }
 
@@ -142,19 +139,13 @@ pub(in crate::http) async fn retry_incomplete_cleanup_task_now(
         ));
     };
     if task.status == "running" {
-        return Err(AppError::conflict(
-            "task_running",
-            "Task is running",
-        ));
+        return Err(AppError::conflict("task_running", "Task is running"));
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let ok = incomplete_cleanup_repo::retry_now(&state.db, &run_id, now).await?;
     if !ok {
-        return Err(AppError::conflict(
-            "not_retryable",
-            "Task is not retryable",
-        ));
+        return Err(AppError::conflict("not_retryable", "Task is not retryable"));
     }
 
     let _ = incomplete_cleanup_repo::append_event(
@@ -194,10 +185,7 @@ pub(in crate::http) async fn ignore_incomplete_cleanup_task(
         ));
     };
     if task.status == "running" {
-        return Err(AppError::conflict(
-            "task_running",
-            "Task is running",
-        ));
+        return Err(AppError::conflict("task_running", "Task is running"));
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -211,10 +199,7 @@ pub(in crate::http) async fn ignore_incomplete_cleanup_task(
     )
     .await?;
     if !ok {
-        return Err(AppError::conflict(
-            "not_ignorable",
-            "Task is not ignorable",
-        ));
+        return Err(AppError::conflict("not_ignorable", "Task is not ignorable"));
     }
 
     let _ = incomplete_cleanup_repo::append_event(
@@ -247,19 +232,13 @@ pub(in crate::http) async fn unignore_incomplete_cleanup_task(
         ));
     };
     if task.status != "ignored" {
-        return Err(AppError::conflict(
-            "not_ignored",
-            "Task is not ignored",
-        ));
+        return Err(AppError::conflict("not_ignored", "Task is not ignored"));
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let ok = incomplete_cleanup_repo::unignore_task(&state.db, &run_id, now).await?;
     if !ok {
-        return Err(AppError::conflict(
-            "not_ignored",
-            "Task is not ignored",
-        ));
+        return Err(AppError::conflict("not_ignored", "Task is not ignored"));
     }
 
     let _ = incomplete_cleanup_repo::append_event(
