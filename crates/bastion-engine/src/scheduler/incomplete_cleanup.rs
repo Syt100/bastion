@@ -49,14 +49,13 @@ pub(super) async fn run_incomplete_cleanup_loop(
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
         let cutoff_started_at = now.saturating_sub(cutoff_seconds);
 
-        let stats =
-            match tick_incomplete_cleanup(&db, &secrets, cutoff_started_at, now).await {
-                Ok(v) => v,
-                Err(error) => {
-                    warn!(error = %error, "incomplete cleanup tick failed");
-                    TickStats::default()
-                }
-            };
+        let stats = match tick_incomplete_cleanup(&db, &secrets, cutoff_started_at, now).await {
+            Ok(v) => v,
+            Err(error) => {
+                warn!(error = %error, "incomplete cleanup tick failed");
+                TickStats::default()
+            }
+        };
 
         if stats.any_activity() {
             info!(
@@ -117,8 +116,13 @@ struct RunTargetSnapshot {
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum RunTarget {
-    Webdav { base_url: String, secret_name: String },
-    LocalDir { base_dir: String },
+    Webdav {
+        base_url: String,
+        secret_name: String,
+    },
+    LocalDir {
+        base_dir: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,28 +152,32 @@ async fn tick_incomplete_cleanup(
     cutoff_started_at: i64,
     now: i64,
 ) -> Result<TickStats, anyhow::Error> {
-    let mut stats = TickStats::default();
+    let recovered_running = recover_stuck_running(db, now).await?;
 
-    stats.recovered_running = recover_stuck_running(db, now).await?;
-
-    let (reconciled, hit_limit) = reconcile_cleanup_tasks(db, cutoff_started_at, now).await?;
-    stats.reconciled = reconciled;
-    stats.hit_reconcile_limit = hit_limit;
+    let (reconciled, hit_reconcile_limit) =
+        reconcile_cleanup_tasks(db, cutoff_started_at, now).await?;
 
     let (process_stats, hit_process_limit) = process_due_tasks(db, secrets, now).await?;
-    stats.processed = process_stats.processed;
-    stats.hit_process_limit = hit_process_limit;
 
-    stats.deleted = process_stats.deleted;
-    stats.done = process_stats.done;
-    stats.retrying = process_stats.retrying;
-    stats.blocked = process_stats.blocked;
-    stats.abandoned = process_stats.abandoned;
-
-    Ok(stats)
+    Ok(TickStats {
+        reconciled,
+        processed: process_stats.processed,
+        recovered_running,
+        deleted: process_stats.deleted,
+        done: process_stats.done,
+        retrying: process_stats.retrying,
+        blocked: process_stats.blocked,
+        abandoned: process_stats.abandoned,
+        hit_reconcile_limit,
+        hit_process_limit,
+    })
 }
 
-async fn compute_sleep(db: &SqlitePool, now: i64, stats: &TickStats) -> Result<Duration, anyhow::Error> {
+async fn compute_sleep(
+    db: &SqlitePool,
+    now: i64,
+    stats: &TickStats,
+) -> Result<Duration, anyhow::Error> {
     if stats.hit_process_limit || stats.hit_reconcile_limit {
         return Ok(Duration::from_secs(SHORT_SLEEP_SECS));
     }
@@ -382,15 +390,9 @@ async fn process_task(
             RunTarget::Webdav {
                 base_url,
                 secret_name,
-            } => cleanup_webdav_run(
-                db,
-                secrets,
-                &task.node_id,
-                &base_url,
-                &secret_name,
-                task,
-            )
-            .await,
+            } => {
+                cleanup_webdav_run(db, secrets, &task.node_id, &base_url, &secret_name, task).await
+            }
         },
         Err(error) => CleanupResult::Failed {
             kind: ErrorKind::Config,
@@ -473,7 +475,8 @@ async fn process_task(
                 return Ok(());
             }
 
-            let next_attempt_at = now.saturating_add(backoff_seconds(&task.run_id, task.attempts, kind));
+            let next_attempt_at =
+                now.saturating_add(backoff_seconds(&task.run_id, task.attempts, kind));
             if matches!(kind, ErrorKind::Auth | ErrorKind::Config) {
                 incomplete_cleanup_repo::mark_blocked(
                     db,
@@ -584,16 +587,17 @@ fn jitter_seconds(run_id: &str, attempts: i64, max_jitter: i64) -> i64 {
 #[derive(Debug)]
 enum CleanupResult {
     SkipComplete,
-    SkipNotFound { message: &'static str },
+    SkipNotFound {
+        message: &'static str,
+    },
     Deleted,
-    Failed { kind: ErrorKind, error: anyhow::Error },
+    Failed {
+        kind: ErrorKind,
+        error: anyhow::Error,
+    },
 }
 
-fn cleanup_local_dir_run(
-    base_dir: &str,
-    job_id: &str,
-    run_id: &str,
-) -> CleanupResult {
+fn cleanup_local_dir_run(base_dir: &str, job_id: &str, run_id: &str) -> CleanupResult {
     use bastion_backup::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 
     let run_dir = std::path::Path::new(base_dir).join(job_id).join(run_id);

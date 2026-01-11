@@ -27,5 +27,5 @@
 - [x] 5.3 Update job “delete” UX to offer Archive vs Delete permanently (cascade)
 
 ## 6. Verification
-- [ ] 6.1 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
-- [ ] 6.2 Run `cd ui && npm test` and `npm run type-check`
+- [x] 6.1 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
+- [x] 6.2 Run `cd ui && npm test` and `npm run type-check`
