@@ -15,12 +15,29 @@ use super::validation::{destination_exists, require_supported_channel};
 
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListQueueQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
     status: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
     channel: Vec<String>,
     page: Option<i64>,
     page_size: Option<i64>,
+}
+
+fn deserialize_one_or_many_strings<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(v) => Ok(vec![v]),
+        OneOrMany::Many(v) => Ok(v),
+    }
 }
 
 #[derive(Debug, Serialize)]

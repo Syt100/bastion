@@ -77,20 +77,24 @@ async fn cleanup_list_accepts_multi_value_query_params() {
     });
 
     let client = reqwest::Client::new();
-    let resp = client
-        .get(format!(
-            "{}/api/maintenance/incomplete-cleanup?status[]=queued&status[]=done&target_type[]=webdav&target_type[]=local_dir",
-            base_url(addr)
-        ))
-        .header("cookie", format!("bastion_session={}", session.id))
-        .send()
-        .await
-        .expect("request");
+    let cookie = format!("bastion_session={}", session.id);
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = resp.json().await.expect("json");
-    assert_eq!(body["items"].as_array().map(|v| v.len()), Some(0));
-    assert_eq!(body["total"].as_i64(), Some(0));
+    for path in [
+        "/api/maintenance/incomplete-cleanup?status[]=queued&status[]=done&target_type[]=webdav&target_type[]=local_dir",
+        "/api/maintenance/incomplete-cleanup?status=queued&target_type=webdav",
+    ] {
+        let resp = client
+            .get(format!("{}{}", base_url(addr), path))
+            .header("cookie", &cookie)
+            .send()
+            .await
+            .expect("request");
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = resp.json().await.expect("json");
+        assert_eq!(body["items"].as_array().map(|v| v.len()), Some(0));
+        assert_eq!(body["total"].as_i64(), Some(0));
+    }
 
     server.abort();
 }
@@ -137,20 +141,24 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
     });
 
     let client = reqwest::Client::new();
-    let resp = client
-        .get(format!(
-            "{}/api/notifications/queue?status[]=failed&status[]=sent&channel[]=email&channel[]=wecom_bot",
-            base_url(addr)
-        ))
-        .header("cookie", format!("bastion_session={}", session.id))
-        .send()
-        .await
-        .expect("request");
+    let cookie = format!("bastion_session={}", session.id);
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = resp.json().await.expect("json");
-    assert_eq!(body["items"].as_array().map(|v| v.len()), Some(0));
-    assert_eq!(body["total"].as_i64(), Some(0));
+    for path in [
+        "/api/notifications/queue?status[]=failed&status[]=sent&channel[]=email&channel[]=wecom_bot",
+        "/api/notifications/queue?status=failed&channel=email",
+    ] {
+        let resp = client
+            .get(format!("{}{}", base_url(addr), path))
+            .header("cookie", &cookie)
+            .send()
+            .await
+            .expect("request");
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = resp.json().await.expect("json");
+        assert_eq!(body["items"].as_array().map(|v| v.len()), Some(0));
+        assert_eq!(body["total"].as_i64(), Some(0));
+    }
 
     server.abort();
 }
