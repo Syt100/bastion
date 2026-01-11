@@ -31,11 +31,10 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const loading = ref(false)
 
-type StatusFilter = 'all' | 'queued' | 'sending' | 'sent' | 'failed' | 'canceled'
-type ChannelFilter = 'all' | NotificationChannel
+type QueueStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'canceled'
 
-const statusFilter = ref<StatusFilter>('all')
-const channelFilter = ref<ChannelFilter>('all')
+const statusFilter = ref<QueueStatus[]>([])
+const channelFilter = ref<NotificationChannel[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -50,7 +49,6 @@ function isAbortError(error: unknown): boolean {
 }
 
 const statusOptions = computed(() => [
-  { label: t('settings.notifications.status.all'), value: 'all' as const },
   { label: t('settings.notifications.status.queued'), value: 'queued' },
   { label: t('settings.notifications.status.sending'), value: 'sending' },
   { label: t('settings.notifications.status.sent'), value: 'sent' },
@@ -59,7 +57,6 @@ const statusOptions = computed(() => [
 ])
 
 const channelOptions = computed(() => [
-  { label: t('settings.notifications.channel.all'), value: 'all' as const },
   { label: t('settings.notifications.channel.wecom'), value: 'wecom_bot' },
   { label: t('settings.notifications.channel.email'), value: 'email' },
 ])
@@ -84,8 +81,8 @@ async function refresh(): Promise<void> {
   loading.value = true
   try {
     const res = await notifications.listQueue({
-      status: statusFilter.value === 'all' ? undefined : statusFilter.value,
-      channel: channelFilter.value === 'all' ? undefined : channelFilter.value,
+      status: statusFilter.value.length ? statusFilter.value : undefined,
+      channel: channelFilter.value.length ? channelFilter.value : undefined,
       page: page.value,
       pageSize: pageSize.value,
       signal: req.signal,
@@ -237,10 +234,24 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 <template>
   <n-card class="app-card" :title="t('settings.notifications.queueTitle')">
     <div class="space-y-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <n-select v-model:value="statusFilter" :options="statusOptions" class="w-48" />
-        <n-select v-model:value="channelFilter" :options="channelOptions" class="w-48" />
-        <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+      <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
+        <n-select
+          v-model:value="statusFilter"
+          multiple
+          clearable
+          :placeholder="t('settings.notifications.status.all')"
+          :options="statusOptions"
+          class="w-full md:w-56"
+        />
+        <n-select
+          v-model:value="channelFilter"
+          multiple
+          clearable
+          :placeholder="t('settings.notifications.channel.all')"
+          :options="channelOptions"
+          class="w-full md:w-56"
+        />
+        <n-button class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
       </div>
 
       <div v-if="!isDesktop" class="space-y-3">

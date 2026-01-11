@@ -43,11 +43,8 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 const loading = ref(false)
 const helpOpen = ref(false)
 
-type StatusFilter = 'all' | CleanupTaskStatus
-type TargetFilter = 'all' | CleanupTargetType
-
-const statusFilter = ref<StatusFilter>('all')
-const targetFilter = ref<TargetFilter>('all')
+const statusFilter = ref<CleanupTaskStatus[]>([])
+const targetFilter = ref<CleanupTargetType[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -62,7 +59,6 @@ function isAbortError(error: unknown): boolean {
 }
 
 const statusOptions = computed(() => [
-  { label: t('settings.maintenance.cleanup.status.all'), value: 'all' as const },
   { label: t('settings.maintenance.cleanup.status.queued'), value: 'queued' },
   { label: t('settings.maintenance.cleanup.status.running'), value: 'running' },
   { label: t('settings.maintenance.cleanup.status.retrying'), value: 'retrying' },
@@ -73,7 +69,6 @@ const statusOptions = computed(() => [
 ])
 
 const targetOptions = computed(() => [
-  { label: t('settings.maintenance.cleanup.target.all'), value: 'all' as const },
   { label: t('settings.maintenance.cleanup.target.webdav'), value: 'webdav' },
   { label: t('settings.maintenance.cleanup.target.localDir'), value: 'local_dir' },
 ])
@@ -123,8 +118,8 @@ async function refresh(): Promise<void> {
   loading.value = true
   try {
     const res = await cleanup.listTasks({
-      status: statusFilter.value === 'all' ? undefined : statusFilter.value,
-      targetType: targetFilter.value === 'all' ? undefined : targetFilter.value,
+      status: statusFilter.value.length ? statusFilter.value : undefined,
+      targetType: targetFilter.value.length ? targetFilter.value : undefined,
       page: page.value,
       pageSize: pageSize.value,
       signal: req.signal,
@@ -333,11 +328,27 @@ const actionHelpItems = computed(() => [
 <template>
   <n-card class="app-card" :title="t('settings.maintenance.cleanup.title')">
     <div class="space-y-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <n-select v-model:value="statusFilter" :options="statusOptions" class="w-48" />
-        <n-select v-model:value="targetFilter" :options="targetOptions" class="w-48" />
-        <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button size="small" circle @click="helpOpen = true">?</n-button>
+      <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
+        <n-select
+          v-model:value="statusFilter"
+          multiple
+          clearable
+          :placeholder="t('settings.maintenance.cleanup.status.all')"
+          :options="statusOptions"
+          class="w-full md:w-56"
+        />
+        <n-select
+          v-model:value="targetFilter"
+          multiple
+          clearable
+          :placeholder="t('settings.maintenance.cleanup.target.all')"
+          :options="targetOptions"
+          class="w-full md:w-56"
+        />
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <n-button class="flex-1 md:flex-none" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+          <n-button size="small" circle @click="helpOpen = true">?</n-button>
+        </div>
       </div>
 
       <div v-if="!isDesktop" class="space-y-3">
