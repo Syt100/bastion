@@ -33,8 +33,8 @@ const loading = ref(false)
 
 type QueueStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'canceled'
 
-const statusFilter = ref<QueueStatus[]>([])
-const channelFilter = ref<NotificationChannel[]>([])
+const statusFilter = ref<QueueStatus[] | null>([])
+const channelFilter = ref<NotificationChannel[] | null>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -80,9 +80,11 @@ async function refresh(): Promise<void> {
   const req = latest.next()
   loading.value = true
   try {
+    const statuses = statusFilter.value ?? []
+    const channels = channelFilter.value ?? []
     const res = await notifications.listQueue({
-      status: statusFilter.value.length ? statusFilter.value : undefined,
-      channel: channelFilter.value.length ? channelFilter.value : undefined,
+      status: statuses.length ? statuses : undefined,
+      channel: channels.length ? channels : undefined,
       page: page.value,
       pageSize: pageSize.value,
       signal: req.signal,
