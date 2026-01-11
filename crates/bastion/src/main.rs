@@ -120,6 +120,7 @@ async fn main() -> Result<(), anyhow::Error> {
         secrets,
         agent_manager,
         run_queue_notify,
+        incomplete_cleanup_notify,
         jobs_notify,
         notifications_notify,
         run_events_bus,

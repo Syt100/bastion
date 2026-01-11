@@ -18,8 +18,8 @@
 - [x] 3.4 Ensure logs are rate-limited (no per-run tight-loop spam)
 
 ## 4. HTTP API
-- [ ] 4.1 Add `/api/maintenance/incomplete-cleanup` endpoints (list/get/events/actions) with auth + CSRF
-- [ ] 4.2 Add job archive endpoints and update jobs listing to hide archived by default (with an optional query to include)
+- [x] 4.1 Add `/api/maintenance/incomplete-cleanup` endpoints (list/get/events/actions) with auth + CSRF
+- [x] 4.2 Add job archive endpoints and update jobs listing to hide archived by default (with an optional query to include)
 
 ## 5. UI (mobile friendly)
 - [ ] 5.1 Add a Maintenance page for incomplete cleanup tasks (desktop table + mobile card layout)
