@@ -237,22 +237,26 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
   <n-card class="app-card" :title="t('settings.notifications.queueTitle')">
     <div class="space-y-4">
       <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
-        <n-select
-          v-model:value="statusFilter"
-          multiple
-          clearable
-          :placeholder="t('settings.notifications.status.all')"
-          :options="statusOptions"
-          class="w-full md:w-56"
-        />
-        <n-select
-          v-model:value="channelFilter"
-          multiple
-          clearable
-          :placeholder="t('settings.notifications.channel.all')"
-          :options="channelOptions"
-          class="w-full md:w-56"
-        />
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="statusFilter"
+            multiple
+            clearable
+            :placeholder="t('settings.notifications.status.all')"
+            :options="statusOptions"
+            class="w-full"
+          />
+        </div>
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="channelFilter"
+            multiple
+            clearable
+            :placeholder="t('settings.notifications.channel.all')"
+            :options="channelOptions"
+            class="w-full"
+          />
+        </div>
         <n-button class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
       </div>
 

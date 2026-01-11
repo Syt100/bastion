@@ -331,22 +331,26 @@ const actionHelpItems = computed(() => [
   <n-card class="app-card" :title="t('settings.maintenance.cleanup.title')">
     <div class="space-y-4">
       <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
-        <n-select
-          v-model:value="statusFilter"
-          multiple
-          clearable
-          :placeholder="t('settings.maintenance.cleanup.status.all')"
-          :options="statusOptions"
-          class="w-full md:w-56"
-        />
-        <n-select
-          v-model:value="targetFilter"
-          multiple
-          clearable
-          :placeholder="t('settings.maintenance.cleanup.target.all')"
-          :options="targetOptions"
-          class="w-full md:w-56"
-        />
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="statusFilter"
+            multiple
+            clearable
+            :placeholder="t('settings.maintenance.cleanup.status.all')"
+            :options="statusOptions"
+            class="w-full"
+          />
+        </div>
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="targetFilter"
+            multiple
+            clearable
+            :placeholder="t('settings.maintenance.cleanup.target.all')"
+            :options="targetOptions"
+            class="w-full"
+          />
+        </div>
         <div class="flex items-center gap-2 w-full md:w-auto">
           <n-button class="flex-1 md:flex-none" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
           <n-button size="small" circle @click="helpOpen = true">?</n-button>
