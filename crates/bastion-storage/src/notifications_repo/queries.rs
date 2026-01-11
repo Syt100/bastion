@@ -29,12 +29,12 @@ pub async fn get_notification(
 
 pub async fn list_queue(
     db: &SqlitePool,
-    status: Option<&str>,
-    channel: Option<&str>,
+    statuses: Option<&[String]>,
+    channels: Option<&[String]>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<NotificationListItem>, anyhow::Error> {
-    let rows = sqlx::query(
+    let mut qb = sqlx::QueryBuilder::new(
         r#"
         SELECT
           n.id,
@@ -59,19 +59,37 @@ pub async fn list_queue(
           (n.channel = 'email' AND s.kind = 'smtp' AND s.name = n.secret_name)
         )
         LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.secret_name = s.name
-        WHERE (? IS NULL OR n.status = ?) AND (? IS NULL OR n.channel = ?)
-        ORDER BY n.created_at DESC
-        LIMIT ? OFFSET ?
+        WHERE 1=1
         "#,
-    )
-    .bind(status)
-    .bind(status)
-    .bind(channel)
-    .bind(channel)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(db)
-    .await?;
+    );
+
+    if let Some(statuses) = statuses.filter(|v| !v.is_empty()) {
+        qb.push(" AND n.status IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for status in statuses {
+                separated.push_bind(status);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(channels) = channels.filter(|v| !v.is_empty()) {
+        qb.push(" AND n.channel IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for channel in channels {
+                separated.push_bind(channel);
+            }
+        }
+        qb.push(")");
+    }
+
+    qb.push(" ORDER BY n.created_at DESC LIMIT ");
+    qb.push_bind(limit);
+    qb.push(" OFFSET ");
+    qb.push_bind(offset);
+
+    let rows = qb.build().fetch_all(db).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -97,17 +115,38 @@ pub async fn list_queue(
 
 pub async fn count_queue(
     db: &SqlitePool,
-    status: Option<&str>,
-    channel: Option<&str>,
+    statuses: Option<&[String]>,
+    channels: Option<&[String]>,
 ) -> Result<i64, anyhow::Error> {
-    let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(1) FROM notifications WHERE (? IS NULL OR status = ?) AND (? IS NULL OR channel = ?)",
-    )
-    .bind(status)
-    .bind(status)
-    .bind(channel)
-    .bind(channel)
-    .fetch_one(db)
-    .await?;
-    Ok(count)
+    let mut qb = sqlx::QueryBuilder::new(
+        r#"
+        SELECT COUNT(1) AS count
+        FROM notifications
+        WHERE 1=1
+        "#,
+    );
+
+    if let Some(statuses) = statuses.filter(|v| !v.is_empty()) {
+        qb.push(" AND status IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for status in statuses {
+                separated.push_bind(status);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(channels) = channels.filter(|v| !v.is_empty()) {
+        qb.push(" AND channel IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for channel in channels {
+                separated.push_bind(channel);
+            }
+        }
+        qb.push(")");
+    }
+
+    let row = qb.build().fetch_one(db).await?;
+    Ok(row.get::<i64, _>("count"))
 }

@@ -67,14 +67,14 @@ pub async fn get_task(
 
 pub async fn list_tasks(
     db: &SqlitePool,
-    status: Option<&str>,
-    target_type: Option<&str>,
+    statuses: Option<&[String]>,
+    target_types: Option<&[String]>,
     node_id: Option<&str>,
     job_id: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<CleanupTaskListItem>, anyhow::Error> {
-    let rows = sqlx::query(
+    let mut qb = sqlx::QueryBuilder::new(
         r#"
         SELECT
           t.run_id,
@@ -92,26 +92,45 @@ pub async fn list_tasks(
           t.last_error
         FROM incomplete_cleanup_tasks t
         JOIN jobs j ON j.id = t.job_id
-        WHERE (? IS NULL OR t.status = ?)
-          AND (? IS NULL OR t.target_type = ?)
-          AND (? IS NULL OR t.node_id = ?)
-          AND (? IS NULL OR t.job_id = ?)
-        ORDER BY t.next_attempt_at ASC
-        LIMIT ? OFFSET ?
+        WHERE 1=1
         "#,
-    )
-    .bind(status)
-    .bind(status)
-    .bind(target_type)
-    .bind(target_type)
-    .bind(node_id)
-    .bind(node_id)
-    .bind(job_id)
-    .bind(job_id)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(db)
-    .await?;
+    );
+
+    if let Some(statuses) = statuses.filter(|v| !v.is_empty()) {
+        qb.push(" AND t.status IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for status in statuses {
+                separated.push_bind(status);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(target_types) = target_types.filter(|v| !v.is_empty()) {
+        qb.push(" AND t.target_type IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for target_type in target_types {
+                separated.push_bind(target_type);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(node_id) = node_id {
+        qb.push(" AND t.node_id = ");
+        qb.push_bind(node_id);
+    }
+    if let Some(job_id) = job_id {
+        qb.push(" AND t.job_id = ");
+        qb.push_bind(job_id);
+    }
+
+    qb.push(" ORDER BY t.next_attempt_at ASC LIMIT ");
+    qb.push_bind(limit);
+    qb.push(" OFFSET ");
+    qb.push_bind(offset);
+
+    let rows = qb.build().fetch_all(db).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -137,29 +156,48 @@ pub async fn list_tasks(
 
 pub async fn count_tasks(
     db: &SqlitePool,
-    status: Option<&str>,
-    target_type: Option<&str>,
+    statuses: Option<&[String]>,
+    target_types: Option<&[String]>,
     node_id: Option<&str>,
     job_id: Option<&str>,
 ) -> Result<i64, anyhow::Error> {
-    let count = sqlx::query_scalar::<_, i64>(
+    let mut qb = sqlx::QueryBuilder::new(
         r#"
-        SELECT COUNT(1) FROM incomplete_cleanup_tasks
-        WHERE (? IS NULL OR status = ?)
-          AND (? IS NULL OR target_type = ?)
-          AND (? IS NULL OR node_id = ?)
-          AND (? IS NULL OR job_id = ?)
+        SELECT COUNT(1) AS count
+        FROM incomplete_cleanup_tasks
+        WHERE 1=1
         "#,
-    )
-    .bind(status)
-    .bind(status)
-    .bind(target_type)
-    .bind(target_type)
-    .bind(node_id)
-    .bind(node_id)
-    .bind(job_id)
-    .bind(job_id)
-    .fetch_one(db)
-    .await?;
-    Ok(count)
+    );
+
+    if let Some(statuses) = statuses.filter(|v| !v.is_empty()) {
+        qb.push(" AND status IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for status in statuses {
+                separated.push_bind(status);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(target_types) = target_types.filter(|v| !v.is_empty()) {
+        qb.push(" AND target_type IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for target_type in target_types {
+                separated.push_bind(target_type);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(node_id) = node_id {
+        qb.push(" AND node_id = ");
+        qb.push_bind(node_id);
+    }
+    if let Some(job_id) = job_id {
+        qb.push(" AND job_id = ");
+        qb.push_bind(job_id);
+    }
+
+    let row = qb.build().fetch_one(db).await?;
+    Ok(row.get::<i64, _>("count"))
 }

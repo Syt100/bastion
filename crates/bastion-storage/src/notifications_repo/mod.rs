@@ -242,4 +242,103 @@ mod tests {
             .unwrap();
         assert_eq!(status, "queued");
     }
+
+    #[tokio::test]
+    async fn list_and_count_support_multi_value_filters() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+
+        // Seed a wecom bot + smtp destination.
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        sqlx::query(
+            "INSERT INTO secrets (id, node_id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'hub', 'wecom_bot', ?, 1, X'00', X'00', ?, ?)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind("bot1")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert wecom_bot");
+
+        sqlx::query(
+            "INSERT INTO secrets (id, node_id, kind, name, kid, nonce, ciphertext, created_at, updated_at) VALUES (?, 'hub', 'smtp', ?, 1, X'00', X'00', ?, ?)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind("smtp1")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert smtp");
+
+        // Seed job + run.
+        sqlx::query(
+            "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+        )
+        .bind("job1")
+        .bind("job1")
+        .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert job");
+
+        sqlx::query(
+            "INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'success', ?, ?)",
+        )
+        .bind("run1")
+        .bind("job1")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert run");
+
+        let inserted_wecom = super::enqueue_wecom_bots_for_run(&pool, "run1")
+            .await
+            .expect("enqueue wecom");
+        assert_eq!(inserted_wecom, 1);
+
+        let inserted_email = super::enqueue_emails_for_run(&pool, "run1")
+            .await
+            .expect("enqueue email");
+        assert_eq!(inserted_email, 1);
+
+        // Put them in different statuses.
+        sqlx::query("UPDATE notifications SET status = 'failed' WHERE channel = 'wecom_bot'")
+            .execute(&pool)
+            .await
+            .expect("set failed");
+        sqlx::query("UPDATE notifications SET status = 'sent' WHERE channel = 'email'")
+            .execute(&pool)
+            .await
+            .expect("set sent");
+
+        let total = super::count_queue(&pool, None, None).await.expect("count");
+        assert_eq!(total, 2);
+
+        let statuses = vec![super::STATUS_FAILED.to_string(), super::STATUS_SENT.to_string()];
+        let channels = vec![super::CHANNEL_WECOM_BOT.to_string()];
+        let total = super::count_queue(&pool, Some(statuses.as_slice()), Some(channels.as_slice()))
+            .await
+            .expect("count filtered");
+        assert_eq!(total, 1);
+
+        let channels = vec![
+            super::CHANNEL_WECOM_BOT.to_string(),
+            super::CHANNEL_EMAIL.to_string(),
+        ];
+        let rows = super::list_queue(
+            &pool,
+            Some(statuses.as_slice()),
+            Some(channels.as_slice()),
+            50,
+            0,
+        )
+        .await
+        .expect("list filtered");
+        assert_eq!(rows.len(), 2);
+    }
 }
