@@ -1,7 +1,7 @@
 use axum::Json;
-use axum::extract::{Path, Query};
+use axum::extract::{Path, RawQuery};
 use axum::http::{HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -12,33 +12,6 @@ use bastion_storage::notifications_settings_repo;
 use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
 use super::validation::{destination_exists, require_supported_channel};
-
-#[derive(Debug, Deserialize)]
-pub(in crate::http) struct ListQueueQuery {
-    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
-    status: Vec<String>,
-    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
-    channel: Vec<String>,
-    page: Option<i64>,
-    page_size: Option<i64>,
-}
-
-fn deserialize_one_or_many_strings<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum OneOrMany {
-        One(String),
-        Many(Vec<String>),
-    }
-
-    match OneOrMany::deserialize(deserializer)? {
-        OneOrMany::One(v) => Ok(vec![v]),
-        OneOrMany::Many(v) => Ok(v),
-    }
-}
 
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct ListQueueResponse {
@@ -69,7 +42,7 @@ pub(in crate::http) struct QueueItem {
 pub(in crate::http) async fn list_queue(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
-    Query(q): Query<ListQueueQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<ListQueueResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
@@ -84,15 +57,41 @@ pub(in crate::http) async fn list_queue(
         out
     }
 
-    let statuses = normalize_filter_list(q.status);
+    let mut statuses = Vec::new();
+    let mut channels = Vec::new();
+    let mut page: Option<i64> = None;
+    let mut page_size: Option<i64> = None;
 
-    let channels = normalize_filter_list(q.channel);
+    if let Some(raw) = raw {
+        for (key, value) in url::form_urlencoded::parse(raw.as_bytes()) {
+            match key.as_ref() {
+                "status" | "status[]" => statuses.push(value.into_owned()),
+                "channel" | "channel[]" => channels.push(value.into_owned()),
+                "page" => {
+                    let value = value
+                        .parse::<i64>()
+                        .map_err(|_| AppError::bad_request("invalid_page", "Invalid page"))?;
+                    page = Some(value);
+                }
+                "page_size" => {
+                    let value = value.parse::<i64>().map_err(|_| {
+                        AppError::bad_request("invalid_page_size", "Invalid page_size")
+                    })?;
+                    page_size = Some(value);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let statuses = normalize_filter_list(statuses);
+    let channels = normalize_filter_list(channels);
     for channel in &channels {
         require_supported_channel(channel)?;
     }
 
-    let page = q.page.unwrap_or(1).max(1);
-    let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
+    let page = page.unwrap_or(1).max(1);
+    let page_size = page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 
     let status_filter = if statuses.is_empty() {
