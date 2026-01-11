@@ -43,8 +43,8 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 const loading = ref(false)
 const helpOpen = ref(false)
 
-const statusFilter = ref<CleanupTaskStatus[]>([])
-const targetFilter = ref<CleanupTargetType[]>([])
+const statusFilter = ref<CleanupTaskStatus[] | null>([])
+const targetFilter = ref<CleanupTargetType[] | null>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -117,9 +117,11 @@ async function refresh(): Promise<void> {
   const req = latest.next()
   loading.value = true
   try {
+    const statuses = statusFilter.value ?? []
+    const targetTypes = targetFilter.value ?? []
     const res = await cleanup.listTasks({
-      status: statusFilter.value.length ? statusFilter.value : undefined,
-      targetType: targetFilter.value.length ? targetFilter.value : undefined,
+      status: statuses.length ? statuses : undefined,
+      targetType: targetTypes.length ? targetTypes : undefined,
       page: page.value,
       pageSize: pageSize.value,
       signal: req.signal,
