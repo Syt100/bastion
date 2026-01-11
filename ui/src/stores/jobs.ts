@@ -16,6 +16,7 @@ export type JobListItem = {
   overlap_policy: OverlapPolicy
   created_at: number
   updated_at: number
+  archived_at?: number | null
 }
 
 export type JobDetail = JobListItem & {
@@ -58,10 +59,13 @@ export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
 
-  async function refresh(): Promise<void> {
+  async function refresh(params?: { includeArchived?: boolean }): Promise<void> {
     loading.value = true
     try {
-      items.value = await apiFetch<JobListItem[]>('/api/jobs')
+      const q = new URLSearchParams()
+      if (params?.includeArchived) q.set('include_archived', 'true')
+      const suffix = q.toString() ? `?${q.toString()}` : ''
+      items.value = await apiFetch<JobListItem[]>(`/api/jobs${suffix}`)
     } finally {
       loading.value = false
     }
@@ -104,6 +108,24 @@ export const useJobsStore = defineStore('jobs', () => {
     })
   }
 
+  async function archiveJob(jobId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/archive`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
+      expectedStatus: 204,
+    })
+  }
+
+  async function unarchiveJob(jobId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/unarchive`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
+      expectedStatus: 204,
+    })
+  }
+
   async function runNow(jobId: string): Promise<TriggerRunResponse> {
     const csrf = await ensureCsrfToken()
     return await apiFetch<TriggerRunResponse>(`/api/jobs/${encodeURIComponent(jobId)}/run`, {
@@ -120,5 +142,18 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<RunEvent[]>(`/api/runs/${encodeURIComponent(runId)}/events`)
   }
 
-  return { items, loading, refresh, getJob, createJob, updateJob, deleteJob, runNow, listRuns, listRunEvents }
+  return {
+    items,
+    loading,
+    refresh,
+    getJob,
+    createJob,
+    updateJob,
+    deleteJob,
+    archiveJob,
+    unarchiveJob,
+    runNow,
+    listRuns,
+    listRunEvents,
+  }
 })

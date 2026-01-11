@@ -14,6 +14,7 @@ const NotificationsChannelsView = () => import('@/views/settings/notifications/N
 const NotificationsDestinationsView = () => import('@/views/settings/notifications/NotificationsDestinationsView.vue')
 const NotificationsTemplatesView = () => import('@/views/settings/notifications/NotificationsTemplatesView.vue')
 const NotificationsQueueView = () => import('@/views/settings/notifications/NotificationsQueueView.vue')
+const MaintenanceCleanupView = () => import('@/views/settings/maintenance/MaintenanceCleanupView.vue')
 const SetupView = () => import('@/views/SetupView.vue')
 
 import { pinia } from '@/pinia'
@@ -91,6 +92,15 @@ const router = createRouter({
                   meta: { titleKey: 'settings.notifications.tabs.queue', mobileTopBar: { titleKey: 'settings.notifications.tabs.queue', backTo: '/settings/notifications' } },
                 },
               ],
+            },
+            {
+              path: 'maintenance',
+              redirect: '/settings/maintenance/cleanup',
+            },
+            {
+              path: 'maintenance/cleanup',
+              component: MaintenanceCleanupView,
+              meta: { titleKey: 'settings.maintenance.cleanup.title', mobileTopBar: { titleKey: 'settings.maintenance.cleanup.title', backTo: '/settings' } },
             },
           ],
         },

@@ -43,13 +43,15 @@ describe('SettingsIndexView', () => {
   it('navigates to storage and notifications', async () => {
     const wrapper = mount(SettingsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(2)
+    expect(buttons.length).toBe(3)
 
     await buttons[0]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/storage')
 
     await buttons[1]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications')
+
+    await buttons[2]!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/maintenance')
   })
 })
-

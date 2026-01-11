@@ -22,9 +22,9 @@
 - [x] 4.2 Add job archive endpoints and update jobs listing to hide archived by default (with an optional query to include)
 
 ## 5. UI (mobile friendly)
-- [ ] 5.1 Add a Maintenance page for incomplete cleanup tasks (desktop table + mobile card layout)
-- [ ] 5.2 Add operator actions (retry/ignore/unignore) and task details modal
-- [ ] 5.3 Update job “delete” UX to offer Archive vs Delete permanently (cascade)
+- [x] 5.1 Add a Maintenance page for incomplete cleanup tasks (desktop table + mobile card layout)
+- [x] 5.2 Add operator actions (retry/ignore/unignore) and task details modal
+- [x] 5.3 Update job “delete” UX to offer Archive vs Delete permanently (cascade)
 
 ## 6. Verification
 - [ ] 6.1 Run `cargo fmt`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`
