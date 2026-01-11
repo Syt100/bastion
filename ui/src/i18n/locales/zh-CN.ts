@@ -292,7 +292,7 @@ const messages = {
     },
     maintenance: {
       cleanup: {
-        title: '未完成清理',
+        title: '不完整运行清理',
         total: '共 {total} 条',
         status: {
           all: '全部状态',
@@ -333,6 +333,17 @@ const messages = {
         detailTitle: '清理详情',
         eventsTitle: '事件',
         targetSnapshot: '目标快照',
+        statusHelpTitle: '状态说明',
+        statusHelpIntro: '这些状态用于描述“不完整运行”的清理任务当前所处阶段。',
+        statusHelp: {
+          queued: '已入队，到达“下次尝试”时间后会自动尝试一次。',
+          running: '清理 worker 正在处理该任务。',
+          retrying: '上次尝试失败，已按退避策略安排下次重试。',
+          blocked: '多为配置/鉴权类问题导致阻塞，通常需要先修复配置再重试。',
+          done: '已清理完成，或已确认无需清理。',
+          ignored: '已忽略，不再自动重试；可随时取消忽略。',
+          abandoned: '达到阈值后自动停止重试；仍可手动“立即重试”。',
+        },
       },
     },
     webdav: {
