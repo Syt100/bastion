@@ -246,19 +246,25 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
     title: t('settings.maintenance.cleanup.columns.job'),
     key: 'job_name',
     minWidth: 160,
+    maxWidth: 260,
     render: (row) =>
       h('div', { class: 'min-w-0 truncate', title: row.job_name }, row.job_name),
   },
   {
     title: t('settings.maintenance.cleanup.columns.target'),
     key: 'target_type',
-    minWidth: 100,
-    render: (row) => formatTarget(row.target_type),
+    width: 84,
+    maxWidth: 84,
+    render: (row) => {
+      const label = formatTarget(row.target_type)
+      return h('div', { class: 'min-w-0 truncate', title: label }, label)
+    },
   },
   {
     title: t('settings.maintenance.cleanup.columns.status'),
     key: 'status',
-    minWidth: 100,
+    width: 96,
+    maxWidth: 96,
     render: (row) =>
       h(
         NTag,
@@ -269,19 +275,21 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.nextAttempt'),
     key: 'next_attempt_at',
-    minWidth: 170,
+    width: 170,
+    maxWidth: 170,
     render: (row) => formatUnixSeconds(row.next_attempt_at),
   },
   {
     title: t('settings.maintenance.cleanup.columns.updatedAt'),
     key: 'updated_at',
-    minWidth: 170,
+    width: 170,
+    maxWidth: 170,
     render: (row) => formatUnixSeconds(row.updated_at),
   },
   {
     title: t('settings.maintenance.cleanup.columns.lastError'),
     key: 'last_error',
-    minWidth: 220,
+    minWidth: 300,
     render: (row) =>
       row.last_error || row.last_error_kind
         ? (() => {
@@ -323,7 +331,8 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.actions'),
     key: 'actions',
-    minWidth: 220,
+    width: 220,
+    maxWidth: 220,
     align: 'right',
     render: (row) =>
       h(
