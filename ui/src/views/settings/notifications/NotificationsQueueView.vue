@@ -242,6 +242,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
             v-model:value="statusFilter"
             multiple
             clearable
+            max-tag-count="responsive"
             :placeholder="t('settings.notifications.status.all')"
             :options="statusOptions"
             class="w-full"
@@ -252,6 +253,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
             v-model:value="channelFilter"
             multiple
             clearable
+            max-tag-count="responsive"
             :placeholder="t('settings.notifications.channel.all')"
             :options="channelOptions"
             class="w-full"

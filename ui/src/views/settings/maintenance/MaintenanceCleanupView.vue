@@ -336,6 +336,7 @@ const actionHelpItems = computed(() => [
             v-model:value="statusFilter"
             multiple
             clearable
+            max-tag-count="responsive"
             :placeholder="t('settings.maintenance.cleanup.status.all')"
             :options="statusOptions"
             class="w-full"
@@ -346,6 +347,7 @@ const actionHelpItems = computed(() => [
             v-model:value="targetFilter"
             multiple
             clearable
+            max-tag-count="responsive"
             :placeholder="t('settings.maintenance.cleanup.target.all')"
             :options="targetOptions"
             class="w-full"
