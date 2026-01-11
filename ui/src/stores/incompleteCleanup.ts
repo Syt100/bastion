@@ -66,8 +66,8 @@ export type GetCleanupTaskResponse = {
 
 export const useIncompleteCleanupStore = defineStore('incompleteCleanup', () => {
   async function listTasks(params: {
-    status?: CleanupTaskStatus
-    targetType?: CleanupTargetType
+    status?: CleanupTaskStatus | CleanupTaskStatus[]
+    targetType?: CleanupTargetType | CleanupTargetType[]
     nodeId?: string
     jobId?: string
     page?: number
@@ -75,8 +75,14 @@ export const useIncompleteCleanupStore = defineStore('incompleteCleanup', () => 
     signal?: AbortSignal
   }): Promise<ListCleanupTasksResponse> {
     const q = new URLSearchParams()
-    if (params.status) q.set('status', params.status)
-    if (params.targetType) q.set('target_type', params.targetType)
+    if (params.status) {
+      const values = Array.isArray(params.status) ? params.status : [params.status]
+      for (const value of values) q.append('status', value)
+    }
+    if (params.targetType) {
+      const values = Array.isArray(params.targetType) ? params.targetType : [params.targetType]
+      for (const value of values) q.append('target_type', value)
+    }
     if (params.nodeId) q.set('node_id', params.nodeId)
     if (params.jobId) q.set('job_id', params.jobId)
     if (params.page) q.set('page', String(params.page))
