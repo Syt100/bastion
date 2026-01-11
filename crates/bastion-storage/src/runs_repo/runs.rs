@@ -112,6 +112,44 @@ pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyho
     }))
 }
 
+pub async fn get_run_target_snapshot(
+    db: &SqlitePool,
+    run_id: &str,
+) -> Result<Option<serde_json::Value>, anyhow::Error> {
+    let row = sqlx::query("SELECT target_snapshot_json FROM runs WHERE id = ? LIMIT 1")
+        .bind(run_id)
+        .fetch_optional(db)
+        .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let snapshot_json = row.get::<Option<String>, _>("target_snapshot_json");
+    let snapshot = snapshot_json
+        .map(|s| serde_json::from_str::<serde_json::Value>(&s))
+        .transpose()?;
+    Ok(snapshot)
+}
+
+pub async fn set_run_target_snapshot(
+    db: &SqlitePool,
+    run_id: &str,
+    snapshot: serde_json::Value,
+) -> Result<bool, anyhow::Error> {
+    let snapshot_json = serde_json::to_string(&snapshot)?;
+
+    let result = sqlx::query(
+        "UPDATE runs SET target_snapshot_json = ? WHERE id = ? AND target_snapshot_json IS NULL",
+    )
+    .bind(snapshot_json)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn claim_next_queued_run(db: &SqlitePool) -> Result<Option<Run>, anyhow::Error> {
     let now = OffsetDateTime::now_utc().unix_timestamp();
 

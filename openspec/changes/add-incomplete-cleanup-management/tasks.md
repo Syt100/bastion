@@ -4,12 +4,12 @@
 - [x] 1.3 Run `openspec validate add-incomplete-cleanup-management --strict`
 
 ## 2. Storage (schema + repos)
-- [ ] 2.1 Add migrations:
+- [x] 2.1 Add migrations:
   - `jobs.archived_at`
   - `runs.target_snapshot_json`
   - `incomplete_cleanup_tasks` + `incomplete_cleanup_events`
-- [ ] 2.2 Add `bastion-storage` repo helpers for tasks/events (create/list/claim/update/ignore/retry)
-- [ ] 2.3 Add unit tests for the new storage repos
+- [x] 2.2 Add `bastion-storage` repo helpers for tasks/events (create/list/claim/update/ignore/retry)
+- [x] 2.3 Add unit tests for the new storage repos
 
 ## 3. Engine (snapshot + cleanup worker)
 - [ ] 3.1 Write `runs.target_snapshot_json` when a run starts (post-validate, pre-dispatch/execute)

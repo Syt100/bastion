@@ -2,6 +2,7 @@ pub mod agent_tasks_repo;
 pub mod agents_repo;
 pub mod auth;
 pub mod db;
+pub mod incomplete_cleanup_repo;
 pub mod jobs_repo;
 pub mod notification_destinations_repo;
 pub mod notifications_repo;

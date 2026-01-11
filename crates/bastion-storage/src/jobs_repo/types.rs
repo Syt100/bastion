@@ -38,4 +38,5 @@ pub struct Job {
     pub spec: serde_json::Value,
     pub created_at: i64,
     pub updated_at: i64,
+    pub archived_at: Option<i64>,
 }
