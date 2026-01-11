@@ -15,8 +15,10 @@ use super::validation::{destination_exists, require_supported_channel};
 
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListQueueQuery {
-    status: Option<String>,
-    channel: Option<String>,
+    #[serde(default)]
+    status: Vec<String>,
+    #[serde(default)]
+    channel: Vec<String>,
     page: Option<i64>,
     page_size: Option<i64>,
 }
@@ -54,7 +56,21 @@ pub(in crate::http) async fn list_queue(
 ) -> Result<Json<ListQueueResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
-    if let Some(channel) = q.channel.as_deref() {
+    fn normalize_filter_list(values: Vec<String>) -> Vec<String> {
+        let mut out: Vec<String> = values
+            .into_iter()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    let statuses = normalize_filter_list(q.status);
+
+    let channels = normalize_filter_list(q.channel);
+    for channel in &channels {
         require_supported_channel(channel)?;
     }
 
@@ -62,12 +78,26 @@ pub(in crate::http) async fn list_queue(
     let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 
-    let status = q.status.as_deref();
-    let channel = q.channel.as_deref();
+    let status_filter = if statuses.is_empty() {
+        None
+    } else {
+        Some(statuses.as_slice())
+    };
+    let channel_filter = if channels.is_empty() {
+        None
+    } else {
+        Some(channels.as_slice())
+    };
 
-    let total = notifications_repo::count_queue(&state.db, status, channel).await?;
-    let rows =
-        notifications_repo::list_queue(&state.db, status, channel, page_size, offset).await?;
+    let total = notifications_repo::count_queue(&state.db, status_filter, channel_filter).await?;
+    let rows = notifications_repo::list_queue(
+        &state.db,
+        status_filter,
+        channel_filter,
+        page_size,
+        offset,
+    )
+    .await?;
 
     let items = rows
         .into_iter()

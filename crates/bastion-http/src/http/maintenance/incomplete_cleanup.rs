@@ -12,8 +12,10 @@ use super::super::{AppError, AppState};
 
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListIncompleteCleanupTasksQuery {
-    status: Option<String>,
-    target_type: Option<String>,
+    #[serde(default)]
+    status: Vec<String>,
+    #[serde(default)]
+    target_type: Vec<String>,
     node_id: Option<String>,
     job_id: Option<String>,
     page: Option<i64>,
@@ -52,10 +54,24 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
 ) -> Result<Json<ListIncompleteCleanupTasksResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
-    if let Some(status) = q.status.as_deref() {
+    fn normalize_filter_list(values: Vec<String>) -> Vec<String> {
+        let mut out: Vec<String> = values
+            .into_iter()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    let statuses = normalize_filter_list(q.status);
+    for status in &statuses {
         validate_status(status)?;
     }
-    if let Some(target_type) = q.target_type.as_deref() {
+
+    let target_types = normalize_filter_list(q.target_type);
+    for target_type in &target_types {
         validate_target_type(target_type)?;
     }
 
@@ -63,10 +79,21 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
     let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 
+    let status_filter = if statuses.is_empty() {
+        None
+    } else {
+        Some(statuses.as_slice())
+    };
+    let target_type_filter = if target_types.is_empty() {
+        None
+    } else {
+        Some(target_types.as_slice())
+    };
+
     let total = incomplete_cleanup_repo::count_tasks(
         &state.db,
-        q.status.as_deref(),
-        q.target_type.as_deref(),
+        status_filter,
+        target_type_filter,
         q.node_id.as_deref(),
         q.job_id.as_deref(),
     )
@@ -74,8 +101,8 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
 
     let items = incomplete_cleanup_repo::list_tasks(
         &state.db,
-        q.status.as_deref(),
-        q.target_type.as_deref(),
+        status_filter,
+        target_type_filter,
         q.node_id.as_deref(),
         q.job_id.as_deref(),
         page_size,
