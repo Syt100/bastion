@@ -1,11 +1,13 @@
 use time::OffsetDateTime;
 use tracing::{info, warn};
 
+use bastion_core::HUB_NODE_ID;
 use bastion_core::job_spec;
 use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo::{self, RunStatus};
 
 use crate::run_events;
+use crate::scheduler::target_snapshot;
 
 use super::WorkerLoopCtx;
 
@@ -66,6 +68,16 @@ pub(super) async fn process_run(ctx: &WorkerLoopCtx<'_>, run: runs_repo::Run) {
         let message = format!("invalid spec: {error}");
         fail_invalid_spec(ctx, &run.id, &message).await;
         return;
+    }
+
+    let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
+    let snapshot = target_snapshot::build_run_target_snapshot(node_id, &spec);
+    if let Err(error) = runs_repo::set_run_target_snapshot(ctx.db, &run.id, snapshot).await {
+        warn!(
+            run_id = %run.id,
+            error = %error,
+            "failed to persist run target snapshot"
+        );
     }
 
     let started_at = OffsetDateTime::from_unix_timestamp(run.started_at)

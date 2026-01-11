@@ -12,7 +12,7 @@
 - [x] 2.3 Add unit tests for the new storage repos
 
 ## 3. Engine (snapshot + cleanup worker)
-- [ ] 3.1 Write `runs.target_snapshot_json` when a run starts (post-validate, pre-dispatch/execute)
+- [x] 3.1 Write `runs.target_snapshot_json` when a run starts (post-validate, pre-dispatch/execute)
 - [ ] 3.2 Replace incomplete cleanup loop with queue-driven processing (bounded batches)
 - [ ] 3.3 Implement error classification + backoff + abandon + running-TTL recovery
 - [ ] 3.4 Ensure logs are rate-limited (no per-run tight-loop spam)
