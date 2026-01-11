@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Path, Query};
+use axum::extract::{Path, RawQuery};
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -9,35 +9,6 @@ use bastion_storage::incomplete_cleanup_repo;
 
 use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
-
-#[derive(Debug, Deserialize)]
-pub(in crate::http) struct ListIncompleteCleanupTasksQuery {
-    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
-    status: Vec<String>,
-    #[serde(default, deserialize_with = "deserialize_one_or_many_strings")]
-    target_type: Vec<String>,
-    node_id: Option<String>,
-    job_id: Option<String>,
-    page: Option<i64>,
-    page_size: Option<i64>,
-}
-
-fn deserialize_one_or_many_strings<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum OneOrMany {
-        One(String),
-        Many(Vec<String>),
-    }
-
-    match OneOrMany::deserialize(deserializer)? {
-        OneOrMany::One(v) => Ok(vec![v]),
-        OneOrMany::Many(v) => Ok(v),
-    }
-}
 
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct ListIncompleteCleanupTasksResponse {
@@ -67,7 +38,7 @@ fn validate_target_type(target_type: &str) -> Result<(), AppError> {
 pub(in crate::http) async fn list_incomplete_cleanup_tasks(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
-    Query(q): Query<ListIncompleteCleanupTasksQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<ListIncompleteCleanupTasksResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
@@ -82,18 +53,50 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
         out
     }
 
-    let statuses = normalize_filter_list(q.status);
+    let mut statuses = Vec::new();
+    let mut target_types = Vec::new();
+    let mut node_id: Option<String> = None;
+    let mut job_id: Option<String> = None;
+    let mut page: Option<i64> = None;
+    let mut page_size: Option<i64> = None;
+
+    if let Some(raw) = raw {
+        for (key, value) in url::form_urlencoded::parse(raw.as_bytes()) {
+            match key.as_ref() {
+                "status" | "status[]" => statuses.push(value.into_owned()),
+                "target_type" | "target_type[]" => target_types.push(value.into_owned()),
+                "node_id" => node_id = Some(value.into_owned()),
+                "job_id" => job_id = Some(value.into_owned()),
+                "page" => {
+                    let value = value
+                        .parse::<i64>()
+                        .map_err(|_| AppError::bad_request("invalid_page", "Invalid page"))?;
+                    page = Some(value);
+                }
+                "page_size" => {
+                    let value = value.parse::<i64>().map_err(|_| {
+                        AppError::bad_request("invalid_page_size", "Invalid page_size")
+                    })?;
+                    page_size = Some(value);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let statuses = normalize_filter_list(statuses);
+    let target_types = normalize_filter_list(target_types);
+
     for status in &statuses {
         validate_status(status)?;
     }
 
-    let target_types = normalize_filter_list(q.target_type);
     for target_type in &target_types {
         validate_target_type(target_type)?;
     }
 
-    let page = q.page.unwrap_or(1).max(1);
-    let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
+    let page = page.unwrap_or(1).max(1);
+    let page_size = page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 
     let status_filter = if statuses.is_empty() {
@@ -111,8 +114,8 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
         &state.db,
         status_filter,
         target_type_filter,
-        q.node_id.as_deref(),
-        q.job_id.as_deref(),
+        node_id.as_deref(),
+        job_id.as_deref(),
     )
     .await?;
 
@@ -120,8 +123,8 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
         &state.db,
         status_filter,
         target_type_filter,
-        q.node_id.as_deref(),
-        q.job_id.as_deref(),
+        node_id.as_deref(),
+        job_id.as_deref(),
         page_size,
         offset,
     )
