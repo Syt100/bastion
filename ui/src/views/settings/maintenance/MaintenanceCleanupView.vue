@@ -9,6 +9,7 @@ import {
   NDrawerContent,
   NInput,
   NModal,
+  NPopover,
   NSelect,
   NSpace,
   NSpin,
@@ -280,27 +281,43 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.lastError'),
     key: 'last_error',
-    minWidth: 260,
-    maxWidth: 420,
+    minWidth: 220,
     render: (row) =>
       row.last_error || row.last_error_kind
-        ? h(
-            'div',
-            {
-              class: 'min-w-0 flex items-center gap-2',
-              title: lastErrorLabel(row.last_error_kind ?? null, row.last_error ?? null),
-            },
-            [
-              row.last_error_kind
-                ? h(
-                    NTag,
-                    { size: 'small', type: 'error', bordered: false },
-                    { default: () => row.last_error_kind },
-                  )
-                : null,
-              h('span', { class: 'min-w-0 truncate' }, row.last_error ?? ''),
-            ],
-          )
+        ? (() => {
+            const full = lastErrorLabel(row.last_error_kind ?? null, row.last_error ?? null)
+            return h(
+              NPopover,
+              { trigger: 'hover', placement: 'top-start', showArrow: false },
+              {
+                trigger: () =>
+                  h(
+                    'div',
+                    {
+                      class: 'min-w-0 w-full flex items-center gap-2 cursor-pointer',
+                      title: full,
+                      onClick: () => void openDetails(row.run_id),
+                    },
+                    [
+                      row.last_error_kind
+                        ? h(
+                            NTag,
+                            { size: 'small', type: 'error', bordered: false },
+                            { default: () => row.last_error_kind },
+                          )
+                        : null,
+                      h('span', { class: 'min-w-0 flex-1 truncate' }, row.last_error ?? ''),
+                    ],
+                  ),
+                default: () =>
+                  h(
+                    'div',
+                    { class: 'max-w-[640px] whitespace-pre-wrap break-words text-sm' },
+                    full || '-',
+                  ),
+              },
+            )
+          })()
         : '-',
   },
   {
@@ -458,7 +475,7 @@ const actionHelpItems = computed(() => [
       </div>
 
       <div v-else class="overflow-x-auto">
-        <n-data-table :loading="loading" :columns="columns" :data="items" />
+        <n-data-table table-layout="fixed" :loading="loading" :columns="columns" :data="items" />
       </div>
 
       <div class="flex items-center justify-between text-sm">
