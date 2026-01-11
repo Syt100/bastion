@@ -22,6 +22,7 @@ mod auth;
 mod error;
 mod fs;
 mod jobs;
+mod maintenance;
 mod middleware;
 mod notifications;
 mod operations;
@@ -39,6 +40,7 @@ pub struct AppState {
     pub secrets: Arc<SecretsCrypto>,
     pub agent_manager: AgentManager,
     pub run_queue_notify: Arc<Notify>,
+    pub incomplete_cleanup_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
@@ -149,6 +151,8 @@ pub fn router(state: AppState) -> Router {
                 .put(jobs::update_job)
                 .delete(jobs::delete_job),
         )
+        .route("/api/jobs/{id}/archive", post(jobs::archive_job))
+        .route("/api/jobs/{id}/unarchive", post(jobs::unarchive_job))
         .route("/api/jobs/{id}/run", post(jobs::trigger_job_run))
         .route("/api/jobs/{id}/runs", get(jobs::list_job_runs))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
@@ -156,6 +160,26 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
         .route("/api/runs/{id}/restore", post(operations::start_restore))
         .route("/api/runs/{id}/verify", post(operations::start_verify))
+        .route(
+            "/api/maintenance/incomplete-cleanup",
+            get(maintenance::list_incomplete_cleanup_tasks),
+        )
+        .route(
+            "/api/maintenance/incomplete-cleanup/{run_id}",
+            get(maintenance::get_incomplete_cleanup_task),
+        )
+        .route(
+            "/api/maintenance/incomplete-cleanup/{run_id}/retry-now",
+            post(maintenance::retry_incomplete_cleanup_task_now),
+        )
+        .route(
+            "/api/maintenance/incomplete-cleanup/{run_id}/ignore",
+            post(maintenance::ignore_incomplete_cleanup_task),
+        )
+        .route(
+            "/api/maintenance/incomplete-cleanup/{run_id}/unignore",
+            post(maintenance::unignore_incomplete_cleanup_task),
+        )
         .route(
             "/api/notifications/settings",
             get(notifications::get_settings).put(notifications::put_settings),

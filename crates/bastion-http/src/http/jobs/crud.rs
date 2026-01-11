@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -102,14 +102,27 @@ pub(in crate::http) struct JobListItem {
     overlap_policy: jobs_repo::OverlapPolicy,
     created_at: i64,
     updated_at: i64,
+    archived_at: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(in crate::http) struct ListJobsQuery {
+    include_archived: Option<bool>,
 }
 
 pub(in crate::http) async fn list_jobs(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
+    Query(q): Query<ListJobsQuery>,
 ) -> Result<Json<Vec<JobListItem>>, AppError> {
     let _session = require_session(&state, &cookies).await?;
-    let jobs = jobs_repo::list_jobs(&state.db).await?;
+
+    let include_archived = q.include_archived.unwrap_or(false);
+    let jobs = if include_archived {
+        jobs_repo::list_jobs_including_archived(&state.db).await?
+    } else {
+        jobs_repo::list_jobs(&state.db).await?
+    };
 
     Ok(Json(
         jobs.into_iter()
@@ -121,6 +134,7 @@ pub(in crate::http) async fn list_jobs(
                 overlap_policy: j.overlap_policy,
                 created_at: j.created_at,
                 updated_at: j.updated_at,
+                archived_at: j.archived_at,
             })
             .collect(),
     ))
@@ -279,6 +293,56 @@ pub(in crate::http) async fn delete_job(
 
     if let Some(agent_id) = previous_agent_id.as_deref() {
         try_send_agent_config_snapshot(&state, agent_id).await;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(in crate::http) async fn archive_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+
+    let ok = jobs_repo::archive_job(&state.db, &job_id).await?;
+    if ok {
+        tracing::info!(job_id = %job_id, "job archived");
+        state.jobs_notify.notify_one();
+        if let Some(agent_id) = job.agent_id.as_deref() {
+            try_send_agent_config_snapshot(&state, agent_id).await;
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(in crate::http) async fn unarchive_job(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+
+    let ok = jobs_repo::unarchive_job(&state.db, &job_id).await?;
+    if ok {
+        tracing::info!(job_id = %job_id, "job unarchived");
+        state.jobs_notify.notify_one();
+        if let Some(agent_id) = job.agent_id.as_deref() {
+            try_send_agent_config_snapshot(&state, agent_id).await;
+        }
     }
 
     Ok(StatusCode::NO_CONTENT)
