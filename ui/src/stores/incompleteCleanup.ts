@@ -77,11 +77,11 @@ export const useIncompleteCleanupStore = defineStore('incompleteCleanup', () => 
     const q = new URLSearchParams()
     if (params.status) {
       const values = Array.isArray(params.status) ? params.status : [params.status]
-      for (const value of values) q.append('status', value)
+      for (const value of values) q.append('status[]', value)
     }
     if (params.targetType) {
       const values = Array.isArray(params.targetType) ? params.targetType : [params.targetType]
-      for (const value of values) q.append('target_type', value)
+      for (const value of values) q.append('target_type[]', value)
     }
     if (params.nodeId) q.set('node_id', params.nodeId)
     if (params.jobId) q.set('job_id', params.jobId)
