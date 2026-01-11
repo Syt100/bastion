@@ -9,7 +9,7 @@ Also, enum-like filters (e.g. status/channel/target) are currently single-select
 - Add multi-select support for low-cardinality enum filters:
   - Incomplete run cleanup: `status`, `target_type`
   - Notifications queue: `status`, `channel`
-- Extend backend list endpoints to accept multiple values for these filters via repeated query params.
+- Extend backend list endpoints to accept multiple values for these filters via repeated `[]` query params (e.g. `status[]=queued&status[]=done`).
 
 ## Impact
 - Affected specs: `web-ui`, `backend`
