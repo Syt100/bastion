@@ -5,6 +5,8 @@ import {
   NCard,
   NCode,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
   NInput,
   NModal,
   NSelect,
@@ -30,6 +32,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { useLatestRequest } from '@/lib/latest'
 import { MODAL_WIDTH } from '@/lib/modal'
+import { copyText } from '@/lib/clipboard'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -110,6 +113,22 @@ function formatJson(value: unknown): string {
     return JSON.stringify(value, null, 2)
   } catch {
     return String(value)
+  }
+}
+
+function lastErrorLabel(kind: string | null, message: string | null): string {
+  const parts = []
+  if (kind) parts.push(kind)
+  if (message) parts.push(message)
+  return parts.join(': ')
+}
+
+async function copyToClipboard(value: string): Promise<void> {
+  const ok = await copyText(value)
+  if (ok) {
+    message.success(t('messages.copied'))
+  } else {
+    message.error(t('errors.copyFailed'))
   }
 }
 
@@ -222,16 +241,23 @@ watch([statusFilter, targetFilter], () => {
 onMounted(refresh)
 
 const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
-  { title: t('settings.maintenance.cleanup.columns.job'), key: 'job_name' },
-  { title: t('settings.maintenance.cleanup.columns.node'), key: 'node_id' },
+  {
+    title: t('settings.maintenance.cleanup.columns.job'),
+    key: 'job_name',
+    minWidth: 160,
+    render: (row) =>
+      h('div', { class: 'min-w-0 truncate', title: row.job_name }, row.job_name),
+  },
   {
     title: t('settings.maintenance.cleanup.columns.target'),
     key: 'target_type',
+    minWidth: 100,
     render: (row) => formatTarget(row.target_type),
   },
   {
     title: t('settings.maintenance.cleanup.columns.status'),
     key: 'status',
+    minWidth: 100,
     render: (row) =>
       h(
         NTag,
@@ -239,29 +265,53 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
         { default: () => formatStatus(row.status) },
       ),
   },
-  { title: t('settings.maintenance.cleanup.columns.attempts'), key: 'attempts' },
   {
     title: t('settings.maintenance.cleanup.columns.nextAttempt'),
     key: 'next_attempt_at',
+    minWidth: 170,
     render: (row) => formatUnixSeconds(row.next_attempt_at),
   },
   {
     title: t('settings.maintenance.cleanup.columns.updatedAt'),
     key: 'updated_at',
+    minWidth: 170,
     render: (row) => formatUnixSeconds(row.updated_at),
   },
   {
     title: t('settings.maintenance.cleanup.columns.lastError'),
     key: 'last_error',
-    render: (row) => row.last_error ?? '-',
+    minWidth: 260,
+    maxWidth: 420,
+    render: (row) =>
+      row.last_error || row.last_error_kind
+        ? h(
+            'div',
+            {
+              class: 'min-w-0 flex items-center gap-2',
+              title: lastErrorLabel(row.last_error_kind ?? null, row.last_error ?? null),
+            },
+            [
+              row.last_error_kind
+                ? h(
+                    NTag,
+                    { size: 'small', type: 'error', bordered: false },
+                    { default: () => row.last_error_kind },
+                  )
+                : null,
+              h('span', { class: 'min-w-0 truncate' }, row.last_error ?? ''),
+            ],
+          )
+        : '-',
   },
   {
     title: t('settings.maintenance.cleanup.columns.actions'),
     key: 'actions',
+    minWidth: 220,
+    align: 'right',
     render: (row) =>
       h(
         NSpace,
-        { size: 8 },
+        { size: 8, justify: 'end' },
         {
           default: () => [
             h(
@@ -435,7 +485,13 @@ const actionHelpItems = computed(() => [
     </div>
   </n-modal>
 
-  <n-modal v-model:show="detailOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('settings.maintenance.cleanup.detailTitle')">
+  <n-modal
+    v-if="isDesktop"
+    v-model:show="detailOpen"
+    preset="card"
+    :style="{ width: MODAL_WIDTH.lg }"
+    :title="t('settings.maintenance.cleanup.detailTitle')"
+  >
     <div v-if="detailLoading" class="py-10 flex justify-center">
       <n-spin />
     </div>
@@ -447,14 +503,57 @@ const actionHelpItems = computed(() => [
         </n-tag>
       </div>
 
-      <div class="text-sm space-y-1">
-        <div><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.runId') }}:</span> {{ detail.task.run_id }}</div>
-        <div><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.node') }}:</span> {{ detail.task.node_id }}</div>
-        <div><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.target') }}:</span> {{ formatTarget(detail.task.target_type) }}</div>
-        <div><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</span> {{ detail.task.attempts }}</div>
-        <div><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</span> {{ formatUnixSeconds(detail.task.next_attempt_at) }}</div>
-        <div v-if="detail.task.last_error"><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</span> {{ detail.task.last_error }}</div>
-        <div v-if="detail.task.ignore_reason"><span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span> {{ detail.task.ignore_reason }}</div>
+      <div class="text-sm space-y-2">
+        <div class="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-1 items-start">
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
+          <div class="min-w-0 break-all">{{ detail.task.run_id }}</div>
+          <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.run_id)">{{ t('common.copy') }}</n-button>
+
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
+          <div class="min-w-0 break-all">{{ detail.task.node_id }}</div>
+          <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.node_id)">{{ t('common.copy') }}</n-button>
+
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
+          <div class="min-w-0">{{ formatTarget(detail.task.target_type) }}</div>
+          <div />
+
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
+          <div class="min-w-0">{{ detail.task.attempts }}</div>
+          <div />
+
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
+          <div class="min-w-0">{{ formatUnixSeconds(detail.task.next_attempt_at) }}</div>
+          <div />
+
+          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
+          <div class="min-w-0">{{ formatUnixSeconds(detail.task.updated_at) }}</div>
+          <div />
+        </div>
+
+        <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
+            <n-button
+              size="tiny"
+              tertiary
+              :disabled="!(detail.task.last_error || detail.task.last_error_kind)"
+              @click="copyToClipboard(lastErrorLabel(detail.task.last_error_kind ?? null, detail.task.last_error ?? null))"
+            >
+              {{ t('common.copy') }}
+            </n-button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <n-tag v-if="detail.task.last_error_kind" size="small" type="error" :bordered="false">
+              {{ detail.task.last_error_kind }}
+            </n-tag>
+            <div class="text-sm whitespace-pre-wrap break-words">{{ detail.task.last_error }}</div>
+          </div>
+        </div>
+
+        <div v-if="detail.task.ignore_reason" class="text-sm">
+          <span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
+          {{ detail.task.ignore_reason }}
+        </div>
       </div>
 
       <div>
@@ -483,6 +582,100 @@ const actionHelpItems = computed(() => [
       </div>
     </div>
   </n-modal>
+
+  <n-drawer v-else v-model:show="detailOpen" placement="bottom" height="80vh">
+    <n-drawer-content :title="t('settings.maintenance.cleanup.detailTitle')" closable>
+      <div v-if="detailLoading" class="py-10 flex justify-center">
+        <n-spin />
+      </div>
+      <div v-else-if="detail" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="font-medium truncate">{{ detail.task.job_name }}</div>
+          <n-tag size="small" :type="statusTagType(detail.task.status)" :bordered="false">
+            {{ formatStatus(detail.task.status) }}
+          </n-tag>
+        </div>
+
+        <div class="text-sm space-y-2">
+          <div class="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-1 items-start">
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
+            <div class="min-w-0 break-all">{{ detail.task.run_id }}</div>
+            <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.run_id)">{{ t('common.copy') }}</n-button>
+
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
+            <div class="min-w-0 break-all">{{ detail.task.node_id }}</div>
+            <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.node_id)">{{ t('common.copy') }}</n-button>
+
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
+            <div class="min-w-0">{{ formatTarget(detail.task.target_type) }}</div>
+            <div />
+
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
+            <div class="min-w-0">{{ detail.task.attempts }}</div>
+            <div />
+
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
+            <div class="min-w-0">{{ formatUnixSeconds(detail.task.next_attempt_at) }}</div>
+            <div />
+
+            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
+            <div class="min-w-0">{{ formatUnixSeconds(detail.task.updated_at) }}</div>
+            <div />
+          </div>
+
+          <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
+              <n-button
+                size="tiny"
+                tertiary
+                :disabled="!(detail.task.last_error || detail.task.last_error_kind)"
+                @click="copyToClipboard(lastErrorLabel(detail.task.last_error_kind ?? null, detail.task.last_error ?? null))"
+              >
+                {{ t('common.copy') }}
+              </n-button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <n-tag v-if="detail.task.last_error_kind" size="small" type="error" :bordered="false">
+                {{ detail.task.last_error_kind }}
+              </n-tag>
+              <div class="text-sm whitespace-pre-wrap break-words">{{ detail.task.last_error }}</div>
+            </div>
+          </div>
+
+          <div v-if="detail.task.ignore_reason" class="text-sm">
+            <span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
+            {{ detail.task.ignore_reason }}
+          </div>
+        </div>
+
+        <div>
+          <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.targetSnapshot') }}</div>
+          <n-code :code="formatJson(detail.task.target_snapshot)" language="json" />
+        </div>
+
+        <div>
+          <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.eventsTitle') }}</div>
+          <div v-if="detail.events.length === 0" class="text-sm opacity-70">{{ t('common.noData') }}</div>
+          <div v-else class="space-y-2">
+            <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium truncate">{{ e.kind }}</div>
+                  <div class="text-xs opacity-70 mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
+                </div>
+                <n-tag size="small" :type="eventLevelTagType(e.level)" :bordered="false">{{ e.level }}</n-tag>
+              </div>
+              <div class="text-sm mt-2">{{ e.message }}</div>
+              <div v-if="e.fields" class="mt-2">
+                <n-code :code="formatJson(e.fields)" language="json" />
+              </div>
+            </n-card>
+          </div>
+        </div>
+      </div>
+    </n-drawer-content>
+  </n-drawer>
 
   <n-modal v-model:show="helpOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.statusHelpTitle')">
     <div class="space-y-3">
