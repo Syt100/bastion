@@ -86,6 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent_manager = agent_manager::AgentManager::default();
     let run_events_bus = Arc::new(RunEventsBus::new());
     let run_queue_notify = Arc::new(tokio::sync::Notify::new());
+    let incomplete_cleanup_notify = Arc::new(tokio::sync::Notify::new());
     let jobs_notify = Arc::new(tokio::sync::Notify::new());
     let notifications_notify = Arc::new(tokio::sync::Notify::new());
     let shutdown = CancellationToken::new();
@@ -99,6 +100,7 @@ async fn main() -> Result<(), anyhow::Error> {
         incomplete_cleanup_days: config.incomplete_cleanup_days,
         run_events_bus: run_events_bus.clone(),
         run_queue_notify: run_queue_notify.clone(),
+        incomplete_cleanup_notify: incomplete_cleanup_notify.clone(),
         jobs_notify: jobs_notify.clone(),
         notifications_notify: notifications_notify.clone(),
         shutdown: shutdown.clone(),

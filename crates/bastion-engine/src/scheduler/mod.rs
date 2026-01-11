@@ -25,6 +25,7 @@ pub struct SchedulerArgs {
     pub incomplete_cleanup_days: i64,
     pub run_events_bus: Arc<RunEventsBus>,
     pub run_queue_notify: Arc<Notify>,
+    pub incomplete_cleanup_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
     pub shutdown: CancellationToken,
@@ -40,6 +41,7 @@ pub fn spawn(args: SchedulerArgs) {
         incomplete_cleanup_days,
         run_events_bus,
         run_queue_notify,
+        incomplete_cleanup_notify,
         jobs_notify,
         notifications_notify,
         shutdown,
@@ -77,6 +79,7 @@ pub fn spawn(args: SchedulerArgs) {
             db,
             secrets,
             incomplete_cleanup_days,
+            incomplete_cleanup_notify,
             shutdown,
         ));
     }
