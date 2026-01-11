@@ -245,8 +245,8 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.job'),
     key: 'job_name',
-    width: 180,
-    maxWidth: 180,
+    width: 160,
+    maxWidth: 160,
     render: (row) =>
       h('div', { class: 'min-w-0 truncate', title: row.job_name }, row.job_name),
   },
