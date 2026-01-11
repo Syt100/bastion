@@ -19,7 +19,16 @@ pub async fn list_incomplete_cleanup_candidates(
     limit: u32,
 ) -> Result<Vec<IncompleteCleanupRun>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, job_id, status, started_at FROM runs WHERE status != 'success' AND started_at < ? ORDER BY started_at ASC LIMIT ?",
+        r#"
+        SELECT r.id, r.job_id, r.status, r.started_at
+        FROM runs r
+        LEFT JOIN incomplete_cleanup_tasks t ON t.run_id = r.id
+        WHERE t.run_id IS NULL
+          AND r.status != 'success'
+          AND r.started_at < ?
+        ORDER BY r.started_at ASC
+        LIMIT ?
+        "#,
     )
     .bind(cutoff_started_at)
     .bind(limit as i64)

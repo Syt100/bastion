@@ -1,6 +1,7 @@
 use tempfile::TempDir;
 
 use crate::db;
+use crate::incomplete_cleanup_repo;
 
 use super::{
     IncompleteCleanupRun, RunStatus, append_run_event, claim_next_queued_run, complete_run,
@@ -118,7 +119,7 @@ async fn list_incomplete_cleanup_candidates_filters_and_orders() {
         .await
         .expect("list");
     let ids: Vec<String> = got.iter().map(|r| r.id.clone()).collect();
-    assert_eq!(ids, vec![r1.id, r2.id]);
+    assert_eq!(ids, vec![r1.id.clone(), r2.id.clone()]);
 
     // Ensure struct fields are populated.
     assert!(matches!(
@@ -128,4 +129,27 @@ async fn list_incomplete_cleanup_candidates_filters_and_orders() {
             ..
         }
     ));
+
+    // Runs that already have a cleanup task are excluded.
+    let snapshot = serde_json::json!({
+        "node_id": "hub",
+        "target": { "type": "local_dir", "base_dir": "/tmp" }
+    });
+    incomplete_cleanup_repo::upsert_task_if_missing(
+        &pool,
+        &r1.id,
+        "job1",
+        "hub",
+        "local_dir",
+        &serde_json::to_string(&snapshot).unwrap(),
+        2000,
+    )
+    .await
+    .expect("upsert");
+
+    let got = list_incomplete_cleanup_candidates(&pool, 100, 10)
+        .await
+        .expect("list2");
+    let ids: Vec<String> = got.iter().map(|r| r.id.clone()).collect();
+    assert_eq!(ids, vec![r2.id.clone()]);
 }
