@@ -41,6 +41,7 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const loading = ref(false)
+const helpOpen = ref(false)
 
 type StatusFilter = 'all' | CleanupTaskStatus
 type TargetFilter = 'all' | CleanupTargetType
@@ -302,6 +303,16 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
       ),
   },
 ])
+
+const statusHelpItems = computed(() => [
+  { status: 'queued', body: t('settings.maintenance.cleanup.statusHelp.queued') },
+  { status: 'running', body: t('settings.maintenance.cleanup.statusHelp.running') },
+  { status: 'retrying', body: t('settings.maintenance.cleanup.statusHelp.retrying') },
+  { status: 'blocked', body: t('settings.maintenance.cleanup.statusHelp.blocked') },
+  { status: 'done', body: t('settings.maintenance.cleanup.statusHelp.done') },
+  { status: 'ignored', body: t('settings.maintenance.cleanup.statusHelp.ignored') },
+  { status: 'abandoned', body: t('settings.maintenance.cleanup.statusHelp.abandoned') },
+])
 </script>
 
 <template>
@@ -311,6 +322,7 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
         <n-select v-model:value="statusFilter" :options="statusOptions" class="w-48" />
         <n-select v-model:value="targetFilter" :options="targetOptions" class="w-48" />
         <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+        <n-button size="small" circle @click="helpOpen = true">?</n-button>
       </div>
 
       <div v-if="!isDesktop" class="space-y-3">
@@ -433,6 +445,20 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
               <n-code :code="formatJson(e.fields)" language="json" />
             </div>
           </n-card>
+        </div>
+      </div>
+    </div>
+  </n-modal>
+
+  <n-modal v-model:show="helpOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.statusHelpTitle')">
+    <div class="space-y-3">
+      <div class="text-sm opacity-80">{{ t('settings.maintenance.cleanup.statusHelpIntro') }}</div>
+      <div class="space-y-2">
+        <div v-for="row in statusHelpItems" :key="row.status" class="flex items-start gap-2">
+          <n-tag size="small" :type="statusTagType(row.status)" :bordered="false">
+            {{ formatStatus(row.status) }}
+          </n-tag>
+          <div class="text-sm opacity-80">{{ row.body }}</div>
         </div>
       </div>
     </div>

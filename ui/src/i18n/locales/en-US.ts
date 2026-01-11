@@ -292,7 +292,7 @@ const messages = {
     },
     maintenance: {
       cleanup: {
-        title: 'Incomplete cleanup',
+        title: 'Incomplete run cleanup',
         total: '{total} tasks',
         status: {
           all: 'All status',
@@ -333,6 +333,17 @@ const messages = {
         detailTitle: 'Cleanup details',
         eventsTitle: 'Events',
         targetSnapshot: 'Target snapshot',
+        statusHelpTitle: 'Status help',
+        statusHelpIntro: 'These statuses describe the state of cleanup tasks for incomplete runs.',
+        statusHelp: {
+          queued: 'Eligible for processing; will attempt when due.',
+          running: 'Currently being processed by the cleanup worker.',
+          retrying: 'Last attempt failed; will retry after backoff.',
+          blocked: 'Blocked by config/auth issues; usually needs operator action.',
+          done: 'Cleanup finished, or confirmed not needed.',
+          ignored: 'Ignored by an operator; will not retry automatically.',
+          abandoned: 'Auto-stopped after thresholds; you can still retry manually.',
+        },
       },
     },
     webdav: {
