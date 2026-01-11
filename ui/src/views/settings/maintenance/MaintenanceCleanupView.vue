@@ -313,6 +313,21 @@ const statusHelpItems = computed(() => [
   { status: 'ignored', body: t('settings.maintenance.cleanup.statusHelp.ignored') },
   { status: 'abandoned', body: t('settings.maintenance.cleanup.statusHelp.abandoned') },
 ])
+
+const actionHelpItems = computed(() => [
+  { key: 'more', label: t('common.more'), body: t('settings.maintenance.cleanup.actionHelp.more') },
+  {
+    key: 'retryNow',
+    label: t('settings.maintenance.cleanup.actions.retryNow'),
+    body: t('settings.maintenance.cleanup.actionHelp.retryNow'),
+  },
+  { key: 'ignore', label: t('settings.maintenance.cleanup.actions.ignore'), body: t('settings.maintenance.cleanup.actionHelp.ignore') },
+  {
+    key: 'unignore',
+    label: t('settings.maintenance.cleanup.actions.unignore'),
+    body: t('settings.maintenance.cleanup.actionHelp.unignore'),
+  },
+])
 </script>
 
 <template>
@@ -459,6 +474,16 @@ const statusHelpItems = computed(() => [
             {{ formatStatus(row.status) }}
           </n-tag>
           <div class="text-sm opacity-80">{{ row.body }}</div>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-sm font-medium">{{ t('settings.maintenance.cleanup.actionHelpTitle') }}</div>
+        <div class="space-y-2">
+          <div v-for="row in actionHelpItems" :key="row.key" class="flex items-start gap-2">
+            <n-tag size="small" :bordered="false">{{ row.label }}</n-tag>
+            <div class="text-sm opacity-80">{{ row.body }}</div>
+          </div>
         </div>
       </div>
     </div>

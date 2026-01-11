@@ -344,6 +344,15 @@ const messages = {
           ignored: 'Ignored by an operator; will not retry automatically.',
           abandoned: 'Auto-stopped after thresholds; you can still retry manually.',
         },
+        actionHelpTitle: 'Actions',
+        actionHelp: {
+          more: 'Open details to view target snapshot, events, and the last error; does not change task state.',
+          retryNow:
+            'Re-queue the task and set “next attempt” to now; resets attempts to 0 (will become 1 when processing starts); clears the last error (history remains in Events).',
+          ignore: 'Mark the task as Ignored and stop automatic retries; you can provide a reason; you can later Unignore or Retry now.',
+          unignore:
+            'Unignore the task and resume automatic retries: it goes back to Queued with next attempt set to now and clears ignore metadata.',
+        },
       },
     },
     webdav: {
