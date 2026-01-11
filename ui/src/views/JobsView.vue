@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { NButton, NCard, NDataTable, NPopconfirm, NSpace, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NDataTable, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type OverlapPolicy } from '@/stores/jobs'
@@ -13,6 +13,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { MODAL_WIDTH } from '@/lib/modal'
 
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobRunsModal, { type JobRunsModalExpose } from '@/components/jobs/JobRunsModal.vue'
@@ -46,6 +47,8 @@ const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.p
 const inNodeContext = computed(() => nodeId.value !== null)
 const nodeIdOrHub = computed(() => nodeId.value ?? 'hub')
 
+const showArchived = ref<boolean>(false)
+
 const visibleJobs = computed(() => {
   const id = nodeId.value
   if (!id) return jobs.items
@@ -65,19 +68,43 @@ function formatOverlap(policy: OverlapPolicy): string {
 
 async function refresh(): Promise<void> {
   try {
-    await jobs.refresh()
+    await jobs.refresh({ includeArchived: showArchived.value })
   } catch (error) {
     message.error(formatToastError(t('errors.fetchJobsFailed'), error, t))
   }
 }
 
-async function removeJob(jobId: string): Promise<void> {
+async function removeJob(jobId: string): Promise<boolean> {
   try {
     await jobs.deleteJob(jobId)
     message.success(t('messages.jobDeleted'))
     await refresh()
+    return true
   } catch (error) {
     message.error(formatToastError(t('errors.deleteJobFailed'), error, t))
+    return false
+  }
+}
+
+async function archiveJob(jobId: string): Promise<boolean> {
+  try {
+    await jobs.archiveJob(jobId)
+    message.success(t('messages.jobArchived'))
+    await refresh()
+    return true
+  } catch (error) {
+    message.error(formatToastError(t('errors.archiveJobFailed'), error, t))
+    return false
+  }
+}
+
+async function unarchiveJob(jobId: string): Promise<void> {
+  try {
+    await jobs.unarchiveJob(jobId)
+    message.success(t('messages.jobUnarchived'))
+    await refresh()
+  } catch (error) {
+    message.error(formatToastError(t('errors.unarchiveJobFailed'), error, t))
   }
 }
 
@@ -124,8 +151,63 @@ async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
 
+const deleteOpen = ref<boolean>(false)
+const deleteTarget = ref<JobListItem | null>(null)
+const deleteBusy = ref<'archive' | 'delete' | null>(null)
+
+function openDelete(job: JobListItem): void {
+  deleteTarget.value = job
+  deleteOpen.value = true
+}
+
+async function confirmArchive(): Promise<void> {
+  const job = deleteTarget.value
+  if (!job) return
+  deleteBusy.value = 'archive'
+  try {
+    const ok = await archiveJob(job.id)
+    if (ok) deleteOpen.value = false
+  } finally {
+    deleteBusy.value = null
+  }
+}
+
+async function confirmDeletePermanently(): Promise<void> {
+  const job = deleteTarget.value
+  if (!job) return
+  deleteBusy.value = 'delete'
+  try {
+    const ok = await removeJob(job.id)
+    if (ok) deleteOpen.value = false
+  } finally {
+    deleteBusy.value = null
+  }
+}
+
 const columns = computed<DataTableColumns<JobListItem>>(() => {
-  const cols: DataTableColumns<JobListItem> = [{ title: t('jobs.columns.name'), key: 'name' }]
+  const cols: DataTableColumns<JobListItem> = [
+    {
+      title: t('jobs.columns.name'),
+      key: 'name',
+      render: (row) =>
+        h(
+          NSpace,
+          { size: 6, align: 'center' },
+          {
+            default: () => [
+              h('span', { class: 'truncate' }, row.name),
+              row.archived_at
+                ? h(
+                    NTag,
+                    { size: 'small', bordered: false },
+                    { default: () => t('jobs.archived') },
+                  )
+                : null,
+            ],
+          },
+        ),
+    },
+  ]
 
   if (!inNodeContext.value) {
     cols.push({
@@ -164,7 +246,12 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
             default: () => [
               h(
                 NButton,
-                { size: 'small', type: 'primary', onClick: () => void runNow(row.id) },
+                {
+                  size: 'small',
+                  type: 'primary',
+                  disabled: !!row.archived_at,
+                  onClick: () => void runNow(row.id),
+                },
                 { default: () => t('jobs.actions.runNow') },
               ),
               h(
@@ -174,25 +261,20 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
               ),
               h(
                 NButton,
-                { size: 'small', onClick: () => void openEdit(row.id) },
+                { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
                 { default: () => t('common.edit') },
               ),
+              row.archived_at
+                ? h(
+                    NButton,
+                    { size: 'small', onClick: () => void unarchiveJob(row.id) },
+                    { default: () => t('jobs.actions.unarchive') },
+                  )
+                : null,
               h(
-                NPopconfirm,
-                {
-                  onPositiveClick: () => void removeJob(row.id),
-                  positiveText: t('common.delete'),
-                  negativeText: t('common.cancel'),
-                },
-                {
-                  trigger: () =>
-                    h(
-                      NButton,
-                      { size: 'small', type: 'error', tertiary: true },
-                      { default: () => t('common.delete') },
-                    ),
-                  default: () => t('jobs.deleteConfirm'),
-                },
+                NButton,
+                { size: 'small', type: 'error', tertiary: true, onClick: () => openDelete(row) },
+                { default: () => t('common.delete') },
               ),
             ],
           },
@@ -224,11 +306,19 @@ watch(nodeIdOrHub, async () => {
     message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
   }
 })
+
+watch(showArchived, () => {
+  void refresh()
+})
 </script>
 
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('jobs.title')" :subtitle="t('jobs.subtitle')">
+      <div class="flex items-center gap-2">
+        <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
+        <n-switch v-model:value="showArchived" />
+      </div>
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
     </PageHeader>
@@ -245,7 +335,12 @@ watch(nodeIdOrHub, async () => {
       >
         <template #header>
           <div class="flex items-center justify-between gap-3">
-            <div class="font-medium truncate">{{ job.name }}</div>
+            <div class="min-w-0">
+              <div class="font-medium truncate">{{ job.name }}</div>
+              <div v-if="job.archived_at" class="text-xs opacity-70 mt-0.5">
+                {{ t('jobs.archived') }}
+              </div>
+            </div>
           </div>
         </template>
 
@@ -270,19 +365,11 @@ watch(nodeIdOrHub, async () => {
 
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
-            <n-button size="small" type="primary" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
+            <n-button size="small" type="primary" :disabled="!!job.archived_at" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
             <n-button size="small" @click="openRuns(job.id)">{{ t('jobs.actions.runs') }}</n-button>
-            <n-button size="small" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
-            <n-popconfirm
-              :positive-text="t('common.delete')"
-              :negative-text="t('common.cancel')"
-              @positive-click="removeJob(job.id)"
-            >
-              <template #trigger>
-                <n-button size="small" type="error" tertiary>{{ t('common.delete') }}</n-button>
-              </template>
-              {{ t('jobs.deleteConfirm') }}
-            </n-popconfirm>
+            <n-button size="small" :disabled="!!job.archived_at" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
+            <n-button v-if="job.archived_at" size="small" @click="unarchiveJob(job.id)">{{ t('jobs.actions.unarchive') }}</n-button>
+            <n-button size="small" type="error" tertiary @click="openDelete(job)">{{ t('common.delete') }}</n-button>
           </div>
         </template>
       </n-card>
@@ -312,5 +399,32 @@ watch(nodeIdOrHub, async () => {
     <VerifyWizardModal ref="verifyModal" @started="(id) => void openOperation(id)" />
 
     <OperationModal ref="opModal" />
+
+    <n-modal v-model:show="deleteOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('jobs.deleteTitle')">
+      <div class="space-y-3">
+        <div class="text-sm opacity-80">
+          {{
+            deleteTarget?.archived_at
+              ? t('jobs.deletePermanentlyHelp')
+              : t('jobs.deleteHelp')
+          }}
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <n-button :disabled="deleteBusy !== null" @click="deleteOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button
+            v-if="deleteTarget && !deleteTarget.archived_at"
+            type="warning"
+            :loading="deleteBusy === 'archive'"
+            @click="confirmArchive"
+          >
+            {{ t('jobs.actions.archive') }}
+          </n-button>
+          <n-button type="error" :loading="deleteBusy === 'delete'" @click="confirmDeletePermanently">
+            {{ t('jobs.actions.deletePermanently') }}
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
   </div>
 </template>

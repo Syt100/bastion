@@ -119,7 +119,8 @@ describe('RunEntriesPickerModal', () => {
     await flushAsync()
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('hide_dotfiles=true')
+    const secondCall = fetchMock.mock.calls[1] as unknown[] | undefined
+    expect(String(secondCall?.[0])).toContain('hide_dotfiles=true')
   })
 
   it('splits selected entries into files and dirs', async () => {

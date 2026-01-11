@@ -104,7 +104,7 @@ describe('FsPathPickerModal', () => {
     await flushAsync()
 
     const calls = fetchMock.mock.calls.map((c) => String(c[0]))
-    expect(calls.at(-1)).toContain('path=%2Froot%2Fsub')
+    expect(calls[calls.length - 1]).toContain('path=%2Froot%2Fsub')
     expect(localStorage.getItem('bastion.fsPicker.lastDir.hub')).toBe('/root/sub')
   })
 
@@ -133,4 +133,3 @@ describe('FsPathPickerModal', () => {
     expect(wrapper.emitted('picked')?.[0]).toEqual([['/missing']])
   })
 })
-
