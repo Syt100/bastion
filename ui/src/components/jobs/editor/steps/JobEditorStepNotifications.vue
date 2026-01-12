@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NAlert, NFormItem, NSelect } from 'naive-ui'
+import { NAlert, NButton, NFormItem, NSelect } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useJobEditorContext } from '../context'
@@ -17,6 +17,8 @@ defineProps<{
 const { t } = useI18n()
 
 const { form } = useJobEditorContext()
+
+const manageDestinationsHref = '/settings/notifications/destinations'
 </script>
 
 <template>
@@ -31,6 +33,19 @@ const { form } = useJobEditorContext()
         <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsModeHelp') }}</div>
       </div>
     </n-form-item>
+
+    <div class="flex justify-end">
+      <n-button
+        size="tiny"
+        quaternary
+        tag="a"
+        :href="manageDestinationsHref"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ t('jobs.actions.manageNotificationDestinations') }}
+      </n-button>
+    </div>
 
     <template v-if="form.notifyMode === 'custom'">
       <n-form-item :label="t('jobs.fields.notifyWecomBots')">

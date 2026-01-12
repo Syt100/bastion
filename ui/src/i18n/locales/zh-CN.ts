@@ -260,6 +260,17 @@ const messages = {
       showJson: '查看 JSON',
       hideJson: '隐藏 JSON',
       copyJson: '复制 JSON',
+      cronPresets: '常用预设',
+      manageWebdavSecrets: '管理 WebDAV 凭据',
+      manageNotificationDestinations: '管理通知目的地',
+    },
+    cronPresets: {
+      manual: '仅手动（留空）',
+      hourly: '每小时',
+      every15m: '每 15 分钟',
+      daily: '每天',
+      weekly: '每周',
+      monthly: '每月',
     },
   },
   fsPicker: {

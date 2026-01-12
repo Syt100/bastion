@@ -21,10 +21,10 @@
 - [x] 4.4 Commit validation improvements (detailed message)
 
 ## 5. UX Enhancements
-- [ ] 5.1 Move action bar into modal footer (persistent/sticky)
-- [ ] 5.2 Add common cron presets picker
-- [ ] 5.3 Add quick links to manage WebDAV secrets (node-scoped) and notification destinations (new tab)
-- [ ] 5.4 Commit UX enhancements (detailed message)
+- [x] 5.1 Move action bar into modal footer (persistent/sticky)
+- [x] 5.2 Add common cron presets picker
+- [x] 5.3 Add quick links to manage WebDAV secrets (node-scoped) and notification destinations (new tab)
+- [x] 5.4 Commit UX enhancements (detailed message)
 
 ## 6. Verification
 - [ ] 6.1 Run `npm test --prefix ui`
