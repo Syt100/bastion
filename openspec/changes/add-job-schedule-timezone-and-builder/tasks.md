@@ -18,13 +18,13 @@
 - [x] 3.4 Commit scheduler changes (detailed message)
 
 ## 4. Web UI - Schedule Editor
-- [ ] 4.1 Extend job types/mapping to include `schedule_timezone`
-- [ ] 4.2 Add schedule editor UI: Manual / Simple / Cron mode, plus timezone selector (default Hub timezone)
-- [ ] 4.3 Update validation + i18n strings
-- [ ] 4.4 Commit UI changes (detailed message)
+- [x] 4.1 Extend job types/mapping to include `schedule_timezone`
+- [x] 4.2 Add schedule editor UI: Manual / Simple / Cron mode, plus timezone selector (default Hub timezone)
+- [x] 4.3 Update validation + i18n strings
+- [x] 4.4 Commit UI changes (detailed message)
 
 ## 5. Verification
-- [ ] 5.1 Run `cargo test`
-- [ ] 5.2 Run `npm test --prefix ui`
-- [ ] 5.3 Run `npm run type-check --prefix ui`
-- [ ] 5.4 (Optional) Run `npm run lint --prefix ui`
+- [x] 5.1 Run `cargo test`
+- [x] 5.2 Run `npm test --prefix ui`
+- [x] 5.3 Run `npm run type-check --prefix ui`
+- [x] 5.4 (Optional) Run `npm run lint --prefix ui`
