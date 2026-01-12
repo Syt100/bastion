@@ -61,6 +61,12 @@ pub struct HubArgs {
     #[arg(long, default_value_t = 7, env = "BASTION_INCOMPLETE_CLEANUP_DAYS")]
     pub incomplete_cleanup_days: i64,
 
+    /// Hub timezone (IANA), used as the default schedule timezone (default: UTC).
+    ///
+    /// Examples: `UTC`, `Asia/Shanghai`, `America/Los_Angeles`.
+    #[arg(long, env = "BASTION_HUB_TIMEZONE", default_value = "UTC")]
+    pub hub_timezone: String,
+
     /// Trusted proxy IPs/CIDRs that are allowed to set X-Forwarded-* headers.
     ///
     /// Can be specified multiple times: `--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`.
@@ -176,6 +182,14 @@ impl HubArgs {
             anyhow::bail!("incomplete_cleanup_days must be >= 0");
         }
 
+        let hub_timezone = self.hub_timezone.trim();
+        if hub_timezone.is_empty() {
+            anyhow::bail!("hub_timezone must be non-empty");
+        }
+        let _ = hub_timezone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| anyhow::anyhow!("invalid hub_timezone: {}", hub_timezone))?;
+
         let mut trusted_proxies = self.trusted_proxies;
         if trusted_proxies.is_empty() {
             trusted_proxies.push("127.0.0.1/32".parse()?);
@@ -187,6 +201,7 @@ impl HubArgs {
             data_dir,
             insecure_http: self.insecure_http,
             debug_errors: self.debug_errors,
+            hub_timezone: hub_timezone.to_string(),
             run_retention_days: self.run_retention_days,
             incomplete_cleanup_days: self.incomplete_cleanup_days,
             trusted_proxies,

@@ -41,6 +41,7 @@ fn managed_config_snapshot_is_persisted_encrypted() {
         job_id: "job1".to_string(),
         name: "job1".to_string(),
         schedule: Some("0 */6 * * *".to_string()),
+        schedule_timezone: Some("UTC".to_string()),
         overlap_policy: bastion_core::agent_protocol::OverlapPolicyV1::Queue,
         updated_at: 10,
         spec: bastion_core::agent_protocol::JobSpecResolvedV1::Filesystem {

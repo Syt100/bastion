@@ -33,6 +33,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         "job1",
         None,
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({"v":1,"type":"filesystem"}),
     )
@@ -65,6 +66,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         data_dir: temp.path().to_path_buf(),
         insecure_http: true,
         debug_errors: false,
+        hub_timezone: "UTC".to_string(),
         run_retention_days: 180,
         incomplete_cleanup_days: 7,
         trusted_proxies: vec![

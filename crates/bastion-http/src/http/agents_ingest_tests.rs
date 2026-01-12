@@ -22,6 +22,7 @@ fn test_config(temp: &TempDir) -> Arc<Config> {
         data_dir: temp.path().to_path_buf(),
         insecure_http: true,
         debug_errors: false,
+        hub_timezone: "UTC".to_string(),
         run_retention_days: 180,
         incomplete_cleanup_days: 7,
         trusted_proxies: vec![
@@ -60,6 +61,7 @@ async fn agent_ingest_runs_inserts_run_and_events_and_dedupes() {
         "job1",
         Some(&agent_id),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -217,6 +219,7 @@ async fn agent_ingest_runs_rejects_jobs_not_assigned_to_agent() {
         "job1",
         Some("other-agent"),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -291,6 +294,7 @@ async fn agent_ingest_runs_limits_event_count() {
         "job1",
         Some(&agent_id),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -374,6 +378,7 @@ async fn agent_ingest_runs_upserts_existing_run_metadata() {
         "job1",
         Some(&agent_id),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -468,6 +473,7 @@ async fn agent_ingest_runs_validates_ended_at() {
         "job1",
         Some(&agent_id),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -544,6 +550,7 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         "job1",
         Some(&agent_id),
         None,
+        Some("UTC"),
         jobs_repo::OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,

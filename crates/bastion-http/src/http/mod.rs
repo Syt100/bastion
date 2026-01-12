@@ -59,12 +59,14 @@ async fn health() -> Json<HealthResponse> {
 struct SystemStatusResponse {
     version: &'static str,
     insecure_http: bool,
+    hub_timezone: String,
 }
 
 async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStatusResponse> {
     Json(SystemStatusResponse {
         version: env!("CARGO_PKG_VERSION"),
         insecure_http: state.config.insecure_http,
+        hub_timezone: state.config.hub_timezone.clone(),
     })
 }
 

@@ -15,6 +15,7 @@ async fn jobs_crud_round_trip() {
         "job1",
         None,
         Some("0 */6 * * *"),
+        Some("UTC"),
         OverlapPolicy::Queue,
         spec,
     )
@@ -27,6 +28,7 @@ async fn jobs_crud_round_trip() {
         .expect("present");
     assert_eq!(fetched.name, "job1");
     assert_eq!(fetched.overlap_policy, OverlapPolicy::Queue);
+    assert_eq!(fetched.schedule_timezone, "UTC");
 
     let listed = list_jobs(&pool).await.expect("list");
     assert_eq!(listed.len(), 1);
@@ -38,6 +40,7 @@ async fn jobs_crud_round_trip() {
         "job2",
         Some("agent-1"),
         None,
+        Some("Asia/Shanghai"),
         OverlapPolicy::Reject,
         updated_spec,
     )
@@ -53,4 +56,5 @@ async fn jobs_crud_round_trip() {
     assert_eq!(fetched.agent_id.as_deref(), Some("agent-1"));
     assert_eq!(fetched.overlap_policy, OverlapPolicy::Reject);
     assert!(fetched.schedule.is_none());
+    assert_eq!(fetched.schedule_timezone, "Asia/Shanghai");
 }

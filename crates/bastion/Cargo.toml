@@ -29,6 +29,7 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
 base64 = "0.22.1"
 chrono = "0.4.42"
+chrono-tz = "0.10.4"
 cron = "0.15.0"
 uuid = { version = "1.18.1", features = ["v4"] }
 
