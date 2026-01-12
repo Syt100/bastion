@@ -34,6 +34,7 @@ import { formatToastError } from '@/lib/errors'
 import { useLatestRequest } from '@/lib/latest'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { copyText } from '@/lib/clipboard'
+import { usePersistentColumnWidths } from '@/lib/columnWidths'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -43,6 +44,8 @@ const cleanup = useIncompleteCleanupStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+
+const columnWidths = usePersistentColumnWidths('bastion.ui.tableColumns.settings.maintenance.cleanup')
 
 const loading = ref(false)
 const helpOpen = ref(false)
@@ -122,6 +125,14 @@ function lastErrorLabel(kind: string | null, message: string | null): string {
   if (kind) parts.push(kind)
   if (message) parts.push(message)
   return parts.join(': ')
+}
+
+function handleColumnResize(_resizedWidth: number, limitedWidth: number, column: unknown): void {
+  if (!column || typeof column !== 'object') return
+  if (!('key' in column)) return
+  const key = (column as { key?: unknown }).key
+  if (key === undefined || key === null) return
+  columnWidths.setWidth(String(key), limitedWidth)
 }
 
 async function copyToClipboard(value: string): Promise<void> {
@@ -245,8 +256,9 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.job'),
     key: 'job_name',
-    width: 140,
-    maxWidth: 140,
+    width: columnWidths.getWidth('job_name') ?? 140,
+    minWidth: 110,
+    resizable: true,
     render: (row) =>
       h('div', { class: 'min-w-0 truncate', title: row.job_name }, row.job_name),
   },
@@ -289,7 +301,9 @@ const columns = computed<DataTableColumns<CleanupTaskListItem>>(() => [
   {
     title: t('settings.maintenance.cleanup.columns.lastError'),
     key: 'last_error',
-    minWidth: 300,
+    width: columnWidths.getWidth('last_error'),
+    minWidth: 220,
+    resizable: true,
     render: (row) =>
       row.last_error || row.last_error_kind
         ? (() => {
@@ -484,7 +498,13 @@ const actionHelpItems = computed(() => [
       </div>
 
       <div v-else class="overflow-x-auto">
-        <n-data-table table-layout="fixed" :loading="loading" :columns="columns" :data="items" />
+        <n-data-table
+          table-layout="fixed"
+          :loading="loading"
+          :columns="columns"
+          :data="items"
+          :on-unstable-column-resize="handleColumnResize"
+        />
       </div>
 
       <div class="flex items-center justify-between text-sm">
