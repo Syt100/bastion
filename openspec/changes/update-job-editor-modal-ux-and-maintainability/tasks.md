@@ -27,6 +27,6 @@
 - [x] 5.4 Commit UX enhancements (detailed message)
 
 ## 6. Verification
-- [ ] 6.1 Run `npm test --prefix ui`
-- [ ] 6.2 Run `npm run type-check --prefix ui`
+- [x] 6.1 Run `npm test --prefix ui`
+- [x] 6.2 Run `npm run type-check --prefix ui`
 - [ ] 6.3 (Optional) Run `npm run lint --prefix ui`
