@@ -93,6 +93,8 @@ pub struct JobConfigV1 {
     pub name: String,
     #[serde(default)]
     pub schedule: Option<String>,
+    #[serde(default)]
+    pub schedule_timezone: Option<String>,
     pub overlap_policy: OverlapPolicyV1,
     pub updated_at: i64,
     pub spec: JobSpecResolvedV1,

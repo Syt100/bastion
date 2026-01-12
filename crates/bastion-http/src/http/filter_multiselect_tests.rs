@@ -22,6 +22,7 @@ fn test_config(temp: &TempDir) -> Arc<Config> {
         data_dir: temp.path().to_path_buf(),
         insecure_http: true,
         debug_errors: false,
+        hub_timezone: "UTC".to_string(),
         run_retention_days: 180,
         incomplete_cleanup_days: 7,
         trusted_proxies: vec![

@@ -1,15 +1,15 @@
 ## 1. Spec
 - [x] 1.1 Draft proposal, tasks, design, and spec deltas (`backend`, `web-ui`)
 - [x] 1.2 Run `openspec validate add-job-schedule-timezone-and-builder --strict`
-- [ ] 1.3 Commit the spec proposal (detailed message)
+- [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Backend - Model & API
-- [ ] 2.1 Add Hub timezone config + expose via `/api/system`
-- [ ] 2.2 Add `jobs.schedule_timezone` column + update jobs repo CRUD
-- [ ] 2.3 Extend jobs CRUD API to accept/return `schedule_timezone`
-- [ ] 2.4 Include `schedule_timezone` in agent config snapshots
-- [ ] 2.5 Tighten cron validation (`5 fields` or `6 fields with seconds==0`) and validate IANA timezone strings
-- [ ] 2.6 Commit backend changes (detailed message)
+- [x] 2.1 Add Hub timezone config + expose via `/api/system`
+- [x] 2.2 Add `jobs.schedule_timezone` column + update jobs repo CRUD
+- [x] 2.3 Extend jobs CRUD API to accept/return `schedule_timezone`
+- [x] 2.4 Include `schedule_timezone` in agent config snapshots
+- [x] 2.5 Tighten cron validation (`5 fields` or `6 fields with seconds==0`) and validate IANA timezone strings
+- [x] 2.6 Commit backend changes (detailed message)
 
 ## 3. Scheduler - Timezone Semantics
 - [ ] 3.1 Hub scheduler: evaluate cron in `schedule_timezone` (gap=skip, fold=run once)

@@ -34,6 +34,7 @@ pub struct Job {
     pub name: String,
     pub agent_id: Option<String>,
     pub schedule: Option<String>,
+    pub schedule_timezone: String,
     pub overlap_policy: OverlapPolicy,
     pub spec: serde_json::Value,
     pub created_at: i64,

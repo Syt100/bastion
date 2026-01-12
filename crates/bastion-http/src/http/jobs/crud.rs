@@ -39,6 +39,18 @@ fn validate_schedule(schedule: Option<&str>) -> Result<(), AppError> {
     Ok(())
 }
 
+fn normalize_timezone(value: Option<&str>, default: &str) -> Result<String, AppError> {
+    let v = value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(default)
+        .trim();
+    let _ = v
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| AppError::bad_request("invalid_timezone", "Invalid schedule timezone"))?;
+    Ok(v.to_string())
+}
+
 async fn validate_agent_id(db: &sqlx::SqlitePool, agent_id: Option<&str>) -> Result<(), AppError> {
     let Some(agent_id) = agent_id else {
         return Ok(());
@@ -80,6 +92,7 @@ pub(in crate::http) struct CreateJobRequest {
     name: String,
     agent_id: Option<String>,
     schedule: Option<String>,
+    schedule_timezone: Option<String>,
     overlap_policy: jobs_repo::OverlapPolicy,
     spec: serde_json::Value,
 }
@@ -89,6 +102,7 @@ pub(in crate::http) struct UpdateJobRequest {
     name: String,
     agent_id: Option<String>,
     schedule: Option<String>,
+    schedule_timezone: Option<String>,
     overlap_policy: jobs_repo::OverlapPolicy,
     spec: serde_json::Value,
 }
@@ -99,6 +113,7 @@ pub(in crate::http) struct JobListItem {
     name: String,
     agent_id: Option<String>,
     schedule: Option<String>,
+    schedule_timezone: String,
     overlap_policy: jobs_repo::OverlapPolicy,
     created_at: i64,
     updated_at: i64,
@@ -131,6 +146,7 @@ pub(in crate::http) async fn list_jobs(
                 name: j.name,
                 agent_id: j.agent_id,
                 schedule: j.schedule,
+                schedule_timezone: j.schedule_timezone,
                 overlap_policy: j.overlap_policy,
                 created_at: j.created_at,
                 updated_at: j.updated_at,
@@ -152,6 +168,8 @@ pub(in crate::http) async fn create_job(
     let name = require_job_name(&req.name)?;
 
     let schedule = normalize_optional_string(req.schedule.as_deref());
+    let schedule_timezone =
+        normalize_timezone(req.schedule_timezone.as_deref(), &state.config.hub_timezone)?;
 
     let agent_id = normalize_optional_string(req.agent_id.as_deref());
     validate_agent_id(&state.db, agent_id.as_deref()).await?;
@@ -165,6 +183,7 @@ pub(in crate::http) async fn create_job(
         name,
         agent_id.as_deref(),
         schedule.as_deref(),
+        Some(&schedule_timezone),
         req.overlap_policy,
         req.spec,
     )
@@ -175,6 +194,7 @@ pub(in crate::http) async fn create_job(
         name = %job.name,
         agent_id = ?job.agent_id,
         schedule = ?job.schedule,
+        schedule_timezone = %job.schedule_timezone,
         overlap_policy = ?job.overlap_policy,
         "job created"
     );
@@ -217,6 +237,8 @@ pub(in crate::http) async fn update_job(
     let name = require_job_name(&req.name)?;
 
     let schedule = normalize_optional_string(req.schedule.as_deref());
+    let schedule_timezone =
+        normalize_timezone(req.schedule_timezone.as_deref(), &state.config.hub_timezone)?;
 
     let agent_id = normalize_optional_string(req.agent_id.as_deref());
     validate_agent_id(&state.db, agent_id.as_deref()).await?;
@@ -231,6 +253,7 @@ pub(in crate::http) async fn update_job(
         name,
         agent_id.as_deref(),
         schedule.as_deref(),
+        Some(&schedule_timezone),
         req.overlap_policy,
         req.spec,
     )
@@ -249,6 +272,7 @@ pub(in crate::http) async fn update_job(
         name = %job.name,
         agent_id = ?job.agent_id,
         schedule = ?job.schedule,
+        schedule_timezone = %job.schedule_timezone,
         overlap_policy = ?job.overlap_policy,
         "job updated"
     );

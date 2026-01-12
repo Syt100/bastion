@@ -111,6 +111,7 @@ mod tests {
             "job1",
             None,
             None,
+            Some("UTC"),
             OverlapPolicy::Reject,
             serde_json::json!({
                 "v": 1,
@@ -153,6 +154,7 @@ mod tests {
             "job1",
             None,
             None,
+            Some("UTC"),
             OverlapPolicy::Queue,
             serde_json::json!({
                 "v": 1,

@@ -11,7 +11,7 @@ describe('useSystemStore', () => {
 
   it('refreshes system status', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ version: '0.1.0', insecure_http: true }), {
+      new Response(JSON.stringify({ version: '0.1.0', insecure_http: true, hub_timezone: 'UTC' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -23,6 +23,6 @@ describe('useSystemStore', () => {
 
     expect(system.version).toBe('0.1.0')
     expect(system.insecureHttp).toBe(true)
+    expect(system.hubTimezone).toBe('UTC')
   })
 })
-

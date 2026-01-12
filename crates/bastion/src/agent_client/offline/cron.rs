@@ -1,8 +1,13 @@
 pub(super) fn normalize_cron(expr: &str) -> Result<String, anyhow::Error> {
     let parts: Vec<&str> = expr.split_whitespace().collect();
     match parts.len() {
-        5 => Ok(format!("0 {expr}")),
-        6 => Ok(expr.to_string()),
+        5 => Ok(format!("0 {}", parts.join(" "))),
+        6 => {
+            if parts[0] != "0" {
+                anyhow::bail!("cron seconds must be 0 for minute-based scheduling");
+            }
+            Ok(parts.join(" "))
+        }
         _ => Err(anyhow::anyhow!("invalid cron expression")),
     }
 }
