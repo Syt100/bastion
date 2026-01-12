@@ -32,6 +32,7 @@ chrono = "0.4.42"
 chrono-tz = "0.10.4"
 cron = "0.15.0"
 uuid = { version = "1.18.1", features = ["v4"] }
+iana-time-zone = "0.1.64"
 
 [features]
 default = []
