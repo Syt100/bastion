@@ -27,6 +27,7 @@ vi.mock('naive-ui', async () => {
     NCard: stub('NCard'),
     NCode: stub('NCode'),
     NDataTable: stub('NDataTable'),
+    NDropdown: stub('NDropdown'),
     NDrawer: stub('NDrawer'),
     NDrawerContent: stub('NDrawerContent'),
     NForm: stub('NForm'),
