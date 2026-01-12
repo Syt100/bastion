@@ -1,20 +1,12 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, provide, reactive, ref } from 'vue'
 import {
-  NAlert,
   NButton,
-  NCode,
   NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
   NModal,
-  NSelect,
   NSpace,
   NStep,
   NSteps,
-  NSwitch,
-  NTag,
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -26,13 +18,19 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
-import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
 import FsPathPickerModal, { type FsPathPickerModalExpose } from '@/components/fs/FsPathPickerModal.vue'
 
+import { jobEditorContextKey } from './editor/context'
 import { createInitialJobEditorFieldErrors, createInitialJobEditorForm, resetJobEditorForm } from './editor/form'
 import { editorFormToRequest, jobDetailToEditorForm } from './editor/mapping'
 import type { JobEditorField, JobEditorForm } from './editor/types'
+import JobEditorStepBasics from './editor/steps/JobEditorStepBasics.vue'
+import JobEditorStepNotifications from './editor/steps/JobEditorStepNotifications.vue'
+import JobEditorStepReview from './editor/steps/JobEditorStepReview.vue'
+import JobEditorStepSecurity from './editor/steps/JobEditorStepSecurity.vue'
+import JobEditorStepSource from './editor/steps/JobEditorStepSource.vue'
+import JobEditorStepTarget from './editor/steps/JobEditorStepTarget.vue'
 
 export type JobEditorModalExpose = {
   openCreate: (ctx?: { nodeId?: 'hub' | string }) => void
@@ -123,14 +121,6 @@ function mergeUniqueStrings(target: string[], next: string[]): { merged: string[
     added += 1
   }
   return { merged: out, added, skipped }
-}
-
-function formatJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
 }
 
 function openCreateWithContext(ctx?: { nodeId?: 'hub' | string }): void {
@@ -255,15 +245,6 @@ function nextStep(): void {
   step.value = Math.min(EDITOR_STEPS_TOTAL, step.value + 1)
 }
 
-async function copyPreviewJson(): Promise<void> {
-  const ok = await copyText(formatJson(previewPayload.value))
-  if (ok) {
-    message.success(t('messages.copied'))
-  } else {
-    message.error(t('errors.copyFailed'))
-  }
-}
-
 function openFsPicker(): void {
   fsPickerPurpose.value = 'source_paths'
   fsPicker.value?.open(form.node)
@@ -313,6 +294,27 @@ function clearFsPaths(): void {
 
 const previewPayload = computed(() => {
   return editorFormToRequest(form)
+})
+
+provide(jobEditorContextKey, {
+  form,
+  fieldErrors,
+  lockedNodeId,
+  fsPathDraft,
+  showJsonPreview,
+  previewPayload,
+  clearFieldError,
+  clearAllFieldErrors,
+  onJobTypeChanged,
+  onTargetTypeChanged,
+  onEncryptionEnabledChanged,
+  prevStep,
+  nextStep,
+  openFsPicker,
+  openLocalBaseDirPicker,
+  addFsPathsFromDraft,
+  removeFsPath,
+  clearFsPaths,
 })
 
 function getOptionLabel<T extends string>(options: ReadonlyArray<{ label: string; value: T }>, value: T): string {
@@ -471,539 +473,50 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
       </div>
 
       <n-form label-placement="top">
-        <template v-if="step === 1">
-          <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <n-form-item
-                :label="t('jobs.fields.name')"
-                required
-                :validation-status="fieldErrors.name ? 'error' : undefined"
-                :feedback="fieldErrors.name || undefined"
-              >
-                <n-input v-model:value="form.name" @update:value="clearFieldError('name')" />
-              </n-form-item>
-              <n-form-item :label="t('jobs.fields.node')">
-                <n-select
-                  v-model:value="form.node"
-                  :options="nodeOptions"
-                  filterable
-                  :disabled="lockedNodeId !== null"
-                />
-              </n-form-item>
-            </div>
+        <JobEditorStepBasics
+          v-if="step === 1"
+          :node-options="nodeOptions"
+          :job-type-options="jobTypeOptions"
+          :overlap-options="overlapOptions"
+        />
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <n-form-item :label="t('jobs.fields.type')">
-                <n-select v-model:value="form.jobType" :options="jobTypeOptions" @update:value="onJobTypeChanged" />
-              </n-form-item>
-              <n-form-item :label="t('jobs.fields.overlap')">
-                <n-select v-model:value="form.overlapPolicy" :options="overlapOptions" />
-              </n-form-item>
-            </div>
+        <JobEditorStepSource
+          v-else-if="step === 2"
+          :fs-symlink-policy-options="fsSymlinkPolicyOptions"
+          :fs-hardlink-policy-options="fsHardlinkPolicyOptions"
+          :fs-error-policy-options="fsErrorPolicyOptions"
+        />
 
-            <n-form-item :label="t('jobs.fields.schedule')">
-              <div class="space-y-1 w-full">
-                <n-input v-model:value="form.schedule" :placeholder="t('jobs.fields.schedulePlaceholder')" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
-              </div>
-            </n-form-item>
-          </div>
-        </template>
+        <JobEditorStepTarget
+          v-else-if="step === 3"
+          :target-type-options="targetTypeOptions"
+          :webdav-secret-options="webdavSecretOptions"
+        />
 
-        <template v-else-if="step === 2">
-          <n-alert type="info" :bordered="false">
-            {{ t('jobs.steps.sourceHelp') }}
-          </n-alert>
+        <JobEditorStepSecurity v-else-if="step === 4" />
 
-          <template v-if="form.jobType === 'filesystem'">
-            <n-form-item
-              :label="t('jobs.fields.sourcePaths')"
-              required
-              :validation-status="fieldErrors.fsPaths ? 'error' : undefined"
-              :feedback="fieldErrors.fsPaths || undefined"
-            >
-              <div class="space-y-3 w-full app-border-subtle rounded-lg p-3 app-glass-soft">
-                <div class="flex flex-wrap items-center gap-2 justify-between">
-                  <div v-if="!fieldErrors.fsPaths" class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
-                  <div class="flex items-center gap-2">
-                    <n-button size="small" type="primary" @click="openFsPicker">
-                      {{ t('jobs.actions.browseFs') }}
-                    </n-button>
-                    <n-button size="small" :disabled="form.fsPaths.length === 0" @click="clearFsPaths">
-                      {{ t('common.clear') }}
-                    </n-button>
-                  </div>
-                </div>
+        <JobEditorStepNotifications
+          v-else-if="step === 5"
+          :notify-mode-options="notifyModeOptions"
+          :wecom-destination-options="wecomDestinationOptions"
+          :email-destination-options="emailDestinationOptions"
+          :disabled-wecom-selected="disabledWecomSelected"
+          :disabled-email-selected="disabledEmailSelected"
+        />
 
-                <div v-if="form.fsPaths.length === 0" class="text-sm opacity-60">
-                  {{ t('jobs.fields.sourcePathsEmpty') }}
-                </div>
-                <div v-else class="flex flex-wrap gap-2">
-                  <n-tag v-for="p in form.fsPaths" :key="p" closable @close="removeFsPath(p)">{{ p }}</n-tag>
-                </div>
-
-                <div class="flex gap-2">
-                  <n-input
-                    v-model:value="fsPathDraft"
-                    :placeholder="t('jobs.fields.sourcePathsPlaceholder')"
-                    @keyup.enter="addFsPathsFromDraft"
-                  />
-                  <n-button @click="addFsPathsFromDraft">{{ t('common.add') }}</n-button>
-                </div>
-              </div>
-            </n-form-item>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <n-form-item :label="t('jobs.fields.fsSymlinkPolicy')">
-                <n-select v-model:value="form.fsSymlinkPolicy" :options="fsSymlinkPolicyOptions" />
-              </n-form-item>
-              <n-form-item :label="t('jobs.fields.fsHardlinkPolicy')">
-                <n-select v-model:value="form.fsHardlinkPolicy" :options="fsHardlinkPolicyOptions" />
-              </n-form-item>
-            </div>
-            <n-form-item :label="t('jobs.fields.fsErrorPolicy')">
-              <div class="space-y-1 w-full">
-                <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
-              </div>
-            </n-form-item>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <n-form-item :label="t('jobs.fields.fsInclude')">
-                <div class="space-y-1 w-full">
-                  <n-input
-                    v-model:value="form.fsInclude"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 6 }"
-                    :placeholder="t('jobs.fields.fsIncludePlaceholder')"
-                  />
-                  <div class="text-xs opacity-70">{{ t('jobs.fields.fsIncludeHelp') }}</div>
-                </div>
-              </n-form-item>
-              <n-form-item :label="t('jobs.fields.fsExclude')">
-                <div class="space-y-1 w-full">
-                  <n-input
-                    v-model:value="form.fsExclude"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 6 }"
-                    :placeholder="t('jobs.fields.fsExcludePlaceholder')"
-                  />
-                  <div class="text-xs opacity-70">{{ t('jobs.fields.fsExcludeHelp') }}</div>
-                </div>
-              </n-form-item>
-            </div>
-          </template>
-
-          <template v-else-if="form.jobType === 'sqlite'">
-            <n-form-item
-              :label="t('jobs.fields.sqlitePath')"
-              required
-              :validation-status="fieldErrors.sqlitePath ? 'error' : undefined"
-              :feedback="fieldErrors.sqlitePath || undefined"
-            >
-              <div class="space-y-1 w-full">
-                <n-input
-                  v-model:value="form.sqlitePath"
-                  :placeholder="t('jobs.fields.sqlitePathPlaceholder')"
-                  @update:value="clearFieldError('sqlitePath')"
-                />
-                <div v-if="!fieldErrors.sqlitePath" class="text-xs opacity-70">{{ t('jobs.fields.sqlitePathHelp') }}</div>
-              </div>
-            </n-form-item>
-            <n-form-item :label="t('jobs.fields.sqliteIntegrityCheck')">
-              <div class="space-y-1">
-                <n-switch v-model:value="form.sqliteIntegrityCheck" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
-              </div>
-            </n-form-item>
-          </template>
-
-          <template v-else>
-            <n-form-item
-              :label="t('jobs.fields.vaultwardenDataDir')"
-              required
-              :validation-status="fieldErrors.vaultwardenDataDir ? 'error' : undefined"
-              :feedback="fieldErrors.vaultwardenDataDir || undefined"
-            >
-              <div class="space-y-1 w-full">
-                <n-input
-                  v-model:value="form.vaultwardenDataDir"
-                  :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')"
-                  @update:value="clearFieldError('vaultwardenDataDir')"
-                />
-                <div v-if="!fieldErrors.vaultwardenDataDir" class="text-xs opacity-70">
-                  {{ t('jobs.fields.vaultwardenDataDirHelp') }}
-                </div>
-              </div>
-            </n-form-item>
-          </template>
-        </template>
-
-        <template v-else-if="step === 3">
-          <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-              <n-form-item :label="t('jobs.fields.targetType')">
-                <n-select
-                  v-model:value="form.targetType"
-                  :options="targetTypeOptions"
-                  @update:value="onTargetTypeChanged"
-                />
-              </n-form-item>
-
-              <n-form-item
-                :label="t('jobs.fields.partSizeMiB')"
-                required
-                :validation-status="fieldErrors.partSizeMiB ? 'error' : undefined"
-                :feedback="fieldErrors.partSizeMiB || undefined"
-              >
-                <div class="space-y-1 w-full">
-                  <n-input-number
-                    v-model:value="form.partSizeMiB"
-                    :min="1"
-                    class="w-full"
-                    @update:value="clearFieldError('partSizeMiB')"
-                  />
-                  <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">
-                    {{ t('jobs.fields.partSizeMiBHelp') }}
-                  </div>
-                </div>
-              </n-form-item>
-            </div>
-
-            <template v-if="form.targetType === 'webdav'">
-              <n-form-item
-                :label="t('jobs.fields.webdavBaseUrl')"
-                required
-                :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
-                :feedback="fieldErrors.webdavBaseUrl || undefined"
-              >
-                <n-input
-                  v-model:value="form.webdavBaseUrl"
-                  :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')"
-                  @update:value="clearFieldError('webdavBaseUrl')"
-                />
-              </n-form-item>
-              <n-form-item
-                :label="t('jobs.fields.webdavSecret')"
-                required
-                :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
-                :feedback="fieldErrors.webdavSecretName || undefined"
-              >
-                <n-select
-                  v-model:value="form.webdavSecretName"
-                  :options="webdavSecretOptions"
-                  filterable
-                  @update:value="clearFieldError('webdavSecretName')"
-                />
-              </n-form-item>
-            </template>
-            <template v-else>
-              <n-form-item
-                :label="t('jobs.fields.localBaseDir')"
-                required
-                :validation-status="fieldErrors.localBaseDir ? 'error' : undefined"
-                :feedback="fieldErrors.localBaseDir || undefined"
-              >
-                <div class="space-y-1 w-full">
-                  <div class="flex gap-2">
-                    <n-input
-                      v-model:value="form.localBaseDir"
-                      class="flex-1"
-                      :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
-                      @update:value="clearFieldError('localBaseDir')"
-                    />
-                    <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
-                  </div>
-                  <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">
-                    {{ t('jobs.fields.localBaseDirHelp') }}
-                  </div>
-                </div>
-              </n-form-item>
-            </template>
-          </div>
-        </template>
-
-        <template v-else-if="step === 4">
-          <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
-            <n-form-item :label="t('jobs.fields.encryptionEnabled')">
-              <div class="space-y-1">
-                <n-switch v-model:value="form.encryptionEnabled" @update:value="onEncryptionEnabledChanged" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.encryptionHelp') }}</div>
-              </div>
-            </n-form-item>
-            <n-form-item
-              v-if="form.encryptionEnabled"
-              :label="t('jobs.fields.encryptionKeyName')"
-              required
-              :validation-status="fieldErrors.encryptionKeyName ? 'error' : undefined"
-              :feedback="fieldErrors.encryptionKeyName || undefined"
-            >
-              <div class="space-y-1 w-full">
-                <n-input
-                  v-model:value="form.encryptionKeyName"
-                  :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
-                  @update:value="clearFieldError('encryptionKeyName')"
-                />
-                <div v-if="!fieldErrors.encryptionKeyName" class="text-xs opacity-70">
-                  {{ t('jobs.fields.encryptionKeyNameHelp') }}
-                </div>
-              </div>
-            </n-form-item>
-          </div>
-        </template>
-
-        <template v-else-if="step === 5">
-          <n-alert type="info" :bordered="false">
-            {{ t('jobs.steps.notificationsHelp') }}
-          </n-alert>
-
-          <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
-            <n-form-item :label="t('jobs.fields.notificationsMode')">
-              <div class="space-y-1 w-full">
-                <n-select v-model:value="form.notifyMode" :options="notifyModeOptions" />
-                <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsModeHelp') }}</div>
-              </div>
-            </n-form-item>
-
-            <template v-if="form.notifyMode === 'custom'">
-              <n-form-item :label="t('jobs.fields.notifyWecomBots')">
-                <div class="space-y-2 w-full">
-                  <n-select
-                    v-model:value="form.notifyWecomBots"
-                    multiple
-                    filterable
-                    :options="wecomDestinationOptions"
-                    :placeholder="t('jobs.fields.notifySelectPlaceholder')"
-                  />
-                  <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
-                  <n-alert
-                    v-if="disabledWecomSelected.length > 0"
-                    type="warning"
-                    :bordered="false"
-                  >
-                    {{ t('jobs.fields.notifyDisabledSelected', { names: disabledWecomSelected.join(', ') }) }}
-                  </n-alert>
-                </div>
-              </n-form-item>
-
-              <n-form-item :label="t('jobs.fields.notifyEmails')">
-                <div class="space-y-2 w-full">
-                  <n-select
-                    v-model:value="form.notifyEmails"
-                    multiple
-                    filterable
-                    :options="emailDestinationOptions"
-                    :placeholder="t('jobs.fields.notifySelectPlaceholder')"
-                  />
-                  <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
-                  <n-alert
-                    v-if="disabledEmailSelected.length > 0"
-                    type="warning"
-                    :bordered="false"
-                  >
-                    {{ t('jobs.fields.notifyDisabledSelected', { names: disabledEmailSelected.join(', ') }) }}
-                  </n-alert>
-                </div>
-              </n-form-item>
-            </template>
-            <template v-else>
-              <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsInheritHelp') }}</div>
-            </template>
-          </div>
-        </template>
-
-        <template v-else>
-          <n-alert type="info" :bordered="false">
-            {{ t('jobs.steps.reviewHelp') }}
-          </n-alert>
-
-          <div class="mt-3 space-y-3">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
-                <div class="text-sm font-medium">{{ t('jobs.steps.basics') }}</div>
-                <div class="mt-2 space-y-2 text-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.name') }}</div>
-                    <div class="font-medium text-right break-all">{{ form.name.trim() }}</div>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.node') }}</div>
-                    <div class="font-medium text-right break-all">{{ nodeLabel }}</div>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.type') }}</div>
-                    <div class="font-medium text-right break-all">{{ jobTypeLabel }}</div>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.overlap') }}</div>
-                    <div class="font-medium text-right break-all">{{ overlapLabel }}</div>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.schedule') }}</div>
-                    <div class="font-medium text-right break-all">{{ form.schedule.trim() || '-' }}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
-                <div class="text-sm font-medium">{{ t('jobs.steps.target') }}</div>
-                <div class="mt-2 space-y-2 text-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.targetType') }}</div>
-                    <div class="font-medium text-right break-all">{{ targetTypeLabel }}</div>
-                  </div>
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.partSizeMiB') }}</div>
-                    <div class="font-medium text-right break-all">{{ Math.max(1, Math.floor(form.partSizeMiB || 1)) }}</div>
-                  </div>
-                  <template v-if="form.targetType === 'webdav'">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.webdavBaseUrl') }}</div>
-                      <div class="font-medium text-right break-all">{{ form.webdavBaseUrl.trim() }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.webdavSecret') }}</div>
-                      <div class="font-medium text-right break-all">{{ form.webdavSecretName.trim() }}</div>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.localBaseDir') }}</div>
-                      <div class="font-medium text-right break-all">{{ form.localBaseDir.trim() }}</div>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
-                <div class="text-sm font-medium">{{ t('jobs.steps.source') }}</div>
-
-                <template v-if="form.jobType === 'filesystem'">
-                  <div class="mt-2 space-y-2 text-sm">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.sourcePaths') }}</div>
-                      <div class="font-medium text-right">{{ form.fsPaths.length }}</div>
-                    </div>
-                    <div v-if="form.fsPaths.length > 0" class="flex flex-wrap gap-2">
-                      <n-tag v-for="p in form.fsPaths.slice(0, 6)" :key="p">{{ p }}</n-tag>
-                      <n-tag v-if="form.fsPaths.length > 6" type="info">+{{ form.fsPaths.length - 6 }}</n-tag>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.fsSymlinkPolicy') }}</div>
-                      <div class="font-medium text-right break-all">{{ fsSymlinkPolicyLabel }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.fsHardlinkPolicy') }}</div>
-                      <div class="font-medium text-right break-all">{{ fsHardlinkPolicyLabel }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.fsErrorPolicy') }}</div>
-                      <div class="font-medium text-right break-all">{{ fsErrorPolicyLabel }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.fsInclude') }}</div>
-                      <div class="font-medium text-right break-all">{{ parseLines(form.fsInclude).length }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.fsExclude') }}</div>
-                      <div class="font-medium text-right break-all">{{ parseLines(form.fsExclude).length }}</div>
-                    </div>
-                  </div>
-                </template>
-                <template v-else-if="form.jobType === 'sqlite'">
-                  <div class="mt-2 space-y-2 text-sm">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.sqlitePath') }}</div>
-                      <div class="font-medium text-right break-all">{{ form.sqlitePath.trim() }}</div>
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.sqliteIntegrityCheck') }}</div>
-                      <div class="font-medium text-right break-all">
-                        {{ form.sqliteIntegrityCheck ? t('common.yes') : t('common.no') }}
-                      </div>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="mt-2 space-y-2 text-sm">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.vaultwardenDataDir') }}</div>
-                      <div class="font-medium text-right break-all">{{ form.vaultwardenDataDir.trim() }}</div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-
-              <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
-                <div class="text-sm font-medium">{{ t('jobs.steps.security') }}</div>
-                <div class="mt-2 space-y-2 text-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.encryptionEnabled') }}</div>
-                    <div class="font-medium text-right break-all">
-                      {{ form.encryptionEnabled ? t('common.yes') : t('common.no') }}
-                    </div>
-                  </div>
-                  <div v-if="form.encryptionEnabled" class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.encryptionKeyName') }}</div>
-                    <div class="font-medium text-right break-all">{{ form.encryptionKeyName.trim() }}</div>
-                  </div>
-                </div>
-
-                <div class="mt-4 text-sm font-medium">{{ t('jobs.steps.notifications') }}</div>
-                <div class="mt-2 space-y-2 text-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="opacity-70">{{ t('jobs.fields.notificationsMode') }}</div>
-                    <div class="font-medium text-right break-all">{{ notifyModeLabel }}</div>
-                  </div>
-
-                  <template v-if="form.notifyMode === 'custom'">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.notifyWecomBots') }}</div>
-                      <div class="font-medium text-right">{{ form.notifyWecomBots.length }}</div>
-                    </div>
-                    <div v-if="form.notifyWecomBots.length > 0" class="flex flex-wrap gap-2">
-                      <n-tag v-for="name in form.notifyWecomBots.slice(0, 6)" :key="name">{{ name }}</n-tag>
-                      <n-tag v-if="form.notifyWecomBots.length > 6" type="info">+{{ form.notifyWecomBots.length - 6 }}</n-tag>
-                    </div>
-
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="opacity-70">{{ t('jobs.fields.notifyEmails') }}</div>
-                      <div class="font-medium text-right">{{ form.notifyEmails.length }}</div>
-                    </div>
-                    <div v-if="form.notifyEmails.length > 0" class="flex flex-wrap gap-2">
-                      <n-tag v-for="name in form.notifyEmails.slice(0, 6)" :key="name">{{ name }}</n-tag>
-                      <n-tag v-if="form.notifyEmails.length > 6" type="info">+{{ form.notifyEmails.length - 6 }}</n-tag>
-                    </div>
-
-                    <n-alert v-if="disabledWecomSelected.length > 0 || disabledEmailSelected.length > 0" class="mt-2" type="warning" :bordered="false">
-                      <div v-if="disabledWecomSelected.length > 0">
-                        {{ t('jobs.fields.notifyDisabledSelected', { names: disabledWecomSelected.join(', ') }) }}
-                      </div>
-                      <div v-if="disabledEmailSelected.length > 0">
-                        {{ t('jobs.fields.notifyDisabledSelected', { names: disabledEmailSelected.join(', ') }) }}
-                      </div>
-                    </n-alert>
-                  </template>
-                </div>
-              </div>
-            </div>
-
-            <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
-              <div class="flex items-center justify-between gap-3">
-                <div class="text-sm font-medium">JSON</div>
-                <div class="flex items-center gap-2">
-                  <n-button size="small" secondary @click="showJsonPreview = !showJsonPreview">
-                    {{ showJsonPreview ? t('jobs.actions.hideJson') : t('jobs.actions.showJson') }}
-                  </n-button>
-                  <n-button v-if="showJsonPreview" size="small" secondary @click="copyPreviewJson">
-                    {{ t('jobs.actions.copyJson') }}
-                  </n-button>
-                </div>
-              </div>
-              <n-code v-if="showJsonPreview" class="mt-2" :code="formatJson(previewPayload)" language="json" />
-            </div>
-          </div>
-        </template>
+        <JobEditorStepReview
+          v-else
+          :node-label="nodeLabel"
+          :overlap-label="overlapLabel"
+          :job-type-label="jobTypeLabel"
+          :target-type-label="targetTypeLabel"
+          :notify-mode-label="notifyModeLabel"
+          :fs-symlink-policy-label="fsSymlinkPolicyLabel"
+          :fs-hardlink-policy-label="fsHardlinkPolicyLabel"
+          :fs-error-policy-label="fsErrorPolicyLabel"
+          :disabled-wecom-selected="disabledWecomSelected"
+          :disabled-email-selected="disabledEmailSelected"
+        />
       </n-form>
 
       <n-space justify="space-between">

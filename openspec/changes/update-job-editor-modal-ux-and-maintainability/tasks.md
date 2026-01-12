@@ -10,9 +10,9 @@
 - [x] 2.4 Commit mapping refactor (detailed message)
 
 ## 3. Refactor - Step Components
-- [ ] 3.1 Create step subcomponents (Basics/Source/Target/Security/Notifications/Review)
-- [ ] 3.2 Move per-step UI into subcomponents and preserve behavior
-- [ ] 3.3 Commit step component split (detailed message)
+- [x] 3.1 Create step subcomponents (Basics/Source/Target/Security/Notifications/Review)
+- [x] 3.2 Move per-step UI into subcomponents and preserve behavior
+- [x] 3.3 Commit step component split (detailed message)
 
 ## 4. Validation + Field Focus
 - [ ] 4.1 Implement per-step validation module (including cron format check)
