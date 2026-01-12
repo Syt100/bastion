@@ -78,7 +78,8 @@ describe('editorFormToRequest', () => {
     expect(req.name).toBe('Demo')
     expect(req.agent_id).toBeNull()
     expect(req.schedule).toBeNull()
-    expect((req.spec as any).target.part_size_bytes).toBe(10 * 1024 * 1024)
+    const spec = req.spec as Record<string, unknown>
+    const target = spec['target'] as Record<string, unknown>
+    expect(target['part_size_bytes']).toBe(10 * 1024 * 1024)
   })
 })
-
