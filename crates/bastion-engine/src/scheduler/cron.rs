@@ -217,7 +217,7 @@ fn cron_matches_minute_cached<Tz1: chrono::TimeZone>(
     schedule_cache: &mut HashMap<String, Schedule>,
 ) -> Result<bool, anyhow::Error> {
     let schedule = parse_cron_cached(expr, schedule_cache)?;
-    let prev = minute_start - Duration::seconds(1);
+    let prev = minute_start.clone() - Duration::seconds(1);
     let mut iter = schedule.after(&prev);
     let Some(next) = iter.next() else {
         return Ok(false);
