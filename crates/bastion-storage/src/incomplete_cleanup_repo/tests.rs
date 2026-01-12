@@ -19,6 +19,7 @@ async fn cleanup_tasks_round_trip() {
         "job1",
         None,
         None,
+        None,
         OverlapPolicy::Queue,
         serde_json::json!({
             "v": 1,
@@ -115,6 +116,7 @@ async fn list_and_count_support_multi_value_filters() {
     let job = create_job(
         &pool,
         "job1",
+        None,
         None,
         None,
         OverlapPolicy::Queue,
