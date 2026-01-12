@@ -4,7 +4,6 @@ import {
   NButton,
   NForm,
   NModal,
-  NSpace,
   NStep,
   NSteps,
   useMessage,
@@ -435,7 +434,8 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
   <n-modal
     v-model:show="show"
     preset="card"
-    :style="{ width: MODAL_WIDTH.lg }"
+    :style="{ width: MODAL_WIDTH.lg, maxHeight: 'calc(100vh - 64px)' }"
+    :content-style="{ overflow: 'auto', minHeight: 0 }"
     :title="mode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
   >
     <div ref="modalBody" class="space-y-4">
@@ -507,20 +507,22 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
           :disabled-email-selected="disabledEmailSelected"
         />
       </n-form>
+    </div>
 
-      <n-space justify="space-between">
-        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-space>
-          <n-button v-if="step > 1" @click="prevStep">{{ t('common.back') }}</n-button>
-          <n-button v-if="step < EDITOR_STEPS_TOTAL" type="primary" @click="nextStep">
+    <template #footer>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <n-button :disabled="saving" @click="show = false">{{ t('common.cancel') }}</n-button>
+        <div class="flex items-center gap-2">
+          <n-button v-if="step > 1" :disabled="saving" @click="prevStep">{{ t('common.back') }}</n-button>
+          <n-button v-if="step < EDITOR_STEPS_TOTAL" type="primary" :disabled="saving" @click="nextStep">
             {{ t('common.next') }}
           </n-button>
           <n-button v-else type="primary" :loading="saving" @click="save">
             {{ t('common.save') }}
           </n-button>
-        </n-space>
-      </n-space>
-    </div>
+        </div>
+      </div>
+    </template>
   </n-modal>
   <FsPathPickerModal ref="fsPicker" @picked="onFsPickerPicked" />
 </template>

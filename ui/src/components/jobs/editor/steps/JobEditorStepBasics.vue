@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { NFormItem, NInput, NSelect } from 'naive-ui'
+import { NButton, NDropdown, NFormItem, NInput, NSelect, type DropdownOption } from 'naive-ui'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useJobEditorContext } from '../context'
@@ -15,6 +16,21 @@ defineProps<{
 const { t } = useI18n()
 
 const { form, fieldErrors, lockedNodeId, clearFieldError, onJobTypeChanged } = useJobEditorContext()
+
+const cronPresets = computed<DropdownOption[]>(() => [
+  { label: t('jobs.cronPresets.manual'), key: '__manual__' },
+  { label: `${t('jobs.cronPresets.hourly')} (0 * * * *)`, key: '0 * * * *' },
+  { label: `${t('jobs.cronPresets.every15m')} (*/15 * * * *)`, key: '*/15 * * * *' },
+  { label: `${t('jobs.cronPresets.daily')} (0 0 * * *)`, key: '0 0 * * *' },
+  { label: `${t('jobs.cronPresets.weekly')} (0 0 * * 0)`, key: '0 0 * * 0' },
+  { label: `${t('jobs.cronPresets.monthly')} (0 0 1 * *)`, key: '0 0 1 * *' },
+])
+
+function applyCronPreset(key: string | number): void {
+  const k = String(key)
+  form.schedule = k === '__manual__' ? '' : k
+  clearFieldError('schedule')
+}
 </script>
 
 <template>
@@ -55,13 +71,18 @@ const { form, fieldErrors, lockedNodeId, clearFieldError, onJobTypeChanged } = u
         :validation-status="fieldErrors.schedule ? 'error' : undefined"
         :feedback="fieldErrors.schedule || undefined"
       >
-        <div class="space-y-1 w-full">
+        <div class="space-y-2 w-full">
           <n-input
             v-model:value="form.schedule"
             :placeholder="t('jobs.fields.schedulePlaceholder')"
             @update:value="clearFieldError('schedule')"
           />
-          <div v-if="!fieldErrors.schedule" class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div v-if="!fieldErrors.schedule" class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
+            <n-dropdown :options="cronPresets" @select="applyCronPreset">
+              <n-button size="tiny" secondary>{{ t('jobs.actions.cronPresets') }}</n-button>
+            </n-dropdown>
+          </div>
         </div>
       </n-form-item>
     </div>

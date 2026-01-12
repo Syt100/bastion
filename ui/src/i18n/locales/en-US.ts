@@ -260,6 +260,17 @@ const messages = {
       showJson: 'View JSON',
       hideJson: 'Hide JSON',
       copyJson: 'Copy JSON',
+      cronPresets: 'Presets',
+      manageWebdavSecrets: 'Manage WebDAV credentials',
+      manageNotificationDestinations: 'Manage notification destinations',
+    },
+    cronPresets: {
+      manual: 'Manual (empty)',
+      hourly: 'Hourly',
+      every15m: 'Every 15 minutes',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
     },
   },
   fsPicker: {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NButton, NFormItem, NInput, NInputNumber, NSelect } from 'naive-ui'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useJobEditorContext } from '../context'
@@ -14,6 +15,8 @@ defineProps<{
 const { t } = useI18n()
 
 const { form, fieldErrors, clearFieldError, onTargetTypeChanged, openLocalBaseDirPicker } = useJobEditorContext()
+
+const manageWebdavSecretsHref = computed(() => `/n/${encodeURIComponent(form.node)}/settings/storage`)
 </script>
 
 <template>
@@ -67,12 +70,26 @@ const { form, fieldErrors, clearFieldError, onTargetTypeChanged, openLocalBaseDi
           :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
           :feedback="fieldErrors.webdavSecretName || undefined"
         >
-          <n-select
-            v-model:value="form.webdavSecretName"
-            :options="webdavSecretOptions"
-            filterable
-            @update:value="clearFieldError('webdavSecretName')"
-          />
+          <div class="space-y-1 w-full">
+            <n-select
+              v-model:value="form.webdavSecretName"
+              :options="webdavSecretOptions"
+              filterable
+              @update:value="clearFieldError('webdavSecretName')"
+            />
+            <div class="flex justify-end">
+              <n-button
+                size="tiny"
+                quaternary
+                tag="a"
+                :href="manageWebdavSecretsHref"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {{ t('jobs.actions.manageWebdavSecrets') }}
+              </n-button>
+            </div>
+          </div>
         </n-form-item>
       </div>
     </template>
