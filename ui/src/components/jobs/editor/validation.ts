@@ -18,6 +18,7 @@ function cronLooksValid(expr: string): boolean {
 export function stepForJobEditorField(field: JobEditorField): number {
   switch (field) {
     case 'name':
+    case 'scheduleTimezone':
     case 'schedule':
       return 1
     case 'fsPaths':
@@ -40,6 +41,12 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
   if (step === 1) {
     if (!form.name.trim()) {
       issues.push({ field: 'name', message: t('errors.jobNameRequired') })
+    }
+    if (!form.scheduleTimezone.trim()) {
+      issues.push({ field: 'scheduleTimezone', message: t('errors.scheduleTimezoneRequired') })
+    }
+    if (form.scheduleMode === 'cron' && !form.schedule.trim()) {
+      issues.push({ field: 'schedule', message: t('errors.cronRequired') })
     }
     if (!cronLooksValid(form.schedule)) {
       issues.push({ field: 'schedule', message: t('errors.invalidCron') })
@@ -102,4 +109,3 @@ export function validateJobEditorUpToStep(maxStep: number, form: JobEditorForm, 
   }
   return issues
 }
-

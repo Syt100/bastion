@@ -108,6 +108,13 @@ vi.mock('@/stores/notifications', () => ({
   useNotificationsStore: () => notificationsApi,
 }))
 
+const systemApi = {
+  hubTimezone: 'UTC',
+}
+vi.mock('@/stores/system', () => ({
+  useSystemStore: () => systemApi,
+}))
+
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({ locale: 'zh-CN' }),
 }))

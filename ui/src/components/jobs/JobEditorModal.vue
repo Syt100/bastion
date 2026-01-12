@@ -14,6 +14,7 @@ import { useJobsStore } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useSystemStore } from '@/stores/system'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -48,6 +49,7 @@ const jobs = useJobsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
 const notifications = useNotificationsStore()
+const system = useSystemStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -133,6 +135,7 @@ function openCreateWithContext(ctx?: { nodeId?: 'hub' | string }): void {
   if (lockedNodeId.value) {
     form.node = lockedNodeId.value
   }
+  form.scheduleTimezone = system.hubTimezone || 'UTC'
   void notifications.refreshDestinations()
   show.value = true
 }

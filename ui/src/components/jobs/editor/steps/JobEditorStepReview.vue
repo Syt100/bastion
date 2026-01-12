@@ -69,6 +69,10 @@ async function copyPreviewJson(): Promise<void> {
             <div class="font-medium text-right break-all">{{ overlapLabel }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
+            <div class="opacity-70">{{ t('jobs.fields.scheduleTimezone') }}</div>
+            <div class="font-medium text-right break-all">{{ form.scheduleTimezone.trim() || '-' }}</div>
+          </div>
+          <div class="flex items-start justify-between gap-3">
             <div class="opacity-70">{{ t('jobs.fields.schedule') }}</div>
             <div class="font-medium text-right break-all">{{ form.schedule.trim() ? form.schedule.trim() : '-' }}</div>
           </div>

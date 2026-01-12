@@ -19,6 +19,7 @@ describe('useJobsStore', () => {
             name: 'job1',
             agent_id: null,
             schedule: null,
+            schedule_timezone: 'UTC',
             overlap_policy: 'queue',
             created_at: 1,
             updated_at: 1,
@@ -47,6 +48,7 @@ describe('useJobsStore', () => {
           name: 'job1',
           agent_id: null,
           schedule: null,
+          schedule_timezone: 'UTC',
           overlap_policy: 'queue',
           spec: { v: 1, type: 'filesystem' },
           created_at: 1,
@@ -66,6 +68,7 @@ describe('useJobsStore', () => {
       name: 'job1',
       agent_id: null,
       schedule: null,
+      schedule_timezone: 'UTC',
       overlap_policy: 'queue',
       spec: { v: 1, type: 'filesystem' },
     })

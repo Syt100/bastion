@@ -10,8 +10,12 @@ export type NodeIdOrHub = 'hub' | string
 
 export type JobEditorMode = 'create' | 'edit'
 
+export type JobScheduleMode = 'manual' | 'simple' | 'cron'
+export type JobSimpleScheduleKind = 'every_minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'
+
 export type JobEditorField =
   | 'name'
+  | 'scheduleTimezone'
   | 'schedule'
   | 'fsPaths'
   | 'sqlitePath'
@@ -27,6 +31,14 @@ export type JobEditorForm = {
   name: string
   node: NodeIdOrHub
   schedule: string
+  scheduleTimezone: string
+  scheduleMode: JobScheduleMode
+  simpleScheduleKind: JobSimpleScheduleKind
+  simpleEveryMinutes: number
+  simpleAtHour: number
+  simpleAtMinute: number
+  simpleWeekday: number
+  simpleMonthday: number
   overlapPolicy: OverlapPolicy
   jobType: JobType
   encryptionEnabled: boolean
@@ -52,4 +64,3 @@ export type JobEditorForm = {
 
 export const JOB_EDITOR_STEPS_TOTAL = 6
 export const JOB_EDITOR_LAST_INPUT_STEP = 5
-

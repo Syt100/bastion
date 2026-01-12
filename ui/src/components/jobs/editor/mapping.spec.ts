@@ -11,6 +11,7 @@ function createJobDetail(spec: Record<string, unknown>): JobDetail {
     name: 'Job 1',
     agent_id: null,
     schedule: null,
+    schedule_timezone: 'UTC',
     overlap_policy: 'queue',
     created_at: 0,
     updated_at: 0,
@@ -78,6 +79,7 @@ describe('editorFormToRequest', () => {
     expect(req.name).toBe('Demo')
     expect(req.agent_id).toBeNull()
     expect(req.schedule).toBeNull()
+    expect(req.schedule_timezone).toBe('UTC')
     const spec = req.spec as Record<string, unknown>
     const target = spec['target'] as Record<string, unknown>
     expect(target['part_size_bytes']).toBe(10 * 1024 * 1024)
