@@ -19,6 +19,7 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { useLatestRequest } from '@/lib/latest'
+import { usePersistentColumnWidths } from '@/lib/columnWidths'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -28,6 +29,8 @@ const notifications = useNotificationsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+
+const columnWidths = usePersistentColumnWidths('bastion.ui.tableColumns.settings.notifications.queue')
 
 const loading = ref(false)
 
@@ -74,6 +77,14 @@ function formatStatus(status: string): string {
     canceled: t('settings.notifications.status.canceled'),
   }
   return map[status] ?? status
+}
+
+function handleColumnResize(_resizedWidth: number, limitedWidth: number, column: unknown): void {
+  if (!column || typeof column !== 'object') return
+  if (!('key' in column)) return
+  const key = (column as { key?: unknown }).key
+  if (key === undefined || key === null) return
+  columnWidths.setWidth(String(key), limitedWidth)
 }
 
 async function refresh(): Promise<void> {
@@ -131,16 +142,37 @@ watch([statusFilter, channelFilter], () => {
 onMounted(refresh)
 
 const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
-  { title: t('settings.notifications.queue.columns.job'), key: 'job_name' },
+  {
+    title: t('settings.notifications.queue.columns.job'),
+    key: 'job_name',
+    width: columnWidths.getWidth('job_name') ?? 180,
+    minWidth: 140,
+    resizable: true,
+    render: (row) => h('div', { class: 'min-w-0 truncate', title: row.job_name }, row.job_name),
+  },
   {
     title: t('settings.notifications.queue.columns.channel'),
     key: 'channel',
-    render: (row) => formatChannel(row.channel),
+    width: 110,
+    maxWidth: 110,
+    render: (row) => {
+      const label = formatChannel(row.channel)
+      return h('div', { class: 'min-w-0 truncate', title: label }, label)
+    },
   },
-  { title: t('settings.notifications.queue.columns.destination'), key: 'destination' },
+  {
+    title: t('settings.notifications.queue.columns.destination'),
+    key: 'destination',
+    width: columnWidths.getWidth('destination'),
+    minWidth: 200,
+    resizable: true,
+    render: (row) => h('div', { class: 'min-w-0 truncate', title: row.destination }, row.destination),
+  },
   {
     title: t('settings.notifications.queue.columns.status'),
     key: 'status',
+    width: 190,
+    maxWidth: 190,
     render: (row) =>
       h(
         NSpace,
@@ -184,22 +216,36 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
   {
     title: t('settings.notifications.queue.columns.nextAttempt'),
     key: 'next_attempt_at',
+    width: 170,
+    maxWidth: 170,
     render: (row) => (row.status === 'queued' ? formatUnixSeconds(row.next_attempt_at) : '-'),
   },
-  { title: t('settings.notifications.queue.columns.attempts'), key: 'attempts' },
+  {
+    title: t('settings.notifications.queue.columns.attempts'),
+    key: 'attempts',
+    width: 84,
+    maxWidth: 84,
+  },
   {
     title: t('settings.notifications.queue.columns.updatedAt'),
     key: 'updated_at',
+    width: 170,
+    maxWidth: 170,
     render: (row) => formatUnixSeconds(row.updated_at),
   },
   {
     title: t('settings.notifications.queue.columns.lastError'),
     key: 'last_error',
-    render: (row) => row.last_error ?? '-',
+    width: columnWidths.getWidth('last_error'),
+    minWidth: 220,
+    resizable: true,
+    render: (row) => h('div', { class: 'min-w-0 truncate', title: row.last_error ?? '-' }, row.last_error ?? '-'),
   },
   {
     title: t('settings.notifications.queue.columns.actions'),
     key: 'actions',
+    width: 200,
+    maxWidth: 200,
     render: (row) =>
       h(
         NSpace,
@@ -303,7 +349,13 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
       </div>
 
       <div v-else class="overflow-x-auto">
-        <n-data-table :loading="loading" :columns="columns" :data="items" />
+        <n-data-table
+          table-layout="fixed"
+          :loading="loading"
+          :columns="columns"
+          :data="items"
+          :on-unstable-column-resize="handleColumnResize"
+        />
       </div>
 
       <div class="flex items-center justify-between text-sm">

@@ -3,10 +3,10 @@
 - [x] 1.2 Run `openspec validate add-persistent-table-column-resizing --strict`
 
 ## 2. UI
-- [ ] 2.1 Add shared utility/composable to persist column widths (debounced writes)
-- [ ] 2.2 Enable resizable columns on “不完整运行清理” desktop table and persist widths
-- [ ] 2.3 Enable resizable columns on “通知/队列” desktop table and persist widths
+- [x] 2.1 Add shared utility/composable to persist column widths (debounced writes)
+- [x] 2.2 Enable resizable columns on “不完整运行清理” desktop table and persist widths
+- [x] 2.3 Enable resizable columns on “通知/队列” desktop table and persist widths
 
 ## 3. Verification
-- [ ] 3.1 Verify in browser (resize + refresh + per-page isolation)
-- [ ] 3.2 Run `cd ui && npm test` and `npm run type-check`
+- [x] 3.1 Verify in browser (resize + refresh + per-page isolation)
+- [x] 3.2 Run `cd ui && npm test` and `npm run type-check`
