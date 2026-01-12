@@ -127,17 +127,24 @@ function mergeUniqueStrings(target: string[], next: string[]): { merged: string[
 }
 
 function openCreateWithContext(ctx?: { nodeId?: 'hub' | string }): void {
-  mode.value = 'create'
-  step.value = 1
-  resetForm()
-  showJsonPreview.value = false
-  lockedNodeId.value = ctx?.nodeId ?? null
-  if (lockedNodeId.value) {
-    form.node = lockedNodeId.value
-  }
-  form.scheduleTimezone = system.hubTimezone || 'UTC'
-  void notifications.refreshDestinations()
-  show.value = true
+  void (async () => {
+    mode.value = 'create'
+    step.value = 1
+    resetForm()
+    showJsonPreview.value = false
+    lockedNodeId.value = ctx?.nodeId ?? null
+    if (lockedNodeId.value) {
+      form.node = lockedNodeId.value
+    }
+    try {
+      await system.refresh()
+    } catch {
+      // ignore
+    }
+    form.scheduleTimezone = system.hubTimezone || 'UTC'
+    void notifications.refreshDestinations()
+    show.value = true
+  })()
 }
 
 async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promise<void> {

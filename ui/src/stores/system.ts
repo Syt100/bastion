@@ -15,16 +15,25 @@ export const useSystemStore = defineStore('system', () => {
   const insecureHttp = ref<boolean>(false)
   const hubTimezone = ref<string>('UTC')
 
+  let inflightRefresh: Promise<void> | null = null
+
   async function refresh(): Promise<void> {
+    if (inflightRefresh) return await inflightRefresh
+
     loading.value = true
-    try {
-      const status = await apiFetch<SystemStatus>('/api/system')
-      version.value = status.version
-      insecureHttp.value = status.insecure_http
-      hubTimezone.value = status.hub_timezone || 'UTC'
-    } finally {
-      loading.value = false
-    }
+    inflightRefresh = (async () => {
+      try {
+        const status = await apiFetch<SystemStatus>('/api/system')
+        version.value = status.version
+        insecureHttp.value = status.insecure_http
+        hubTimezone.value = status.hub_timezone || 'UTC'
+      } finally {
+        loading.value = false
+        inflightRefresh = null
+      }
+    })()
+
+    return await inflightRefresh
   }
 
   return { loading, version, insecureHttp, hubTimezone, refresh }
