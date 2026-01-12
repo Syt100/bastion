@@ -13,6 +13,7 @@ export type JobListItem = {
   name: string
   agent_id: string | null
   schedule: string | null
+  schedule_timezone: string
   overlap_policy: OverlapPolicy
   created_at: number
   updated_at: number
@@ -27,6 +28,7 @@ export type CreateOrUpdateJobRequest = {
   name: string
   agent_id: string | null
   schedule: string | null
+  schedule_timezone: string
   overlap_policy: OverlapPolicy
   spec: { v: 1; type: JobType } & Record<string, unknown>
 }

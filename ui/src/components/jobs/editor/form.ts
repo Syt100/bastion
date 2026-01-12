@@ -6,6 +6,14 @@ export function createInitialJobEditorForm(): JobEditorForm {
     name: '',
     node: 'hub',
     schedule: '',
+    scheduleTimezone: 'UTC',
+    scheduleMode: 'manual',
+    simpleScheduleKind: 'daily',
+    simpleEveryMinutes: 15,
+    simpleAtHour: 0,
+    simpleAtMinute: 0,
+    simpleWeekday: 1,
+    simpleMonthday: 1,
     overlapPolicy: 'queue',
     jobType: 'filesystem',
     encryptionEnabled: false,
@@ -37,6 +45,7 @@ export function resetJobEditorForm(target: JobEditorForm): void {
 export function createInitialJobEditorFieldErrors(): Record<JobEditorField, string | null> {
   return {
     name: null,
+    scheduleTimezone: null,
     schedule: null,
     fsPaths: null,
     sqlitePath: null,
@@ -48,4 +57,3 @@ export function createInitialJobEditorFieldErrors(): Record<JobEditorField, stri
     encryptionKeyName: null,
   }
 }
-

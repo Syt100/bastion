@@ -1,6 +1,7 @@
 import type { CreateOrUpdateJobRequest, JobDetail } from '@/stores/jobs'
 
 import type { FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, JobEditorForm } from './types'
+import { cronToSimpleSchedule } from './schedule'
 
 function parseStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -61,11 +62,23 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
   const notif = spec.notifications as Record<string, unknown> | undefined
   const notifyMode = typeof notif?.mode === 'string' && notif.mode === 'custom' ? 'custom' : 'inherit'
 
+  const schedule = job.schedule ?? ''
+  const scheduleTimezone = job.schedule_timezone || 'UTC'
+  const simple = schedule.trim() ? cronToSimpleSchedule(schedule) : null
+
   return {
     id: job.id,
     name: job.name,
     node: job.agent_id ? job.agent_id : 'hub',
-    schedule: job.schedule ?? '',
+    schedule,
+    scheduleTimezone,
+    scheduleMode: schedule.trim() ? (simple ? 'simple' : 'cron') : 'manual',
+    simpleScheduleKind: simple?.kind ?? 'daily',
+    simpleEveryMinutes: simple?.everyMinutes ?? 15,
+    simpleAtHour: simple?.atHour ?? 0,
+    simpleAtMinute: simple?.atMinute ?? 0,
+    simpleWeekday: simple?.weekday ?? 1,
+    simpleMonthday: simple?.monthday ?? 1,
     overlapPolicy: job.overlap_policy,
     jobType: job.spec.type,
     encryptionEnabled,
@@ -141,6 +154,7 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
     name: form.name.trim(),
     agent_id: form.node === 'hub' ? null : form.node,
     schedule: form.schedule.trim() ? form.schedule.trim() : null,
+    schedule_timezone: form.scheduleTimezone.trim() || 'UTC',
     overlap_policy: form.overlapPolicy,
     spec: {
       v: 1 as const,
@@ -152,4 +166,3 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
     },
   }
 }
-
