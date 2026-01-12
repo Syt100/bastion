@@ -4,10 +4,10 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Refactor - Mapping + Tests
-- [ ] 2.1 Extract mapping utilities (`JobDetail` → editor form, editor form → request)
-- [ ] 2.2 Add unit tests for mapping (legacy fields, encryption, targets, schedule normalization)
-- [ ] 2.3 Wire `JobEditorModal` to use mapping utilities for edit + preview + save
-- [ ] 2.4 Commit mapping refactor (detailed message)
+- [x] 2.1 Extract mapping utilities (`JobDetail` → editor form, editor form → request)
+- [x] 2.2 Add unit tests for mapping (legacy fields, encryption, targets, schedule normalization)
+- [x] 2.3 Wire `JobEditorModal` to use mapping utilities for edit + preview + save
+- [x] 2.4 Commit mapping refactor (detailed message)
 
 ## 3. Refactor - Step Components
 - [ ] 3.1 Create step subcomponents (Basics/Source/Target/Security/Notifications/Review)
