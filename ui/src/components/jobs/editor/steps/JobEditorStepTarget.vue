@@ -1,0 +1,98 @@
+<script setup lang="ts">
+import { NButton, NFormItem, NInput, NInputNumber, NSelect } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
+
+import { useJobEditorContext } from '../context'
+
+type Option = { label: string; value: string }
+
+defineProps<{
+  targetTypeOptions: Array<Option>
+  webdavSecretOptions: Array<Option>
+}>()
+
+const { t } = useI18n()
+
+const { form, fieldErrors, clearFieldError, onTargetTypeChanged, openLocalBaseDirPicker } = useJobEditorContext()
+</script>
+
+<template>
+  <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+      <n-form-item :label="t('jobs.fields.targetType')">
+        <n-select v-model:value="form.targetType" :options="targetTypeOptions" @update:value="onTargetTypeChanged" />
+      </n-form-item>
+
+      <n-form-item
+        :label="t('jobs.fields.partSizeMiB')"
+        required
+        :validation-status="fieldErrors.partSizeMiB ? 'error' : undefined"
+        :feedback="fieldErrors.partSizeMiB || undefined"
+      >
+        <div class="space-y-1 w-full">
+          <n-input-number
+            v-model:value="form.partSizeMiB"
+            :min="1"
+            class="w-full"
+            @update:value="clearFieldError('partSizeMiB')"
+          />
+          <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">
+            {{ t('jobs.fields.partSizeMiBHelp') }}
+          </div>
+        </div>
+      </n-form-item>
+    </div>
+
+    <template v-if="form.targetType === 'webdav'">
+      <n-form-item
+        :label="t('jobs.fields.webdavBaseUrl')"
+        required
+        :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
+        :feedback="fieldErrors.webdavBaseUrl || undefined"
+      >
+        <n-input
+          v-model:value="form.webdavBaseUrl"
+          :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')"
+          @update:value="clearFieldError('webdavBaseUrl')"
+        />
+      </n-form-item>
+      <n-form-item
+        :label="t('jobs.fields.webdavSecret')"
+        required
+        :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
+        :feedback="fieldErrors.webdavSecretName || undefined"
+      >
+        <n-select
+          v-model:value="form.webdavSecretName"
+          :options="webdavSecretOptions"
+          filterable
+          @update:value="clearFieldError('webdavSecretName')"
+        />
+      </n-form-item>
+    </template>
+
+    <template v-else>
+      <n-form-item
+        :label="t('jobs.fields.localBaseDir')"
+        required
+        :validation-status="fieldErrors.localBaseDir ? 'error' : undefined"
+        :feedback="fieldErrors.localBaseDir || undefined"
+      >
+        <div class="space-y-1 w-full">
+          <div class="flex gap-2">
+            <n-input
+              v-model:value="form.localBaseDir"
+              class="flex-1"
+              :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
+              @update:value="clearFieldError('localBaseDir')"
+            />
+            <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
+          </div>
+          <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">
+            {{ t('jobs.fields.localBaseDirHelp') }}
+          </div>
+        </div>
+      </n-form-item>
+    </template>
+  </div>
+</template>
