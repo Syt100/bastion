@@ -9,17 +9,13 @@ export type JobEditorContext = {
 
   fsPathDraft: Ref<string>
   showJsonPreview: Ref<boolean>
-  previewPayload: Ref<unknown>
+  previewPayload: Readonly<Ref<unknown>>
 
   clearFieldError: (field: JobEditorField) => void
-  clearAllFieldErrors: () => void
 
   onJobTypeChanged: () => void
   onTargetTypeChanged: () => void
   onEncryptionEnabledChanged: () => void
-
-  prevStep: () => void
-  nextStep: () => void
 
   openFsPicker: () => void
   openLocalBaseDirPicker: () => void
@@ -37,4 +33,3 @@ export function useJobEditorContext(): JobEditorContext {
   }
   return ctx
 }
-

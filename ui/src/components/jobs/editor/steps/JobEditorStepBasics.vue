@@ -20,14 +20,16 @@ const { form, fieldErrors, lockedNodeId, clearFieldError, onJobTypeChanged } = u
 <template>
   <div class="space-y-4 app-border-subtle rounded-lg p-3 app-glass-soft">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-      <n-form-item
-        :label="t('jobs.fields.name')"
-        required
-        :validation-status="fieldErrors.name ? 'error' : undefined"
-        :feedback="fieldErrors.name || undefined"
-      >
-        <n-input v-model:value="form.name" @update:value="clearFieldError('name')" />
-      </n-form-item>
+      <div data-field="name">
+        <n-form-item
+          :label="t('jobs.fields.name')"
+          required
+          :validation-status="fieldErrors.name ? 'error' : undefined"
+          :feedback="fieldErrors.name || undefined"
+        >
+          <n-input v-model:value="form.name" @update:value="clearFieldError('name')" />
+        </n-form-item>
+      </div>
       <n-form-item :label="t('jobs.fields.node')">
         <n-select
           v-model:value="form.node"
@@ -47,19 +49,21 @@ const { form, fieldErrors, lockedNodeId, clearFieldError, onJobTypeChanged } = u
       </n-form-item>
     </div>
 
-    <n-form-item
-      :label="t('jobs.fields.schedule')"
-      :validation-status="fieldErrors.schedule ? 'error' : undefined"
-      :feedback="fieldErrors.schedule || undefined"
-    >
-      <div class="space-y-1 w-full">
-        <n-input
-          v-model:value="form.schedule"
-          :placeholder="t('jobs.fields.schedulePlaceholder')"
-          @update:value="clearFieldError('schedule')"
-        />
-        <div v-if="!fieldErrors.schedule" class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
-      </div>
-    </n-form-item>
+    <div data-field="schedule">
+      <n-form-item
+        :label="t('jobs.fields.schedule')"
+        :validation-status="fieldErrors.schedule ? 'error' : undefined"
+        :feedback="fieldErrors.schedule || undefined"
+      >
+        <div class="space-y-1 w-full">
+          <n-input
+            v-model:value="form.schedule"
+            :placeholder="t('jobs.fields.schedulePlaceholder')"
+            @update:value="clearFieldError('schedule')"
+          />
+          <div v-if="!fieldErrors.schedule" class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
+        </div>
+      </n-form-item>
+    </div>
   </div>
 </template>

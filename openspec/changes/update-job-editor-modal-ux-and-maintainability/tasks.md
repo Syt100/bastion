@@ -15,10 +15,10 @@
 - [x] 3.3 Commit step component split (detailed message)
 
 ## 4. Validation + Field Focus
-- [ ] 4.1 Implement per-step validation module (including cron format check)
-- [ ] 4.2 Scroll/focus the first invalid field within the modal
-- [ ] 4.3 Prevent skipping ahead to future steps when prior steps are invalid (backward always allowed)
-- [ ] 4.4 Commit validation improvements (detailed message)
+- [x] 4.1 Implement per-step validation module (including cron format check)
+- [x] 4.2 Scroll/focus the first invalid field within the modal
+- [x] 4.3 Prevent skipping ahead to future steps when prior steps are invalid (backward always allowed)
+- [x] 4.4 Commit validation improvements (detailed message)
 
 ## 5. UX Enhancements
 - [ ] 5.1 Move action bar into modal footer (persistent/sticky)

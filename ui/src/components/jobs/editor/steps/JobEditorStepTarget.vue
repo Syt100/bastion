@@ -23,76 +23,84 @@ const { form, fieldErrors, clearFieldError, onTargetTypeChanged, openLocalBaseDi
         <n-select v-model:value="form.targetType" :options="targetTypeOptions" @update:value="onTargetTypeChanged" />
       </n-form-item>
 
-      <n-form-item
-        :label="t('jobs.fields.partSizeMiB')"
-        required
-        :validation-status="fieldErrors.partSizeMiB ? 'error' : undefined"
-        :feedback="fieldErrors.partSizeMiB || undefined"
-      >
-        <div class="space-y-1 w-full">
-          <n-input-number
-            v-model:value="form.partSizeMiB"
-            :min="1"
-            class="w-full"
-            @update:value="clearFieldError('partSizeMiB')"
-          />
-          <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">
-            {{ t('jobs.fields.partSizeMiBHelp') }}
+      <div data-field="partSizeMiB">
+        <n-form-item
+          :label="t('jobs.fields.partSizeMiB')"
+          required
+          :validation-status="fieldErrors.partSizeMiB ? 'error' : undefined"
+          :feedback="fieldErrors.partSizeMiB || undefined"
+        >
+          <div class="space-y-1 w-full">
+            <n-input-number
+              v-model:value="form.partSizeMiB"
+              :min="1"
+              class="w-full"
+              @update:value="clearFieldError('partSizeMiB')"
+            />
+            <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">
+              {{ t('jobs.fields.partSizeMiBHelp') }}
+            </div>
           </div>
-        </div>
-      </n-form-item>
+        </n-form-item>
+      </div>
     </div>
 
     <template v-if="form.targetType === 'webdav'">
-      <n-form-item
-        :label="t('jobs.fields.webdavBaseUrl')"
-        required
-        :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
-        :feedback="fieldErrors.webdavBaseUrl || undefined"
-      >
-        <n-input
-          v-model:value="form.webdavBaseUrl"
-          :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')"
-          @update:value="clearFieldError('webdavBaseUrl')"
-        />
-      </n-form-item>
-      <n-form-item
-        :label="t('jobs.fields.webdavSecret')"
-        required
-        :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
-        :feedback="fieldErrors.webdavSecretName || undefined"
-      >
-        <n-select
-          v-model:value="form.webdavSecretName"
-          :options="webdavSecretOptions"
-          filterable
-          @update:value="clearFieldError('webdavSecretName')"
-        />
-      </n-form-item>
+      <div data-field="webdavBaseUrl">
+        <n-form-item
+          :label="t('jobs.fields.webdavBaseUrl')"
+          required
+          :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
+          :feedback="fieldErrors.webdavBaseUrl || undefined"
+        >
+          <n-input
+            v-model:value="form.webdavBaseUrl"
+            :placeholder="t('jobs.fields.webdavBaseUrlPlaceholder')"
+            @update:value="clearFieldError('webdavBaseUrl')"
+          />
+        </n-form-item>
+      </div>
+      <div data-field="webdavSecretName">
+        <n-form-item
+          :label="t('jobs.fields.webdavSecret')"
+          required
+          :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
+          :feedback="fieldErrors.webdavSecretName || undefined"
+        >
+          <n-select
+            v-model:value="form.webdavSecretName"
+            :options="webdavSecretOptions"
+            filterable
+            @update:value="clearFieldError('webdavSecretName')"
+          />
+        </n-form-item>
+      </div>
     </template>
 
     <template v-else>
-      <n-form-item
-        :label="t('jobs.fields.localBaseDir')"
-        required
-        :validation-status="fieldErrors.localBaseDir ? 'error' : undefined"
-        :feedback="fieldErrors.localBaseDir || undefined"
-      >
-        <div class="space-y-1 w-full">
-          <div class="flex gap-2">
-            <n-input
-              v-model:value="form.localBaseDir"
-              class="flex-1"
-              :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
-              @update:value="clearFieldError('localBaseDir')"
-            />
-            <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
+      <div data-field="localBaseDir">
+        <n-form-item
+          :label="t('jobs.fields.localBaseDir')"
+          required
+          :validation-status="fieldErrors.localBaseDir ? 'error' : undefined"
+          :feedback="fieldErrors.localBaseDir || undefined"
+        >
+          <div class="space-y-1 w-full">
+            <div class="flex gap-2">
+              <n-input
+                v-model:value="form.localBaseDir"
+                class="flex-1"
+                :placeholder="t('jobs.fields.localBaseDirPlaceholder')"
+                @update:value="clearFieldError('localBaseDir')"
+              />
+              <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
+            </div>
+            <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">
+              {{ t('jobs.fields.localBaseDirHelp') }}
+            </div>
           </div>
-          <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">
-            {{ t('jobs.fields.localBaseDirHelp') }}
-          </div>
-        </div>
-      </n-form-item>
+        </n-form-item>
+      </div>
     </template>
   </div>
 </template>
