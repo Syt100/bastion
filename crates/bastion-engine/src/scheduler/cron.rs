@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, LocalResult, TimeZone as _, Utc};
+use chrono_tz::Tz;
 use cron::Schedule;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
@@ -35,6 +36,14 @@ pub(super) fn validate_cron(expr: &str) -> Result<(), anyhow::Error> {
     let expr = normalize_cron(expr)?;
     let _ = Schedule::from_str(&expr)?;
     Ok(())
+}
+
+fn allow_due_for_local_minute(tz: Tz, local_minute_start: DateTime<Tz>) -> bool {
+    // DST fold: local wall time occurs twice. Run once by choosing the first occurrence (earlier offset).
+    match tz.from_local_datetime(&local_minute_start.naive_local()) {
+        LocalResult::Ambiguous(first, _) => local_minute_start == first,
+        _ => true,
+    }
 }
 
 pub(super) async fn run_cron_loop(
@@ -125,7 +134,24 @@ pub(super) async fn run_cron_loop(
                         continue;
                     }
 
-                    match cron_matches_minute_cached(expr, minute_start, &mut schedule_cache) {
+                    let tz = match job.schedule_timezone.parse::<Tz>() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            warn!(
+                                job_id = %job.id,
+                                schedule_timezone = %job.schedule_timezone,
+                                "invalid schedule timezone; skipping"
+                            );
+                            continue;
+                        }
+                    };
+                    let local_minute_start = tz.from_utc_datetime(&minute_start.naive_utc());
+                    if !allow_due_for_local_minute(tz, local_minute_start) {
+                        continue;
+                    }
+
+                    match cron_matches_minute_cached(expr, local_minute_start, &mut schedule_cache)
+                    {
                         Ok(true) => {
                             debug!(job_id = %job.id, "cron due; enqueue run");
                             if let Err(error) = enqueue_run(
@@ -185,9 +211,9 @@ pub(super) async fn run_cron_loop(
     }
 }
 
-fn cron_matches_minute_cached(
+fn cron_matches_minute_cached<Tz1: chrono::TimeZone>(
     expr: &str,
-    minute_start: DateTime<Utc>,
+    minute_start: DateTime<Tz1>,
     schedule_cache: &mut HashMap<String, Schedule>,
 ) -> Result<bool, anyhow::Error> {
     let schedule = parse_cron_cached(expr, schedule_cache)?;
@@ -215,13 +241,24 @@ fn next_cron_due_after_cached(
             Err(_) => continue,
         };
 
-        let Some(next) = schedule.after(&now).next() else {
-            continue;
+        let tz = match job.schedule_timezone.parse::<Tz>() {
+            Ok(v) => v,
+            Err(_) => continue,
         };
-        next_due = Some(match next_due {
-            Some(cur) => cur.min(next),
-            None => next,
-        });
+
+        let now_local = tz.from_utc_datetime(&now.naive_utc());
+        let mut iter = schedule.after(&now_local);
+        while let Some(candidate) = iter.next() {
+            if !allow_due_for_local_minute(tz, candidate) {
+                continue;
+            }
+            let candidate_utc = candidate.with_timezone(&Utc);
+            next_due = Some(match next_due {
+                Some(cur) => cur.min(candidate_utc),
+                None => candidate_utc,
+            });
+            break;
+        }
     }
     next_due
 }
@@ -238,4 +275,38 @@ fn parse_cron_cached<'a>(
     Ok(schedule_cache
         .get(&expr)
         .expect("schedule_cache contains key we just inserted"))
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{NaiveDate, TimeZone as _};
+    use chrono_tz::America::New_York;
+
+    use super::{allow_due_for_local_minute, normalize_cron};
+
+    #[test]
+    fn normalize_cron_rejects_nonzero_seconds() {
+        assert!(normalize_cron("10 * * * * *").is_err());
+        assert!(normalize_cron("*/10 * * * * *").is_err());
+        assert_eq!(
+            normalize_cron("0 */5 * * * *").unwrap(),
+            "0 */5 * * * *"
+        );
+    }
+
+    #[test]
+    fn dst_fold_runs_once_by_selecting_first_occurrence() {
+        // US DST ends on the first Sunday in November. In 2026, that's 2026-11-01.
+        let naive = NaiveDate::from_ymd_opt(2026, 11, 1)
+            .unwrap()
+            .and_hms_opt(1, 30, 0)
+            .unwrap();
+        match New_York.from_local_datetime(&naive) {
+            chrono::LocalResult::Ambiguous(first, second) => {
+                assert!(allow_due_for_local_minute(New_York, first));
+                assert!(!allow_due_for_local_minute(New_York, second));
+            }
+            other => panic!("expected ambiguous local time, got: {other:?}"),
+        }
+    }
 }

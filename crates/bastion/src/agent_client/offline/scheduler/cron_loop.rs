@@ -10,6 +10,15 @@ use super::super::cron::cron_matches_minute_cached;
 use super::super::storage::OfflineRunWriterHandle;
 use super::types::{InFlightCounts, OfflineRunTask};
 
+fn allow_due_for_local_minute(tz: chrono_tz::Tz, local_minute_start: chrono::DateTime<chrono_tz::Tz>) -> bool {
+    use chrono::TimeZone as _;
+    // DST fold: local wall time occurs twice. Run once by choosing the first occurrence (earlier offset).
+    match tz.from_local_datetime(&local_minute_start.naive_local()) {
+        chrono::LocalResult::Ambiguous(first, _) => local_minute_start == first,
+        _ => true,
+    }
+}
+
 pub(super) async fn offline_cron_loop(
     data_dir: PathBuf,
     agent_id: String,
@@ -17,7 +26,7 @@ pub(super) async fn offline_cron_loop(
     tx: tokio::sync::mpsc::UnboundedSender<OfflineRunTask>,
     inflight: std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
 ) {
-    use chrono::{DateTime, Duration as ChronoDuration, Utc};
+    use chrono::{DateTime, Duration as ChronoDuration, TimeZone as _, Utc};
     use cron::Schedule;
 
     let mut schedule_cache: std::collections::HashMap<String, Schedule> =
@@ -70,7 +79,24 @@ pub(super) async fn offline_cron_loop(
                         else {
                             continue;
                         };
-                        match cron_matches_minute_cached(expr, minute_start, &mut schedule_cache) {
+                        let tz = job
+                            .schedule_timezone
+                            .as_deref()
+                            .unwrap_or("UTC")
+                            .parse::<chrono_tz::Tz>();
+                        let tz = match tz {
+                            Ok(v) => v,
+                            Err(_) => {
+                                warn!(agent_id = %agent_id, timezone = ?job.schedule_timezone, "invalid schedule timezone; skipping");
+                                continue;
+                            }
+                        };
+                        let local_minute_start = tz.from_utc_datetime(&minute_start.naive_utc());
+                        if !allow_due_for_local_minute(tz, local_minute_start) {
+                            continue;
+                        }
+
+                        match cron_matches_minute_cached(expr, local_minute_start, &mut schedule_cache) {
                             Ok(true) => {
                                 let should_reject = {
                                     let state = inflight.lock().await;

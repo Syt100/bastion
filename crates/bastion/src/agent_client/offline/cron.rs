@@ -30,7 +30,7 @@ fn parse_cron_cached<'a>(
 
 pub(super) fn cron_matches_minute_cached(
     expr: &str,
-    minute_start: chrono::DateTime<chrono::Utc>,
+    minute_start: chrono::DateTime<impl chrono::TimeZone>,
     schedule_cache: &mut std::collections::HashMap<String, cron::Schedule>,
 ) -> Result<bool, anyhow::Error> {
     use chrono::Duration as ChronoDuration;

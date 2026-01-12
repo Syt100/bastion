@@ -12,10 +12,10 @@
 - [x] 2.6 Commit backend changes (detailed message)
 
 ## 3. Scheduler - Timezone Semantics
-- [ ] 3.1 Hub scheduler: evaluate cron in `schedule_timezone` (gap=skip, fold=run once)
-- [ ] 3.2 Agent offline scheduler: evaluate cron in `schedule_timezone` (same semantics)
-- [ ] 3.3 Add targeted tests for timezone evaluation helpers
-- [ ] 3.4 Commit scheduler changes (detailed message)
+- [x] 3.1 Hub scheduler: evaluate cron in `schedule_timezone` (gap=skip, fold=run once)
+- [x] 3.2 Agent offline scheduler: evaluate cron in `schedule_timezone` (same semantics)
+- [x] 3.3 Add targeted tests for timezone evaluation helpers
+- [x] 3.4 Commit scheduler changes (detailed message)
 
 ## 4. Web UI - Schedule Editor
 - [ ] 4.1 Extend job types/mapping to include `schedule_timezone`
