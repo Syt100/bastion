@@ -632,6 +632,7 @@ const messages = {
     runNowFailed: 'Failed to trigger run',
     fetchRunsFailed: 'Failed to fetch runs',
     formInvalid: 'Please fill required fields',
+    invalidCron: 'Invalid cron expression',
     jobNameRequired: 'Job name is required',
     fetchWebdavSecretsFailed: 'Failed to fetch WebDAV credentials',
     fetchWebdavSecretFailed: 'Failed to fetch WebDAV credential',

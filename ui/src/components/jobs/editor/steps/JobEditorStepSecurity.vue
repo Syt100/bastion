@@ -18,24 +18,24 @@ const { form, fieldErrors, clearFieldError, onEncryptionEnabledChanged } = useJo
       </div>
     </n-form-item>
 
-    <n-form-item
-      v-if="form.encryptionEnabled"
-      :label="t('jobs.fields.encryptionKeyName')"
-      required
-      :validation-status="fieldErrors.encryptionKeyName ? 'error' : undefined"
-      :feedback="fieldErrors.encryptionKeyName || undefined"
-    >
-      <div class="space-y-1 w-full">
-        <n-input
-          v-model:value="form.encryptionKeyName"
-          :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
-          @update:value="clearFieldError('encryptionKeyName')"
-        />
-        <div v-if="!fieldErrors.encryptionKeyName" class="text-xs opacity-70">
-          {{ t('jobs.fields.encryptionKeyNameHelp') }}
+    <div v-if="form.encryptionEnabled" data-field="encryptionKeyName">
+      <n-form-item
+        :label="t('jobs.fields.encryptionKeyName')"
+        required
+        :validation-status="fieldErrors.encryptionKeyName ? 'error' : undefined"
+        :feedback="fieldErrors.encryptionKeyName || undefined"
+      >
+        <div class="space-y-1 w-full">
+          <n-input
+            v-model:value="form.encryptionKeyName"
+            :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
+            @update:value="clearFieldError('encryptionKeyName')"
+          />
+          <div v-if="!fieldErrors.encryptionKeyName" class="text-xs opacity-70">
+            {{ t('jobs.fields.encryptionKeyNameHelp') }}
+          </div>
         </div>
-      </div>
-    </n-form-item>
+      </n-form-item>
+    </div>
   </div>
 </template>
-

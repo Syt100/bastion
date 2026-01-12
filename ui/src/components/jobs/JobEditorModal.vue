@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, reactive, ref } from 'vue'
+import { computed, nextTick, provide, reactive, ref } from 'vue'
 import {
   NButton,
   NForm,
@@ -25,6 +25,7 @@ import { jobEditorContextKey } from './editor/context'
 import { createInitialJobEditorFieldErrors, createInitialJobEditorForm, resetJobEditorForm } from './editor/form'
 import { editorFormToRequest, jobDetailToEditorForm } from './editor/mapping'
 import type { JobEditorField, JobEditorForm } from './editor/types'
+import { stepForJobEditorField, validateJobEditorUpToStep } from './editor/validation'
 import JobEditorStepBasics from './editor/steps/JobEditorStepBasics.vue'
 import JobEditorStepNotifications from './editor/steps/JobEditorStepNotifications.vue'
 import JobEditorStepReview from './editor/steps/JobEditorStepReview.vue'
@@ -52,6 +53,7 @@ const notifications = useNotificationsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
+const modalBody = ref<HTMLElement | null>(null)
 const mode = ref<'create' | 'edit'>('create')
 const saving = ref<boolean>(false)
 const step = ref<number>(1)
@@ -159,65 +161,53 @@ async function openEdit(jobId: string, ctx?: { nodeId?: 'hub' | string }): Promi
   }
 }
 
-function validateEditorStep(targetStep: number): boolean {
+async function focusField(field: JobEditorField): Promise<void> {
+  await nextTick()
+  const root = modalBody.value
+  if (!root) return
+
+  const el = root.querySelector(`[data-field="${field}"]`) as HTMLElement | null
+  if (!el) return
+
+  el.scrollIntoView({ block: 'center' })
+
+  const focusable = el.querySelector(
+    'input, textarea, [contenteditable="true"], [role="combobox"], button, [tabindex]:not([tabindex="-1"])',
+  ) as HTMLElement | null
+  focusable?.focus?.()
+}
+
+async function validateEditorUpTo(targetStep: number): Promise<boolean> {
   clearAllFieldErrors()
 
-  const errors: Array<{ field: JobEditorField; message: string }> = []
+  const issues = validateJobEditorUpToStep(targetStep, form, t)
+  if (issues.length === 0) return true
 
-  if (targetStep >= 1) {
-    const name = form.name.trim()
-    if (!name) {
-      errors.push({ field: 'name', message: t('errors.jobNameRequired') })
-    }
+  for (const issue of issues) {
+    fieldErrors[issue.field] = issue.message
   }
 
-  if (targetStep >= 2) {
-    if (form.jobType === 'filesystem' && form.fsPaths.every((p) => !p.trim())) {
-      errors.push({ field: 'fsPaths', message: t('errors.sourcePathsRequired') })
-    }
-    if (form.jobType === 'sqlite' && !form.sqlitePath.trim()) {
-      errors.push({ field: 'sqlitePath', message: t('errors.sqlitePathRequired') })
-    }
-    if (form.jobType === 'vaultwarden' && !form.vaultwardenDataDir.trim()) {
-      errors.push({ field: 'vaultwardenDataDir', message: t('errors.vaultwardenDataDirRequired') })
-    }
+  message.error(t('errors.formInvalid'))
+
+  const first = issues[0]!
+  const fieldStep = stepForJobEditorField(first.field)
+  if (step.value !== fieldStep) {
+    step.value = fieldStep
+    await nextTick()
   }
+  await focusField(first.field)
+  return false
+}
 
-  if (targetStep >= 3) {
-    if (form.targetType === 'webdav') {
-      if (!form.webdavBaseUrl.trim()) {
-        errors.push({ field: 'webdavBaseUrl', message: t('errors.webdavBaseUrlRequired') })
-      }
-      if (!form.webdavSecretName.trim()) {
-        errors.push({ field: 'webdavSecretName', message: t('errors.webdavSecretRequired') })
-      }
-    } else {
-      if (!form.localBaseDir.trim()) {
-        errors.push({ field: 'localBaseDir', message: t('errors.localBaseDirRequired') })
-      }
-    }
-
-    if (!Number.isFinite(form.partSizeMiB) || form.partSizeMiB <= 0) {
-      errors.push({ field: 'partSizeMiB', message: t('errors.partSizeInvalid') })
-    }
+async function goToStep(targetStep: number): Promise<void> {
+  const clamped = Math.min(EDITOR_STEPS_TOTAL, Math.max(1, Math.floor(targetStep)))
+  if (clamped <= step.value) {
+    step.value = clamped
+    return
   }
-
-  if (targetStep >= 4) {
-    const encryptionKeyName = form.encryptionKeyName.trim()
-    if (form.encryptionEnabled && !encryptionKeyName) {
-      errors.push({ field: 'encryptionKeyName', message: t('errors.encryptionKeyNameRequired') })
-    }
-  }
-
-  if (errors.length > 0) {
-    for (const err of errors) {
-      fieldErrors[err.field] = err.message
-    }
-    message.error(t('errors.formInvalid'))
-    return false
-  }
-
-  return true
+  const ok = await validateEditorUpTo(clamped - 1)
+  if (!ok) return
+  step.value = clamped
 }
 
 function onJobTypeChanged(): void {
@@ -240,8 +230,9 @@ function prevStep(): void {
   step.value = Math.max(1, step.value - 1)
 }
 
-function nextStep(): void {
-  if (!validateEditorStep(step.value)) return
+async function nextStep(): Promise<void> {
+  const ok = await validateEditorUpTo(step.value)
+  if (!ok) return
   step.value = Math.min(EDITOR_STEPS_TOTAL, step.value + 1)
 }
 
@@ -304,12 +295,9 @@ provide(jobEditorContextKey, {
   showJsonPreview,
   previewPayload,
   clearFieldError,
-  clearAllFieldErrors,
   onJobTypeChanged,
   onTargetTypeChanged,
   onEncryptionEnabledChanged,
-  prevStep,
-  nextStep,
   openFsPicker,
   openLocalBaseDirPicker,
   addFsPathsFromDraft,
@@ -332,7 +320,8 @@ const fsHardlinkPolicyLabel = computed(() => getOptionLabel(fsHardlinkPolicyOpti
 const fsErrorPolicyLabel = computed(() => getOptionLabel(fsErrorPolicyOptions.value, form.fsErrorPolicy))
 
 async function save(): Promise<void> {
-  if (!validateEditorStep(5)) return
+  const ok = await validateEditorUpTo(5)
+  if (!ok) return
 
   saving.value = true
   try {
@@ -449,9 +438,9 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
     :style="{ width: MODAL_WIDTH.lg }"
     :title="mode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
   >
-    <div class="space-y-4">
+    <div ref="modalBody" class="space-y-4">
       <div v-if="isDesktop">
-        <n-steps :current="step" size="small">
+        <n-steps :current="step" size="small" @update:current="(v) => void goToStep(v)">
           <n-step :title="t('jobs.steps.basics')" />
           <n-step :title="t('jobs.steps.source')" />
           <n-step :title="t('jobs.steps.target')" />
