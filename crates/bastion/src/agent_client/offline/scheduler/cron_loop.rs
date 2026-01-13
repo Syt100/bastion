@@ -10,7 +10,10 @@ use super::super::cron::cron_matches_minute_cached;
 use super::super::storage::OfflineRunWriterHandle;
 use super::types::{InFlightCounts, OfflineRunTask};
 
-fn allow_due_for_local_minute(tz: chrono_tz::Tz, local_minute_start: chrono::DateTime<chrono_tz::Tz>) -> bool {
+fn allow_due_for_local_minute(
+    tz: chrono_tz::Tz,
+    local_minute_start: chrono::DateTime<chrono_tz::Tz>,
+) -> bool {
     use chrono::TimeZone as _;
     // DST fold: local wall time occurs twice. Run once by choosing the first occurrence (earlier offset).
     match tz.from_local_datetime(&local_minute_start.naive_local()) {
@@ -96,7 +99,11 @@ pub(super) async fn offline_cron_loop(
                             continue;
                         }
 
-                        match cron_matches_minute_cached(expr, local_minute_start, &mut schedule_cache) {
+                        match cron_matches_minute_cached(
+                            expr,
+                            local_minute_start,
+                            &mut schedule_cache,
+                        ) {
                             Ok(true) => {
                                 let should_reject = {
                                     let state = inflight.lock().await;

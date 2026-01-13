@@ -106,14 +106,9 @@ pub(in crate::http) async fn list_queue(
     };
 
     let total = notifications_repo::count_queue(&state.db, status_filter, channel_filter).await?;
-    let rows = notifications_repo::list_queue(
-        &state.db,
-        status_filter,
-        channel_filter,
-        page_size,
-        offset,
-    )
-    .await?;
+    let rows =
+        notifications_repo::list_queue(&state.db, status_filter, channel_filter, page_size, offset)
+            .await?;
 
     let items = rows
         .into_iter()

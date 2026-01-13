@@ -2,7 +2,7 @@ use tempfile::TempDir;
 
 use crate::db;
 
-use super::{OverlapPolicy, create_job, get_job, list_jobs, update_job};
+use super::{OverlapPolicy, UpdateJobParams, create_job, get_job, list_jobs, update_job};
 
 #[tokio::test]
 async fn jobs_crud_round_trip() {
@@ -36,13 +36,15 @@ async fn jobs_crud_round_trip() {
     let updated_spec = serde_json::json!({ "v": 1, "type": "sqlite" });
     let updated = update_job(
         &pool,
-        &job.id,
-        "job2",
-        Some("agent-1"),
-        None,
-        Some("Asia/Shanghai"),
-        OverlapPolicy::Reject,
-        updated_spec,
+        UpdateJobParams {
+            job_id: &job.id,
+            name: "job2",
+            agent_id: Some("agent-1"),
+            schedule: None,
+            schedule_timezone: Some("Asia/Shanghai"),
+            overlap_policy: OverlapPolicy::Reject,
+            spec: updated_spec,
+        },
     )
     .await
     .expect("update");
