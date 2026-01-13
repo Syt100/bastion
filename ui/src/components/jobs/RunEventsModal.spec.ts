@@ -84,6 +84,74 @@ describe('RunEventsModal', () => {
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
   })
 
+  it('auto-resumes follow when returning to bottom after auto-unfollow', async () => {
+    let nowMs = 0
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => nowMs)
+
+    jobsApi.listRunEvents.mockResolvedValue([
+      { run_id: 'run1', seq: 1, ts: 1, level: 'info', kind: 'start', message: 'start', fields: null },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    try {
+      const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+      await vm.open('run1')
+
+      const list = wrapper.find('[data-testid="run-events-list"]')
+      const el = list.element as HTMLElement
+      Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true })
+      Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
+
+      // Move away from bottom -> follow auto-unfollows.
+      nowMs = 1000
+      el.scrollTop = 700
+      await list.trigger('scroll')
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(wrapper.text()).toContain('runEvents.actions.latest')
+
+      // Return to bottom -> follow auto-resumes.
+      el.scrollTop = 900
+      await list.trigger('scroll')
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(wrapper.text()).not.toContain('runEvents.actions.latest')
+    } finally {
+      wrapper.unmount()
+      nowSpy.mockRestore()
+    }
+  })
+
+  it('does not auto-resume follow when it was manually disabled', async () => {
+    jobsApi.listRunEvents.mockResolvedValue([
+      { run_id: 'run1', seq: 1, ts: 1, level: 'info', kind: 'start', message: 'start', fields: null },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    const list = wrapper.find('[data-testid="run-events-list"]')
+    const el = list.element as HTMLElement
+    Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
+
+    const followSwitch = wrapper.findComponent({ name: 'NSwitch' })
+    followSwitch.vm.$emit('update:value', false)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wrapper.text()).toContain('runEvents.actions.latest')
+
+    // Reaching bottom should not re-enable follow.
+    el.scrollTop = 900
+    await list.trigger('scroll')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wrapper.text()).toContain('runEvents.actions.latest')
+
+    wrapper.unmount()
+  })
+
   it('uses after_seq and dedupes websocket events by seq', async () => {
     jobsApi.listRunEvents.mockResolvedValue([
       { run_id: 'run1', seq: 1, ts: 1, level: 'info', kind: 'start', message: 'start', fields: null },
