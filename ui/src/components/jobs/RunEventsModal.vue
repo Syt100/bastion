@@ -512,14 +512,16 @@ defineExpose<RunEventsModalExpose>({ open })
           @click="openEventDetails(item)"
         >
           <template v-if="isDesktop">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-32"
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-28 text-right"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
               </span>
-              <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
+              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+                <span class="block w-full truncate text-center">{{ item.level }}</span>
+              </n-tag>
               <span class="opacity-70 shrink-0 w-24 truncate">{{ item.kind }}</span>
               <div class="shrink-0 flex items-center gap-1 min-w-0">
                 <n-tag
@@ -544,14 +546,16 @@ defineExpose<RunEventsModalExpose>({ open })
             </div>
           </template>
           <template v-else>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-14"
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-12 text-right"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
               </span>
-              <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
+              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+                <span class="block w-full truncate text-center">{{ item.level }}</span>
+              </n-tag>
               <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
               <n-button
                 v-if="item.fields"
