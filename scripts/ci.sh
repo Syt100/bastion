@@ -21,6 +21,12 @@ fi
 
 "${gitleaks_bin}" detect --source "${root_dir}" --redact --no-banner --exit-code 1
 
+echo "==> UI: install"
+npm ci --prefix ui
+
+echo "==> UI: build"
+npm run build-only --prefix ui
+
 echo "==> Rust: fmt"
 cargo fmt --check
 
@@ -29,9 +35,6 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 echo "==> Rust: test"
 cargo test --workspace
-
-echo "==> UI: install"
-npm ci --prefix ui
 
 echo "==> UI: test"
 npm test --prefix ui
