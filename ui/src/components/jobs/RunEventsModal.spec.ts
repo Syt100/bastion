@@ -20,29 +20,16 @@ vi.mock('naive-ui', async () => {
       },
     })
 
-  const VirtualList = vue.defineComponent({
-    name: 'NVirtualList',
-    props: ['items'],
-    setup(props, { slots, expose }) {
-      expose({ scrollTo: vi.fn() })
-      return () =>
-        vue.h(
-          'div',
-          { 'data-stub': 'NVirtualList' },
-          (props.items as unknown[] | undefined)?.map((item, index) => slots.default?.({ item, index })),
-        )
-    },
-  })
-
   return {
     NButton: stub('NButton'),
     NCode: stub('NCode'),
+    NDrawer: stub('NDrawer'),
+    NDrawerContent: stub('NDrawerContent'),
     NModal: stub('NModal'),
     NSpin: stub('NSpin'),
     NSpace: stub('NSpace'),
     NSwitch: stub('NSwitch'),
     NTag: stub('NTag'),
-    NVirtualList: VirtualList,
     useMessage: () => messageApi,
   }
 })
@@ -113,7 +100,7 @@ describe('RunEventsModal', () => {
     sock.triggerOpen()
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.text()).toContain('runEvents.ws.connected')
+    expect(wrapper.text()).toContain('runEvents.ws.live')
 
     // Duplicate seq should be ignored.
     sock.triggerMessage(
@@ -130,5 +117,7 @@ describe('RunEventsModal', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(wrapper.findAll('[data-testid="run-event-row"]')).toHaveLength(2)
+
+    wrapper.unmount()
   })
 })

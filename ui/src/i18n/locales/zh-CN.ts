@@ -541,21 +541,23 @@ const messages = {
     title: '运行事件',
     noEvents: '暂无事件',
     badges: {
-      new: '新消息',
+      newCount: '新消息 {count}',
     },
     actions: {
       follow: '跟随',
       latest: '最新',
       details: '详情',
+      reconnect: '重新连接',
     },
     details: {
       title: '事件详情',
     },
     ws: {
-      disconnected: '未连接',
+      disconnected: '已断开',
       connecting: '连接中',
-      connected: '已连接',
-      error: '错误',
+      live: '实时中',
+      reconnecting: '重连中',
+      error: '出错',
     },
   },
   restore: {
