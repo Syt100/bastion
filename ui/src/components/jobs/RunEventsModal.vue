@@ -3,14 +3,14 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NButton,
   NCode,
+  NDrawer,
+  NDrawerContent,
   NModal,
   NSpin,
   NSpace,
   NSwitch,
   NTag,
-  NVirtualList,
   useMessage,
-  type VirtualListInst,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -26,6 +26,9 @@ export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
 }
 
+type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
+type SummaryChip = { text: string; type: 'default' | 'warning' | 'error' | 'success' }
+
 const { t } = useI18n()
 const message = useMessage()
 const ui = useUiStore()
@@ -35,10 +38,15 @@ const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
 const runId = ref<string | null>(null)
 const events = ref<RunEvent[]>([])
-const wsStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
+const wsStatus = ref<WsStatus>('disconnected')
 
 let lastSeq = 0
 let socket: WebSocket | null = null
+let allowReconnect = false
+let reconnectTimer: number | null = null
+let reconnectCountdownTimer: number | null = null
+let nowTicker: number | null = null
+let suppressAutoUnfollowUntil = 0
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 const locale = computed(() => ui.locale)
@@ -69,8 +77,13 @@ function formatListUnixSeconds(ts: number | null): string {
 }
 
 const follow = ref<boolean>(true)
-const hasUnseen = ref<boolean>(false)
-const listRef = ref<VirtualListInst | null>(null)
+const unseenCount = ref<number>(0)
+const listEl = ref<HTMLElement | null>(null)
+
+const nowTick = ref<number>(Math.floor(Date.now() / 1000))
+
+const reconnectAttempts = ref<number>(0)
+const reconnectInSeconds = ref<number | null>(null)
 
 const detailShow = ref<boolean>(false)
 const detailEvent = ref<RunEvent | null>(null)
@@ -100,24 +113,50 @@ function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 
   return 'default'
 }
 
+function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'live') return 'success'
+  if (status === 'error') return 'error'
+  if (status === 'reconnecting') return 'warning'
+  return 'default'
+}
+
 function closeSocket(): void {
   if (socket) {
     socket.close()
     socket = null
   }
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (reconnectCountdownTimer !== null) {
+    window.clearInterval(reconnectCountdownTimer)
+    reconnectCountdownTimer = null
+  }
+  reconnectInSeconds.value = null
   wsStatus.value = 'disconnected'
 }
 
 function scrollToLatest(): void {
-  listRef.value?.scrollTo({ position: 'bottom' })
-  hasUnseen.value = false
+  const el = listEl.value
+  if (!el) return
+  suppressAutoUnfollowUntil = Date.now() + 300
+  el.scrollTop = el.scrollHeight
+  unseenCount.value = 0
+}
+
+function jumpToLatest(): void {
+  follow.value = true
+  nextTick().then(scrollToLatest)
 }
 
 function handleListScroll(e: Event): void {
   const el = e.target as HTMLElement | null
   if (!el) return
-  if (hasUnseen.value && isAtBottom(el)) {
-    hasUnseen.value = false
+  const atBottom = isAtBottom(el)
+  if (unseenCount.value > 0 && atBottom) unseenCount.value = 0
+  if (follow.value && !atBottom && Date.now() > suppressAutoUnfollowUntil) {
+    follow.value = false
   }
 }
 
@@ -126,9 +165,51 @@ function openEventDetails(e: RunEvent): void {
   detailShow.value = true
 }
 
-function connectWs(id: string, afterSeq: number): void {
+function startNowTicker(): void {
+  stopNowTicker()
+  nowTick.value = Math.floor(Date.now() / 1000)
+  nowTicker = window.setInterval(() => {
+    nowTick.value = Math.floor(Date.now() / 1000)
+  }, 5000)
+}
+
+function stopNowTicker(): void {
+  if (nowTicker !== null) {
+    window.clearInterval(nowTicker)
+    nowTicker = null
+  }
+}
+
+function reconnectDelaySeconds(attempt: number): number {
+  // 1s, 2s, 4s, 8s, ... capped.
+  const cappedAttempt = Math.max(0, Math.min(10, attempt))
+  return Math.min(30, Math.max(1, 1 << cappedAttempt))
+}
+
+function scheduleReconnect(id: string): void {
+  if (!allowReconnect) return
+  reconnectAttempts.value += 1
+  const delay = reconnectDelaySeconds(reconnectAttempts.value - 1)
+  reconnectInSeconds.value = delay
+  wsStatus.value = 'reconnecting'
+
+  if (reconnectCountdownTimer !== null) window.clearInterval(reconnectCountdownTimer)
+  reconnectCountdownTimer = window.setInterval(() => {
+    if (reconnectInSeconds.value == null) return
+    reconnectInSeconds.value = Math.max(0, reconnectInSeconds.value - 1)
+  }, 1000)
+
+  if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null
+    if (!allowReconnect) return
+    connectWs(id, lastSeq, true)
+  }, delay * 1000)
+}
+
+function connectWs(id: string, afterSeq: number, isReconnect: boolean): void {
   closeSocket()
-  wsStatus.value = 'connecting'
+  wsStatus.value = isReconnect ? 'reconnecting' : 'connecting'
 
   const nextSocket = new WebSocket(
     wsUrl(`/api/runs/${encodeURIComponent(id)}/events/ws?after_seq=${encodeURIComponent(String(afterSeq))}`),
@@ -136,7 +217,13 @@ function connectWs(id: string, afterSeq: number): void {
   socket = nextSocket
 
   nextSocket.onopen = () => {
-    wsStatus.value = 'connected'
+    wsStatus.value = 'live'
+    reconnectAttempts.value = 0
+    reconnectInSeconds.value = null
+    if (reconnectCountdownTimer !== null) {
+      window.clearInterval(reconnectCountdownTimer)
+      reconnectCountdownTimer = null
+    }
   }
 
   nextSocket.onmessage = async (evt: MessageEvent) => {
@@ -158,7 +245,7 @@ function connectWs(id: string, afterSeq: number): void {
     if (follow.value) {
       scrollToLatest()
     } else {
-      hasUnseen.value = true
+      unseenCount.value += 1
     }
   }
 
@@ -167,8 +254,126 @@ function connectWs(id: string, afterSeq: number): void {
   }
 
   nextSocket.onclose = () => {
-    wsStatus.value = 'disconnected'
+    socket = null
+    if (!allowReconnect) {
+      wsStatus.value = 'disconnected'
+      return
+    }
+    scheduleReconnect(id)
   }
+}
+
+function manualReconnect(): void {
+  if (!runId.value) return
+  reconnectAttempts.value = 0
+  reconnectInSeconds.value = null
+  connectWs(runId.value, lastSeq, false)
+}
+
+function normalizeFields(fields: unknown | null): Record<string, unknown> | null {
+  if (!fields || typeof fields !== 'object') return null
+  if (Array.isArray(fields)) return null
+  return fields as Record<string, unknown>
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value
+}
+
+function toString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const v = value.trim()
+  return v ? v : null
+}
+
+function shortId(value: string): string {
+  if (value.length <= 10) return value
+  return `${value.slice(0, 8)}…`
+}
+
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.floor(ms))}ms`
+  const secs = ms / 1000
+  if (secs < 10) return `${secs.toFixed(1)}s`
+  return `${Math.round(secs)}s`
+}
+
+function formatRelativeSeconds(seconds: number): string {
+  const abs = Math.abs(seconds)
+  const unit =
+    abs >= 86400 ? { n: Math.round(abs / 86400), s: 'd' } : abs >= 3600
+      ? { n: Math.round(abs / 3600), s: 'h' }
+      : abs >= 60
+        ? { n: Math.round(abs / 60), s: 'm' }
+        : { n: Math.round(abs), s: 's' }
+
+  const v = `${unit.n}${unit.s}`
+  const isZh = locale.value.startsWith('zh')
+  if (seconds >= 0) return isZh ? `${v}后` : `in ${v}`
+  return isZh ? `${v}前` : `${v} ago`
+}
+
+function pickSummaryChips(e: RunEvent): SummaryChip[] {
+  const fields = normalizeFields(e.fields)
+  if (!fields) return []
+
+  const out: SummaryChip[] = []
+  const push = (chip: SummaryChip): void => {
+    if (out.length >= 2) return
+    out.push(chip)
+  }
+
+  const errorKind = toString(fields.error_kind) ?? toString(fields.last_error_kind)
+  if (errorKind) {
+    const type: SummaryChip['type'] = errorKind === 'auth' || errorKind === 'config' ? 'error' : 'warning'
+    push({ text: errorKind, type })
+  }
+
+  const attempt = toNumber(fields.attempt) ?? toNumber(fields.attempts)
+  if (attempt != null) {
+    push({ text: `#${Math.max(0, Math.floor(attempt))}`, type: 'default' })
+  }
+
+  const nextAttemptAt = toNumber(fields.next_attempt_at)
+  if (nextAttemptAt != null) {
+    push({ text: formatRelativeSeconds(nextAttemptAt - nowTick.value), type: 'default' })
+  }
+
+  const durationMs = toNumber(fields.duration_ms)
+  if (durationMs != null) {
+    push({ text: formatDurationMs(durationMs), type: 'default' })
+  }
+
+  const errorsTotal = toNumber(fields.errors_total)
+  const warningsTotal = toNumber(fields.warnings_total)
+  if (errorsTotal != null || warningsTotal != null) {
+    const errors = Math.max(0, Math.floor(errorsTotal ?? 0))
+    const warnings = Math.max(0, Math.floor(warningsTotal ?? 0))
+    push({ text: `E${errors}/W${warnings}`, type: errors > 0 ? 'error' : warnings > 0 ? 'warning' : 'default' })
+  }
+
+  const ok = typeof fields.ok === 'boolean' ? fields.ok : null
+  if (ok != null) {
+    push({ text: ok ? 'OK' : 'FAIL', type: ok ? 'success' : 'error' })
+  }
+
+  const channel = toString(fields.channel)
+  if (channel) push({ text: channel, type: 'default' })
+
+  const source = toString(fields.source)
+  if (source) push({ text: source, type: 'default' })
+
+  const executedOffline = typeof fields.executed_offline === 'boolean' ? fields.executed_offline : null
+  if (executedOffline === true) push({ text: t('runs.badges.offline'), type: 'default' })
+
+  const agentId = toString(fields.agent_id)
+  if (agentId) push({ text: shortId(agentId), type: 'default' })
+
+  const secretName = toString(fields.secret_name)
+  if (secretName) push({ text: secretName, type: 'default' })
+
+  return out
 }
 
 async function open(id: string): Promise<void> {
@@ -178,7 +383,11 @@ async function open(id: string): Promise<void> {
   events.value = []
   lastSeq = 0
   follow.value = true
-  hasUnseen.value = false
+  unseenCount.value = 0
+  reconnectAttempts.value = 0
+  reconnectInSeconds.value = null
+  allowReconnect = true
+  startNowTicker()
 
   try {
     const initial = await jobs.listRunEvents(id)
@@ -192,19 +401,23 @@ async function open(id: string): Promise<void> {
     loading.value = false
   }
 
-  connectWs(id, lastSeq)
+  connectWs(id, lastSeq, false)
 }
 
 watch(show, (open) => {
   if (!open) {
+    allowReconnect = false
     closeSocket()
+    stopNowTicker()
     detailShow.value = false
     detailEvent.value = null
   }
 })
 
 onBeforeUnmount(() => {
+  allowReconnect = false
   closeSocket()
+  stopNowTicker()
 })
 
 watch(follow, (enabled) => {
@@ -224,21 +437,34 @@ defineExpose<RunEventsModalExpose>({ open })
           <span class="truncate">{{ runId }}</span>
           <n-tag
             size="small"
-            :type="wsStatus === 'connected' ? 'success' : wsStatus === 'error' ? 'error' : 'default'"
+            :type="wsStatusTagType(wsStatus)"
           >
             {{ t(`runEvents.ws.${wsStatus}`) }}
           </n-tag>
-          <n-tag v-if="hasUnseen" size="small" type="warning">
-            {{ t('runEvents.badges.new') }}
+          <span v-if="wsStatus === 'reconnecting' && reconnectInSeconds != null" class="text-xs opacity-70 tabular-nums">
+            {{ formatRelativeSeconds(reconnectInSeconds) }}
+          </span>
+          <n-tag v-if="unseenCount > 0" size="small" type="warning">
+            {{ t('runEvents.badges.newCount', { count: unseenCount }) }}
           </n-tag>
         </div>
 
         <div class="flex items-center gap-2">
+          <n-button
+            v-if="wsStatus === 'disconnected' || wsStatus === 'reconnecting' || wsStatus === 'error'"
+            size="small"
+            secondary
+            @click="manualReconnect"
+          >
+            {{ t('runEvents.actions.reconnect') }}
+          </n-button>
           <div class="flex items-center gap-2">
             <span class="text-xs opacity-80">{{ t('runEvents.actions.follow') }}</span>
             <n-switch v-model:value="follow" size="small" />
           </div>
-          <n-button v-if="hasUnseen" size="small" @click="scrollToLatest">{{ t('runEvents.actions.latest') }}</n-button>
+          <n-button v-if="!follow || unseenCount > 0" size="small" @click="jumpToLatest">
+            {{ t('runEvents.actions.latest') }}
+          </n-button>
         </div>
       </div>
 
@@ -246,43 +472,91 @@ defineExpose<RunEventsModalExpose>({ open })
 
       <div v-if="events.length === 0" class="text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
 
-      <n-virtual-list
+      <div
         v-else
-        ref="listRef"
-        :items="events"
-        :item-size="28"
-        key-field="seq"
-        class="max-h-96 border rounded-md bg-[var(--n-color)]"
+        ref="listEl"
+        class="max-h-[65vh] overflow-auto border rounded-md bg-[var(--n-color)]"
         @scroll="handleListScroll"
       >
-        <template #default="{ item }">
-          <div
-            data-testid="run-event-row"
-            class="h-7 px-2 py-1 border-b last:border-b-0 font-mono text-xs opacity-90 flex items-center gap-2"
-          >
-            <span
-              class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
-              :class="isDesktop ? 'w-32' : 'w-14'"
-              :title="formatUnixSeconds(item.ts)"
-            >
-              {{ formatListUnixSeconds(item.ts) }}
-            </span>
-            <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
-            <span class="opacity-70 shrink-0 w-24 truncate">{{ item.kind }}</span>
-            <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
-            <n-button
-              v-if="item.fields"
-              size="tiny"
-              secondary
-              @click="openEventDetails(item)"
-            >
-              {{ t('runEvents.actions.details') }}
-            </n-button>
-          </div>
-        </template>
-      </n-virtual-list>
+        <div
+          v-for="item in events"
+          :key="item.seq"
+          data-testid="run-event-row"
+          class="px-2 py-1 border-b last:border-b-0 font-mono text-xs opacity-90 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+          @click="openEventDetails(item)"
+        >
+          <template v-if="isDesktop">
+            <div class="flex items-center gap-2">
+              <span
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-32"
+                :title="formatUnixSeconds(item.ts)"
+              >
+                {{ formatListUnixSeconds(item.ts) }}
+              </span>
+              <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
+              <span class="opacity-70 shrink-0 w-24 truncate">{{ item.kind }}</span>
+              <div class="shrink-0 flex items-center gap-1 min-w-0">
+                <n-tag
+                  v-for="(chip, idx) in pickSummaryChips(item)"
+                  :key="`${item.seq}-chip-${idx}`"
+                  size="tiny"
+                  :bordered="false"
+                  :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
+                >
+                  <span class="inline-block max-w-28 truncate align-bottom">{{ chip.text }}</span>
+                </n-tag>
+              </div>
+              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <n-button
+                v-if="item.fields"
+                size="tiny"
+                secondary
+                @click.stop="openEventDetails(item)"
+              >
+                {{ t('runEvents.actions.details') }}
+              </n-button>
+            </div>
+          </template>
+          <template v-else>
+            <div class="flex items-center gap-2">
+              <span
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-14"
+                :title="formatUnixSeconds(item.ts)"
+              >
+                {{ formatListUnixSeconds(item.ts) }}
+              </span>
+              <n-tag class="shrink-0" size="tiny" :type="runEventLevelTagType(item.level)">{{ item.level }}</n-tag>
+              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <n-button
+                v-if="item.fields"
+                size="tiny"
+                secondary
+                @click.stop="openEventDetails(item)"
+              >
+                {{ t('runEvents.actions.details') }}
+              </n-button>
+            </div>
+
+            <div class="mt-0.5 flex items-center gap-2 min-w-0">
+              <span class="opacity-70 truncate max-w-[40%]">{{ item.kind }}</span>
+              <div class="flex items-center gap-1 min-w-0 overflow-hidden">
+                <n-tag
+                  v-for="(chip, idx) in pickSummaryChips(item)"
+                  :key="`${item.seq}-chip-${idx}`"
+                  size="tiny"
+                  :bordered="false"
+                  :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
+                >
+                  <span class="inline-block max-w-24 truncate align-bottom">{{ chip.text }}</span>
+                </n-tag>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
 
       <n-modal
+        v-if="isDesktop"
         v-model:show="detailShow"
         preset="card"
         :style="{ width: MODAL_WIDTH.md }"
@@ -305,6 +579,24 @@ defineExpose<RunEventsModalExpose>({ open })
           </n-space>
         </div>
       </n-modal>
+
+      <n-drawer v-else v-model:show="detailShow" placement="bottom" height="70vh">
+        <n-drawer-content :title="t('runEvents.details.title')" closable>
+          <div v-if="detailEvent" class="space-y-3">
+            <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+              <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
+              <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
+              <span class="opacity-70">{{ detailEvent.kind }}</span>
+            </div>
+            <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
+            <n-code
+              v-if="detailEvent.fields"
+              :code="formatJson(detailEvent.fields)"
+              language="json"
+            />
+          </div>
+        </n-drawer-content>
+      </n-drawer>
 
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.close') }}</n-button>

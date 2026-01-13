@@ -541,12 +541,13 @@ const messages = {
     title: 'Run events',
     noEvents: 'No events yet',
     badges: {
-      new: 'New',
+      newCount: 'New {count}',
     },
     actions: {
       follow: 'Follow',
       latest: 'Latest',
       details: 'Details',
+      reconnect: 'Reconnect',
     },
     details: {
       title: 'Event details',
@@ -554,7 +555,8 @@ const messages = {
     ws: {
       disconnected: 'Disconnected',
       connecting: 'Connecting',
-      connected: 'Connected',
+      live: 'Live',
+      reconnecting: 'Reconnecting',
       error: 'Error',
     },
   },
