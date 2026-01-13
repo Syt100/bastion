@@ -1,54 +1,54 @@
-# ui
+# Bastion Web UI
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + Vite single-page app for the Bastion Hub.
 
-## Recommended IDE Setup
+## Prerequisites
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- Node.js `20.19+` or `22.12+` (see `package.json`)
 
-## Recommended Browser Setup
+## Install
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+From the repo root:
 
 ```sh
-npm install
+npm ci --prefix ui
 ```
 
-### Compile and Hot-Reload for Development
+## Development
+
+The dev server proxies the Hub API and WebSocket endpoints to `http://127.0.0.1:9876` (see `vite.config.ts`).
+
+Terminal 1 (Hub):
 
 ```sh
-npm run dev
+cargo run -p bastion
 ```
 
-### Type-Check, Compile and Minify for Production
+Terminal 2 (UI):
 
 ```sh
-npm run build
+npm run dev --prefix ui
 ```
 
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+Open `http://localhost:5173`.
+
+## Build
 
 ```sh
-npm run test:unit
+npm run build --prefix ui
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+Build output goes to `ui/dist`.
+
+### Serving UI via the Hub
+
+- **Filesystem mode** (default): the Hub serves UI assets from `./ui/dist` (relative to its working directory). You can override via `BASTION_UI_DIR=/path/to/dist`.
+- **Embedded mode**: build the UI, then build/run the Hub with `--features embed-ui` to bake `ui/dist` into the binary.
+
+## Tests / lint / type-check
 
 ```sh
-npm run lint
+npm test --prefix ui
+npm run lint --prefix ui
+npm run type-check --prefix ui
 ```
