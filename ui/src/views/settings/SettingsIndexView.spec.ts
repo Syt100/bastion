@@ -40,10 +40,10 @@ describe('SettingsIndexView', () => {
     vi.clearAllMocks()
   })
 
-  it('navigates to storage and notifications', async () => {
+  it('navigates to settings pages', async () => {
     const wrapper = mount(SettingsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(3)
+    expect(buttons.length).toBe(4)
 
     await buttons[0]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/storage')
@@ -53,5 +53,8 @@ describe('SettingsIndexView', () => {
 
     await buttons[2]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/maintenance')
+
+    await buttons[3]!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/about')
   })
 })

@@ -328,11 +328,21 @@ const messages = {
       storage: '存储',
       notifications: '通知',
       maintenance: '运维',
+      about: '关于',
     },
     overview: {
       storageDesc: '配置远程存储凭据与相关设置',
       notificationsDesc: '配置通知渠道、目的地、模板与队列',
       maintenanceDesc: '运维与维护工具',
+      aboutDesc: '版本与构建信息',
+    },
+    about: {
+      hubTitle: 'Hub',
+      uiTitle: 'Web UI',
+      fields: {
+        version: '版本',
+        buildTime: '构建时间',
+      },
     },
     maintenance: {
       cleanup: {

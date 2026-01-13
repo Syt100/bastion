@@ -328,11 +328,21 @@ const messages = {
       storage: 'Storage',
       notifications: 'Notifications',
       maintenance: 'Maintenance',
+      about: 'About',
     },
     overview: {
       storageDesc: 'Manage remote storage credentials and related settings',
       notificationsDesc: 'Manage channels, destinations, templates, and queue',
       maintenanceDesc: 'Operational tools for maintenance tasks',
+      aboutDesc: 'Version and build information',
+    },
+    about: {
+      hubTitle: 'Hub',
+      uiTitle: 'Web UI',
+      fields: {
+        version: 'Version',
+        buildTime: 'Build time',
+      },
     },
     maintenance: {
       cleanup: {
