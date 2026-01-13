@@ -81,6 +81,8 @@ const followDisabledReason = ref<'auto' | 'manual' | null>(null)
 const unseenCount = ref<number>(0)
 const listEl = ref<HTMLElement | null>(null)
 
+const showLatest = computed(() => !follow.value || unseenCount.value > 0)
+
 const nowTick = ref<number>(Math.floor(Date.now() / 1000))
 
 const reconnectAttempts = ref<number>(0)
@@ -461,7 +463,7 @@ defineExpose<RunEventsModalExpose>({ open })
           </n-tag>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 ml-auto">
           <n-button
             v-if="wsStatus === 'disconnected' || wsStatus === 'reconnecting' || wsStatus === 'error'"
             size="small"
@@ -474,9 +476,14 @@ defineExpose<RunEventsModalExpose>({ open })
             <span class="text-xs opacity-80">{{ t('runEvents.actions.follow') }}</span>
             <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
           </div>
-          <n-button v-if="!follow || unseenCount > 0" size="small" @click="jumpToLatest">
-            {{ t('runEvents.actions.latest') }}
-          </n-button>
+          <span
+            data-testid="run-events-latest"
+            :class="showLatest ? '' : 'invisible pointer-events-none'"
+          >
+            <n-button size="small" :disabled="!showLatest" @click="jumpToLatest">
+              {{ t('runEvents.actions.latest') }}
+            </n-button>
+          </span>
         </div>
       </div>
 
