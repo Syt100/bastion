@@ -1,0 +1,152 @@
+# Bastion
+
+Bastion is a self-hosted backup orchestrator (Hub + optional Agents) with a Web UI.
+
+This repository is an MVP and is still evolving: expect breaking changes until a stable release process is in place.
+
+## Components
+
+- **Hub** (this repo’s main binary): HTTP API + Web UI, scheduling, metadata storage (SQLite), secrets management.
+- **Agent** (Hub subcommand): connects to the Hub over WebSocket and executes jobs on remote nodes.
+- **Web UI** (`ui/`): Vue 3 + Vite single-page app.
+
+## Quickstart (local dev)
+
+### Prerequisites
+
+- Rust `1.92+` (workspace `rust-version = 1.92`)
+- Node.js `20.19+` or `22.12+` (see `ui/package.json`)
+
+### Run Hub (API only)
+
+```bash
+cargo run -p bastion
+```
+
+The Hub listens on `127.0.0.1:9876` by default.
+
+> HTTPS is enforced for non-loopback traffic. For LAN/dev, either:
+> - keep Hub bound to loopback, or
+> - run with `--insecure-http`, or
+> - put it behind a reverse proxy and configure trusted proxies.
+
+### Run Web UI in dev mode (recommended for UI development)
+
+Terminal 1:
+
+```bash
+cargo run -p bastion
+```
+
+Terminal 2:
+
+```bash
+npm ci --prefix ui
+npm run dev --prefix ui
+```
+
+Open the UI at `http://localhost:5173`. The dev server proxies:
+- `/api/*` → `http://127.0.0.1:9876`
+- `/agent/*` → `http://127.0.0.1:9876` (including WebSocket upgrade)
+
+### Serve the built UI from the Hub (filesystem mode)
+
+```bash
+npm ci --prefix ui
+npm run build --prefix ui
+
+# Hub serves from ./ui/dist by default when not using embed-ui
+cargo run -p bastion
+```
+
+If you want to serve UI assets from a different directory, set `BASTION_UI_DIR` (only used in filesystem mode):
+
+```bash
+BASTION_UI_DIR=/path/to/ui/dist cargo run -p bastion
+```
+
+### Serve the built UI from the Hub (embedded mode)
+
+Embedded mode bakes `ui/dist` into the Hub binary at build time.
+
+```bash
+npm ci --prefix ui
+npm run build --prefix ui
+
+cargo run -p bastion --features embed-ui
+```
+
+## First run: setup
+
+On first launch, Bastion requires initialization (create the first user). Open the UI and complete the setup flow.
+
+Health/System endpoints (always available, even when HTTPS is enforced):
+- `GET /api/health`
+- `GET /api/system`
+- `GET /api/setup/status`
+
+## Agent: enroll and connect
+
+1. In the Web UI, create an **enrollment token** (Agents page).
+2. Run the agent on the target machine:
+
+```bash
+bastion agent \
+  --hub-url http://127.0.0.1:9876 \
+  --enroll-token <token> \
+  --name "<friendly-name>"
+```
+
+Agents store their enrollment identity in their own data directory (see `BASTION_DATA_DIR`).
+
+## Configuration
+
+### Common Hub options
+
+You can use CLI flags or env vars:
+
+- `--host` / `BASTION_HOST` (default `127.0.0.1`)
+- `--port` / `BASTION_PORT` (default `9876`)
+- `--data-dir` / `BASTION_DATA_DIR`
+- `--insecure-http` / `BASTION_INSECURE_HTTP` (dev/LAN only)
+- `--hub-timezone` / `BASTION_HUB_TIMEZONE` (IANA; default: local system timezone)
+- `--trusted-proxy` / `BASTION_TRUSTED_PROXIES` (repeatable / comma-separated CIDRs)
+- `--run-retention-days` / `BASTION_RUN_RETENTION_DAYS` (default `180`)
+- `--incomplete-cleanup-days` / `BASTION_INCOMPLETE_CLEANUP_DAYS` (default `7`, `0` disables)
+
+Logging:
+- `--log` / `BASTION_LOG` / `RUST_LOG`
+- `--log-file` / `BASTION_LOG_FILE`
+- `--log-rotation` / `BASTION_LOG_ROTATION` (`daily|hourly|never`)
+- `--log-keep-files` / `BASTION_LOG_KEEP_FILES`
+
+### Agent options
+
+- `--hub-url` / `BASTION_HUB_URL`
+- `--enroll-token` / `BASTION_AGENT_ENROLL_TOKEN` (only for first-time enrollment)
+- `--name` / `BASTION_AGENT_NAME`
+- `--data-dir` / `BASTION_DATA_DIR`
+- `--heartbeat-seconds` / `BASTION_AGENT_HEARTBEAT_SECONDS` (default `15`)
+
+## Security notes
+
+- Bastion stores state in a data directory (SQLite + encrypted secrets). See `docs/data-directory.md`.
+- Use keypack export/import to back up or migrate `master.key`. See `docs/data-directory.md`.
+- For reverse proxy deployments (TLS termination), ensure `X-Forwarded-*` headers are set and proxies are trusted. See `docs/reverse-proxy.md`.
+
+## Development
+
+Run the repo’s full checks (roughly what CI runs):
+
+```bash
+./scripts/ci.sh
+```
+
+## Docs
+
+- `docs/README.md` — documentation index
+- `docs/data-directory.md` — data directory layout + key management
+- `docs/logging.md` — logging configuration + rotation
+- `docs/reverse-proxy.md` — reverse proxy examples (Nginx/Caddy)
+- `docs/recipes/vaultwarden.md` — Vaultwarden backup recipe
+
