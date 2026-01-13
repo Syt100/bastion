@@ -13,10 +13,20 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['value', 'show', 'loading'],
+      props: ['value', 'show', 'loading', 'disabled'],
       emits: ['update:value', 'update:show'],
-      setup(_, { slots }) {
-        return () => vue.h('div', { 'data-stub': name }, slots.default?.())
+      setup(props, { slots }) {
+        return () =>
+          vue.h(
+            'div',
+            {
+              'data-stub': name,
+              'data-disabled': typeof (props as { disabled?: boolean }).disabled === 'boolean'
+                ? String(Boolean((props as { disabled?: boolean }).disabled))
+                : undefined,
+            },
+            slots.default?.(),
+          )
       },
     })
 
@@ -102,20 +112,22 @@ describe('RunEventsModal', () => {
       Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true })
       Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
 
+      const latestButton = () => wrapper.find('[data-testid="run-events-latest"] [data-stub="NButton"]')
+
       // Move away from bottom -> follow auto-unfollows.
       nowMs = 1000
       el.scrollTop = 700
       await list.trigger('scroll')
       await Promise.resolve()
       await Promise.resolve()
-      expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
+      expect(latestButton().attributes('data-disabled')).toBe('false')
 
       // Return to bottom -> follow auto-resumes.
       el.scrollTop = 900
       await list.trigger('scroll')
       await Promise.resolve()
       await Promise.resolve()
-      expect(wrapper.find('[data-testid="run-events-latest"]').classes()).toContain('invisible')
+      expect(latestButton().attributes('data-disabled')).toBe('true')
     } finally {
       wrapper.unmount()
       nowSpy.mockRestore()
@@ -140,14 +152,18 @@ describe('RunEventsModal', () => {
     followSwitch.vm.$emit('update:value', false)
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
+    expect(wrapper.find('[data-testid="run-events-latest"] [data-stub="NButton"]').attributes('data-disabled')).toBe(
+      'false',
+    )
 
     // Reaching bottom should not re-enable follow.
     el.scrollTop = 900
     await list.trigger('scroll')
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
+    expect(wrapper.find('[data-testid="run-events-latest"] [data-stub="NButton"]').attributes('data-disabled')).toBe(
+      'false',
+    )
 
     wrapper.unmount()
   })
