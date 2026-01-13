@@ -77,6 +77,7 @@ function formatListUnixSeconds(ts: number | null): string {
 }
 
 const follow = ref<boolean>(true)
+const followDisabledReason = ref<'auto' | 'manual' | null>(null)
 const unseenCount = ref<number>(0)
 const listEl = ref<HTMLElement | null>(null)
 
@@ -145,8 +146,17 @@ function scrollToLatest(): void {
   unseenCount.value = 0
 }
 
+function setFollowEnabled(enabled: boolean, reason: 'auto' | 'manual' | null = null): void {
+  follow.value = enabled
+  followDisabledReason.value = enabled ? null : reason
+}
+
+function handleFollowUpdate(value: boolean): void {
+  setFollowEnabled(value, value ? null : 'manual')
+}
+
 function jumpToLatest(): void {
-  follow.value = true
+  setFollowEnabled(true)
   nextTick().then(scrollToLatest)
 }
 
@@ -155,8 +165,10 @@ function handleListScroll(e: Event): void {
   if (!el) return
   const atBottom = isAtBottom(el)
   if (unseenCount.value > 0 && atBottom) unseenCount.value = 0
-  if (follow.value && !atBottom && Date.now() > suppressAutoUnfollowUntil) {
-    follow.value = false
+  if (!follow.value && atBottom && followDisabledReason.value === 'auto') {
+    setFollowEnabled(true)
+  } else if (follow.value && !atBottom && Date.now() > suppressAutoUnfollowUntil) {
+    setFollowEnabled(false, 'auto')
   }
 }
 
@@ -382,7 +394,7 @@ async function open(id: string): Promise<void> {
   loading.value = true
   events.value = []
   lastSeq = 0
-  follow.value = true
+  setFollowEnabled(true)
   unseenCount.value = 0
   reconnectAttempts.value = 0
   reconnectInSeconds.value = null
@@ -460,7 +472,7 @@ defineExpose<RunEventsModalExpose>({ open })
           </n-button>
           <div class="flex items-center gap-2">
             <span class="text-xs opacity-80">{{ t('runEvents.actions.follow') }}</span>
-            <n-switch v-model:value="follow" size="small" />
+            <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
           </div>
           <n-button v-if="!follow || unseenCount > 0" size="small" @click="jumpToLatest">
             {{ t('runEvents.actions.latest') }}
@@ -475,6 +487,7 @@ defineExpose<RunEventsModalExpose>({ open })
       <div
         v-else
         ref="listEl"
+        data-testid="run-events-list"
         class="max-h-[65vh] overflow-auto border rounded-md bg-[var(--n-color)]"
         @scroll="handleListScroll"
       >
