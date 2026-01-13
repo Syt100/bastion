@@ -514,7 +514,7 @@ defineExpose<RunEventsModalExpose>({ open })
           <template v-if="isDesktop">
             <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-28 text-right"
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
@@ -548,7 +548,7 @@ defineExpose<RunEventsModalExpose>({ open })
           <template v-else>
             <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4 w-12 text-right"
+                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
