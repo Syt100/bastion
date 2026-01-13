@@ -74,14 +74,48 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout (for release notes)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          repo="${GITHUB_REPOSITORY}"
+
+          prev_tag="$(git describe --tags --match 'v*' --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          if [ -n "${prev_tag}" ]; then
+            range="${prev_tag}..${tag}"
+            compare_url="https://github.com/${repo}/compare/${prev_tag}...${tag}"
+          else
+            range="${tag}"
+            compare_url="https://github.com/${repo}/commits/${tag}"
+          fi
+
+          changes="$(git log --no-merges --pretty=format:'- %s (%h)' "${range}" || true)"
+          if [ -z "${changes}" ]; then
+            changes="- No changes."
+          fi
+
+          {
+            echo "## Changes"
+            echo
+            echo "${changes}"
+            echo
+            echo "**Full Changelog**: ${compare_url}"
+          } > release-notes.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: release-notes.md
