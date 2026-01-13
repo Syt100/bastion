@@ -4,6 +4,26 @@ $ErrorActionPreference = "Stop"
 $rootDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $rootDir
 
+Write-Host "==> Secrets: gitleaks"
+$gitleaks = Get-Command gitleaks -ErrorAction SilentlyContinue
+if (-not $gitleaks) {
+  $go = Get-Command go -ErrorAction SilentlyContinue
+  if (-not $go) {
+    throw "gitleaks not found and Go is not installed. Install gitleaks: https://github.com/gitleaks/gitleaks"
+  }
+
+  $gitleaksVersion = "v8.30.0"
+  $baseDir = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $env:USERPROFILE }
+  $toolsDir = Join-Path $baseDir "bastion-tools\\bin"
+  New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+
+  $env:GOBIN = $toolsDir
+  go install "github.com/zricethezav/gitleaks/v8@$gitleaksVersion"
+  $env:PATH = "$toolsDir;$env:PATH"
+}
+
+gitleaks detect --source $rootDir --redact --no-banner --exit-code 1
+
 Write-Host "==> Rust: fmt"
 cargo fmt --check
 
