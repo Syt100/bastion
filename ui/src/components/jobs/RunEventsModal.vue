@@ -476,10 +476,7 @@ defineExpose<RunEventsModalExpose>({ open })
             <span class="text-xs opacity-80">{{ t('runEvents.actions.follow') }}</span>
             <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
           </div>
-          <span
-            data-testid="run-events-latest"
-            :class="showLatest ? '' : 'invisible pointer-events-none'"
-          >
+          <span data-testid="run-events-latest">
             <n-button size="small" :disabled="!showLatest" @click="jumpToLatest">
               {{ t('runEvents.actions.latest') }}
             </n-button>
