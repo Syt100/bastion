@@ -139,8 +139,10 @@ Logging:
 Run the repo’s full checks (roughly what CI runs):
 
 ```bash
-./scripts/ci.sh
+bash scripts/ci.sh
 ```
+
+This script includes a `gitleaks` secret scan step. If `gitleaks` is not installed, it will attempt to install a pinned version via `go install` (requires Go) into `~/.cache/bastion-tools/bin`.
 
 ## Docs
 
@@ -149,4 +151,3 @@ Run the repo’s full checks (roughly what CI runs):
 - `docs/logging.md` — logging configuration + rotation
 - `docs/reverse-proxy.md` — reverse proxy examples (Nginx/Caddy)
 - `docs/recipes/vaultwarden.md` — Vaultwarden backup recipe
-
