@@ -247,8 +247,8 @@ fn next_cron_due_after_cached(
         };
 
         let now_local = tz.from_utc_datetime(&now.naive_utc());
-        let mut iter = schedule.after(&now_local);
-        while let Some(candidate) = iter.next() {
+        let iter = schedule.after(&now_local);
+        for candidate in iter {
             if !allow_due_for_local_minute(tz, candidate) {
                 continue;
             }
@@ -288,10 +288,7 @@ mod tests {
     fn normalize_cron_rejects_nonzero_seconds() {
         assert!(normalize_cron("10 * * * * *").is_err());
         assert!(normalize_cron("*/10 * * * * *").is_err());
-        assert_eq!(
-            normalize_cron("0 */5 * * * *").unwrap(),
-            "0 */5 * * * *"
-        );
+        assert_eq!(normalize_cron("0 */5 * * * *").unwrap(), "0 */5 * * * *");
     }
 
     #[test]

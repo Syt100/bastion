@@ -319,7 +319,10 @@ mod tests {
         let total = super::count_queue(&pool, None, None).await.expect("count");
         assert_eq!(total, 2);
 
-        let statuses = vec![super::STATUS_FAILED.to_string(), super::STATUS_SENT.to_string()];
+        let statuses = vec![
+            super::STATUS_FAILED.to_string(),
+            super::STATUS_SENT.to_string(),
+        ];
         let channels = vec![super::CHANNEL_WECOM_BOT.to_string()];
         let total = super::count_queue(&pool, Some(statuses.as_slice()), Some(channels.as_slice()))
             .await

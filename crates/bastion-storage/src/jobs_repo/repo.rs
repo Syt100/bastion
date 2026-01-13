@@ -4,6 +4,16 @@ use uuid::Uuid;
 
 use super::types::{Job, OverlapPolicy};
 
+pub struct UpdateJobParams<'a> {
+    pub job_id: &'a str,
+    pub name: &'a str,
+    pub agent_id: Option<&'a str>,
+    pub schedule: Option<&'a str>,
+    pub schedule_timezone: Option<&'a str>,
+    pub overlap_policy: OverlapPolicy,
+    pub spec: serde_json::Value,
+}
+
 pub async fn create_job(
     db: &SqlitePool,
     name: &str,
@@ -184,14 +194,17 @@ pub async fn list_jobs_for_agent(
 
 pub async fn update_job(
     db: &SqlitePool,
-    job_id: &str,
-    name: &str,
-    agent_id: Option<&str>,
-    schedule: Option<&str>,
-    schedule_timezone: Option<&str>,
-    overlap_policy: OverlapPolicy,
-    spec: serde_json::Value,
+    params: UpdateJobParams<'_>,
 ) -> Result<bool, anyhow::Error> {
+    let UpdateJobParams {
+        job_id,
+        name,
+        agent_id,
+        schedule,
+        schedule_timezone,
+        overlap_policy,
+        spec,
+    } = params;
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let spec_json = serde_json::to_string(&spec)?;
     let schedule_timezone = schedule_timezone.unwrap_or("UTC");

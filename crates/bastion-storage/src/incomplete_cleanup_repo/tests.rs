@@ -210,8 +210,16 @@ async fn list_and_count_support_multi_value_filters() {
     assert_eq!(total, 1);
 
     let target_types = vec!["local_dir".to_string(), "webdav".to_string()];
-    let tasks = list_tasks(&pool, None, Some(target_types.as_slice()), None, None, 50, 0)
-        .await
-        .expect("list targets");
+    let tasks = list_tasks(
+        &pool,
+        None,
+        Some(target_types.as_slice()),
+        None,
+        None,
+        50,
+        0,
+    )
+    .await
+    .expect("list targets");
     assert_eq!(tasks.len(), 2);
 }

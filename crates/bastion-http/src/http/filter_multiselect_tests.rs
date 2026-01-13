@@ -69,22 +69,26 @@ async fn cleanup_list_accepts_multi_value_query_params() {
     .await
     .expect("insert job");
 
-    sqlx::query("INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'failed', ?, ?)")
-        .bind("run1")
-        .bind("job1")
-        .bind(now)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .expect("insert run1");
-    sqlx::query("INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'failed', ?, ?)")
-        .bind("run2")
-        .bind("job1")
-        .bind(now + 1)
-        .bind(now + 1)
-        .execute(&pool)
-        .await
-        .expect("insert run2");
+    sqlx::query(
+        "INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'failed', ?, ?)",
+    )
+    .bind("run1")
+    .bind("job1")
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert run1");
+    sqlx::query(
+        "INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'failed', ?, ?)",
+    )
+    .bind("run2")
+    .bind("job1")
+    .bind(now + 1)
+    .bind(now + 1)
+    .execute(&pool)
+    .await
+    .expect("insert run2");
 
     let webdav_snapshot = serde_json::json!({
         "node_id": "hub",
@@ -160,10 +164,7 @@ async fn cleanup_list_accepts_multi_value_query_params() {
 
     // Multi-value filters: should return only the matching row.
     for (path, expected_total) in [
-        (
-            "/api/maintenance/incomplete-cleanup?status[]=done",
-            1,
-        ),
+        ("/api/maintenance/incomplete-cleanup?status[]=done", 1),
         (
             "/api/maintenance/incomplete-cleanup?target_type[]=webdav",
             1,
@@ -295,10 +296,7 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
             "/api/notifications/queue?status[]=failed&status[]=sent&channel[]=email&channel[]=wecom_bot",
             2,
         ),
-        (
-            "/api/notifications/queue?status=failed&channel=email",
-            1,
-        ),
+        ("/api/notifications/queue?status=failed&channel=email", 1),
     ] {
         let resp = client
             .get(format!("{}{}", base_url(addr), path))

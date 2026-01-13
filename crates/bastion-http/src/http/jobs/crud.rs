@@ -249,13 +249,15 @@ pub(in crate::http) async fn update_job(
 
     let updated = jobs_repo::update_job(
         &state.db,
-        &job_id,
-        name,
-        agent_id.as_deref(),
-        schedule.as_deref(),
-        Some(&schedule_timezone),
-        req.overlap_policy,
-        req.spec,
+        jobs_repo::UpdateJobParams {
+            job_id: &job_id,
+            name,
+            agent_id: agent_id.as_deref(),
+            schedule: schedule.as_deref(),
+            schedule_timezone: Some(&schedule_timezone),
+            overlap_policy: req.overlap_policy,
+            spec: req.spec,
+        },
     )
     .await?;
     if !updated {

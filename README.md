@@ -144,6 +144,8 @@ bash scripts/ci.sh
 
 This script includes a `gitleaks` secret scan step. If `gitleaks` is not installed, it will attempt to install a pinned version via `go install` (requires Go) into `~/.cache/bastion-tools/bin`.
 
+GitHub Actions CI runs the same script on pushes and pull requests (see `.github/workflows/ci.yml`).
+
 ## Docs
 
 - `docs/README.md` — documentation index
@@ -151,3 +153,7 @@ This script includes a `gitleaks` secret scan step. If `gitleaks` is not install
 - `docs/logging.md` — logging configuration + rotation
 - `docs/reverse-proxy.md` — reverse proxy examples (Nginx/Caddy)
 - `docs/recipes/vaultwarden.md` — Vaultwarden backup recipe
+
+## License
+
+Apache-2.0. See `LICENSE`.
