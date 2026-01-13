@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api'
 
 export type SystemStatus = {
   version: string
+  build_time_unix?: number | null
   insecure_http: boolean
   hub_timezone: string
 }
@@ -12,6 +13,7 @@ export type SystemStatus = {
 export const useSystemStore = defineStore('system', () => {
   const loading = ref<boolean>(false)
   const version = ref<string | null>(null)
+  const buildTimeUnix = ref<number | null>(null)
   const insecureHttp = ref<boolean>(false)
   const hubTimezone = ref<string>('UTC')
 
@@ -25,6 +27,7 @@ export const useSystemStore = defineStore('system', () => {
       try {
         const status = await apiFetch<SystemStatus>('/api/system')
         version.value = status.version
+        buildTimeUnix.value = typeof status.build_time_unix === 'number' ? status.build_time_unix : null
         insecureHttp.value = status.insecure_http
         hubTimezone.value = status.hub_timezone || 'UTC'
       } finally {
@@ -36,5 +39,5 @@ export const useSystemStore = defineStore('system', () => {
     return await inflightRefresh
   }
 
-  return { loading, version, insecureHttp, hubTimezone, refresh }
+  return { loading, version, buildTimeUnix, insecureHttp, hubTimezone, refresh }
 })

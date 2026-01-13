@@ -8,6 +8,7 @@ const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
 const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
 const SettingsStorageView = () => import('@/views/settings/SettingsStorageView.vue')
+const AboutView = () => import('@/views/settings/AboutView.vue')
 const NotificationsShellView = () => import('@/views/settings/notifications/NotificationsShellView.vue')
 const NotificationsIndexView = () => import('@/views/settings/notifications/NotificationsIndexView.vue')
 const NotificationsChannelsView = () => import('@/views/settings/notifications/NotificationsChannelsView.vue')
@@ -57,6 +58,11 @@ const router = createRouter({
           meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } },
           children: [
             { path: '', component: SettingsIndexView, meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } } },
+            {
+              path: 'about',
+              component: AboutView,
+              meta: { titleKey: 'settings.menu.about', mobileTopBar: { titleKey: 'settings.menu.about', backTo: '/settings' } },
+            },
             {
               path: 'storage',
               redirect: '/n/hub/settings/storage',

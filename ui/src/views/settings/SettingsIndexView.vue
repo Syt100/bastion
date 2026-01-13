@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { NCard, NIcon } from 'naive-ui'
-import { ChevronForwardOutline, CloudOutline, ConstructOutline, NotificationsOutline } from '@vicons/ionicons5'
+import { ChevronForwardOutline, CloudOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -36,6 +36,13 @@ const items: SettingsItem[] = [
     description: t('settings.overview.maintenanceDesc'),
     to: '/settings/maintenance',
     icon: ConstructOutline,
+  },
+  {
+    key: 'about',
+    title: t('settings.menu.about'),
+    description: t('settings.overview.aboutDesc'),
+    to: '/settings/about',
+    icon: InformationCircleOutline,
   },
 ]
 
