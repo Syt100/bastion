@@ -116,6 +116,14 @@ function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 
   return 'default'
 }
 
+function runEventAccentBorderClass(level: string): string {
+  if (level === 'error') return 'border-red-500/80'
+  if (level === 'warn' || level === 'warning') return 'border-amber-400/80'
+  if (level === 'info') return 'border-emerald-400/80'
+  if (level === 'debug') return 'border-slate-400/70'
+  return 'border-zinc-400/60'
+}
+
 function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'live') return 'success'
   if (status === 'error') return 'error'
@@ -492,14 +500,15 @@ defineExpose<RunEventsModalExpose>({ open })
         v-else
         ref="listEl"
         data-testid="run-events-list"
-        class="max-h-[65vh] overflow-auto border rounded-md bg-[var(--n-color)]"
+        class="max-h-[65vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-black/5 dark:ring-white/10"
         @scroll="handleListScroll"
       >
         <div
           v-for="item in events"
           :key="item.seq"
           data-testid="run-event-row"
-          class="px-2 py-1 border-b last:border-b-0 font-mono text-xs opacity-90 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs opacity-90 cursor-pointer transition-colors bg-black/2 hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10"
+          :class="runEventAccentBorderClass(item.level)"
           @click="openEventDetails(item)"
         >
           <template v-if="isDesktop">
