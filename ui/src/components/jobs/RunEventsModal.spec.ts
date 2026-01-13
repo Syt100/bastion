@@ -108,14 +108,14 @@ describe('RunEventsModal', () => {
       await list.trigger('scroll')
       await Promise.resolve()
       await Promise.resolve()
-      expect(wrapper.text()).toContain('runEvents.actions.latest')
+      expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
 
       // Return to bottom -> follow auto-resumes.
       el.scrollTop = 900
       await list.trigger('scroll')
       await Promise.resolve()
       await Promise.resolve()
-      expect(wrapper.text()).not.toContain('runEvents.actions.latest')
+      expect(wrapper.find('[data-testid="run-events-latest"]').classes()).toContain('invisible')
     } finally {
       wrapper.unmount()
       nowSpy.mockRestore()
@@ -140,14 +140,14 @@ describe('RunEventsModal', () => {
     followSwitch.vm.$emit('update:value', false)
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.text()).toContain('runEvents.actions.latest')
+    expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
 
     // Reaching bottom should not re-enable follow.
     el.scrollTop = 900
     await list.trigger('scroll')
     await Promise.resolve()
     await Promise.resolve()
-    expect(wrapper.text()).toContain('runEvents.actions.latest')
+    expect(wrapper.find('[data-testid="run-events-latest"]').classes()).not.toContain('invisible')
 
     wrapper.unmount()
   })
