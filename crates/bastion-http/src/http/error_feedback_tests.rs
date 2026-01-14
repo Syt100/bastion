@@ -66,6 +66,7 @@ async fn invalid_wecom_webhook_returns_400_with_details_field() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -131,6 +132,7 @@ async fn invalid_smtp_from_returns_400_with_details_field() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -204,6 +206,7 @@ async fn login_rate_limit_includes_retry_after_details() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -255,6 +258,7 @@ async fn agent_enroll_invalid_token_format_returns_401_with_details() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -315,6 +319,7 @@ async fn create_job_missing_webdav_secret_returns_400_with_details_field() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;

@@ -86,6 +86,7 @@ async fn agent_ingest_runs_inserts_run_and_events_and_dedupes() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -180,6 +181,7 @@ async fn agent_ingest_runs_requires_auth() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -244,6 +246,7 @@ async fn agent_ingest_runs_rejects_jobs_not_assigned_to_agent() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -319,6 +322,7 @@ async fn agent_ingest_runs_limits_event_count() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -418,6 +422,7 @@ async fn agent_ingest_runs_upserts_existing_run_metadata() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -498,6 +503,7 @@ async fn agent_ingest_runs_validates_ended_at() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
@@ -575,6 +581,7 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
     });
 
     let (listener, addr) = start_test_server().await;
