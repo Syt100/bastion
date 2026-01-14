@@ -3,6 +3,7 @@ import { computed, h, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
+  NCheckbox,
   NDataTable,
   NForm,
   NFormItem,
@@ -19,8 +20,10 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import { useAgentsStore, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
+import { useBulkOperationsStore } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -33,9 +36,11 @@ import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
 const message = useMessage()
+const router = useRouter()
 
 const ui = useUiStore()
 const agents = useAgentsStore()
+const bulkOps = useBulkOperationsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const tokenModalOpen = ref<boolean>(false)
@@ -52,11 +57,18 @@ const labelIndexLoading = ref<boolean>(false)
 const labelIndex = ref<{ label: string; count: number }[]>([])
 const selectedLabels = ref<string[]>([])
 const labelsMode = ref<AgentsLabelsMode>('and')
+const selectedAgentIds = ref<string[]>([])
 
 const labelsModalOpen = ref<boolean>(false)
 const labelsSaving = ref<boolean>(false)
 const labelsAgent = ref<AgentListItem | null>(null)
 const labelsValue = ref<string[]>([])
+
+const bulkLabelsModalOpen = ref<boolean>(false)
+const bulkLabelsSaving = ref<boolean>(false)
+const bulkLabelsAction = ref<'agent_labels_add' | 'agent_labels_remove'>('agent_labels_add')
+const bulkLabelsTarget = ref<'selected' | 'label_filter'>('selected')
+const bulkLabelsValue = ref<string[]>([])
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -151,6 +163,63 @@ function openLabelsModal(agent: AgentListItem): void {
   labelsModalOpen.value = true
 }
 
+function setAgentSelected(agentId: string, checked: boolean): void {
+  const next = new Set(selectedAgentIds.value)
+  if (checked) next.add(agentId)
+  else next.delete(agentId)
+  selectedAgentIds.value = [...next]
+}
+
+function openBulkLabelsModal(): void {
+  bulkLabelsValue.value = []
+  bulkLabelsAction.value = 'agent_labels_add'
+
+  if (selectedAgentIds.value.length > 0) bulkLabelsTarget.value = 'selected'
+  else bulkLabelsTarget.value = 'label_filter'
+
+  bulkLabelsModalOpen.value = true
+}
+
+async function createBulkLabelsOperation(): Promise<void> {
+  bulkLabelsSaving.value = true
+  try {
+    const labels = Array.from(
+      new Set(bulkLabelsValue.value.map((v) => v.trim()).filter((v) => v.length > 0)),
+    )
+    if (labels.length === 0) {
+      message.error(t('errors.formInvalid'))
+      return
+    }
+
+    const selector =
+      bulkLabelsTarget.value === 'selected'
+        ? { node_ids: Array.from(new Set(selectedAgentIds.value)) }
+        : { labels: selectedLabels.value, labels_mode: labelsMode.value }
+    if (bulkLabelsTarget.value === 'selected' && selector.node_ids.length === 0) {
+      message.error(t('errors.formInvalid'))
+      return
+    }
+    if (bulkLabelsTarget.value === 'label_filter' && selector.labels.length === 0) {
+      message.error(t('errors.formInvalid'))
+      return
+    }
+
+    const opId = await bulkOps.create({
+      kind: bulkLabelsAction.value,
+      selector,
+      payload: { labels },
+    })
+
+    message.success(t('messages.bulkOperationCreated'))
+    bulkLabelsModalOpen.value = false
+    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+  } catch (error) {
+    message.error(formatToastError(t('errors.createBulkOperationFailed'), error, t))
+  } finally {
+    bulkLabelsSaving.value = false
+  }
+}
+
 async function saveAgentLabels(): Promise<void> {
   if (!labelsAgent.value) return
 
@@ -169,6 +238,7 @@ async function saveAgentLabels(): Promise<void> {
 }
 
 const columns = computed<DataTableColumns<AgentListItem>>(() => [
+  ...(isDesktop.value ? [{ type: 'selection' as const }] : []),
   {
     title: t('agents.columns.name'),
     key: 'name',
@@ -291,6 +361,12 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="t('agents.title')" :subtitle="t('agents.subtitle')">
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button
+        :disabled="selectedAgentIds.length === 0 && selectedLabels.length === 0"
+        @click="openBulkLabelsModal"
+      >
+        {{ t('agents.bulkLabels') }}
+      </n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
 
@@ -333,7 +409,13 @@ onMounted(async () => {
       >
         <template #header>
           <div class="flex items-center justify-between gap-3">
-            <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
+            <div class="flex items-center gap-2 min-w-0">
+              <n-checkbox
+                :checked="selectedAgentIds.includes(agent.id)"
+                @update:checked="(v) => setAgentSelected(agent.id, v)"
+              />
+              <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
+            </div>
             <div>
               <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
               <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
@@ -398,7 +480,13 @@ onMounted(async () => {
     <div v-else>
       <n-card class="app-card">
         <div class="overflow-x-auto">
-          <n-data-table :loading="agents.loading" :columns="columns" :data="agents.items" />
+          <n-data-table
+            v-model:checked-row-keys="selectedAgentIds"
+            :row-key="(row) => row.id"
+            :loading="agents.loading"
+            :columns="columns"
+            :data="agents.items"
+          />
         </div>
       </n-card>
     </div>
@@ -485,6 +573,56 @@ onMounted(async () => {
         <n-space justify="end">
           <n-button @click="labelsModalOpen = false">{{ t('common.cancel') }}</n-button>
           <n-button type="primary" :loading="labelsSaving" @click="saveAgentLabels">{{ t('common.save') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal
+      v-model:show="bulkLabelsModalOpen"
+      preset="card"
+      :style="{ width: MODAL_WIDTH.md }"
+      :title="t('agents.bulkLabelsModal.title')"
+    >
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ t('agents.bulkLabelsModal.help') }}</div>
+
+        <n-form label-placement="top">
+          <n-form-item :label="t('agents.bulkLabelsModal.target')">
+            <n-radio-group v-model:value="bulkLabelsTarget" size="small">
+              <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
+                {{ t('agents.bulkLabelsModal.targetSelected', { count: selectedAgentIds.length }) }}
+              </n-radio-button>
+              <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
+                {{ t('agents.bulkLabelsModal.targetLabelFilter') }}
+              </n-radio-button>
+            </n-radio-group>
+          </n-form-item>
+
+          <n-form-item :label="t('agents.bulkLabelsModal.action')">
+            <n-radio-group v-model:value="bulkLabelsAction" size="small">
+              <n-radio-button value="agent_labels_add">{{ t('agents.bulkLabelsModal.actionAdd') }}</n-radio-button>
+              <n-radio-button value="agent_labels_remove">{{ t('agents.bulkLabelsModal.actionRemove') }}</n-radio-button>
+            </n-radio-group>
+          </n-form-item>
+
+          <n-form-item :label="t('agents.bulkLabelsModal.labels')">
+            <n-select
+              v-model:value="bulkLabelsValue"
+              multiple
+              filterable
+              tag
+              clearable
+              :options="labelOptions"
+              :placeholder="t('agents.bulkLabelsModal.labelsPlaceholder')"
+            />
+          </n-form-item>
+        </n-form>
+
+        <n-space justify="end">
+          <n-button @click="bulkLabelsModalOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="bulkLabelsSaving" @click="createBulkLabelsOperation">
+            {{ t('common.apply') }}
+          </n-button>
         </n-space>
       </div>
     </n-modal>

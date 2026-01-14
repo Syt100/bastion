@@ -19,6 +19,7 @@ use bastion_storage::secrets::SecretsCrypto;
 
 mod agents;
 mod auth;
+mod bulk_operations;
 mod error;
 mod fs;
 mod jobs;
@@ -118,6 +119,7 @@ pub struct AppState {
     pub incomplete_cleanup_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
+    pub bulk_ops_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
     pub hub_runtime_config: HubRuntimeConfigMeta,
 }
@@ -238,6 +240,22 @@ pub fn router(state: AppState) -> Router {
             "/api/agents/enrollment-tokens",
             post(agents::create_enrollment_token),
         )
+        .route(
+            "/api/bulk-operations",
+            get(bulk_operations::list_bulk_operations).post(bulk_operations::create_bulk_operation),
+        )
+        .route(
+            "/api/bulk-operations/{id}",
+            get(bulk_operations::get_bulk_operation),
+        )
+        .route(
+            "/api/bulk-operations/{id}/cancel",
+            post(bulk_operations::cancel_bulk_operation),
+        )
+        .route(
+            "/api/bulk-operations/{id}/retry-failed",
+            post(bulk_operations::retry_bulk_operation_failed),
+        )
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::create_job))
         .route(
             "/api/jobs/{id}",
@@ -337,3 +355,6 @@ mod agents_ingest_tests;
 
 #[cfg(test)]
 mod filter_multiselect_tests;
+
+#[cfg(test)]
+mod bulk_operations_tests;

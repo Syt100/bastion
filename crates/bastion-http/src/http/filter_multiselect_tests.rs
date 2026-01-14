@@ -146,6 +146,7 @@ async fn cleanup_list_accepts_multi_value_query_params() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -272,6 +273,7 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -383,6 +385,7 @@ async fn agents_list_supports_label_filter_and_or() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -476,6 +479,7 @@ async fn agent_labels_reject_invalid_label() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });

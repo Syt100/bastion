@@ -13,12 +13,12 @@ use super::super::{AppError, AppState};
 const LABEL_MAX_LEN: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum LabelsMode {
+pub(in crate::http) enum LabelsMode {
     And,
     Or,
 }
 
-pub(super) fn parse_labels_mode(value: Option<&str>) -> Result<LabelsMode, AppError> {
+pub(in crate::http) fn parse_labels_mode(value: Option<&str>) -> Result<LabelsMode, AppError> {
     let value = value
         .map(str::trim)
         .filter(|v| !v.is_empty())
@@ -34,7 +34,7 @@ pub(super) fn parse_labels_mode(value: Option<&str>) -> Result<LabelsMode, AppEr
     }
 }
 
-pub(super) fn normalize_labels(values: Vec<String>) -> Result<Vec<String>, AppError> {
+pub(in crate::http) fn normalize_labels(values: Vec<String>) -> Result<Vec<String>, AppError> {
     let mut out = Vec::new();
     for v in values {
         let label = validate_label(&v)?;

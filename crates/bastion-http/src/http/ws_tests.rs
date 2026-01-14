@@ -85,6 +85,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: run_events_bus.clone(),
         hub_runtime_config: Default::default(),
     });

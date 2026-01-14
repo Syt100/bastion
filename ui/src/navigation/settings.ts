@@ -62,6 +62,16 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     order: 35,
   },
   {
+    key: 'bulk-operations',
+    to: '/settings/bulk-operations',
+    titleKey: 'settings.menu.bulkOperations',
+    descriptionKey: 'settings.overview.bulkOperationsDesc',
+    icon: ConstructOutline,
+    showInOverview: true,
+    showInSidebar: true,
+    order: 37,
+  },
+  {
     key: 'about',
     to: '/settings/about',
     titleKey: 'settings.menu.about',

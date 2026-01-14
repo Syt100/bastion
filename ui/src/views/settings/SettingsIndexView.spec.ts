@@ -43,7 +43,7 @@ describe('SettingsIndexView', () => {
   it('navigates to settings pages', async () => {
     const wrapper = mount(SettingsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(5)
+    expect(buttons.length).toBe(6)
 
     await buttons[0]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/storage')
@@ -58,6 +58,9 @@ describe('SettingsIndexView', () => {
     expect(routerApi.push).toHaveBeenCalledWith('/settings/hub-runtime-config')
 
     await buttons[4]!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/bulk-operations')
+
+    await buttons[5]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/about')
   })
 })

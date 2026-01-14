@@ -85,6 +85,7 @@ async fn agent_ingest_runs_inserts_run_and_events_and_dedupes() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -180,6 +181,7 @@ async fn agent_ingest_runs_requires_auth() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -245,6 +247,7 @@ async fn agent_ingest_runs_rejects_jobs_not_assigned_to_agent() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -321,6 +324,7 @@ async fn agent_ingest_runs_limits_event_count() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -421,6 +425,7 @@ async fn agent_ingest_runs_upserts_existing_run_metadata() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -502,6 +507,7 @@ async fn agent_ingest_runs_validates_ended_at() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -580,6 +586,7 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
