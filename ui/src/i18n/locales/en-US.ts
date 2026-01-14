@@ -328,13 +328,70 @@ const messages = {
       storage: 'Storage',
       notifications: 'Notifications',
       maintenance: 'Maintenance',
+      runtimeConfig: 'Runtime config',
       about: 'About',
     },
     overview: {
       storageDesc: 'Manage remote storage credentials and related settings',
       notificationsDesc: 'Manage channels, destinations, templates, and queue',
       maintenanceDesc: 'Operational tools for maintenance tasks',
+      runtimeConfigDesc: 'Manage Hub runtime policy and logging (restart required)',
       aboutDesc: 'Version and build information',
+    },
+    hubRuntimeConfig: {
+      title: 'Hub runtime config',
+      restartRequired:
+        'Changes saved here require a Hub restart to take effect. Fields overridden by CLI/ENV cannot be edited here.',
+      sections: {
+        startup: {
+          title: 'Startup (read-only)',
+          subtitle: 'Configured by CLI or environment variables',
+        },
+        policy: {
+          title: 'Policy (restart required)',
+          subtitle: 'Saved in the Web UI and applied on restart',
+        },
+        logging: {
+          title: 'Logging (restart required)',
+          subtitle: 'Log filtering and file output settings',
+        },
+      },
+      fields: {
+        bindHost: 'Bind host',
+        bindPort: 'Bind port',
+        dataDir: 'Data dir',
+        insecureHttp: 'Allow insecure HTTP',
+        trustedProxies: 'Trusted proxies',
+        debugErrors: 'Debug errors',
+        hubTimezone: 'Hub timezone',
+        runRetentionDays: 'Run retention (days)',
+        incompleteCleanupDays: 'Incomplete cleanup (days)',
+        logFilter: 'Log filter',
+        logFile: 'Log file',
+        logRotation: 'Log rotation',
+        logKeepFiles: 'Keep log files',
+      },
+      meta: {
+        env: 'ENV',
+        source: 'Source',
+        effective: 'Effective',
+      },
+      tags: {
+        pending: 'Pending',
+        overridden: 'Overridden',
+      },
+      source: {
+        cli: 'CLI',
+        env: 'ENV',
+        envRustLog: 'RUST_LOG',
+        db: 'DB',
+        default: 'Default',
+      },
+      rotation: {
+        daily: 'Daily',
+        hourly: 'Hourly',
+        never: 'Never',
+      },
     },
     about: {
       hubTitle: 'Hub',
@@ -647,6 +704,7 @@ const messages = {
     incompleteCleanupUnignored: 'Task unignored',
     sourcePathsAdded: 'Added {count}',
     sourcePathsSkipped: 'Skipped {count} (already exists)',
+    hubRuntimeConfigSaved: 'Hub runtime config saved (restart required)',
   },
   apiErrors: {
     invalid_credentials: 'Invalid username or password',
@@ -668,6 +726,10 @@ const messages = {
     fs_list_failed: 'Failed to list files',
     agent_offline: 'Agent is offline',
     not_found: 'Not found',
+    invalid_timezone: 'Invalid timezone',
+    invalid_run_retention_days: 'Run retention days must be > 0',
+    invalid_incomplete_cleanup_days: 'Incomplete cleanup days must be >= 0',
+    invalid_log_rotation: 'Invalid log rotation',
   },
   errors: {
     loginFailed: 'Login failed',
@@ -721,6 +783,8 @@ const messages = {
     incompleteCleanupRetryFailed: 'Retry now failed',
     incompleteCleanupIgnoreFailed: 'Failed to ignore task',
     incompleteCleanupUnignoreFailed: 'Failed to unignore task',
+    fetchHubRuntimeConfigFailed: 'Failed to fetch hub runtime config',
+    saveHubRuntimeConfigFailed: 'Failed to save hub runtime config',
     smtpNameRequired: 'Name is required',
     smtpHostRequired: 'SMTP host is required',
     smtpPortRequired: 'SMTP port is required',
