@@ -11,7 +11,7 @@ use tracing::info;
 
 use crate::config::{Cli, Command, KeypackCommand, LogRotation};
 use bastion_engine::run_events_bus::RunEventsBus;
-use bastion_engine::{agent_manager, maintenance, notifications, scheduler};
+use bastion_engine::{agent_manager, bulk_operations, maintenance, notifications, scheduler};
 use bastion_http::{
     AppState, ConfigValueSource, HubRuntimeConfigMeta, HubRuntimeConfigSources,
     HubRuntimeLoggingEffective,
@@ -201,6 +201,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let incomplete_cleanup_notify = Arc::new(tokio::sync::Notify::new());
     let jobs_notify = Arc::new(tokio::sync::Notify::new());
     let notifications_notify = Arc::new(tokio::sync::Notify::new());
+    let bulk_ops_notify = Arc::new(tokio::sync::Notify::new());
     let shutdown = CancellationToken::new();
 
     scheduler::spawn(scheduler::SchedulerArgs {
@@ -224,6 +225,11 @@ async fn main() -> Result<(), anyhow::Error> {
         notifications_notify.clone(),
         shutdown.clone(),
     );
+    bulk_operations::spawn(bulk_operations::BulkOperationsArgs {
+        db: pool.clone(),
+        notify: bulk_ops_notify.clone(),
+        shutdown: shutdown.clone(),
+    });
     maintenance::spawn(pool.clone(), shutdown.clone());
 
     let app = bastion_http::router(AppState {
@@ -235,6 +241,7 @@ async fn main() -> Result<(), anyhow::Error> {
         incomplete_cleanup_notify,
         jobs_notify,
         notifications_notify,
+        bulk_ops_notify,
         run_events_bus,
         hub_runtime_config,
     });

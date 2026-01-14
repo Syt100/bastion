@@ -65,6 +65,7 @@ async fn invalid_wecom_webhook_returns_400_with_details_field() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -131,6 +132,7 @@ async fn invalid_smtp_from_returns_400_with_details_field() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -205,6 +207,7 @@ async fn login_rate_limit_includes_retry_after_details() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -257,6 +260,7 @@ async fn agent_enroll_invalid_token_format_returns_401_with_details() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });
@@ -318,6 +322,7 @@ async fn create_job_missing_webdav_secret_returns_400_with_details_field() {
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
         hub_runtime_config: Default::default(),
     });

@@ -10,6 +10,7 @@ const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
 const SettingsStorageView = () => import('@/views/settings/SettingsStorageView.vue')
 const AboutView = () => import('@/views/settings/AboutView.vue')
 const HubRuntimeConfigView = () => import('@/views/settings/HubRuntimeConfigView.vue')
+const BulkOperationsView = () => import('@/views/settings/BulkOperationsView.vue')
 const NotificationsShellView = () => import('@/views/settings/notifications/NotificationsShellView.vue')
 const NotificationsIndexView = () => import('@/views/settings/notifications/NotificationsIndexView.vue')
 const NotificationsChannelsView = () => import('@/views/settings/notifications/NotificationsChannelsView.vue')
@@ -70,6 +71,14 @@ const router = createRouter({
               meta: {
                 titleKey: 'settings.menu.runtimeConfig',
                 mobileTopBar: { titleKey: 'settings.menu.runtimeConfig', backTo: '/settings' },
+              },
+            },
+            {
+              path: 'bulk-operations',
+              component: BulkOperationsView,
+              meta: {
+                titleKey: 'settings.menu.bulkOperations',
+                mobileTopBar: { titleKey: 'settings.menu.bulkOperations', backTo: '/settings' },
               },
             },
             {

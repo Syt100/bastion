@@ -2,6 +2,7 @@ pub mod agent_labels_repo;
 pub mod agent_tasks_repo;
 pub mod agents_repo;
 pub mod auth;
+pub mod bulk_operations_repo;
 pub mod db;
 pub mod hub_runtime_config_repo;
 pub mod incomplete_cleanup_repo;
