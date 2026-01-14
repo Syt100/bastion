@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import { CloudOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline } from '@vicons/ionicons5'
+import { CloudOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline, OptionsOutline } from '@vicons/ionicons5'
 
 export type SettingsNavItem = {
   key: string
@@ -50,6 +50,16 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     showInOverview: true,
     showInSidebar: true,
     order: 30,
+  },
+  {
+    key: 'runtime-config',
+    to: '/settings/hub-runtime-config',
+    titleKey: 'settings.menu.runtimeConfig',
+    descriptionKey: 'settings.overview.runtimeConfigDesc',
+    icon: OptionsOutline,
+    showInOverview: true,
+    showInSidebar: true,
+    order: 35,
   },
   {
     key: 'about',
@@ -108,4 +118,3 @@ export function getSettingsMenuRouteKeys(): string[] {
   }
   return [...keys]
 }
-
