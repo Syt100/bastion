@@ -16,6 +16,7 @@ import { formatToastError } from '@/lib/errors'
 import { MODAL_WIDTH } from '@/lib/modal'
 
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
+import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/JobDeployModal.vue'
 import JobRunsModal, { type JobRunsModalExpose } from '@/components/jobs/JobRunsModal.vue'
 import RunEventsModal, { type RunEventsModalExpose } from '@/components/jobs/RunEventsModal.vue'
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
@@ -35,6 +36,7 @@ const route = useRoute()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const editorModal = ref<JobEditorModalExpose | null>(null)
+const deployModal = ref<JobDeployModalExpose | null>(null)
 const runsModal = ref<JobRunsModalExpose | null>(null)
 const runEventsModal = ref<RunEventsModalExpose | null>(null)
 const restoreModal = ref<RestoreWizardModalExpose | null>(null)
@@ -133,6 +135,10 @@ async function openEdit(jobId: string): Promise<void> {
 
 async function openRuns(jobId: string): Promise<void> {
   await runsModal.value?.open(jobId)
+}
+
+async function openDeploy(jobId: string): Promise<void> {
+  await deployModal.value?.open(jobId)
 }
 
 async function openRunEvents(runId: string): Promise<void> {
@@ -264,6 +270,11 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
                 { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
                 { default: () => t('common.edit') },
               ),
+              h(
+                NButton,
+                { size: 'small', disabled: !!row.archived_at, onClick: () => void openDeploy(row.id) },
+                { default: () => t('jobs.actions.deploy') },
+              ),
               row.archived_at
                 ? h(
                     NButton,
@@ -368,6 +379,7 @@ watch(showArchived, () => {
             <n-button size="small" type="primary" :disabled="!!job.archived_at" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
             <n-button size="small" @click="openRuns(job.id)">{{ t('jobs.actions.runs') }}</n-button>
             <n-button size="small" :disabled="!!job.archived_at" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
+            <n-button size="small" :disabled="!!job.archived_at" @click="openDeploy(job.id)">{{ t('jobs.actions.deploy') }}</n-button>
             <n-button v-if="job.archived_at" size="small" @click="unarchiveJob(job.id)">{{ t('jobs.actions.unarchive') }}</n-button>
             <n-button size="small" type="error" tertiary @click="openDelete(job)">{{ t('common.delete') }}</n-button>
           </div>
@@ -384,6 +396,8 @@ watch(showArchived, () => {
     </div>
 
     <JobEditorModal ref="editorModal" @saved="refresh" />
+
+    <JobDeployModal ref="deployModal" />
 
     <JobRunsModal
       ref="runsModal"
