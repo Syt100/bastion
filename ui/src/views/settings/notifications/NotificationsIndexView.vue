@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NIcon } from 'naive-ui'
-import { ChevronForwardOutline, DocumentTextOutline, ListOutline, OptionsOutline, PinOutline } from '@vicons/ionicons5'
+import { ChevronForwardOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { DEFAULT_NOTIFICATIONS_TAB_KEY, getNotificationsNavItems } from '@/navigation/notifications'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -14,47 +15,13 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 
 watchEffect(() => {
   if (!isDesktop.value) return
-  void router.replace('/settings/notifications/destinations')
+  const items = getNotificationsNavItems()
+  const fallback = items.find((i) => i.key === DEFAULT_NOTIFICATIONS_TAB_KEY) ?? items[0]
+  if (!fallback) return
+  void router.replace(fallback.to)
 })
 
-type NotificationsItem = {
-  key: string
-  title: string
-  description: string
-  to: string
-  icon: typeof OptionsOutline
-}
-
-const items: NotificationsItem[] = [
-  {
-    key: 'channels',
-    title: t('settings.notifications.tabs.channels'),
-    description: t('settings.notifications.overview.channelsDesc'),
-    to: '/settings/notifications/channels',
-    icon: OptionsOutline,
-  },
-  {
-    key: 'destinations',
-    title: t('settings.notifications.tabs.destinations'),
-    description: t('settings.notifications.overview.destinationsDesc'),
-    to: '/settings/notifications/destinations',
-    icon: PinOutline,
-  },
-  {
-    key: 'templates',
-    title: t('settings.notifications.tabs.templates'),
-    description: t('settings.notifications.overview.templatesDesc'),
-    to: '/settings/notifications/templates',
-    icon: DocumentTextOutline,
-  },
-  {
-    key: 'queue',
-    title: t('settings.notifications.tabs.queue'),
-    description: t('settings.notifications.overview.queueDesc'),
-    to: '/settings/notifications/queue',
-    icon: ListOutline,
-  },
-]
+const items = computed(() => getNotificationsNavItems())
 
 function go(to: string): void {
   void router.push(to)
@@ -79,9 +46,9 @@ function go(to: string): void {
               <component :is="item.icon" />
             </n-icon>
           </div>
-          <div class="min-w-0">
-            <div class="font-medium truncate">{{ item.title }}</div>
-            <div class="text-xs opacity-70 mt-0.5 truncate">{{ item.description }}</div>
+        <div class="min-w-0">
+            <div class="font-medium truncate">{{ t(item.titleKey) }}</div>
+            <div class="text-xs opacity-70 mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
           </div>
         </div>
 
