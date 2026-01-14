@@ -75,4 +75,3 @@ mod tests {
         assert_eq!(loaded.log_keep_files, Some(10));
     }
 }
-
