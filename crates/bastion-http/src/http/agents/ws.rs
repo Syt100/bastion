@@ -12,6 +12,7 @@ use bastion_engine::agent_manager::AgentManager;
 use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_storage::agent_tasks_repo;
+use bastion_storage::agents_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
@@ -153,6 +154,20 @@ async fn handle_agent_socket(
                             snapshot_id = %snapshot_id,
                             "agent config snapshot ack"
                         );
+                        if let Err(error) = agents_repo::record_applied_config_snapshot(
+                            &db,
+                            &agent_id,
+                            &snapshot_id,
+                        )
+                        .await
+                        {
+                            tracing::warn!(
+                                agent_id = %agent_id,
+                                snapshot_id = %snapshot_id,
+                                error = %error,
+                                "failed to persist config snapshot ack"
+                            );
+                        }
                     }
                     Ok(AgentToHubMessageV1::Ack { v, task_id }) if v == PROTOCOL_VERSION => {
                         let _ = agent_tasks_repo::ack_task(&db, &task_id).await;

@@ -39,7 +39,7 @@ pub(in crate::http) struct AgentLabelsPayloadRequest {
 pub(in crate::http) struct CreateBulkOperationRequest {
     kind: String,
     selector: BulkSelectorRequest,
-    payload: AgentLabelsPayloadRequest,
+    payload: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -49,7 +49,7 @@ pub(in crate::http) struct CreateBulkOperationResponse {
 
 fn validate_kind(kind: &str) -> Result<&str, AppError> {
     match kind {
-        "agent_labels_add" | "agent_labels_remove" => Ok(kind),
+        "agent_labels_add" | "agent_labels_remove" | "sync_config_now" => Ok(kind),
         _ => Err(AppError::bad_request("invalid_kind", "Invalid kind")),
     }
 }
@@ -130,15 +130,30 @@ pub(in crate::http) async fn create_bulk_operation(
         ));
     };
 
-    let payload_labels = normalize_labels(req.payload.labels)?;
-    if payload_labels.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_payload",
-            "Labels is required",
-        ));
-    }
+    let payload_json = match kind.as_str() {
+        "agent_labels_add" | "agent_labels_remove" => {
+            let Some(payload) = req.payload else {
+                return Err(AppError::bad_request(
+                    "invalid_payload",
+                    "Payload is required",
+                ));
+            };
+            let parsed: AgentLabelsPayloadRequest = serde_json::from_value(payload)
+                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
 
-    let payload_json = serde_json::json!({ "labels": payload_labels });
+            let payload_labels = normalize_labels(parsed.labels)?;
+            if payload_labels.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_payload",
+                    "Labels is required",
+                ));
+            }
+
+            serde_json::json!({ "labels": payload_labels })
+        }
+        "sync_config_now" => serde_json::json!({}),
+        _ => return Err(AppError::bad_request("invalid_kind", "Invalid kind")),
+    };
 
     let op_id = bulk_operations_repo::create_operation(
         &state.db,

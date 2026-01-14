@@ -22,7 +22,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import { useAgentsStore, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
+import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useBulkOperationsStore } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
@@ -69,6 +69,16 @@ const bulkLabelsSaving = ref<boolean>(false)
 const bulkLabelsAction = ref<'agent_labels_add' | 'agent_labels_remove'>('agent_labels_add')
 const bulkLabelsTarget = ref<'selected' | 'label_filter'>('selected')
 const bulkLabelsValue = ref<string[]>([])
+
+const bulkSyncModalOpen = ref<boolean>(false)
+const bulkSyncSaving = ref<boolean>(false)
+const bulkSyncTarget = ref<'selected' | 'label_filter'>('selected')
+
+const detailModalOpen = ref<boolean>(false)
+const detailLoading = ref<boolean>(false)
+const detail = ref<AgentDetail | null>(null)
+
+const syncNowLoading = ref<string | null>(null)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -220,6 +230,104 @@ async function createBulkLabelsOperation(): Promise<void> {
   }
 }
 
+function openBulkSyncModal(): void {
+  if (selectedAgentIds.value.length > 0) bulkSyncTarget.value = 'selected'
+  else bulkSyncTarget.value = 'label_filter'
+
+  bulkSyncModalOpen.value = true
+}
+
+async function createBulkSyncOperation(): Promise<void> {
+  bulkSyncSaving.value = true
+  try {
+    const selector =
+      bulkSyncTarget.value === 'selected'
+        ? { node_ids: Array.from(new Set(selectedAgentIds.value)) }
+        : { labels: selectedLabels.value, labels_mode: labelsMode.value }
+    if (bulkSyncTarget.value === 'selected' && selector.node_ids.length === 0) {
+      message.error(t('errors.formInvalid'))
+      return
+    }
+    if (bulkSyncTarget.value === 'label_filter' && selector.labels.length === 0) {
+      message.error(t('errors.formInvalid'))
+      return
+    }
+
+    const opId = await bulkOps.create({
+      kind: 'sync_config_now',
+      selector,
+    })
+
+    message.success(t('messages.bulkOperationCreated'))
+    bulkSyncModalOpen.value = false
+    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+  } catch (error) {
+    message.error(formatToastError(t('errors.createBulkOperationFailed'), error, t))
+  } finally {
+    bulkSyncSaving.value = false
+  }
+}
+
+function configSyncStatusLabel(status: AgentListItem['config_sync_status']): string {
+  return t(`agents.configSyncStatus.${status}`)
+}
+
+function configSyncStatusTagType(
+  status: AgentListItem['config_sync_status'],
+): 'default' | 'success' | 'warning' | 'error' {
+  if (status === 'synced') return 'success'
+  if (status === 'pending') return 'warning'
+  if (status === 'error') return 'error'
+  return 'default'
+}
+
+function configSyncTitle(row: AgentListItem): string {
+  const desired = row.desired_config_snapshot_id ?? '-'
+  const applied = row.applied_config_snapshot_id ?? '-'
+  const err = row.last_config_sync_error ?? '-'
+  return `desired: ${desired}\napplied: ${applied}\nerror: ${err}`
+}
+
+async function openAgentDetail(agentId: string): Promise<void> {
+  detailModalOpen.value = true
+  detailLoading.value = true
+  detail.value = null
+  try {
+    detail.value = await agents.getAgent(agentId)
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentFailed'), error, t))
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeAgentDetail(): void {
+  detailModalOpen.value = false
+  detail.value = null
+}
+
+async function syncConfigNow(agentId: string): Promise<void> {
+  syncNowLoading.value = agentId
+  try {
+    const res = await agents.syncConfigNow(agentId)
+    if (res.outcome === 'pending_offline') {
+      message.info(t('messages.syncConfigPendingOffline'))
+    } else if (res.outcome === 'unchanged') {
+      message.success(t('messages.syncConfigUnchanged'))
+    } else {
+      message.success(t('messages.syncConfigSent'))
+    }
+    await refresh()
+    if (detail.value?.id === agentId) {
+      detail.value = await agents.getAgent(agentId)
+    }
+  } catch (error) {
+    message.error(formatToastError(t('errors.syncConfigNowFailed'), error, t))
+  } finally {
+    syncNowLoading.value = null
+  }
+}
+
 async function saveAgentLabels(): Promise<void> {
   if (!labelsAgent.value) return
 
@@ -273,13 +381,23 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
     title: t('agents.columns.status'),
     key: 'status',
     render: (row) => {
-      if (row.revoked) {
-        return h(NTag, { type: 'error' }, { default: () => t('agents.status.revoked') })
-      }
-      if (row.online) {
-        return h(NTag, { type: 'success' }, { default: () => t('agents.status.online') })
-      }
-      return h(NTag, null, { default: () => t('agents.status.offline') })
+      const conn = row.revoked
+        ? h(NTag, { type: 'error', size: 'small' }, { default: () => t('agents.status.revoked') })
+        : row.online
+          ? h(NTag, { type: 'success', size: 'small' }, { default: () => t('agents.status.online') })
+          : h(NTag, { size: 'small' }, { default: () => t('agents.status.offline') })
+
+      const cfg = h(
+        NTag,
+        {
+          type: configSyncStatusTagType(row.config_sync_status),
+          size: 'small',
+          title: configSyncTitle(row),
+        },
+        { default: () => configSyncStatusLabel(row.config_sync_status) },
+      )
+
+      return h('div', { class: 'flex flex-wrap gap-1' }, [conn, cfg])
     },
   },
   {
@@ -296,6 +414,22 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
         { size: 8 },
         {
           default: () => [
+            h(
+              NButton,
+              { tertiary: true, size: 'small', onClick: () => openAgentDetail(row.id) },
+              { default: () => t('agents.actions.details') },
+            ),
+            h(
+              NButton,
+              {
+                tertiary: true,
+                size: 'small',
+                loading: syncNowLoading.value === row.id,
+                disabled: row.revoked,
+                onClick: () => syncConfigNow(row.id),
+              },
+              { default: () => t('agents.actions.syncNow') },
+            ),
             h(
               NButton,
               { tertiary: true, size: 'small', onClick: () => openLabelsModal(row) },
@@ -350,6 +484,11 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
 ])
 
 watch([selectedLabels, labelsMode], refresh, { deep: true })
+watch(detailModalOpen, (open) => {
+  if (open) return
+  detailLoading.value = false
+  detail.value = null
+})
 
 onMounted(async () => {
   await refreshLabelIndex()
@@ -366,6 +505,12 @@ onMounted(async () => {
         @click="openBulkLabelsModal"
       >
         {{ t('agents.bulkLabels') }}
+      </n-button>
+      <n-button
+        :disabled="selectedAgentIds.length === 0 && selectedLabels.length === 0"
+        @click="openBulkSyncModal"
+      >
+        {{ t('agents.bulkSync') }}
       </n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
@@ -416,10 +561,17 @@ onMounted(async () => {
               />
               <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
             </div>
-            <div>
+            <div class="flex flex-wrap justify-end gap-1">
               <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
               <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
               <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+              <n-tag
+                :type="configSyncStatusTagType(agent.config_sync_status)"
+                size="small"
+                :title="configSyncTitle(agent)"
+              >
+                {{ configSyncStatusLabel(agent.config_sync_status) }}
+              </n-tag>
             </div>
           </div>
         </template>
@@ -443,6 +595,16 @@ onMounted(async () => {
 
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
+            <n-button size="small" tertiary @click="openAgentDetail(agent.id)">{{ t('agents.actions.details') }}</n-button>
+            <n-button
+              size="small"
+              tertiary
+              :loading="syncNowLoading === agent.id"
+              :disabled="agent.revoked"
+              @click="syncConfigNow(agent.id)"
+            >
+              {{ t('agents.actions.syncNow') }}
+            </n-button>
             <n-button size="small" tertiary @click="openLabelsModal(agent)">{{ t('agents.actions.labels') }}</n-button>
 
             <n-popconfirm
@@ -548,6 +710,87 @@ onMounted(async () => {
       </div>
     </n-modal>
 
+    <n-modal
+      v-model:show="detailModalOpen"
+      preset="card"
+      :style="{ width: MODAL_WIDTH.md }"
+      :title="t('agents.detailModal.title')"
+    >
+      <div class="space-y-4">
+        <AppEmptyState v-if="detailLoading" :title="t('common.loading')" loading />
+        <AppEmptyState v-else-if="!detail" :title="t('common.noData')" />
+
+        <div v-else class="space-y-4">
+          <div class="flex flex-wrap gap-1">
+            <n-tag v-if="detail.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+            <n-tag v-else-if="detail.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+            <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+            <n-tag :type="configSyncStatusTagType(detail.config_sync_status)" size="small">
+              {{ configSyncStatusLabel(detail.config_sync_status) }}
+            </n-tag>
+          </div>
+
+          <n-form label-placement="top">
+            <n-form-item :label="t('agents.detailModal.id')">
+              <n-input :value="detail.id" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.name')">
+              <n-input :value="detail.name ?? '-'" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.lastSeen')">
+              <n-input :value="formatUnixSeconds(detail.last_seen_at)" readonly />
+            </n-form-item>
+          </n-form>
+
+          <n-card size="small" class="app-card" :title="t('agents.detailModal.configSyncTitle')">
+            <n-form label-placement="top">
+              <n-form-item :label="t('agents.detailModal.desiredSnapshot')">
+                <n-input :value="detail.desired_config_snapshot_id ?? '-'" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.desiredAt')">
+                <n-input :value="formatUnixSeconds(detail.desired_config_snapshot_at)" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.appliedSnapshot')">
+                <n-input :value="detail.applied_config_snapshot_id ?? '-'" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.appliedAt')">
+                <n-input :value="formatUnixSeconds(detail.applied_config_snapshot_at)" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.lastAttemptAt')">
+                <n-input :value="formatUnixSeconds(detail.last_config_sync_attempt_at)" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.lastErrorKind')">
+                <n-input :value="detail.last_config_sync_error_kind ?? '-'" readonly />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.lastError')">
+                <n-input
+                  :value="detail.last_config_sync_error ?? '-'"
+                  readonly
+                  type="textarea"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                />
+              </n-form-item>
+              <n-form-item :label="t('agents.detailModal.lastErrorAt')">
+                <n-input :value="formatUnixSeconds(detail.last_config_sync_error_at)" readonly />
+              </n-form-item>
+            </n-form>
+          </n-card>
+        </div>
+
+        <n-space justify="end">
+          <n-button @click="closeAgentDetail">{{ t('common.close') }}</n-button>
+          <n-button
+            type="primary"
+            :loading="syncNowLoading === detail?.id"
+            :disabled="detail?.revoked ?? true"
+            @click="detail?.id && syncConfigNow(detail.id)"
+          >
+            {{ t('agents.actions.syncNow') }}
+          </n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
     <n-modal v-model:show="labelsModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.labelsModal.title')">
       <div class="space-y-4">
         <div class="text-sm opacity-70">{{ t('agents.labelsModal.help') }}</div>
@@ -573,6 +816,37 @@ onMounted(async () => {
         <n-space justify="end">
           <n-button @click="labelsModalOpen = false">{{ t('common.cancel') }}</n-button>
           <n-button type="primary" :loading="labelsSaving" @click="saveAgentLabels">{{ t('common.save') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal
+      v-model:show="bulkSyncModalOpen"
+      preset="card"
+      :style="{ width: MODAL_WIDTH.md }"
+      :title="t('agents.bulkSyncModal.title')"
+    >
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ t('agents.bulkSyncModal.help') }}</div>
+
+        <n-form label-placement="top">
+          <n-form-item :label="t('agents.bulkSyncModal.target')">
+            <n-radio-group v-model:value="bulkSyncTarget" size="small">
+              <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
+                {{ t('agents.bulkSyncModal.targetSelected', { count: selectedAgentIds.length }) }}
+              </n-radio-button>
+              <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
+                {{ t('agents.bulkSyncModal.targetLabelFilter') }}
+              </n-radio-button>
+            </n-radio-group>
+          </n-form-item>
+        </n-form>
+
+        <n-space justify="end">
+          <n-button @click="bulkSyncModalOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="bulkSyncSaving" @click="createBulkSyncOperation">
+            {{ t('common.apply') }}
+          </n-button>
         </n-space>
       </div>
     </n-modal>

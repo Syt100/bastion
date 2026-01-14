@@ -1,22 +1,8 @@
-use bastion_core::agent;
-use bastion_core::agent_protocol::{
-    HubToAgentMessageV1, JobConfigV1, OverlapPolicyV1, PROTOCOL_VERSION, WebdavSecretV1,
-};
-use bastion_core::job_spec;
-use serde::Deserialize;
 use sqlx::SqlitePool;
 
-use bastion_engine::agent_job_resolver;
 use bastion_engine::agent_manager::AgentManager;
-use bastion_storage::jobs_repo;
+use bastion_engine::agent_snapshots;
 use bastion_storage::secrets::SecretsCrypto;
-use bastion_storage::secrets_repo;
-
-#[derive(Debug, Deserialize)]
-struct WebdavSecretPayload {
-    username: String,
-    password: String,
-}
 
 pub(super) async fn send_node_secrets_snapshot(
     db: &SqlitePool,
@@ -24,33 +10,7 @@ pub(super) async fn send_node_secrets_snapshot(
     agent_manager: &AgentManager,
     node_id: &str,
 ) -> Result<(), anyhow::Error> {
-    let list = secrets_repo::list_secrets(db, node_id, "webdav").await?;
-
-    let mut webdav = Vec::with_capacity(list.len());
-    for entry in list {
-        let Some(bytes) =
-            secrets_repo::get_secret(db, secrets, node_id, "webdav", &entry.name).await?
-        else {
-            continue;
-        };
-        let payload: WebdavSecretPayload = serde_json::from_slice(&bytes)?;
-        webdav.push(WebdavSecretV1 {
-            name: entry.name,
-            username: payload.username,
-            password: payload.password,
-            updated_at: entry.updated_at,
-        });
-    }
-
-    let msg = HubToAgentMessageV1::SecretsSnapshot {
-        v: PROTOCOL_VERSION,
-        node_id: node_id.to_string(),
-        issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
-        webdav,
-    };
-
-    agent_manager.send_json(node_id, &msg).await?;
-    Ok(())
+    agent_snapshots::send_node_secrets_snapshot(db, secrets, agent_manager, node_id).await
 }
 
 pub(in crate::http) async fn send_node_config_snapshot(
@@ -59,66 +19,7 @@ pub(in crate::http) async fn send_node_config_snapshot(
     agent_manager: &AgentManager,
     node_id: &str,
 ) -> Result<(), anyhow::Error> {
-    let jobs = jobs_repo::list_jobs_for_agent(db, node_id).await?;
-
-    let mut configs = Vec::with_capacity(jobs.len());
-    for job in jobs {
-        let spec = match job_spec::parse_value(&job.spec) {
-            Ok(v) => v,
-            Err(error) => {
-                tracing::warn!(
-                    node_id = %node_id,
-                    job_id = %job.id,
-                    error = %error,
-                    "invalid job spec; skipping agent config snapshot job"
-                );
-                continue;
-            }
-        };
-        if let Err(error) = job_spec::validate(&spec) {
-            tracing::warn!(
-                node_id = %node_id,
-                job_id = %job.id,
-                error = %error,
-                "invalid job spec; skipping agent config snapshot job"
-            );
-            continue;
-        }
-
-        let resolved =
-            agent_job_resolver::resolve_job_spec_for_agent(db, secrets, node_id, spec).await?;
-
-        let overlap_policy = match job.overlap_policy {
-            jobs_repo::OverlapPolicy::Reject => OverlapPolicyV1::Reject,
-            jobs_repo::OverlapPolicy::Queue => OverlapPolicyV1::Queue,
-        };
-
-        configs.push(JobConfigV1 {
-            job_id: job.id,
-            name: job.name,
-            schedule: job.schedule,
-            schedule_timezone: Some(job.schedule_timezone),
-            overlap_policy,
-            updated_at: job.updated_at,
-            spec: resolved,
-        });
-    }
-
-    configs.sort_by(|a, b| a.job_id.cmp(&b.job_id));
-    let snapshot_id = agent::sha256_b64_urlsafe(&serde_json::to_vec(&configs)?);
-
-    let msg = HubToAgentMessageV1::ConfigSnapshot {
-        v: PROTOCOL_VERSION,
-        node_id: node_id.to_string(),
-        snapshot_id: snapshot_id.clone(),
-        issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
-        jobs: configs,
-    };
-
-    let _ = agent_manager
-        .send_config_snapshot_json(node_id, &snapshot_id, &msg)
-        .await?;
-    Ok(())
+    agent_snapshots::send_node_config_snapshot(db, secrets, agent_manager, node_id).await
 }
 
 #[cfg(test)]

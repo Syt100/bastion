@@ -6,7 +6,7 @@ mod labels;
 mod snapshots;
 mod ws;
 
-pub(super) use admin::{list_agents, revoke_agent, rotate_agent_key};
+pub(super) use admin::{get_agent, list_agents, revoke_agent, rotate_agent_key, sync_config_now};
 pub(super) use enrollment::{agent_enroll, create_enrollment_token};
 pub(super) use ingest::agent_ingest_runs;
 pub(in crate::http) use labels::{LabelsMode, normalize_labels, parse_labels_mode};
