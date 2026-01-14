@@ -71,7 +71,7 @@ pub struct HubRuntimeLoggingEffective {
     pub keep_files: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HubRuntimeConfigMeta {
     pub sources: HubRuntimeConfigSources,
     pub logging: HubRuntimeLoggingEffective,
@@ -104,15 +104,6 @@ impl Default for HubRuntimeLoggingEffective {
             file: None,
             rotation: "daily".to_string(),
             keep_files: 30,
-        }
-    }
-}
-
-impl Default for HubRuntimeConfigMeta {
-    fn default() -> Self {
-        Self {
-            sources: HubRuntimeConfigSources::default(),
-            logging: HubRuntimeLoggingEffective::default(),
         }
     }
 }

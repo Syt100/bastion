@@ -224,21 +224,22 @@ pub(in crate::http) async fn put_hub_runtime_config(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
-    if let Some(v) = req.run_retention_days {
-        if v <= 0 {
-            return Err(AppError::bad_request(
-                "invalid_run_retention_days",
-                "run_retention_days must be > 0",
-            ));
-        }
+    if let Some(v) = req.run_retention_days
+        && v <= 0
+    {
+        return Err(AppError::bad_request(
+            "invalid_run_retention_days",
+            "run_retention_days must be > 0",
+        ));
     }
-    if let Some(v) = req.incomplete_cleanup_days {
-        if v < 0 {
-            return Err(AppError::bad_request(
-                "invalid_incomplete_cleanup_days",
-                "incomplete_cleanup_days must be >= 0",
-            ));
-        }
+
+    if let Some(v) = req.incomplete_cleanup_days
+        && v < 0
+    {
+        return Err(AppError::bad_request(
+            "invalid_incomplete_cleanup_days",
+            "incomplete_cleanup_days must be >= 0",
+        ));
     }
 
     req.hub_timezone = validate_timezone(req.hub_timezone.as_deref())?;
