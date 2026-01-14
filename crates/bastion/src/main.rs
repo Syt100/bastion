@@ -4,8 +4,8 @@ mod logging;
 
 use std::sync::Arc;
 
-use clap::{CommandFactory, FromArgMatches as _};
 use clap::parser::ValueSource;
+use clap::{CommandFactory, FromArgMatches as _};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
@@ -132,8 +132,11 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let mut effective_logging_args = logging_args.clone();
-    let (effective_log_filter, log_filter_source) =
-        resolve_log_filter(&matches, saved.log_filter.as_deref(), effective_logging_args.log.as_deref());
+    let (effective_log_filter, log_filter_source) = resolve_log_filter(
+        &matches,
+        saved.log_filter.as_deref(),
+        effective_logging_args.log.as_deref(),
+    );
     sources.log_filter = log_filter_source;
     if sources.log_filter == ConfigValueSource::Db {
         effective_logging_args.log = Some(effective_log_filter.clone());
@@ -337,7 +340,10 @@ fn resolve_log_filter(
     }
 
     // Default (keep in sync with logging::build_filter)
-    ("info,tower_http=warn".to_string(), ConfigValueSource::Default)
+    (
+        "info,tower_http=warn".to_string(),
+        ConfigValueSource::Default,
+    )
 }
 
 fn read_keypack_password(
