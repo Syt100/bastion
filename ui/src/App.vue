@@ -3,19 +3,16 @@ import { computed, onMounted, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   darkTheme,
-  dateEnUS,
-  dateZhCN,
-  enUS,
   NConfigProvider,
   NGlobalStyle,
   NMessageProvider,
-  zhCN,
   type GlobalThemeOverrides,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useUiStore } from '@/stores/ui'
 import { useSystemStore } from '@/stores/system'
+import { NAIVE_UI_DATE_LOCALES, NAIVE_UI_LOCALES } from '@/i18n/language'
 
 const ui = useUiStore()
 const system = useSystemStore()
@@ -48,8 +45,8 @@ watchEffect(() => {
   }
 })
 
-const naiveLocale = computed(() => (ui.locale === 'zh-CN' ? zhCN : enUS))
-const naiveDateLocale = computed(() => (ui.locale === 'zh-CN' ? dateZhCN : dateEnUS))
+const naiveLocale = computed(() => NAIVE_UI_LOCALES[ui.locale])
+const naiveDateLocale = computed(() => NAIVE_UI_DATE_LOCALES[ui.locale])
 
 const themeOverrides = computed<GlobalThemeOverrides>(() => ({
   common: {

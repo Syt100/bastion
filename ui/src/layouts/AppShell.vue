@@ -40,6 +40,7 @@ import { MQ } from '@/lib/breakpoints'
 import { LAYOUT } from '@/lib/layout'
 import { formatToastError } from '@/lib/errors'
 import { getSettingsMenuRouteKeys, getSettingsSidebarItems } from '@/navigation/settings'
+import { getLocaleDropdownOptions } from '@/i18n/language'
 
 const router = useRouter()
 const route = useRoute()
@@ -121,10 +122,7 @@ const menuOptions = computed<MenuOption[]>(() => [
     : [{ label: t('nav.settings'), key: '/settings', icon: icon(SettingsOutline) }]),
 ])
 
-const languageOptions = computed(() => [
-  { label: '简体中文', key: 'zh-CN' },
-  { label: 'English', key: 'en-US' },
-])
+const languageOptions = computed(() => getLocaleDropdownOptions())
 
 function onSelectLanguage(key: string | number): void {
   ui.setLocale(key as SupportedLocale)
@@ -150,8 +148,7 @@ function onUpdateExpandedKeys(keys: string[]): void {
 }
 
 const mobileActions = computed(() => [
-  { label: '简体中文', key: 'zh-CN' },
-  { label: 'English', key: 'en-US' },
+  ...getLocaleDropdownOptions(),
   { type: 'divider', key: '__d1' },
   { label: ui.darkMode ? t('common.light') : t('common.dark'), key: 'toggle_theme' },
   { type: 'divider', key: '__d2' },

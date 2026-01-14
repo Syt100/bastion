@@ -8,9 +8,9 @@
 - [x] 2.3 Add/adjust unit tests to guard router/nav drift
 
 ## 3. Web UI (Locales)
-- [ ] 3.1 Add shared locale options helper derived from `supportedLocales`
-- [ ] 3.2 Refactor AppShell/AuthLayout/App.vue to use helper/mappings
-- [ ] 3.3 Add unit tests to guard locale option/mapping drift
+- [x] 3.1 Add shared locale options helper derived from `supportedLocales`
+- [x] 3.2 Refactor AppShell/AuthLayout/App.vue to use helper/mappings
+- [x] 3.3 Add unit tests to guard locale option/mapping drift
 
 ## 4. Validation
 - [ ] 4.1 Run `bash scripts/ci.sh`
@@ -18,5 +18,5 @@
 ## 5. Commits
 - [x] 5.1 Commit the spec proposal (detailed message)
 - [x] 5.2 Commit Notifications navigation refactor (detailed message with tests)
-- [ ] 5.3 Commit locale options refactor (detailed message with tests)
+- [x] 5.3 Commit locale options refactor (detailed message with tests)
 - [ ] 5.4 Mark tasks complete and commit
