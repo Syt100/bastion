@@ -112,10 +112,10 @@ pub(in crate::http) async fn list_agents(
             current_id = Some(id);
         }
 
-        if let Some(label) = row.get::<Option<String>, _>("label") {
-            if let Some(last) = agents.last_mut() {
-                last.labels.push(label);
-            }
+        if let Some(label) = row.get::<Option<String>, _>("label")
+            && let Some(last) = agents.last_mut()
+        {
+            last.labels.push(label);
         }
     }
 
