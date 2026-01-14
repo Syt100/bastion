@@ -86,6 +86,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         run_events_bus: run_events_bus.clone(),
+        hub_runtime_config: Default::default(),
     });
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

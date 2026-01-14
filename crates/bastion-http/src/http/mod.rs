@@ -28,10 +28,94 @@ mod notifications;
 mod operations;
 mod runs;
 mod secrets;
+mod settings;
 mod shared;
 mod ui;
 
 use error::AppError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigValueSource {
+    Cli,
+    Env,
+    EnvRustLog,
+    Db,
+    Default,
+}
+
+#[derive(Debug, Clone)]
+pub struct HubRuntimeConfigSources {
+    pub bind_host: ConfigValueSource,
+    pub bind_port: ConfigValueSource,
+    pub data_dir: ConfigValueSource,
+    pub insecure_http: ConfigValueSource,
+    pub trusted_proxies: ConfigValueSource,
+    pub debug_errors: ConfigValueSource,
+
+    pub hub_timezone: ConfigValueSource,
+    pub run_retention_days: ConfigValueSource,
+    pub incomplete_cleanup_days: ConfigValueSource,
+
+    pub log_filter: ConfigValueSource,
+    pub log_file: ConfigValueSource,
+    pub log_rotation: ConfigValueSource,
+    pub log_keep_files: ConfigValueSource,
+}
+
+#[derive(Debug, Clone)]
+pub struct HubRuntimeLoggingEffective {
+    pub filter: String,
+    pub file: Option<String>,
+    pub rotation: String,
+    pub keep_files: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct HubRuntimeConfigMeta {
+    pub sources: HubRuntimeConfigSources,
+    pub logging: HubRuntimeLoggingEffective,
+}
+
+impl Default for HubRuntimeConfigSources {
+    fn default() -> Self {
+        Self {
+            bind_host: ConfigValueSource::Default,
+            bind_port: ConfigValueSource::Default,
+            data_dir: ConfigValueSource::Default,
+            insecure_http: ConfigValueSource::Default,
+            trusted_proxies: ConfigValueSource::Default,
+            debug_errors: ConfigValueSource::Default,
+            hub_timezone: ConfigValueSource::Default,
+            run_retention_days: ConfigValueSource::Default,
+            incomplete_cleanup_days: ConfigValueSource::Default,
+            log_filter: ConfigValueSource::Default,
+            log_file: ConfigValueSource::Default,
+            log_rotation: ConfigValueSource::Default,
+            log_keep_files: ConfigValueSource::Default,
+        }
+    }
+}
+
+impl Default for HubRuntimeLoggingEffective {
+    fn default() -> Self {
+        Self {
+            filter: "info,tower_http=warn".to_string(),
+            file: None,
+            rotation: "daily".to_string(),
+            keep_files: 30,
+        }
+    }
+}
+
+impl Default for HubRuntimeConfigMeta {
+    fn default() -> Self {
+        Self {
+            sources: HubRuntimeConfigSources::default(),
+            logging: HubRuntimeLoggingEffective::default(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -44,6 +128,7 @@ pub struct AppState {
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
     pub run_events_bus: Arc<RunEventsBus>,
+    pub hub_runtime_config: HubRuntimeConfigMeta,
 }
 
 #[derive(Debug, Serialize)]
@@ -98,6 +183,10 @@ pub fn router(state: AppState) -> Router {
     let api_router = Router::new()
         .route("/api/health", get(health))
         .route("/api/system", get(system_status))
+        .route(
+            "/api/settings/hub-runtime-config",
+            get(settings::get_hub_runtime_config).put(settings::put_hub_runtime_config),
+        )
         .route("/api/setup/status", get(auth::setup_status))
         .route("/api/setup/initialize", post(auth::setup_initialize))
         .route("/api/auth/login", post(auth::login))
