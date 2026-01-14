@@ -39,6 +39,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { LAYOUT } from '@/lib/layout'
 import { formatToastError } from '@/lib/errors'
+import { getSettingsMenuRouteKeys, getSettingsSidebarItems } from '@/navigation/settings'
 
 const router = useRouter()
 const route = useRoute()
@@ -86,16 +87,7 @@ function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
 }
 
-const menuRouteKeys = [
-  '/',
-  '/jobs',
-  '/agents',
-  '/settings',
-  '/settings/about',
-  '/settings/storage',
-  '/settings/notifications',
-  '/settings/maintenance',
-] as const
+const menuRouteKeys: string[] = ['/', '/jobs', '/agents', ...getSettingsMenuRouteKeys()]
 const menuRouteKeySet = new Set<string>(menuRouteKeys)
 
 const settingsParentKey = 'settings'
@@ -119,11 +111,10 @@ const menuOptions = computed<MenuOption[]>(() => [
           key: settingsParentKey,
           icon: icon(SettingsOutline),
           children: [
-            { label: t('settings.menu.overview'), key: '/settings' },
-            { label: t('settings.menu.storage'), key: '/settings/storage' },
-            { label: t('settings.menu.notifications'), key: '/settings/notifications' },
-            { label: t('settings.menu.maintenance'), key: '/settings/maintenance' },
-            { label: t('settings.menu.about'), key: '/settings/about' },
+            ...getSettingsSidebarItems().map((item) => ({
+              label: t(item.titleKey),
+              key: item.to,
+            })),
           ],
         } satisfies MenuOption,
       ]

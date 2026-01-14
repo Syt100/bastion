@@ -1,50 +1,16 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { NCard, NIcon } from 'naive-ui'
-import { ChevronForwardOutline, CloudOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline } from '@vicons/ionicons5'
+import { ChevronForwardOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const router = useRouter()
 
-type SettingsItem = {
-  key: string
-  title: string
-  description: string
-  to: string
-  icon: typeof CloudOutline
-}
+import type { SettingsOverviewItem } from '@/navigation/settings'
+import { getSettingsOverviewItems } from '@/navigation/settings'
 
-const items: SettingsItem[] = [
-  {
-    key: 'storage',
-    title: t('settings.menu.storage'),
-    description: t('settings.overview.storageDesc'),
-    to: '/settings/storage',
-    icon: CloudOutline,
-  },
-  {
-    key: 'notifications',
-    title: t('settings.menu.notifications'),
-    description: t('settings.overview.notificationsDesc'),
-    to: '/settings/notifications',
-    icon: NotificationsOutline,
-  },
-  {
-    key: 'maintenance',
-    title: t('settings.menu.maintenance'),
-    description: t('settings.overview.maintenanceDesc'),
-    to: '/settings/maintenance',
-    icon: ConstructOutline,
-  },
-  {
-    key: 'about',
-    title: t('settings.menu.about'),
-    description: t('settings.overview.aboutDesc'),
-    to: '/settings/about',
-    icon: InformationCircleOutline,
-  },
-]
+const items: SettingsOverviewItem[] = getSettingsOverviewItems()
 
 function go(to: string): void {
   void router.push(to)
@@ -70,8 +36,8 @@ function go(to: string): void {
             </n-icon>
           </div>
           <div class="min-w-0">
-            <div class="font-medium truncate">{{ item.title }}</div>
-            <div class="text-xs opacity-70 mt-0.5 truncate">{{ item.description }}</div>
+            <div class="font-medium truncate">{{ t(item.titleKey) }}</div>
+            <div class="text-xs opacity-70 mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
           </div>
         </div>
 
