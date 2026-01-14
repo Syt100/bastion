@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -10,6 +10,9 @@ import {
   NInputNumber,
   NModal,
   NPopconfirm,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
   NSpace,
   NTag,
   useMessage,
@@ -17,7 +20,7 @@ import {
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import { useAgentsStore, type AgentListItem, type EnrollmentToken } from '@/stores/agents'
+import { useAgentsStore, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -45,6 +48,16 @@ const rotateModalOpen = ref<boolean>(false)
 const rotateRotating = ref<boolean>(false)
 const rotateResult = ref<{ agent_id: string; agent_key: string } | null>(null)
 
+const labelIndexLoading = ref<boolean>(false)
+const labelIndex = ref<{ label: string; count: number }[]>([])
+const selectedLabels = ref<string[]>([])
+const labelsMode = ref<AgentsLabelsMode>('and')
+
+const labelsModalOpen = ref<boolean>(false)
+const labelsSaving = ref<boolean>(false)
+const labelsAgent = ref<AgentListItem | null>(null)
+const labelsValue = ref<string[]>([])
+
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 function shortId(value: string): string {
@@ -52,11 +65,29 @@ function shortId(value: string): string {
   return `${value.slice(0, 8)}…${value.slice(-4)}`
 }
 
+const labelOptions = computed(() =>
+  labelIndex.value.map((it) => ({
+    label: `${it.label} (${it.count})`,
+    value: it.label,
+  })),
+)
+
 async function refresh(): Promise<void> {
   try {
-    await agents.refresh()
+    await agents.refresh({ labels: selectedLabels.value, labelsMode: labelsMode.value })
   } catch (error) {
     message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
+  }
+}
+
+async function refreshLabelIndex(): Promise<void> {
+  labelIndexLoading.value = true
+  try {
+    labelIndex.value = await agents.listLabelIndex()
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentLabelsFailed'), error, t))
+  } finally {
+    labelIndexLoading.value = false
   }
 }
 
@@ -114,6 +145,29 @@ async function rotateAgentKey(agentId: string): Promise<void> {
   }
 }
 
+function openLabelsModal(agent: AgentListItem): void {
+  labelsAgent.value = agent
+  labelsValue.value = [...(agent.labels ?? [])]
+  labelsModalOpen.value = true
+}
+
+async function saveAgentLabels(): Promise<void> {
+  if (!labelsAgent.value) return
+
+  labelsSaving.value = true
+  try {
+    await agents.setAgentLabels(labelsAgent.value.id, labelsValue.value)
+    await refreshLabelIndex()
+    await refresh()
+    message.success(t('messages.agentLabelsUpdated'))
+    labelsModalOpen.value = false
+  } catch (error) {
+    message.error(formatToastError(t('errors.updateAgentLabelsFailed'), error, t))
+  } finally {
+    labelsSaving.value = false
+  }
+}
+
 const columns = computed<DataTableColumns<AgentListItem>>(() => [
   {
     title: t('agents.columns.name'),
@@ -132,6 +186,18 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
           { default: () => t('agents.actions.copy') },
         ),
       ]),
+  },
+  {
+    title: t('agents.columns.labels'),
+    key: 'labels',
+    render: (row) => {
+      if (!row.labels?.length) return '-'
+      return h(
+        'div',
+        { class: 'flex flex-wrap gap-1' },
+        row.labels.map((label) => h(NTag, { size: 'small' }, { default: () => label })),
+      )
+    },
   },
   {
     title: t('agents.columns.status'),
@@ -160,6 +226,11 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
         { size: 8 },
         {
           default: () => [
+            h(
+              NButton,
+              { tertiary: true, size: 'small', onClick: () => openLabelsModal(row) },
+              { default: () => t('agents.actions.labels') },
+            ),
             h(
               NPopconfirm,
               {
@@ -208,7 +279,12 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
   },
 ])
 
-onMounted(refresh)
+watch([selectedLabels, labelsMode], refresh, { deep: true })
+
+onMounted(async () => {
+  await refreshLabelIndex()
+  await refresh()
+})
 </script>
 
 <template>
@@ -217,6 +293,33 @@ onMounted(refresh)
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
+
+    <n-card class="app-card">
+      <div class="flex flex-col gap-3 md:flex-row md:items-end">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm opacity-70 mb-1">{{ t('agents.filters.labels') }}</div>
+          <n-select
+            v-model:value="selectedLabels"
+            multiple
+            filterable
+            clearable
+            :loading="labelIndexLoading"
+            :options="labelOptions"
+            :placeholder="t('agents.filters.labelsPlaceholder')"
+          />
+        </div>
+        <div class="shrink-0">
+          <div class="text-sm opacity-70 mb-1">{{ t('agents.filters.mode') }}</div>
+          <n-radio-group v-model:value="labelsMode" size="small">
+            <n-radio-button value="and">AND</n-radio-button>
+            <n-radio-button value="or">OR</n-radio-button>
+          </n-radio-group>
+        </div>
+        <div class="shrink-0 flex justify-end">
+          <n-button @click="selectedLabels = []">{{ t('common.clear') }}</n-button>
+        </div>
+      </div>
+    </n-card>
 
     <div v-if="!isDesktop" class="space-y-3">
       <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
@@ -240,6 +343,9 @@ onMounted(refresh)
         </template>
 
         <div class="text-sm space-y-2">
+          <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
+            <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+          </div>
           <div class="flex items-center justify-between gap-3">
             <div class="opacity-70">{{ t('agents.columns.id') }}</div>
             <div class="flex items-center gap-2">
@@ -255,6 +361,8 @@ onMounted(refresh)
 
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
+            <n-button size="small" tertiary @click="openLabelsModal(agent)">{{ t('agents.actions.labels') }}</n-button>
+
             <n-popconfirm
               :positive-text="t('agents.actions.rotateKey')"
               :negative-text="t('common.cancel')"
@@ -348,6 +456,35 @@ onMounted(refresh)
 
         <n-space justify="end">
           <n-button @click="rotateModalOpen = false">{{ t('common.close') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="labelsModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.labelsModal.title')">
+      <div class="space-y-4">
+        <div class="text-sm opacity-70">{{ t('agents.labelsModal.help') }}</div>
+        <div v-if="labelsAgent" class="text-sm">
+          <span class="opacity-70">{{ t('agents.columns.id') }}:</span>
+          <span class="font-mono ml-2">{{ labelsAgent.id }}</span>
+        </div>
+
+        <n-form label-placement="top">
+          <n-form-item :label="t('agents.labelsModal.labels')">
+            <n-select
+              v-model:value="labelsValue"
+              multiple
+              filterable
+              tag
+              clearable
+              :options="labelOptions"
+              :placeholder="t('agents.labelsModal.placeholder')"
+            />
+          </n-form-item>
+        </n-form>
+
+        <n-space justify="end">
+          <n-button @click="labelsModalOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :loading="labelsSaving" @click="saveAgentLabels">{{ t('common.save') }}</n-button>
         </n-space>
       </div>
     </n-modal>

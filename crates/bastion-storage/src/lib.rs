@@ -1,3 +1,4 @@
+pub mod agent_labels_repo;
 pub mod agent_tasks_repo;
 pub mod agents_repo;
 pub mod auth;

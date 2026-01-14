@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Serialize;
 use sqlx::SqlitePool;
@@ -219,10 +219,20 @@ pub fn router(state: AppState) -> Router {
                 .delete(secrets::delete_smtp_secret),
         )
         .route("/api/agents", get(agents::list_agents))
+        .route("/api/agents/labels", get(agents::list_agent_labels_index))
         .route("/api/agents/{id}/revoke", post(agents::revoke_agent))
         .route(
             "/api/agents/{id}/rotate-key",
             post(agents::rotate_agent_key),
+        )
+        .route("/api/agents/{id}/labels", put(agents::set_agent_labels))
+        .route(
+            "/api/agents/{id}/labels/add",
+            post(agents::add_agent_labels),
+        )
+        .route(
+            "/api/agents/{id}/labels/remove",
+            post(agents::remove_agent_labels),
         )
         .route(
             "/api/agents/enrollment-tokens",
