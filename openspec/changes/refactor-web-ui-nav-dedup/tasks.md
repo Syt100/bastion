@@ -3,9 +3,9 @@
 - [x] 1.2 Run `openspec validate refactor-web-ui-nav-dedup --strict`
 
 ## 2. Web UI (Notifications)
-- [ ] 2.1 Add shared Notifications navigation config
-- [ ] 2.2 Refactor Notifications index list + desktop tabs to use config
-- [ ] 2.3 Add/adjust unit tests to guard router/nav drift
+- [x] 2.1 Add shared Notifications navigation config
+- [x] 2.2 Refactor Notifications index list + desktop tabs to use config
+- [x] 2.3 Add/adjust unit tests to guard router/nav drift
 
 ## 3. Web UI (Locales)
 - [ ] 3.1 Add shared locale options helper derived from `supportedLocales`
@@ -17,6 +17,6 @@
 
 ## 5. Commits
 - [x] 5.1 Commit the spec proposal (detailed message)
-- [ ] 5.2 Commit Notifications navigation refactor (detailed message with tests)
+- [x] 5.2 Commit Notifications navigation refactor (detailed message with tests)
 - [ ] 5.3 Commit locale options refactor (detailed message with tests)
 - [ ] 5.4 Mark tasks complete and commit

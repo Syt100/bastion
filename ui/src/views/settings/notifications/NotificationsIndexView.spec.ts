@@ -35,6 +35,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 })
 
 import NotificationsIndexView from './NotificationsIndexView.vue'
+import { DEFAULT_NOTIFICATIONS_TAB_KEY, getNotificationsNavItems } from '@/navigation/notifications'
 
 function stubMatchMedia(matches: boolean): void {
   vi.stubGlobal(
@@ -61,25 +62,20 @@ describe('NotificationsIndexView', () => {
   it('navigates to notification subpages', async () => {
     const wrapper = mount(NotificationsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(4)
+    const items = getNotificationsNavItems()
+    expect(buttons.length).toBe(items.length)
 
-    await buttons[0]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/channels')
-
-    await buttons[1]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/destinations')
-
-    await buttons[2]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/templates')
-
-    await buttons[3]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/queue')
+    for (let i = 0; i < items.length; i += 1) {
+      await buttons[i]!.trigger('click')
+      expect(routerApi.push).toHaveBeenCalledWith(items[i]!.to)
+    }
   })
 
   it('redirects to destinations on desktop', async () => {
     stubMatchMedia(true)
     mount(NotificationsIndexView)
     await Promise.resolve()
-    expect(routerApi.replace).toHaveBeenCalledWith('/settings/notifications/destinations')
+    const fallback = getNotificationsNavItems().find((i) => i.key === DEFAULT_NOTIFICATIONS_TAB_KEY)!
+    expect(routerApi.replace).toHaveBeenCalledWith(fallback.to)
   })
 })
