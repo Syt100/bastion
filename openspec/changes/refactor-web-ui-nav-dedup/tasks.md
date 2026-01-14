@@ -13,10 +13,10 @@
 - [x] 3.3 Add unit tests to guard locale option/mapping drift
 
 ## 4. Validation
-- [ ] 4.1 Run `bash scripts/ci.sh`
+- [x] 4.1 Run `bash scripts/ci.sh`
 
 ## 5. Commits
 - [x] 5.1 Commit the spec proposal (detailed message)
 - [x] 5.2 Commit Notifications navigation refactor (detailed message with tests)
 - [x] 5.3 Commit locale options refactor (detailed message with tests)
-- [ ] 5.4 Mark tasks complete and commit
+- [x] 5.4 Mark tasks complete and commit
