@@ -90,45 +90,42 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
         .unwrap_or_default();
 
-    let mut sources = HubRuntimeConfigSources::default();
-    sources.bind_host = map_value_source(matches.value_source("host"));
-    sources.bind_port = map_value_source(matches.value_source("port"));
-    sources.data_dir = map_value_source(matches.value_source("data_dir"));
-    sources.insecure_http = map_value_source(matches.value_source("insecure_http"));
-    sources.trusted_proxies = map_value_source(matches.value_source("trusted_proxies"));
-    sources.debug_errors = map_value_source(matches.value_source("debug_errors"));
-
-    sources.hub_timezone = map_value_source(matches.value_source("hub_timezone"));
-    sources.run_retention_days = map_value_source(matches.value_source("run_retention_days"));
-    sources.incomplete_cleanup_days =
-        map_value_source(matches.value_source("incomplete_cleanup_days"));
+    let mut sources = HubRuntimeConfigSources {
+        bind_host: map_value_source(matches.value_source("host")),
+        bind_port: map_value_source(matches.value_source("port")),
+        data_dir: map_value_source(matches.value_source("data_dir")),
+        insecure_http: map_value_source(matches.value_source("insecure_http")),
+        trusted_proxies: map_value_source(matches.value_source("trusted_proxies")),
+        debug_errors: map_value_source(matches.value_source("debug_errors")),
+        hub_timezone: map_value_source(matches.value_source("hub_timezone")),
+        run_retention_days: map_value_source(matches.value_source("run_retention_days")),
+        incomplete_cleanup_days: map_value_source(matches.value_source("incomplete_cleanup_days")),
+        ..HubRuntimeConfigSources::default()
+    };
 
     // Apply DB overrides for safe policy fields when not explicitly set via CLI/ENV.
-    if sources.hub_timezone == ConfigValueSource::Default {
-        if let Some(tz) = normalize_optional_string(saved.hub_timezone.as_deref())
+    if sources.hub_timezone == ConfigValueSource::Default
+        && let Some(tz) = normalize_optional_string(saved.hub_timezone.as_deref())
             .and_then(|v| validate_timezone(&v).ok())
-        {
-            config.hub_timezone = tz;
-            sources.hub_timezone = ConfigValueSource::Db;
-        }
+    {
+        config.hub_timezone = tz;
+        sources.hub_timezone = ConfigValueSource::Db;
     }
 
-    if sources.run_retention_days == ConfigValueSource::Default {
-        if let Some(days) = saved.run_retention_days {
-            if days > 0 {
-                config.run_retention_days = days;
-                sources.run_retention_days = ConfigValueSource::Db;
-            }
-        }
+    if sources.run_retention_days == ConfigValueSource::Default
+        && let Some(days) = saved.run_retention_days
+        && days > 0
+    {
+        config.run_retention_days = days;
+        sources.run_retention_days = ConfigValueSource::Db;
     }
 
-    if sources.incomplete_cleanup_days == ConfigValueSource::Default {
-        if let Some(days) = saved.incomplete_cleanup_days {
-            if days >= 0 {
-                config.incomplete_cleanup_days = days;
-                sources.incomplete_cleanup_days = ConfigValueSource::Db;
-            }
-        }
+    if sources.incomplete_cleanup_days == ConfigValueSource::Default
+        && let Some(days) = saved.incomplete_cleanup_days
+        && days >= 0
+    {
+        config.incomplete_cleanup_days = days;
+        sources.incomplete_cleanup_days = ConfigValueSource::Db;
     }
 
     let mut effective_logging_args = logging_args.clone();
@@ -144,31 +141,30 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // log file
     sources.log_file = map_value_source(matches.value_source("log_file"));
-    if sources.log_file == ConfigValueSource::Default {
-        if let Some(path) = normalize_optional_string(saved.log_file.as_deref()) {
-            effective_logging_args.log_file = Some(path.into());
-            sources.log_file = ConfigValueSource::Db;
-        }
+    if sources.log_file == ConfigValueSource::Default
+        && let Some(path) = normalize_optional_string(saved.log_file.as_deref())
+    {
+        effective_logging_args.log_file = Some(path.into());
+        sources.log_file = ConfigValueSource::Db;
     }
 
     // log rotation
     sources.log_rotation = map_value_source(matches.value_source("log_rotation"));
-    if sources.log_rotation == ConfigValueSource::Default {
-        if let Some(rot) = normalize_optional_string(saved.log_rotation.as_deref())
+    if sources.log_rotation == ConfigValueSource::Default
+        && let Some(rot) = normalize_optional_string(saved.log_rotation.as_deref())
             .and_then(|v| parse_log_rotation(&v))
-        {
-            effective_logging_args.log_rotation = rot;
-            sources.log_rotation = ConfigValueSource::Db;
-        }
+    {
+        effective_logging_args.log_rotation = rot;
+        sources.log_rotation = ConfigValueSource::Db;
     }
 
     // log keep files
     sources.log_keep_files = map_value_source(matches.value_source("log_keep_files"));
-    if sources.log_keep_files == ConfigValueSource::Default {
-        if let Some(keep) = saved.log_keep_files {
-            effective_logging_args.log_keep_files = keep;
-            sources.log_keep_files = ConfigValueSource::Db;
-        }
+    if sources.log_keep_files == ConfigValueSource::Default
+        && let Some(keep) = saved.log_keep_files
+    {
+        effective_logging_args.log_keep_files = keep;
+        sources.log_keep_files = ConfigValueSource::Db;
     }
 
     let _logging_guard = logging::init(&effective_logging_args)?;
