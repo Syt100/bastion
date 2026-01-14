@@ -10,6 +10,14 @@ export type AgentListItem = {
   revoked: boolean
   last_seen_at: number | null
   online: boolean
+  labels: string[]
+}
+
+export type AgentsLabelsMode = 'and' | 'or'
+
+export type AgentLabelIndexItem = {
+  label: string
+  count: number
 }
 
 export type EnrollmentToken = {
@@ -27,13 +35,38 @@ export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
 
-  async function refresh(): Promise<void> {
+  async function refresh(filters?: { labels?: string[]; labelsMode?: AgentsLabelsMode }): Promise<void> {
     loading.value = true
     try {
-      items.value = await apiFetch<AgentListItem[]>('/api/agents')
+      const q = new URLSearchParams()
+      if (filters?.labels?.length) {
+        for (const label of filters.labels) q.append('labels[]', label)
+      }
+      if (filters?.labelsMode) q.set('labels_mode', filters.labelsMode)
+      const suffix = q.toString() ? `?${q.toString()}` : ''
+
+      items.value = await apiFetch<AgentListItem[]>(`/api/agents${suffix}`)
     } finally {
       loading.value = false
     }
+  }
+
+  async function listLabelIndex(): Promise<AgentLabelIndexItem[]> {
+    return await apiFetch<AgentLabelIndexItem[]>('/api/agents/labels')
+  }
+
+  async function setAgentLabels(agentId: string, labels: string[]): Promise<void> {
+    const csrf = await ensureCsrfToken()
+
+    await apiFetch<void>(`/api/agents/${encodeURIComponent(agentId)}/labels`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify({ labels }),
+      expectedStatus: 204,
+    })
   }
 
   async function createEnrollmentToken(params: {
@@ -74,5 +107,14 @@ export const useAgentsStore = defineStore('agents', () => {
     })
   }
 
-  return { items, loading, refresh, createEnrollmentToken, revokeAgent, rotateAgentKey }
+  return {
+    items,
+    loading,
+    refresh,
+    listLabelIndex,
+    setAgentLabels,
+    createEnrollmentToken,
+    revokeAgent,
+    rotateAgentKey,
+  }
 })

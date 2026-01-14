@@ -14,7 +14,7 @@ describe('useAgentsStore', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify([
-          { id: 'a1', name: null, revoked: false, last_seen_at: null, online: false },
+          { id: 'a1', name: null, revoked: false, last_seen_at: null, online: false, labels: [] },
         ]),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),

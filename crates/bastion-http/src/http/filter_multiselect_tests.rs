@@ -318,3 +318,191 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn agents_list_supports_label_filter_and_or() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    // Seed two agents and labels:
+    // - agent A: prod + shanghai
+    // - agent B: prod only
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    for id in ["a", "b"] {
+        sqlx::query("INSERT INTO agents (id, name, key_hash, created_at) VALUES (?, NULL, ?, ?)")
+            .bind(id)
+            .bind(vec![0u8; 32])
+            .bind(now)
+            .execute(&pool)
+            .await
+            .expect("insert agent");
+    }
+    for label in ["prod", "shanghai"] {
+        sqlx::query(
+            "INSERT INTO agent_labels (agent_id, label, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind("a")
+        .bind(label)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert label");
+    }
+    sqlx::query(
+        "INSERT INTO agent_labels (agent_id, label, created_at, updated_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind("b")
+    .bind("prod")
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert label");
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let cookie = format!("bastion_session={}", session.id);
+
+    for (path, expected_ids) in [
+        (
+            "/api/agents?labels[]=prod&labels[]=shanghai&labels_mode=and",
+            vec!["a"],
+        ),
+        (
+            "/api/agents?labels[]=prod&labels[]=shanghai&labels_mode=or",
+            vec!["a", "b"],
+        ),
+    ] {
+        let resp = client
+            .get(format!("{}{}", base_url(addr), path))
+            .header("cookie", &cookie)
+            .send()
+            .await
+            .expect("request");
+
+        let status = resp.status();
+        if status != StatusCode::OK {
+            let text = resp.text().await.unwrap_or_default();
+            panic!("expected 200, got {status}: {text}");
+        }
+
+        let body: serde_json::Value = resp.json().await.expect("json");
+        let arr = body.as_array().expect("array");
+        let ids: Vec<&str> = arr
+            .iter()
+            .filter_map(|v| v.get("id").and_then(|s| s.as_str()))
+            .collect();
+
+        for id in &expected_ids {
+            assert!(ids.contains(id), "expected id {id} in response");
+        }
+        assert_eq!(ids.len(), expected_ids.len());
+    }
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn agent_labels_reject_invalid_label() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    sqlx::query("INSERT INTO agents (id, name, key_hash, created_at) VALUES (?, NULL, ?, ?)")
+        .bind("a")
+        .bind(vec![0u8; 32])
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert agent");
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/agents/a/labels/add", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({ "labels": ["Prod"] }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_label");
+
+    server.abort();
+}
