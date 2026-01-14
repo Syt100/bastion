@@ -25,6 +25,10 @@ vi.mock('naive-ui', async () => {
     NForm: stub('NForm'),
     NFormItem: stub('NFormItem'),
     NInput: stub('NInput'),
+    zhCN: {},
+    enUS: {},
+    dateZhCN: {},
+    dateEnUS: {},
     useMessage: () => messageApi,
   }
 })
