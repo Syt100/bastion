@@ -6,14 +6,12 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import type { SupportedLocale } from '@/i18n'
 import AppLogo from '@/components/AppLogo.vue'
+import { getLocaleDropdownOptions } from '@/i18n/language'
 
 const ui = useUiStore()
 const { t } = useI18n()
 
-const languageOptions = computed(() => [
-  { label: '简体中文', key: 'zh-CN' },
-  { label: 'English', key: 'en-US' },
-])
+const languageOptions = computed(() => getLocaleDropdownOptions())
 
 function onSelectLanguage(key: string | number): void {
   ui.setLocale(key as SupportedLocale)
