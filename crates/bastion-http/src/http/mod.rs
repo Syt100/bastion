@@ -222,10 +222,15 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/agents", get(agents::list_agents))
         .route("/api/agents/labels", get(agents::list_agent_labels_index))
+        .route("/api/agents/{id}", get(agents::get_agent))
         .route("/api/agents/{id}/revoke", post(agents::revoke_agent))
         .route(
             "/api/agents/{id}/rotate-key",
             post(agents::rotate_agent_key),
+        )
+        .route(
+            "/api/agents/{id}/sync-config-now",
+            post(agents::sync_config_now),
         )
         .route("/api/agents/{id}/labels", put(agents::set_agent_labels))
         .route(

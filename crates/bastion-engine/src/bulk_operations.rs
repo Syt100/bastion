@@ -6,13 +6,18 @@ use tokio::sync::{Notify, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
+use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::{agent_labels_repo, bulk_operations_repo};
+
+use crate::agent_manager::AgentManager;
+use crate::agent_snapshots::{SendConfigSnapshotOutcome, send_node_config_snapshot_with_outcome};
 
 const BULK_CONCURRENCY: usize = 8;
 
-#[derive(Debug)]
 pub struct BulkOperationsArgs {
     pub db: SqlitePool,
+    pub secrets: Arc<SecretsCrypto>,
+    pub agent_manager: AgentManager,
     pub notify: Arc<Notify>,
     pub shutdown: CancellationToken,
 }
@@ -23,6 +28,8 @@ pub fn spawn(args: BulkOperationsArgs) {
 
 async fn run_loop(args: BulkOperationsArgs) {
     let db = args.db;
+    let secrets = args.secrets;
+    let agent_manager = args.agent_manager;
     let notify = args.notify;
     let shutdown = args.shutdown;
 
@@ -44,9 +51,11 @@ async fn run_loop(args: BulkOperationsArgs) {
                                 Err(_) => break,
                             };
                             let db = db.clone();
+                            let secrets = secrets.clone();
+                            let agent_manager = agent_manager.clone();
                             tokio::spawn(async move {
                                 let _permit = permit;
-                                process_item(&db, item).await;
+                                process_item(db, secrets, agent_manager, item).await;
                             });
                         }
                         continue;
@@ -71,7 +80,12 @@ struct AgentLabelsPayload {
     labels: Vec<String>,
 }
 
-async fn process_item(db: &SqlitePool, item: bulk_operations_repo::ClaimedBulkOperationItem) {
+async fn process_item(
+    db: SqlitePool,
+    secrets: Arc<SecretsCrypto>,
+    agent_manager: AgentManager,
+    item: bulk_operations_repo::ClaimedBulkOperationItem,
+) {
     debug!(
         op_id = %item.op_id,
         agent_id = %item.agent_id,
@@ -85,7 +99,7 @@ async fn process_item(db: &SqlitePool, item: bulk_operations_repo::ClaimedBulkOp
                 Ok(v) => v,
                 Err(error) => {
                     let _ = bulk_operations_repo::mark_item_failed(
-                        db,
+                        &db,
                         &item.op_id,
                         &item.agent_id,
                         "invalid_payload",
@@ -98,7 +112,7 @@ async fn process_item(db: &SqlitePool, item: bulk_operations_repo::ClaimedBulkOp
 
             if payload.labels.is_empty() {
                 let _ = bulk_operations_repo::mark_item_failed(
-                    db,
+                    &db,
                     &item.op_id,
                     &item.agent_id,
                     "invalid_payload",
@@ -109,20 +123,20 @@ async fn process_item(db: &SqlitePool, item: bulk_operations_repo::ClaimedBulkOp
             }
 
             let result = if item.kind == "agent_labels_add" {
-                agent_labels_repo::add_labels(db, &item.agent_id, &payload.labels).await
+                agent_labels_repo::add_labels(&db, &item.agent_id, &payload.labels).await
             } else {
-                agent_labels_repo::remove_labels(db, &item.agent_id, &payload.labels).await
+                agent_labels_repo::remove_labels(&db, &item.agent_id, &payload.labels).await
             };
 
             match result {
                 Ok(()) => {
                     let _ =
-                        bulk_operations_repo::mark_item_succeeded(db, &item.op_id, &item.agent_id)
+                        bulk_operations_repo::mark_item_succeeded(&db, &item.op_id, &item.agent_id)
                             .await;
                 }
                 Err(error) => {
                     let _ = bulk_operations_repo::mark_item_failed(
-                        db,
+                        &db,
                         &item.op_id,
                         &item.agent_id,
                         "internal_error",
@@ -132,9 +146,39 @@ async fn process_item(db: &SqlitePool, item: bulk_operations_repo::ClaimedBulkOp
                 }
             }
         }
+        "sync_config_now" => {
+            match send_node_config_snapshot_with_outcome(
+                &db,
+                secrets.as_ref(),
+                &agent_manager,
+                &item.agent_id,
+            )
+            .await
+            {
+                Ok(
+                    SendConfigSnapshotOutcome::Sent
+                    | SendConfigSnapshotOutcome::Unchanged
+                    | SendConfigSnapshotOutcome::PendingOffline,
+                ) => {
+                    let _ =
+                        bulk_operations_repo::mark_item_succeeded(&db, &item.op_id, &item.agent_id)
+                            .await;
+                }
+                Err(error) => {
+                    let _ = bulk_operations_repo::mark_item_failed(
+                        &db,
+                        &item.op_id,
+                        &item.agent_id,
+                        "send_failed",
+                        &error.to_string(),
+                    )
+                    .await;
+                }
+            }
+        }
         _ => {
             let _ = bulk_operations_repo::mark_item_failed(
-                db,
+                &db,
                 &item.op_id,
                 &item.agent_id,
                 "unknown_kind",

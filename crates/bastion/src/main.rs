@@ -227,6 +227,8 @@ async fn main() -> Result<(), anyhow::Error> {
     );
     bulk_operations::spawn(bulk_operations::BulkOperationsArgs {
         db: pool.clone(),
+        secrets: secrets.clone(),
+        agent_manager: agent_manager.clone(),
         notify: bulk_ops_notify.clone(),
         shutdown: shutdown.clone(),
     });

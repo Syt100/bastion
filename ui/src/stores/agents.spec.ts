@@ -14,7 +14,20 @@ describe('useAgentsStore', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify([
-          { id: 'a1', name: null, revoked: false, last_seen_at: null, online: false, labels: [] },
+          {
+            id: 'a1',
+            name: null,
+            revoked: false,
+            last_seen_at: null,
+            online: false,
+            labels: [],
+            desired_config_snapshot_id: null,
+            applied_config_snapshot_id: null,
+            config_sync_status: 'offline',
+            last_config_sync_attempt_at: null,
+            last_config_sync_error_kind: null,
+            last_config_sync_error: null,
+          },
         ]),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -105,6 +118,71 @@ describe('useAgentsStore', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/agents/a%20b/rotate-key',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('fetches agent detail', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'a1',
+          name: null,
+          revoked: false,
+          created_at: 1,
+          last_seen_at: null,
+          online: false,
+          capabilities_json: null,
+          labels: [],
+          desired_config_snapshot_id: null,
+          desired_config_snapshot_at: null,
+          applied_config_snapshot_id: null,
+          applied_config_snapshot_at: null,
+          config_sync_status: 'offline',
+          last_config_sync_attempt_at: null,
+          last_config_sync_error_kind: null,
+          last_config_sync_error: null,
+          last_config_sync_error_at: null,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const agents = useAgentsStore()
+    const detail = await agents.getAgent('a b')
+
+    expect(detail.id).toBe('a1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/agents/a%20b',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('syncs config now with CSRF header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ outcome: 'sent' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-123'
+
+    const agents = useAgentsStore()
+    const res = await agents.syncConfigNow('a b')
+    expect(res.outcome).toBe('sent')
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('csrf-123')
+    expect(init.method).toBe('POST')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/agents/a%20b/sync-config-now',
       expect.objectContaining({ credentials: 'include' }),
     )
   })

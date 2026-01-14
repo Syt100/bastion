@@ -62,11 +62,17 @@ export type BulkSelectorRequest =
   | { node_ids: string[] }
   | { labels: string[]; labels_mode?: 'and' | 'or' }
 
-export type CreateBulkOperationRequest = {
-  kind: 'agent_labels_add' | 'agent_labels_remove'
-  selector: BulkSelectorRequest
-  payload: { labels: string[] }
-}
+export type CreateBulkOperationRequest =
+  | {
+      kind: 'agent_labels_add' | 'agent_labels_remove'
+      selector: BulkSelectorRequest
+      payload: { labels: string[] }
+    }
+  | {
+      kind: 'sync_config_now'
+      selector: BulkSelectorRequest
+      payload?: unknown
+    }
 
 export const useBulkOperationsStore = defineStore('bulkOperations', () => {
   async function list(): Promise<BulkOperationListItem[]> {
@@ -110,4 +116,3 @@ export const useBulkOperationsStore = defineStore('bulkOperations', () => {
 
   return { list, get, create, cancel, retryFailed }
 })
-

@@ -11,6 +11,12 @@ export type AgentListItem = {
   last_seen_at: number | null
   online: boolean
   labels: string[]
+  desired_config_snapshot_id: string | null
+  applied_config_snapshot_id: string | null
+  config_sync_status: 'synced' | 'pending' | 'error' | 'offline'
+  last_config_sync_attempt_at: number | null
+  last_config_sync_error_kind: string | null
+  last_config_sync_error: string | null
 }
 
 export type AgentsLabelsMode = 'and' | 'or'
@@ -29,6 +35,30 @@ export type EnrollmentToken = {
 export type RotateAgentKeyResponse = {
   agent_id: string
   agent_key: string
+}
+
+export type AgentDetail = {
+  id: string
+  name: string | null
+  revoked: boolean
+  created_at: number
+  last_seen_at: number | null
+  online: boolean
+  capabilities_json: string | null
+  labels: string[]
+  desired_config_snapshot_id: string | null
+  desired_config_snapshot_at: number | null
+  applied_config_snapshot_id: string | null
+  applied_config_snapshot_at: number | null
+  config_sync_status: 'synced' | 'pending' | 'error' | 'offline'
+  last_config_sync_attempt_at: number | null
+  last_config_sync_error_kind: string | null
+  last_config_sync_error: string | null
+  last_config_sync_error_at: number | null
+}
+
+export type SyncConfigNowResponse = {
+  outcome: 'sent' | 'unchanged' | 'pending_offline'
 }
 
 export const useAgentsStore = defineStore('agents', () => {
@@ -107,6 +137,18 @@ export const useAgentsStore = defineStore('agents', () => {
     })
   }
 
+  async function getAgent(agentId: string): Promise<AgentDetail> {
+    return await apiFetch<AgentDetail>(`/api/agents/${encodeURIComponent(agentId)}`)
+  }
+
+  async function syncConfigNow(agentId: string): Promise<SyncConfigNowResponse> {
+    const csrf = await ensureCsrfToken()
+    return await apiFetch<SyncConfigNowResponse>(`/api/agents/${encodeURIComponent(agentId)}/sync-config-now`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
+    })
+  }
+
   return {
     items,
     loading,
@@ -116,5 +158,7 @@ export const useAgentsStore = defineStore('agents', () => {
     createEnrollmentToken,
     revokeAgent,
     rotateAgentKey,
+    getAgent,
+    syncConfigNow,
   }
 })
