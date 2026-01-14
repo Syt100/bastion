@@ -74,6 +74,11 @@ export type CreateBulkOperationRequest =
       payload?: unknown
     }
   | {
+      kind: 'job_deploy'
+      selector: BulkSelectorRequest
+      payload: { source_job_id: string; name_template?: string }
+    }
+  | {
       kind: 'webdav_secret_distribute'
       selector: BulkSelectorRequest
       payload: { name: string; overwrite?: boolean }
@@ -91,6 +96,21 @@ export type WebdavDistributePreviewResponse = {
   secret_name: string
   overwrite: boolean
   items: WebdavDistributePreviewItem[]
+}
+
+export type JobDeployPreviewItem = {
+  agent_id: string
+  agent_name: string | null
+  planned_name: string
+  valid: boolean
+  error: string | null
+}
+
+export type JobDeployPreviewResponse = {
+  kind: 'job_deploy'
+  source_job_id: string
+  name_template: string
+  items: JobDeployPreviewItem[]
 }
 
 export const useBulkOperationsStore = defineStore('bulkOperations', () => {
@@ -119,6 +139,28 @@ export const useBulkOperationsStore = defineStore('bulkOperations', () => {
         payload: {
           name: params.payload.name,
           overwrite: params.payload.overwrite ?? false,
+        },
+      }),
+    })
+  }
+
+  async function previewJobDeploy(params: {
+    selector: BulkSelectorRequest
+    payload: { source_job_id: string; name_template?: string }
+  }): Promise<JobDeployPreviewResponse> {
+    const csrf = await ensureCsrfToken()
+    return await apiFetch<JobDeployPreviewResponse>('/api/bulk-operations/preview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify({
+        kind: 'job_deploy',
+        selector: params.selector,
+        payload: {
+          source_job_id: params.payload.source_job_id,
+          name_template: params.payload.name_template ?? '',
         },
       }),
     })
@@ -155,5 +197,5 @@ export const useBulkOperationsStore = defineStore('bulkOperations', () => {
     })
   }
 
-  return { list, get, previewWebdavSecretDistribute, create, cancel, retryFailed }
+  return { list, get, previewWebdavSecretDistribute, previewJobDeploy, create, cancel, retryFailed }
 })

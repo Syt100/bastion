@@ -39,6 +39,8 @@ vi.mock('naive-ui', async () => {
     NPopover: stub('NPopover'),
     NPopconfirm: stub('NPopconfirm'),
     NSelect: stub('NSelect'),
+    NRadioButton: stub('NRadioButton'),
+    NRadioGroup: stub('NRadioGroup'),
     NSpace: stub('NSpace'),
     NSpin: stub('NSpin'),
     NStep: stub('NStep'),
@@ -56,8 +58,12 @@ vi.mock('vue-i18n', () => ({
 const routeApi = {
   params: {} as Record<string, unknown>,
 }
+const routerApi = {
+  push: vi.fn(),
+}
 vi.mock('vue-router', () => ({
   useRoute: () => routeApi,
+  useRouter: () => routerApi,
 }))
 
 const jobsApi = {
@@ -90,6 +96,14 @@ const agentsApi = {
 }
 vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsApi,
+}))
+
+const bulkOpsApi = {
+  previewJobDeploy: vi.fn(),
+  create: vi.fn(),
+}
+vi.mock('@/stores/bulkOperations', () => ({
+  useBulkOperationsStore: () => bulkOpsApi,
 }))
 
 const secretsApi = {

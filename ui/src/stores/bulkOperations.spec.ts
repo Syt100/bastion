@@ -108,6 +108,39 @@ describe('useBulkOperationsStore', () => {
     expect(body.kind).toBe('webdav_secret_distribute')
   })
 
+  it('previews job deploy with CSRF header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          kind: 'job_deploy',
+          source_job_id: 'job1',
+          name_template: '{name} ({node})',
+          items: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-123'
+
+    const bulk = useBulkOperationsStore()
+    await bulk.previewJobDeploy({
+      selector: { labels: ['prod'], labels_mode: 'and' },
+      payload: { source_job_id: 'job1', name_template: '{name} ({node})' },
+    })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('csrf-123')
+    expect(headers['Content-Type']).toBe('application/json')
+
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body.kind).toBe('job_deploy')
+  })
+
   it('cancels bulk operation with CSRF header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
