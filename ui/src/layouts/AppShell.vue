@@ -86,7 +86,16 @@ function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
 }
 
-const menuRouteKeys = ['/', '/jobs', '/agents', '/settings', '/settings/storage', '/settings/notifications', '/settings/maintenance'] as const
+const menuRouteKeys = [
+  '/',
+  '/jobs',
+  '/agents',
+  '/settings',
+  '/settings/about',
+  '/settings/storage',
+  '/settings/notifications',
+  '/settings/maintenance',
+] as const
 const menuRouteKeySet = new Set<string>(menuRouteKeys)
 
 const settingsParentKey = 'settings'
@@ -114,6 +123,7 @@ const menuOptions = computed<MenuOption[]>(() => [
             { label: t('settings.menu.storage'), key: '/settings/storage' },
             { label: t('settings.menu.notifications'), key: '/settings/notifications' },
             { label: t('settings.menu.maintenance'), key: '/settings/maintenance' },
+            { label: t('settings.menu.about'), key: '/settings/about' },
           ],
         } satisfies MenuOption,
       ]
