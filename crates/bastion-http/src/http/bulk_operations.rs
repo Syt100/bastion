@@ -2,9 +2,11 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use tower_cookies::Cookies;
 
-use bastion_storage::bulk_operations_repo;
+use bastion_core::HUB_NODE_ID;
+use bastion_storage::{bulk_operations_repo, secrets_repo};
 
 use super::agents::{LabelsMode, normalize_labels, parse_labels_mode};
 use super::shared::{require_csrf, require_session};
@@ -36,6 +38,12 @@ pub(in crate::http) struct AgentLabelsPayloadRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub(in crate::http) struct WebdavDistributePayloadRequest {
+    name: String,
+    overwrite: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(in crate::http) struct CreateBulkOperationRequest {
     kind: String,
     selector: BulkSelectorRequest,
@@ -49,7 +57,10 @@ pub(in crate::http) struct CreateBulkOperationResponse {
 
 fn validate_kind(kind: &str) -> Result<&str, AppError> {
     match kind {
-        "agent_labels_add" | "agent_labels_remove" | "sync_config_now" => Ok(kind),
+        "agent_labels_add"
+        | "agent_labels_remove"
+        | "sync_config_now"
+        | "webdav_secret_distribute" => Ok(kind),
         _ => Err(AppError::bad_request("invalid_kind", "Invalid kind")),
     }
 }
@@ -83,6 +94,47 @@ async fn validate_agent_ids_exist(
     Ok(())
 }
 
+async fn resolve_selector(
+    db: &sqlx::SqlitePool,
+    selector: BulkSelectorRequest,
+) -> Result<(Vec<String>, serde_json::Value), AppError> {
+    let node_ids = selector.node_ids.unwrap_or_default();
+    let selector_labels = selector.labels.unwrap_or_default();
+
+    if !node_ids.is_empty() {
+        let ids = normalize_node_ids(node_ids);
+        validate_agent_ids_exist(db, &ids).await?;
+        return Ok((ids.clone(), serde_json::json!({ "node_ids": ids })));
+    }
+
+    if !selector_labels.is_empty() {
+        let labels = normalize_labels(selector_labels)?;
+        let mode = parse_labels_mode(selector.labels_mode.as_deref())?;
+        let mode_str = match mode {
+            LabelsMode::And => "and",
+            LabelsMode::Or => "or",
+        };
+
+        let ids = bulk_operations_repo::resolve_agent_ids_by_selector_labels(db, &labels, mode_str)
+            .await?;
+        if ids.is_empty() {
+            return Err(AppError::bad_request(
+                "invalid_selector",
+                "Selector resolved to no agents",
+            ));
+        }
+        return Ok((
+            ids,
+            serde_json::json!({ "labels": labels, "labels_mode": mode_str }),
+        ));
+    }
+
+    Err(AppError::bad_request(
+        "invalid_selector",
+        "Selector is required",
+    ))
+}
+
 pub(in crate::http) async fn create_bulk_operation(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -94,41 +146,7 @@ pub(in crate::http) async fn create_bulk_operation(
 
     let kind = validate_kind(req.kind.trim())?.to_string();
 
-    let node_ids = req.selector.node_ids.unwrap_or_default();
-    let selector_labels = req.selector.labels.unwrap_or_default();
-
-    let (target_agent_ids, selector_json) = if !node_ids.is_empty() {
-        let ids = normalize_node_ids(node_ids);
-        validate_agent_ids_exist(&state.db, &ids).await?;
-        (ids.clone(), serde_json::json!({ "node_ids": ids }))
-    } else if !selector_labels.is_empty() {
-        let labels = normalize_labels(selector_labels)?;
-        let mode = parse_labels_mode(req.selector.labels_mode.as_deref())?;
-        let mode_str = match mode {
-            LabelsMode::And => "and",
-            LabelsMode::Or => "or",
-        };
-
-        let ids = bulk_operations_repo::resolve_agent_ids_by_selector_labels(
-            &state.db, &labels, mode_str,
-        )
-        .await?;
-        if ids.is_empty() {
-            return Err(AppError::bad_request(
-                "invalid_selector",
-                "Selector resolved to no agents",
-            ));
-        }
-        (
-            ids,
-            serde_json::json!({ "labels": labels, "labels_mode": mode_str }),
-        )
-    } else {
-        return Err(AppError::bad_request(
-            "invalid_selector",
-            "Selector is required",
-        ));
-    };
+    let (target_agent_ids, selector_json) = resolve_selector(&state.db, req.selector).await?;
 
     let payload_json = match kind.as_str() {
         "agent_labels_add" | "agent_labels_remove" => {
@@ -152,6 +170,35 @@ pub(in crate::http) async fn create_bulk_operation(
             serde_json::json!({ "labels": payload_labels })
         }
         "sync_config_now" => serde_json::json!({}),
+        "webdav_secret_distribute" => {
+            let Some(payload) = req.payload else {
+                return Err(AppError::bad_request(
+                    "invalid_payload",
+                    "Payload is required",
+                ));
+            };
+            let parsed: WebdavDistributePayloadRequest = serde_json::from_value(payload)
+                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+
+            let name = parsed.name.trim().to_string();
+            if name.is_empty() {
+                return Err(AppError::bad_request("invalid_payload", "Name is required"));
+            }
+
+            let exists =
+                secrets_repo::secret_exists(&state.db, HUB_NODE_ID, "webdav", &name).await?;
+            if !exists {
+                return Err(AppError::bad_request(
+                    "invalid_payload",
+                    "WebDAV credential not found",
+                ));
+            }
+
+            serde_json::json!({
+                "name": name,
+                "overwrite": parsed.overwrite.unwrap_or(false),
+            })
+        }
         _ => return Err(AppError::bad_request("invalid_kind", "Invalid kind")),
     };
 
@@ -168,6 +215,118 @@ pub(in crate::http) async fn create_bulk_operation(
     state.bulk_ops_notify.notify_one();
 
     Ok(Json(CreateBulkOperationResponse { op_id }))
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct WebdavDistributePreviewItem {
+    agent_id: String,
+    agent_name: Option<String>,
+    action: String,
+    note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct WebdavDistributePreviewResponse {
+    kind: String,
+    secret_name: String,
+    overwrite: bool,
+    items: Vec<WebdavDistributePreviewItem>,
+}
+
+pub(in crate::http) async fn preview_bulk_operation(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Json(req): Json<CreateBulkOperationRequest>,
+) -> Result<Json<WebdavDistributePreviewResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let kind = validate_kind(req.kind.trim())?.to_string();
+    if kind != "webdav_secret_distribute" {
+        return Err(AppError::bad_request(
+            "preview_not_supported",
+            "Preview not supported for this kind",
+        ));
+    }
+
+    let (target_agent_ids, _selector_json) = resolve_selector(&state.db, req.selector).await?;
+
+    let Some(payload) = req.payload else {
+        return Err(AppError::bad_request(
+            "invalid_payload",
+            "Payload is required",
+        ));
+    };
+    let parsed: WebdavDistributePayloadRequest = serde_json::from_value(payload)
+        .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+
+    let secret_name = parsed.name.trim().to_string();
+    if secret_name.is_empty() {
+        return Err(AppError::bad_request("invalid_payload", "Name is required"));
+    }
+    let overwrite = parsed.overwrite.unwrap_or(false);
+
+    let exists =
+        secrets_repo::secret_exists(&state.db, HUB_NODE_ID, "webdav", &secret_name).await?;
+    if !exists {
+        return Err(AppError::bad_request(
+            "invalid_payload",
+            "WebDAV credential not found",
+        ));
+    }
+
+    let mut qb: sqlx::QueryBuilder<sqlx::Sqlite> =
+        sqlx::QueryBuilder::new("SELECT node_id FROM secrets WHERE kind = 'webdav' AND name = ");
+    qb.push_bind(&secret_name);
+    qb.push(" AND node_id IN (");
+    let mut separated = qb.separated(", ");
+    for id in &target_agent_ids {
+        separated.push_bind(id);
+    }
+    separated.push_unseparated(")");
+
+    let rows = qb.build().fetch_all(&state.db).await?;
+    let existing = rows
+        .into_iter()
+        .map(|r| r.get::<String, _>("node_id"))
+        .collect::<std::collections::HashSet<String>>();
+
+    let mut qb: sqlx::QueryBuilder<sqlx::Sqlite> =
+        sqlx::QueryBuilder::new("SELECT id, name FROM agents WHERE id IN (");
+    let mut separated = qb.separated(", ");
+    for id in &target_agent_ids {
+        separated.push_bind(id);
+    }
+    separated.push_unseparated(")");
+    let rows = qb.build().fetch_all(&state.db).await?;
+    let names = rows
+        .into_iter()
+        .map(|r| (r.get::<String, _>("id"), r.get::<Option<String>, _>("name")))
+        .collect::<std::collections::HashMap<String, Option<String>>>();
+
+    let mut items = Vec::with_capacity(target_agent_ids.len());
+    for agent_id in target_agent_ids {
+        let has = existing.contains(&agent_id);
+        let (action, note) = if has && !overwrite {
+            ("skip", Some("already exists".to_string()))
+        } else {
+            ("update", None)
+        };
+        items.push(WebdavDistributePreviewItem {
+            agent_id: agent_id.clone(),
+            agent_name: names.get(&agent_id).cloned().unwrap_or(None),
+            action: action.to_string(),
+            note,
+        });
+    }
+
+    Ok(Json(WebdavDistributePreviewResponse {
+        kind,
+        secret_name,
+        overwrite,
+        items,
+    }))
 }
 
 pub(in crate::http) async fn list_bulk_operations(

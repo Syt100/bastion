@@ -512,6 +512,47 @@ pub async fn mark_item_succeeded(
     Ok(())
 }
 
+pub async fn mark_item_succeeded_with_note(
+    db: &SqlitePool,
+    op_id: &str,
+    agent_id: &str,
+    note_kind: &str,
+    note: &str,
+) -> Result<(), anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let mut tx = db.begin().await?;
+
+    sqlx::query(
+        r#"
+        UPDATE bulk_operation_items
+        SET status = 'success',
+            ended_at = COALESCE(ended_at, ?),
+            updated_at = ?,
+            last_error_kind = ?,
+            last_error = ?
+        WHERE op_id = ? AND agent_id = ?
+        "#,
+    )
+    .bind(now)
+    .bind(now)
+    .bind(note_kind)
+    .bind(note)
+    .bind(op_id)
+    .bind(agent_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("UPDATE bulk_operations SET updated_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(op_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    finalize_operation_if_done(db, op_id).await?;
+    Ok(())
+}
+
 pub async fn mark_item_failed(
     db: &SqlitePool,
     op_id: &str,

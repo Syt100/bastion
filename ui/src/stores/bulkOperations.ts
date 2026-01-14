@@ -73,6 +73,25 @@ export type CreateBulkOperationRequest =
       selector: BulkSelectorRequest
       payload?: unknown
     }
+  | {
+      kind: 'webdav_secret_distribute'
+      selector: BulkSelectorRequest
+      payload: { name: string; overwrite?: boolean }
+    }
+
+export type WebdavDistributePreviewItem = {
+  agent_id: string
+  agent_name: string | null
+  action: 'skip' | 'update'
+  note: string | null
+}
+
+export type WebdavDistributePreviewResponse = {
+  kind: 'webdav_secret_distribute'
+  secret_name: string
+  overwrite: boolean
+  items: WebdavDistributePreviewItem[]
+}
 
 export const useBulkOperationsStore = defineStore('bulkOperations', () => {
   async function list(): Promise<BulkOperationListItem[]> {
@@ -81,6 +100,28 @@ export const useBulkOperationsStore = defineStore('bulkOperations', () => {
 
   async function get(opId: string): Promise<BulkOperationDetail> {
     return await apiFetch<BulkOperationDetail>(`/api/bulk-operations/${encodeURIComponent(opId)}`)
+  }
+
+  async function previewWebdavSecretDistribute(params: {
+    selector: BulkSelectorRequest
+    payload: { name: string; overwrite?: boolean }
+  }): Promise<WebdavDistributePreviewResponse> {
+    const csrf = await ensureCsrfToken()
+    return await apiFetch<WebdavDistributePreviewResponse>('/api/bulk-operations/preview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify({
+        kind: 'webdav_secret_distribute',
+        selector: params.selector,
+        payload: {
+          name: params.payload.name,
+          overwrite: params.payload.overwrite ?? false,
+        },
+      }),
+    })
   }
 
   async function create(req: CreateBulkOperationRequest): Promise<string> {
@@ -114,5 +155,5 @@ export const useBulkOperationsStore = defineStore('bulkOperations', () => {
     })
   }
 
-  return { list, get, create, cancel, retryFailed }
+  return { list, get, previewWebdavSecretDistribute, create, cancel, retryFailed }
 })

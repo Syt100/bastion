@@ -246,6 +246,10 @@ pub fn router(state: AppState) -> Router {
             post(agents::create_enrollment_token),
         )
         .route(
+            "/api/bulk-operations/preview",
+            post(bulk_operations::preview_bulk_operation),
+        )
+        .route(
             "/api/bulk-operations",
             get(bulk_operations::list_bulk_operations).post(bulk_operations::create_bulk_operation),
         )
