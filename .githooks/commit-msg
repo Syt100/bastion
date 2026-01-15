@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+set -eu
+
+msg_file="$1"
+
+# Allow a one-off bypass for legitimate cases where you need literal \n sequences
+# outside code spans. Example:
+#
+#   Allow-Literal-Backslash-N: yes
+#
+python3 - "$msg_file" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+msg = open(path, "r", encoding="utf-8", errors="replace").read()
+
+if re.search(r"(?im)^Allow-Literal-Backslash-N:\\s*yes\\s*$", msg):
+    sys.exit(0)
+
+# Heuristic: prevent the common mistake of using "\n" escapes in `git commit -m "..."` to
+# represent real line breaks (shell does not expand \n inside normal quotes).
+#
+# We ignore markdown code blocks/spans so commit messages can still mention code like:
+#   Fix the `printf(\"\\n\")` bug
+stripped = re.sub(r"```.*?```", "", msg, flags=re.S)
+stripped = re.sub(r"`[^`]*`", "", stripped)
+
+bad_patterns = [
+    r"\\n\\n",      # attempted blank line
+    r"\\n[\\-*#]",  # attempted bullet/heading on next line
+]
+
+for pat in bad_patterns:
+    if re.search(pat, stripped):
+        sys.stderr.write(
+            "ERROR: commit message contains literal \\\\n patterns that look like newline escapes.\\n"
+            "Use real newlines (multiple -m, or -F/heredoc) instead of embedding \\\\n in -m strings.\\n"
+            "If you truly need literal \\\\n sequences, wrap them in backticks or add trailer:\\n"
+            "  Allow-Literal-Backslash-N: yes\\n"
+        )
+        sys.exit(1)
+PY
+

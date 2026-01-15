@@ -153,6 +153,16 @@ Run the repo’s full checks (roughly what CI runs):
 bash scripts/ci.sh
 ```
 
+### Optional: enable git hooks
+
+This repo ships optional Git hooks under `.githooks/` (e.g. to prevent accidental literal `\n` in commit messages).
+
+Enable locally:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 This script includes a `gitleaks` secret scan step. If `gitleaks` is not installed, it will attempt to install a pinned version via `go install` (requires Go) into `~/.cache/bastion-tools/bin`.
 
 GitHub Actions CI runs the same script on pushes and pull requests (see `.github/workflows/ci.yml`).
