@@ -10,6 +10,17 @@ This repository is an MVP and is still evolving: expect breaking changes until a
 - **Agent** (Hub subcommand): connects to the Hub over WebSocket and executes jobs on remote nodes.
 - **Web UI** (`ui/`): Vue 3 + Vite single-page app.
 
+## Key features
+
+- **Agent labels**: tag agents (e.g., `prod`, `cn`, `db`) and filter/target operations by label. See `docs/agents.md`.
+- **Config sync observability**: each agent shows desired/applied config snapshot state and last sync error, with “Sync now” actions. See `docs/agents.md`.
+- **Bulk operations**: create async, per-agent operations with progress tracking + retry/cancel. See `docs/bulk-operations.md`.
+  - Bulk labels add/remove
+  - Bulk “sync config now”
+  - Bulk WebDAV credential distribution from Hub to agents
+  - Bulk deploy (clone) a job to many agents
+- **Job scheduling**: manual/simple/cron schedules with explicit schedule timezone and overlap policy. See `docs/jobs.md`.
+
 ## Quickstart (local dev)
 
 ### Prerequisites
