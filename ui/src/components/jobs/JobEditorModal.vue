@@ -15,7 +15,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSystemStore } from '@/stores/system'
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
@@ -52,6 +52,12 @@ const notifications = useNotificationsStore()
 const system = useSystemStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
+
+const modalStyle = computed(() =>
+  isDesktop.value
+    ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
+    : { width: MODAL_WIDTH.lg, maxHeight: MODAL_HEIGHT.max },
+)
 
 const show = ref<boolean>(false)
 const modalBody = ref<HTMLElement | null>(null)
@@ -444,7 +450,7 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
   <n-modal
     v-model:show="show"
     preset="card"
-    :style="{ width: MODAL_WIDTH.lg, maxHeight: 'calc(100vh - 64px)' }"
+    :style="modalStyle"
     :content-style="{ overflow: 'auto', minHeight: 0 }"
     :title="mode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
   >
