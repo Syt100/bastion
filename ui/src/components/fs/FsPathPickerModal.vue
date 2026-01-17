@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, nextTick, ref, watch } from 'vue'
 import {
   NAlert,
   NBadge,
@@ -58,6 +58,7 @@ const message = useMessage()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
+const pathInput = ref<InstanceType<typeof NInput> | null>(null)
 const loading = ref<boolean>(false)
 const nodeId = ref<'hub' | string>('hub')
 export type FsPathPickerMode = 'multi_paths' | 'single_dir'
@@ -101,7 +102,19 @@ const singleDirValidatedPath = ref<string>('')
 const singleDirNotFoundConfirmPath = ref<string>('')
 
 watch(show, (open) => {
-  if (!open) pickCurrentDirConfirmOpen.value = false
+  if (!open) {
+    pickCurrentDirConfirmOpen.value = false
+    return
+  }
+
+  // Keep the initial focus on the path input so the first action button doesn't look "selected".
+  nextTick().then(() => {
+    try {
+      pathInput.value?.focus?.()
+    } catch {
+      // ignore
+    }
+  })
 })
 
 const modalTitle = computed(() => (isSingleDirMode.value ? t('fsPicker.dirTitle') : t('fsPicker.title')))
@@ -718,40 +731,32 @@ defineExpose<FsPathPickerModalExpose>({ open })
   >
     <div class="space-y-3">
       <div class="space-y-2">
-        <div class="text-xs opacity-70">{{ t('fsPicker.currentPath') }}</div>
-        <div v-if="isDesktop" class="flex items-center gap-2">
-          <n-button quaternary size="small" :title="t('fsPicker.up')" @click="up">
-            <template #icon>
-              <n-icon><arrow-up-outline /></n-icon>
-            </template>
-          </n-button>
-          <n-button quaternary size="small" :title="t('common.refresh')" @click="refresh">
-            <template #icon>
-              <n-icon><refresh-outline /></n-icon>
-            </template>
-          </n-button>
-          <n-input
-            v-model:value="currentPath"
-            class="flex-1 min-w-0"
-            @update:value="onCurrentPathEdited"
-            @keyup.enter="refresh"
-          />
-        </div>
-        <div v-else class="space-y-2">
-          <div class="flex items-center gap-2">
-            <n-button quaternary size="small" :title="t('fsPicker.up')" @click="up">
-              <template #icon>
-                <n-icon><arrow-up-outline /></n-icon>
-              </template>
-            </n-button>
-            <n-button quaternary size="small" :title="t('common.refresh')" @click="refresh">
-              <template #icon>
-                <n-icon><refresh-outline /></n-icon>
-              </template>
-            </n-button>
-          </div>
-          <n-input v-model:value="currentPath" @update:value="onCurrentPathEdited" @keyup.enter="refresh" />
-        </div>
+        <n-input
+          ref="pathInput"
+          v-model:value="currentPath"
+          :placeholder="t('fsPicker.currentPath')"
+          @update:value="onCurrentPathEdited"
+          @keyup.enter="refresh"
+        >
+          <template #prefix>
+            <div class="flex items-center gap-1">
+              <n-button circle quaternary size="small" :title="t('fsPicker.up')" @click="up">
+                <template #icon>
+                  <n-icon class="fs-picker-path-action-icon opacity-80" :size="18">
+                    <arrow-up-outline />
+                  </n-icon>
+                </template>
+              </n-button>
+              <n-button circle quaternary size="small" :title="t('common.refresh')" @click="refresh">
+                <template #icon>
+                  <n-icon class="fs-picker-path-action-icon opacity-80" :size="18">
+                    <refresh-outline />
+                  </n-icon>
+                </template>
+              </n-button>
+            </div>
+          </template>
+        </n-input>
         <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
           {{ t('fsPicker.dirNotFoundWillCreate') }}
         </n-alert>
@@ -1008,3 +1013,10 @@ defineExpose<FsPathPickerModalExpose>({ open })
     </n-drawer-content>
   </n-drawer>
 </template>
+
+<style scoped>
+/* Ionicons outline icons default to a fairly heavy stroke; soften for toolbar actions. */
+.fs-picker-path-action-icon :deep(svg) {
+  stroke-width: 24;
+}
+</style>
