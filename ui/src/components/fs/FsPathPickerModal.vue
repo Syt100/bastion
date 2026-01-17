@@ -22,7 +22,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
+import { ArrowUpOutline, FilterOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
@@ -660,20 +660,41 @@ defineExpose<FsPathPickerModalExpose>({ open })
     :title="modalTitle"
   >
     <div class="space-y-3">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-2">
-          <n-button size="small" @click="up">{{ t('fsPicker.up') }}</n-button>
-          <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
-          <n-button v-if="!isSingleDirMode" size="small" @click="addCurrentDirToSelection">
-            {{ t('fsPicker.selectCurrentDir') }}
-          </n-button>
-        </div>
-        <div v-if="!isSingleDirMode" class="text-xs opacity-70">{{ t('fsPicker.selectedCount', { count: selectedCount }) }}</div>
-      </div>
-
       <div class="space-y-2">
         <div class="text-xs opacity-70">{{ t('fsPicker.currentPath') }}</div>
-        <n-input v-model:value="currentPath" @update:value="onCurrentPathEdited" @keyup.enter="refresh" />
+        <div v-if="isDesktop" class="flex items-center gap-2">
+          <n-button quaternary size="small" :title="t('fsPicker.up')" @click="up">
+            <template #icon>
+              <n-icon><arrow-up-outline /></n-icon>
+            </template>
+          </n-button>
+          <n-button quaternary size="small" :title="t('common.refresh')" @click="refresh">
+            <template #icon>
+              <n-icon><refresh-outline /></n-icon>
+            </template>
+          </n-button>
+          <n-input
+            v-model:value="currentPath"
+            class="flex-1 min-w-0"
+            @update:value="onCurrentPathEdited"
+            @keyup.enter="refresh"
+          />
+        </div>
+        <div v-else class="space-y-2">
+          <div class="flex items-center gap-2">
+            <n-button quaternary size="small" :title="t('fsPicker.up')" @click="up">
+              <template #icon>
+                <n-icon><arrow-up-outline /></n-icon>
+              </template>
+            </n-button>
+            <n-button quaternary size="small" :title="t('common.refresh')" @click="refresh">
+              <template #icon>
+                <n-icon><refresh-outline /></n-icon>
+              </template>
+            </n-button>
+          </div>
+          <n-input v-model:value="currentPath" @update:value="onCurrentPathEdited" @keyup.enter="refresh" />
+        </div>
         <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
           {{ t('fsPicker.dirNotFoundWillCreate') }}
         </n-alert>
@@ -833,21 +854,29 @@ defineExpose<FsPathPickerModalExpose>({ open })
     </div>
 
     <template #footer>
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-button
-          v-if="isSingleDirMode"
-          type="primary"
-          :loading="loading"
-          :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
-          @click="pick"
-        >
-          {{ singleDirConfirmLabel }}
-        </n-button>
-        <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
-          {{ t('fsPicker.addSelected') }}
-        </n-button>
-      </n-space>
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div v-if="!isSingleDirMode" class="text-xs opacity-70">
+          {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
+        </div>
+        <div class="flex items-center justify-end gap-2">
+          <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+          <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="addCurrentDirToSelection">
+            {{ t('fsPicker.selectCurrentDir') }}
+          </n-button>
+          <n-button
+            v-if="isSingleDirMode"
+            type="primary"
+            :loading="loading"
+            :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
+            @click="pick"
+          >
+            {{ singleDirConfirmLabel }}
+          </n-button>
+          <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
+            {{ t('fsPicker.addSelected') }}
+          </n-button>
+        </div>
+      </div>
     </template>
   </n-modal>
 </template>
