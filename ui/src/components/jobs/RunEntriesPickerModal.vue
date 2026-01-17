@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, nextTick, ref, watch } from 'vue'
 import {
   NBadge,
   NButton,
@@ -29,6 +29,7 @@ import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 
 export type RunEntriesSelection = {
   files: string[]
@@ -62,6 +63,7 @@ const message = useMessage()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
+const prefixBar = ref<PickerPathBarInputExpose | null>(null)
 const loading = ref<boolean>(false)
 const loadingMore = ref<boolean>(false)
 
@@ -89,6 +91,17 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+
+watch(show, (open) => {
+  if (!open) return
+  nextTick().then(() => {
+    try {
+      prefixBar.value?.focus?.()
+    } catch {
+      // ignore
+    }
+  })
+})
 
 const selected = ref<Map<string, 'file' | 'dir'>>(new Map())
 const checkedRowKeys = computed<string[]>(() => Array.from(selected.value.keys()))
@@ -479,18 +492,17 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
     :title="t('restore.pick.title')"
   >
     <div class="space-y-3">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-2">
-          <n-button size="small" @click="up">{{ t('fsPicker.up') }}</n-button>
-          <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
-        </div>
-        <div class="text-xs opacity-70">{{ t('fsPicker.selectedCount', { count: selectedCount }) }}</div>
-      </div>
-
-      <div class="space-y-2">
-        <div class="text-xs opacity-70">{{ t('restore.pick.currentPrefix') }}</div>
-        <n-input v-model:value="prefix" @keyup.enter="refresh" />
-      </div>
+      <PickerPathBarInput
+        ref="prefixBar"
+        v-model:value="prefix"
+        :placeholder="t('restore.pick.currentPrefix')"
+        :up-title="t('fsPicker.up')"
+        :refresh-title="t('common.refresh')"
+        :disabled-up="!prefix.trim()"
+        @up="up"
+        @refresh="refresh"
+        @enter="refresh"
+      />
 
       <div class="flex items-center gap-2">
         <n-input
@@ -644,10 +656,23 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
     </div>
 
     <template #footer>
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-button type="primary" :disabled="selectedCount === 0" @click="pick">{{ t('restore.pick.confirm') }}</n-button>
-      </n-space>
+      <div class="flex items-center justify-end sm:justify-between gap-2">
+        <div v-if="isDesktop" class="text-xs opacity-70">
+          {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
+        </div>
+
+        <div class="flex items-center justify-end gap-2 ml-auto">
+          <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+          <n-badge v-if="!isDesktop" :value="selectedCount" :show="selectedCount > 0">
+            <n-button type="primary" :disabled="selectedCount === 0" @click="pick">
+              {{ t('restore.pick.confirm') }}
+            </n-button>
+          </n-badge>
+          <n-button v-else type="primary" :disabled="selectedCount === 0" @click="pick">
+            {{ t('restore.pick.confirm') }}
+          </n-button>
+        </div>
+      </div>
     </template>
   </n-modal>
 </template>

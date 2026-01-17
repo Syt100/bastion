@@ -22,7 +22,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpOutline, FilterOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5'
+import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
@@ -31,6 +31,7 @@ import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
+import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 
 type FsListEntry = {
   name: string
@@ -58,7 +59,7 @@ const message = useMessage()
 const isDesktop = useMediaQuery(MQ.mdUp)
 
 const show = ref<boolean>(false)
-const pathInput = ref<InstanceType<typeof NInput> | null>(null)
+const pathBar = ref<PickerPathBarInputExpose | null>(null)
 const loading = ref<boolean>(false)
 const nodeId = ref<'hub' | string>('hub')
 export type FsPathPickerMode = 'multi_paths' | 'single_dir'
@@ -110,7 +111,7 @@ watch(show, (open) => {
   // Keep the initial focus on the path input so the first action button doesn't look "selected".
   nextTick().then(() => {
     try {
-      pathInput.value?.focus?.()
+      pathBar.value?.focus?.()
     } catch {
       // ignore
     }
@@ -129,6 +130,14 @@ const singleDirConfirmLabel = computed(() =>
 const selectedCount = computed(() => checked.value.length)
 const selectedUnique = computed(() => uniqueNormalizedPaths(checked.value))
 const currentDirNormalized = computed(() => normalizePath(currentPath.value))
+
+const currentPathModel = computed({
+  get: () => currentPath.value,
+  set: (v: string) => {
+    currentPath.value = v
+    onCurrentPathEdited()
+  },
+})
 
 const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
 
@@ -731,32 +740,16 @@ defineExpose<FsPathPickerModalExpose>({ open })
   >
     <div class="space-y-3">
       <div class="space-y-2">
-        <n-input
-          ref="pathInput"
-          v-model:value="currentPath"
+        <PickerPathBarInput
+          ref="pathBar"
+          v-model:value="currentPathModel"
           :placeholder="t('fsPicker.currentPath')"
-          @update:value="onCurrentPathEdited"
-          @keyup.enter="refresh"
-        >
-          <template #prefix>
-            <div class="flex items-center gap-1 -ml-1">
-              <n-button circle quaternary size="small" :title="t('fsPicker.up')" @click="up">
-                <template #icon>
-                  <n-icon class="fs-picker-path-action-icon opacity-80" :size="18">
-                    <arrow-up-outline />
-                  </n-icon>
-                </template>
-              </n-button>
-              <n-button circle quaternary size="small" :title="t('common.refresh')" @click="refresh">
-                <template #icon>
-                  <n-icon class="fs-picker-path-action-icon opacity-80" :size="18">
-                    <refresh-outline />
-                  </n-icon>
-                </template>
-              </n-button>
-            </div>
-          </template>
-        </n-input>
+          :up-title="t('fsPicker.up')"
+          :refresh-title="t('common.refresh')"
+          @up="up"
+          @refresh="refresh"
+          @enter="refresh"
+        />
         <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
           {{ t('fsPicker.dirNotFoundWillCreate') }}
         </n-alert>
@@ -1022,10 +1015,3 @@ defineExpose<FsPathPickerModalExpose>({ open })
     </n-drawer-content>
   </n-drawer>
 </template>
-
-<style scoped>
-/* Ionicons outline icons default to a fairly heavy stroke; soften for toolbar actions. */
-.fs-picker-path-action-icon :deep(svg) {
-  stroke-width: 24;
-}
-</style>
