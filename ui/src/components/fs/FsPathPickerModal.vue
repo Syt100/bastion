@@ -916,11 +916,11 @@ defineExpose<FsPathPickerModalExpose>({ open })
     </div>
 
     <template #footer>
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div v-if="!isSingleDirMode" class="text-xs opacity-70">
+      <div class="flex items-center justify-end sm:justify-between gap-2">
+        <div v-if="!isSingleDirMode && isDesktop" class="text-xs opacity-70">
           {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
         </div>
-        <div class="flex items-center justify-end gap-2">
+        <div class="flex items-center justify-end gap-2 ml-auto">
           <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
           <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
             {{ t('fsPicker.selectCurrentDir') }}
@@ -934,6 +934,15 @@ defineExpose<FsPathPickerModalExpose>({ open })
           >
             {{ singleDirConfirmLabel }}
           </n-button>
+          <n-badge
+            v-else-if="!isDesktop"
+            :value="selectedCount"
+            :show="selectedCount > 0"
+          >
+            <n-button type="primary" :disabled="checked.length === 0" @click="pick">
+              {{ t('fsPicker.addSelected') }}
+            </n-button>
+          </n-badge>
           <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
             {{ t('fsPicker.addSelected') }}
           </n-button>
