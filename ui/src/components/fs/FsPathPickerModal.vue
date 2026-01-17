@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import {
   NAlert,
   NBadge,
@@ -92,12 +92,17 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+const pickCurrentDirConfirmOpen = ref<boolean>(false)
 
 type SingleDirStatus = 'unknown' | 'ok' | 'not_found' | 'not_directory' | 'permission_denied' | 'agent_offline' | 'error'
 const singleDirStatus = ref<SingleDirStatus>('unknown')
 const singleDirMessage = ref<string>('')
 const singleDirValidatedPath = ref<string>('')
 const singleDirNotFoundConfirmPath = ref<string>('')
+
+watch(show, (open) => {
+  if (!open) pickCurrentDirConfirmOpen.value = false
+})
 
 const modalTitle = computed(() => (isSingleDirMode.value ? t('fsPicker.dirTitle') : t('fsPicker.title')))
 const singleDirConfirmLabel = computed(() =>
@@ -109,6 +114,8 @@ const singleDirConfirmLabel = computed(() =>
 )
 
 const selectedCount = computed(() => checked.value.length)
+const selectedUnique = computed(() => uniqueNormalizedPaths(checked.value))
+const currentDirNormalized = computed(() => normalizePath(currentPath.value))
 
 const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
 
@@ -262,6 +269,19 @@ function kindLabel(kind: string): string {
 
 function normalizePath(p: string): string {
   return p.trim()
+}
+
+function uniqueNormalizedPaths(paths: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of paths) {
+    const v = normalizePath(raw)
+    if (!v) continue
+    if (seen.has(v)) continue
+    seen.add(v)
+    out.push(v)
+  }
+  return out
 }
 
 function onCurrentPathEdited(): void {
@@ -501,14 +521,51 @@ function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpe
   singleDirMessage.value = ''
   filtersPopoverOpen.value = false
   filtersDrawerOpen.value = false
+  pickCurrentDirConfirmOpen.value = false
   show.value = true
   void refresh()
 }
 
-function addCurrentDirToSelection(): void {
-  const p = normalizePath(currentPath.value)
-  if (!p) return
-  if (!checked.value.includes(p)) checked.value = [...checked.value, p]
+function emitPicked(paths: string[]): void {
+  show.value = false
+  pickCurrentDirConfirmOpen.value = false
+  emit('picked', paths)
+}
+
+function requestPickCurrentDir(): void {
+  if (isSingleDirMode.value) return
+
+  const p = currentDirNormalized.value
+  if (!p) {
+    message.error(t('errors.fsPathRequired'))
+    return
+  }
+
+  if (selectedCount.value === 0) {
+    emitPicked([p])
+    return
+  }
+
+  pickCurrentDirConfirmOpen.value = true
+}
+
+function confirmPickCurrentDirOnly(): void {
+  const p = currentDirNormalized.value
+  if (!p) {
+    message.error(t('errors.fsPathRequired'))
+    return
+  }
+  emitPicked([p])
+}
+
+function confirmPickCurrentDirWithSelected(): void {
+  const p = currentDirNormalized.value
+  if (!p) {
+    message.error(t('errors.fsPathRequired'))
+    return
+  }
+  const out = uniqueNormalizedPaths([p, ...selectedUnique.value])
+  emitPicked(out)
 }
 
 function up(): void {
@@ -860,7 +917,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
         </div>
         <div class="flex items-center justify-end gap-2">
           <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-          <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="addCurrentDirToSelection">
+          <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
             {{ t('fsPicker.selectCurrentDir') }}
           </n-button>
           <n-button
@@ -879,4 +936,75 @@ defineExpose<FsPathPickerModalExpose>({ open })
       </div>
     </template>
   </n-modal>
+
+  <n-modal
+    v-if="isDesktop"
+    v-model:show="pickCurrentDirConfirmOpen"
+    preset="card"
+    :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
+    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :title="t('fsPicker.confirm.title')"
+  >
+    <div class="space-y-3">
+      <div class="space-y-1">
+        <div class="text-xs opacity-70">{{ t('fsPicker.confirm.currentDir') }}</div>
+        <div class="font-mono text-xs break-all rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5">
+          {{ currentDirNormalized }}
+        </div>
+      </div>
+
+      <div class="space-y-1">
+        <div class="text-xs opacity-70">{{ t('fsPicker.confirm.selectedItems', { count: selectedUnique.length }) }}</div>
+        <div class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1">
+          <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
+            {{ p }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <n-button @click="pickCurrentDirConfirmOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button secondary @click="confirmPickCurrentDirWithSelected">
+          {{ t('fsPicker.confirm.withSelected') }}
+        </n-button>
+        <n-button type="primary" @click="confirmPickCurrentDirOnly">
+          {{ t('fsPicker.confirm.onlyCurrent') }}
+        </n-button>
+      </div>
+    </template>
+  </n-modal>
+
+  <n-drawer v-else v-model:show="pickCurrentDirConfirmOpen" placement="bottom" height="80vh">
+    <n-drawer-content :title="t('fsPicker.confirm.title')" closable>
+      <div class="space-y-3">
+        <div class="space-y-1">
+          <div class="text-xs opacity-70">{{ t('fsPicker.confirm.currentDir') }}</div>
+          <div class="font-mono text-xs break-all rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5">
+            {{ currentDirNormalized }}
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <div class="text-xs opacity-70">{{ t('fsPicker.confirm.selectedItems', { count: selectedUnique.length }) }}</div>
+          <div class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1">
+            <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
+              {{ p }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-3">
+        <n-button @click="pickCurrentDirConfirmOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button secondary @click="confirmPickCurrentDirWithSelected">
+          {{ t('fsPicker.confirm.withSelected') }}
+        </n-button>
+        <n-button type="primary" @click="confirmPickCurrentDirOnly">
+          {{ t('fsPicker.confirm.onlyCurrent') }}
+        </n-button>
+      </div>
+    </n-drawer-content>
+  </n-drawer>
 </template>

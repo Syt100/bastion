@@ -132,4 +132,49 @@ describe('FsPathPickerModal', () => {
     expect(wrapper.emitted('picked')).toBeTruthy()
     expect(wrapper.emitted('picked')?.[0]).toEqual([['/missing']])
   })
+
+  it('confirms selecting the current directory immediately when no items are selected', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+    expect(wrapper.emitted('picked')?.[0]).toEqual([['/root']])
+  })
+
+  it('prompts when selecting the current directory and items are already selected (then picks only current dir)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/a', '/b']
+    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+
+    expect((wrapper.vm as unknown as { pickCurrentDirConfirmOpen: boolean }).pickCurrentDirConfirmOpen).toBe(true)
+
+    ;(wrapper.vm as unknown as { confirmPickCurrentDirOnly: () => void }).confirmPickCurrentDirOnly()
+    expect(wrapper.emitted('picked')?.[0]).toEqual([['/root']])
+  })
+
+  it('can confirm selecting the current directory plus the already selected items', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/a', '/b']
+    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+    ;(wrapper.vm as unknown as { confirmPickCurrentDirWithSelected: () => void }).confirmPickCurrentDirWithSelected()
+
+    const picked = wrapper.emitted('picked') ?? []
+    expect(picked[picked.length - 1]).toEqual([['/root', '/a', '/b']])
+  })
 })

@@ -420,6 +420,13 @@ const messages = {
     search: '搜索',
     kindAll: '全部类型',
     addSelected: '添加已选',
+    confirm: {
+      title: '同时添加已选择的条目吗？',
+      currentDir: '当前目录',
+      selectedItems: '已选择（{count}）',
+      onlyCurrent: '仅选择当前目录',
+      withSelected: '同时添加已选择的条目',
+    },
   },
   settings: {
     title: '设置',

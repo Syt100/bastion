@@ -420,6 +420,13 @@ const messages = {
     search: 'Search',
     kindAll: 'All types',
     addSelected: 'Add selected',
+    confirm: {
+      title: 'Also add the selected items?',
+      currentDir: 'Current directory',
+      selectedItems: 'Selected ({count})',
+      onlyCurrent: 'Only select current directory',
+      withSelected: 'Also add selected items',
+    },
   },
   settings: {
     title: 'Settings',
