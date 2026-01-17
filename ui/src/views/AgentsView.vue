@@ -23,7 +23,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
-import { useBulkOperationsStore } from '@/stores/bulkOperations'
+import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -201,17 +201,21 @@ async function createBulkLabelsOperation(): Promise<void> {
       return
     }
 
-    const selector =
-      bulkLabelsTarget.value === 'selected'
-        ? { node_ids: Array.from(new Set(selectedAgentIds.value)) }
-        : { labels: selectedLabels.value, labels_mode: labelsMode.value }
-    if (bulkLabelsTarget.value === 'selected' && selector.node_ids.length === 0) {
-      message.error(t('errors.formInvalid'))
-      return
-    }
-    if (bulkLabelsTarget.value === 'label_filter' && selector.labels.length === 0) {
-      message.error(t('errors.formInvalid'))
-      return
+    let selector: BulkSelectorRequest
+    if (bulkLabelsTarget.value === 'selected') {
+      const nodeIds = Array.from(new Set(selectedAgentIds.value))
+      if (nodeIds.length === 0) {
+        message.error(t('errors.formInvalid'))
+        return
+      }
+      selector = { node_ids: nodeIds }
+    } else {
+      const labels = selectedLabels.value
+      if (labels.length === 0) {
+        message.error(t('errors.formInvalid'))
+        return
+      }
+      selector = { labels, labels_mode: labelsMode.value }
     }
 
     const opId = await bulkOps.create({
@@ -240,17 +244,21 @@ function openBulkSyncModal(): void {
 async function createBulkSyncOperation(): Promise<void> {
   bulkSyncSaving.value = true
   try {
-    const selector =
-      bulkSyncTarget.value === 'selected'
-        ? { node_ids: Array.from(new Set(selectedAgentIds.value)) }
-        : { labels: selectedLabels.value, labels_mode: labelsMode.value }
-    if (bulkSyncTarget.value === 'selected' && selector.node_ids.length === 0) {
-      message.error(t('errors.formInvalid'))
-      return
-    }
-    if (bulkSyncTarget.value === 'label_filter' && selector.labels.length === 0) {
-      message.error(t('errors.formInvalid'))
-      return
+    let selector: BulkSelectorRequest
+    if (bulkSyncTarget.value === 'selected') {
+      const nodeIds = Array.from(new Set(selectedAgentIds.value))
+      if (nodeIds.length === 0) {
+        message.error(t('errors.formInvalid'))
+        return
+      }
+      selector = { node_ids: nodeIds }
+    } else {
+      const labels = selectedLabels.value
+      if (labels.length === 0) {
+        message.error(t('errors.formInvalid'))
+        return
+      }
+      selector = { labels, labels_mode: labelsMode.value }
     }
 
     const opId = await bulkOps.create({
