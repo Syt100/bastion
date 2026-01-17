@@ -20,6 +20,5 @@ The web UI SHALL render filesystem/archive browser modals with a stable shell he
 #### Scenario: Large selections do not expand the modal and push the footer
 - **GIVEN** the user is on a desktop-sized screen
 - **WHEN** the user selects many files/directories in a browser modal
-- **THEN** the selection summary remains compact (single-line with ellipsis and `+N` when needed)
+- **THEN** the modal layout remains stable and does not push the footer actions
 - **AND** the modal footer action buttons remain in a stable position
-

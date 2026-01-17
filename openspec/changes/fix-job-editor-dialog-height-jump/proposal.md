@@ -13,8 +13,7 @@ The filesystem path picker (file/directory selection dialog) exhibits similar he
   - Keep footer actions in a consistent position when switching steps and when validation feedback appears.
 - Filesystem / archive browser modals:
   - Apply the same stable shell + scrollable body layout on desktop.
-  - Avoid header height changes caused by long selections by summarizing selections in a single line (ellipsis + `+N`) with a way to view the full value.
-  - Reserve space for inline warnings/errors to avoid layout reflow when they appear/disappear.
+  - Move action buttons into the modal footer and make the content area scrollable so dynamic sections do not push the footer.
 
 ## Impact
 - Affected specs: `web-ui`
@@ -27,4 +26,3 @@ The filesystem path picker (file/directory selection dialog) exhibits similar he
 - No backend API changes.
 - No changes to job semantics, validation rules, or persistence.
 - No new features; this is a UI layout/UX stability improvement.
-
