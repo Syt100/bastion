@@ -739,7 +739,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
           @keyup.enter="refresh"
         >
           <template #prefix>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 -ml-1">
               <n-button circle quaternary size="small" :title="t('fsPicker.up')" @click="up">
                 <template #icon>
                   <n-icon class="fs-picker-path-action-icon opacity-80" :size="18">
