@@ -24,7 +24,7 @@ import { useI18n } from 'vue-i18n'
 import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { useMediaQuery } from '@/lib/media'
@@ -187,7 +187,7 @@ const activeChips = computed<ActiveChip[]>(() => {
 const tableMaxHeight = computed(() => (isDesktop.value ? 420 : 'calc(100vh - 420px)'))
 const modalStyle = computed(() =>
   isDesktop.value
-    ? { width: MODAL_WIDTH.lg }
+    ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
     : { width: '100vw', height: '100vh', borderRadius: '0', margin: '0' },
 )
 
@@ -471,7 +471,13 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="modalStyle" :title="t('restore.pick.title')">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    :style="modalStyle"
+    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :title="t('restore.pick.title')"
+  >
     <div class="space-y-3">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-2">
@@ -635,11 +641,13 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
       <div v-if="nextCursor != null" class="flex justify-center">
         <n-button size="small" :loading="loadingMore" @click="loadMore">{{ t('common.more') }}</n-button>
       </div>
+    </div>
 
+    <template #footer>
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
         <n-button type="primary" :disabled="selectedCount === 0" @click="pick">{{ t('restore.pick.confirm') }}</n-button>
       </n-space>
-    </div>
+    </template>
   </n-modal>
 </template>

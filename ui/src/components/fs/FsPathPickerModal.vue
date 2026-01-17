@@ -25,7 +25,7 @@ import { useI18n } from 'vue-i18n'
 import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
@@ -337,7 +337,7 @@ function computeParentPath(p: string): string {
 const tableMaxHeight = computed(() => (isDesktop.value ? 420 : 'calc(100vh - 390px)'))
 const modalStyle = computed(() =>
   isDesktop.value
-    ? { width: MODAL_WIDTH.lg }
+    ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
     : { width: '100vw', height: '100vh', borderRadius: '0', margin: '0' },
 )
 
@@ -652,7 +652,13 @@ defineExpose<FsPathPickerModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="modalStyle" :title="modalTitle">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    :style="modalStyle"
+    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :title="modalTitle"
+  >
     <div class="space-y-3">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-2">
@@ -824,7 +830,9 @@ defineExpose<FsPathPickerModalExpose>({ open })
         v-model:checked-row-keys="checked"
         :max-height="tableMaxHeight"
       />
+    </div>
 
+    <template #footer>
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
         <n-button
@@ -840,6 +848,6 @@ defineExpose<FsPathPickerModalExpose>({ open })
           {{ t('fsPicker.addSelected') }}
         </n-button>
       </n-space>
-    </div>
+    </template>
   </n-modal>
 </template>
