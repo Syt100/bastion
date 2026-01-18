@@ -24,6 +24,11 @@ pub(in crate::http) struct AppError {
 }
 
 impl AppError {
+    #[cfg(test)]
+    pub(in crate::http) fn code(&self) -> &'static str {
+        self.code
+    }
+
     pub(in crate::http) fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
