@@ -1354,7 +1354,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
               <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
             </n-form-item>
             <n-form-item :label="t('common.sort')">
-              <div :class="isDesktop ? 'grid grid-cols-2 gap-2' : 'space-y-2'">
+              <div class="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
                 <n-select
                   v-model:value="sortBy"
                   class="w-full"
@@ -1530,7 +1530,6 @@ defineExpose<FsPathPickerModalExpose>({ open })
         <n-button
           v-if="!isDesktop && !isSingleDirMode"
           size="small"
-          secondary
           :title="t('fsPicker.selectedCount', { count: selectedCount })"
           :aria-label="t('fsPicker.selectedCount', { count: selectedCount })"
           @click="selectionDrawerOpen = true"

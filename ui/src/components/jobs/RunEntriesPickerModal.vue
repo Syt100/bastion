@@ -809,7 +809,6 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         <n-button
           v-if="!isDesktop"
           size="small"
-          secondary
           :title="t('fsPicker.selectedCount', { count: selectedCount })"
           :aria-label="t('fsPicker.selectedCount', { count: selectedCount })"
           @click="selectionDrawerOpen = true"
