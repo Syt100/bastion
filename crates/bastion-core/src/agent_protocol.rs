@@ -4,7 +4,7 @@ use crate::job_spec::{FilesystemSource, SqliteSource, VaultwardenSource};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct FsDirEntryV1 {
     pub name: String,
     pub path: String,
@@ -132,6 +132,10 @@ pub enum HubToAgentMessageV1 {
         hide_dotfiles: Option<bool>,
         #[serde(default)]
         type_sort: Option<String>,
+        #[serde(default)]
+        sort_by: Option<String>,
+        #[serde(default)]
+        sort_dir: Option<String>,
         #[serde(default)]
         size_min_bytes: Option<u64>,
         #[serde(default)]

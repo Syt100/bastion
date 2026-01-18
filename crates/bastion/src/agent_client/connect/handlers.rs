@@ -204,6 +204,8 @@ pub(super) struct FsListRequest {
     pub(super) kind: Option<String>,
     pub(super) hide_dotfiles: Option<bool>,
     pub(super) type_sort: Option<String>,
+    pub(super) sort_by: Option<String>,
+    pub(super) sort_dir: Option<String>,
     pub(super) size_min_bytes: Option<u64>,
     pub(super) size_max_bytes: Option<u64>,
 }
@@ -224,6 +226,8 @@ where
         kind,
         hide_dotfiles,
         type_sort,
+        sort_by,
+        sort_dir,
         size_min_bytes,
         size_max_bytes,
     } = req;
@@ -245,6 +249,14 @@ where
         let t = v.trim().to_string();
         if t.is_empty() { None } else { Some(t) }
     });
+    let sort_by = sort_by.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let sort_dir = sort_dir.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
 
     let opts = super::super::fs_list::FsListOptions {
         cursor,
@@ -253,6 +265,8 @@ where
         kind,
         hide_dotfiles: hide_dotfiles.unwrap_or(false),
         type_sort,
+        sort_by,
+        sort_dir,
         size_min_bytes,
         size_max_bytes,
     };

@@ -15,6 +15,8 @@ pub(super) struct FsListOptions {
     pub kind: Option<String>,
     pub hide_dotfiles: bool,
     pub type_sort: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub size_min_bytes: Option<u64>,
     pub size_max_bytes: Option<u64>,
 }
@@ -26,10 +28,86 @@ pub(super) struct FsListPage {
     pub total: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SortBy {
+    Name,
+    Mtime,
+    Size,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SortDir {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SortKey {
+    by: SortBy,
+    dir: SortDir,
+    rank: u8,
+    name: String,
+    mtime: i64,
+    size: u64,
+}
+
+impl PartialOrd for SortKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SortKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Ensure a total order even if sort options differ (should not happen in practice).
+        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(other.by as u8, other.dir as u8, other.rank));
+        if order != Ordering::Equal {
+            return order;
+        }
+
+        match self.by {
+            SortBy::Name => match self.dir {
+                SortDir::Asc => self.name.cmp(&other.name),
+                SortDir::Desc => other.name.cmp(&self.name),
+            },
+            SortBy::Mtime => {
+                let o = match self.dir {
+                    SortDir::Asc => self.mtime.cmp(&other.mtime),
+                    SortDir::Desc => other.mtime.cmp(&self.mtime),
+                };
+                if o != Ordering::Equal {
+                    return o;
+                }
+                self.name.cmp(&other.name)
+            }
+            SortBy::Size => {
+                let o = match self.dir {
+                    SortDir::Asc => self.size.cmp(&other.size),
+                    SortDir::Desc => other.size.cmp(&self.size),
+                };
+                if o != Ordering::Equal {
+                    return o;
+                }
+                self.name.cmp(&other.name)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CursorKey {
     rank: u8,
     name: String,
+    #[serde(default)]
+    sort_by: Option<SortBy>,
+    #[serde(default)]
+    sort_dir: Option<SortDir>,
+    #[serde(default)]
+    mtime: Option<i64>,
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 fn encode_cursor_key(key: &CursorKey) -> String {
@@ -68,10 +146,28 @@ fn rank_kind(kind: &str, type_sort: Option<&str>) -> u8 {
     }
 }
 
+fn parse_sort_by(raw: Option<String>) -> Result<SortBy, String> {
+    match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => Ok(SortBy::Name),
+        Some("name") => Ok(SortBy::Name),
+        Some("mtime") => Ok(SortBy::Mtime),
+        Some("size") => Ok(SortBy::Size),
+        Some(_) => Err("invalid sort_by".to_string()),
+    }
+}
+
+fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, String> {
+    match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => Ok(SortDir::Asc),
+        Some("asc") => Ok(SortDir::Asc),
+        Some("desc") => Ok(SortDir::Desc),
+        Some(_) => Err("invalid sort_dir".to_string()),
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Candidate {
-    rank: u8,
-    name: String,
+    key: SortKey,
     path: String,
     kind: String,
     size: Option<u64>,
@@ -80,7 +176,7 @@ struct Candidate {
 
 impl PartialEq for Candidate {
     fn eq(&self, other: &Self) -> bool {
-        self.rank == other.rank && self.name == other.name
+        self.key == other.key
     }
 }
 
@@ -94,7 +190,7 @@ impl PartialOrd for Candidate {
 
 impl Ord for Candidate {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.rank, &self.name).cmp(&(other.rank, &other.name))
+        self.key.cmp(&other.key)
     }
 }
 
@@ -137,6 +233,8 @@ pub(super) fn fs_list_dir_entries_paged(
         && opts.kind.is_none()
         && !opts.hide_dotfiles
         && opts.type_sort.is_none()
+        && opts.sort_by.is_none()
+        && opts.sort_dir.is_none()
         && opts.size_min_bytes.is_none()
         && opts.size_max_bytes.is_none();
 
@@ -184,6 +282,8 @@ pub(super) fn fs_list_dir_entries_paged(
     let needle = opts.q.as_deref().map(|v| v.to_lowercase());
     let kind_filter = opts.kind.as_deref();
     let type_sort = opts.type_sort.as_deref();
+    let sort_by = parse_sort_by(opts.sort_by)?;
+    let sort_dir = parse_sort_dir(opts.sort_dir)?;
     let min_bytes = opts.size_min_bytes;
     let max_bytes = opts.size_max_bytes;
     let size_filter_active = min_bytes.is_some() || max_bytes.is_some();
@@ -191,7 +291,34 @@ pub(super) fn fs_list_dir_entries_paged(
     let limit = opts.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
 
     let cursor_key = match opts.cursor.as_deref() {
-        Some(v) if !v.trim().is_empty() => Some(decode_cursor_key(v.trim())?),
+        Some(v) if !v.trim().is_empty() => {
+            let decoded = decode_cursor_key(v.trim())?;
+            let cursor_sort_by = decoded.sort_by.unwrap_or(SortBy::Name);
+            let cursor_sort_dir = decoded.sort_dir.unwrap_or(SortDir::Asc);
+            if cursor_sort_by != sort_by || cursor_sort_dir != sort_dir {
+                return Err("invalid cursor: sort options mismatch".to_string());
+            }
+            let cursor_mtime = match sort_by {
+                SortBy::Mtime => decoded
+                    .mtime
+                    .ok_or_else(|| "invalid cursor: missing mtime key".to_string())?,
+                _ => decoded.mtime.unwrap_or(0),
+            };
+            let cursor_size = match sort_by {
+                SortBy::Size => decoded
+                    .size
+                    .ok_or_else(|| "invalid cursor: missing size key".to_string())?,
+                _ => decoded.size.unwrap_or(0),
+            };
+            Some(SortKey {
+                by: sort_by,
+                dir: sort_dir,
+                rank: decoded.rank,
+                name: decoded.name,
+                mtime: cursor_mtime,
+                size: cursor_size,
+            })
+        }
         _ => None,
     };
 
@@ -238,31 +365,39 @@ pub(super) fn fs_list_dir_entries_paged(
         // Size filter applies to non-dir entries only (matches UI semantics).
         let mut size: Option<u64> = None;
         let mut mtime: Option<i64> = None;
-        if size_filter_active && kind != "dir" {
+        let needs_meta_for_sort = sort_by != SortBy::Name;
+        let needs_meta_for_size_filter = size_filter_active && kind != "dir";
+        if needs_meta_for_sort || needs_meta_for_size_filter {
             let (s, t) = read_meta(&entry.path());
             size = Some(s);
             mtime = t;
-            if let Some(min) = min_bytes
-                && s < min
-            {
-                continue;
-            }
-            if let Some(max) = max_bytes
-                && s > max
-            {
-                continue;
+            if needs_meta_for_size_filter {
+                if let Some(min) = min_bytes
+                    && s < min
+                {
+                    continue;
+                }
+                if let Some(max) = max_bytes
+                    && s > max
+                {
+                    continue;
+                }
             }
         }
 
         total = total.saturating_add(1);
 
         let rank = rank_kind(kind, type_sort);
-        let key = CursorKey {
+        let key = SortKey {
+            by: sort_by,
+            dir: sort_dir,
             rank,
             name: name.clone(),
+            mtime: mtime.unwrap_or(0),
+            size: size.unwrap_or(0),
         };
         if let Some(cursor_key) = cursor_key.as_ref()
-            && (key.rank, &key.name) <= (cursor_key.rank, &cursor_key.name)
+            && key.cmp(cursor_key) != Ordering::Greater
         {
             continue;
         }
@@ -270,8 +405,7 @@ pub(super) fn fs_list_dir_entries_paged(
         after_cursor_total = after_cursor_total.saturating_add(1);
 
         let candidate = Candidate {
-            rank,
-            name,
+            key,
             path: entry.path().to_string_lossy().to_string(),
             kind: kind.to_string(),
             size,
@@ -298,7 +432,7 @@ pub(super) fn fs_list_dir_entries_paged(
                 c.mtime = t;
             }
             FsDirEntryV1 {
-                name: c.name,
+                name: c.key.name,
                 path: c.path,
                 kind: c.kind,
                 size: c.size.unwrap_or(0),
@@ -309,10 +443,20 @@ pub(super) fn fs_list_dir_entries_paged(
 
     let next_cursor = if after_cursor_total > limit as u64 && !entries.is_empty() {
         let last = entries.last().unwrap();
-        Some(encode_cursor_key(&CursorKey {
+        let mut key = CursorKey {
             rank: rank_kind(&last.kind, type_sort),
             name: last.name.clone(),
-        }))
+            sort_by: Some(sort_by),
+            sort_dir: Some(sort_dir),
+            mtime: None,
+            size: None,
+        };
+        match sort_by {
+            SortBy::Mtime => key.mtime = Some(last.mtime.unwrap_or(0)),
+            SortBy::Size => key.size = Some(last.size),
+            SortBy::Name => {}
+        }
+        Some(encode_cursor_key(&key))
     } else {
         None
     };
@@ -322,4 +466,97 @@ pub(super) fn fs_list_dir_entries_paged(
         next_cursor,
         total,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fs_list_dir_entries_paged_sort_modes_are_stable() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("a_dir")).unwrap();
+        std::fs::write(dir.path().join("b_small.txt"), "b").unwrap();
+        std::fs::write(dir.path().join("c_med.txt"), "cc").unwrap();
+        std::fs::write(dir.path().join("d_big.txt"), "dddddd").unwrap();
+        std::fs::write(dir.path().join("e.txt"), "e").unwrap();
+        std::fs::write(dir.path().join("f.txt"), "ff").unwrap();
+        std::fs::write(dir.path().join("g.txt"), "ggg").unwrap();
+
+        let cases = [
+            (None, None),
+            (Some("name".to_string()), Some("asc".to_string())),
+            (Some("name".to_string()), Some("desc".to_string())),
+            (Some("mtime".to_string()), Some("asc".to_string())),
+            (Some("mtime".to_string()), Some("desc".to_string())),
+            (Some("size".to_string()), Some("asc".to_string())),
+            (Some("size".to_string()), Some("desc".to_string())),
+        ];
+
+        for (sort_by, sort_dir) in cases {
+            let full = fs_list_dir_entries_paged(
+                dir.path().to_string_lossy().as_ref(),
+                FsListOptions {
+                    cursor: None,
+                    limit: Some(2000),
+                    q: None,
+                    kind: None,
+                    hide_dotfiles: false,
+                    type_sort: Some("dir_first".to_string()),
+                    sort_by: sort_by.clone(),
+                    sort_dir: sort_dir.clone(),
+                    size_min_bytes: None,
+                    size_max_bytes: None,
+                },
+            )
+            .unwrap();
+            assert!(full.entries.len() >= 7);
+
+            let page1 = fs_list_dir_entries_paged(
+                dir.path().to_string_lossy().as_ref(),
+                FsListOptions {
+                    cursor: None,
+                    limit: Some(3),
+                    q: None,
+                    kind: None,
+                    hide_dotfiles: false,
+                    type_sort: Some("dir_first".to_string()),
+                    sort_by: sort_by.clone(),
+                    sort_dir: sort_dir.clone(),
+                    size_min_bytes: None,
+                    size_max_bytes: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(page1.entries.len(), 3);
+            assert!(page1.next_cursor.is_some());
+
+            let page2 = fs_list_dir_entries_paged(
+                dir.path().to_string_lossy().as_ref(),
+                FsListOptions {
+                    cursor: page1.next_cursor.clone(),
+                    limit: Some(3),
+                    q: None,
+                    kind: None,
+                    hide_dotfiles: false,
+                    type_sort: Some("dir_first".to_string()),
+                    sort_by: sort_by.clone(),
+                    sort_dir: sort_dir.clone(),
+                    size_min_bytes: None,
+                    size_max_bytes: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(page2.entries.len(), 3);
+
+            let combined = page1
+                .entries
+                .into_iter()
+                .chain(page2.entries.into_iter())
+                .collect::<Vec<_>>();
+            assert_eq!(&combined[..], &full.entries[..combined.len()]);
+        }
+    }
 }

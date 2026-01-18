@@ -20,6 +20,8 @@ pub struct FsListOptions {
     pub kind: Option<String>,
     pub hide_dotfiles: bool,
     pub type_sort: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub size_min_bytes: Option<u64>,
     pub size_max_bytes: Option<u64>,
 }
@@ -146,6 +148,8 @@ impl AgentManager {
             kind: opts.kind,
             hide_dotfiles: if opts.hide_dotfiles { Some(true) } else { None },
             type_sort: opts.type_sort,
+            sort_by: opts.sort_by,
+            sort_dir: opts.sort_dir,
             size_min_bytes: opts.size_min_bytes,
             size_max_bytes: opts.size_max_bytes,
         };
@@ -190,6 +194,8 @@ impl AgentManager {
                     kind: None,
                     hide_dotfiles: false,
                     type_sort: None,
+                    sort_by: None,
+                    sort_dir: None,
                     size_min_bytes: None,
                     size_max_bytes: None,
                 },

@@ -149,6 +149,8 @@ pub(super) async fn connect_and_run(
                                 kind,
                                 hide_dotfiles,
                                 type_sort,
+                                sort_by,
+                                sort_dir,
                                 size_min_bytes,
                                 size_max_bytes,
                             }) if v == PROTOCOL_VERSION => {
@@ -163,6 +165,8 @@ pub(super) async fn connect_and_run(
                                         kind,
                                         hide_dotfiles,
                                         type_sort,
+                                        sort_by,
+                                        sort_dir,
                                         size_min_bytes,
                                         size_max_bytes,
                                     },
