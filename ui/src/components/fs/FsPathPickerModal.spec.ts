@@ -258,6 +258,38 @@ describe('FsPathPickerModal', () => {
     expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
   })
 
+  it('includes sort_by and sort_dir in fs list requests', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('sort_by=mtime')) {
+        return jsonResponse({
+          path: '/root',
+          entries: [{ name: 'newest.txt', path: '/root/newest.txt', kind: 'file', size: 1 }],
+        })
+      }
+      if (url.includes('sort_by=name')) {
+        return jsonResponse({
+          path: '/root',
+          entries: [{ name: 'a.txt', path: '/root/a.txt', kind: 'file', size: 1 }],
+        })
+      }
+      return jsonResponse({ error: 'unexpected', message: `unexpected url: ${url}` }, 500)
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { sortBy: string }).sortBy = 'mtime'
+    ;(wrapper.vm as unknown as { refreshForFilters: () => void }).refreshForFilters()
+    await flushAsync()
+
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(calls.some((c) => c.includes('sort_by=name') && c.includes('sort_dir=asc'))).toBe(true)
+    expect(calls.some((c) => c.includes('sort_by=mtime') && c.includes('sort_dir=asc'))).toBe(true)
+  })
+
   it('selects all loaded rows via selectAllLoadedRows', async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

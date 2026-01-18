@@ -99,6 +99,12 @@ type SizeUnit = 'B' | 'KB' | 'MB' | 'GB'
 
 const typeSort = ref<'dir_first' | 'file_first'>('dir_first')
 
+type FsSortBy = 'name' | 'mtime' | 'size'
+type FsSortDir = 'asc' | 'desc'
+
+const sortBy = ref<FsSortBy>('name')
+const sortDir = ref<FsSortDir>('asc')
+
 const sizeMinDraft = ref<number | null>(null)
 const sizeMaxDraft = ref<number | null>(null)
 const sizeUnitDraft = ref<SizeUnit>('MB')
@@ -191,6 +197,17 @@ const typeSortOptions = computed(() => [
   { label: t('common.fileFirst'), value: 'file_first' as const },
 ])
 
+const sortByOptions = computed(() => [
+  { label: t('common.name'), value: 'name' as const },
+  { label: t('common.modified'), value: 'mtime' as const },
+  { label: t('common.size'), value: 'size' as const },
+])
+
+const sortDirOptions = computed(() => [
+  { label: t('common.asc'), value: 'asc' as const },
+  { label: t('common.desc'), value: 'desc' as const },
+])
+
 const hasSizeApplied = computed(() => sizeMinApplied.value != null || sizeMaxApplied.value != null)
 
 const activeFilterCount = computed(() => {
@@ -199,6 +216,7 @@ const activeFilterCount = computed(() => {
   if (hideDotfiles.value) count += 1
   if (hasSizeApplied.value) count += 1
   if (typeSort.value !== 'dir_first') count += 1
+  if (sortBy.value !== 'name' || sortDir.value !== 'asc') count += 1
   return count
 })
 
@@ -259,6 +277,14 @@ const activeChips = computed<ActiveChip[]>(() => {
     })
   }
 
+  if (sortBy.value !== 'name' || sortDir.value !== 'asc') {
+    out.push({
+      key: 'sort',
+      label: `${t('common.sort')}: ${sortByLabel(sortBy.value)} · ${sortDirLabel(sortDir.value)}`,
+      onClose: resetSortAndRefresh,
+    })
+  }
+
   return out
 })
 
@@ -279,6 +305,16 @@ function kindLabel(kind: string): string {
   if (kind === 'symlink') return t('common.symlink')
   if (kind === 'file') return t('common.file')
   return kind
+}
+
+function sortByLabel(v: FsSortBy): string {
+  if (v === 'mtime') return t('common.modified')
+  if (v === 'size') return t('common.size')
+  return t('common.name')
+}
+
+function sortDirLabel(v: FsSortDir): string {
+  return v === 'desc' ? t('common.desc') : t('common.asc')
 }
 
 function normalizePath(p: string): string {
@@ -343,6 +379,11 @@ function resetTypeSort(): void {
   typeSort.value = 'dir_first'
 }
 
+function resetSort(): void {
+  sortBy.value = 'name'
+  sortDir.value = 'asc'
+}
+
 function resetAllFilters(): void {
   clearSearch()
   clearKindFilter()
@@ -351,6 +392,7 @@ function resetAllFilters(): void {
   sizeUnitDraft.value = 'MB'
   sizeUnitApplied.value = 'MB'
   resetTypeSort()
+  resetSort()
 }
 
 function refreshForFilters(): void {
@@ -381,6 +423,11 @@ function clearSizeFilterAndRefresh(): void {
 
 function resetTypeSortAndRefresh(): void {
   resetTypeSort()
+  refreshForFilters()
+}
+
+function resetSortAndRefresh(): void {
+  resetSort()
   refreshForFilters()
 }
 
@@ -444,6 +491,8 @@ type PersistedFiltersV1 = {
   kind?: 'all' | 'dir' | 'file' | 'symlink'
   hideDotfiles?: boolean
   typeSort?: 'dir_first' | 'file_first'
+  sortBy?: FsSortBy
+  sortDir?: FsSortDir
   sizeMin?: number | null
   sizeMax?: number | null
   sizeUnit?: SizeUnit
@@ -483,6 +532,16 @@ function normalizeTypeSort(raw: unknown): NonNullable<PersistedFiltersV1['typeSo
   return 'dir_first'
 }
 
+function normalizeSortBy(raw: unknown): FsSortBy {
+  if (raw === 'name' || raw === 'mtime' || raw === 'size') return raw
+  return 'name'
+}
+
+function normalizeSortDir(raw: unknown): FsSortDir {
+  if (raw === 'asc' || raw === 'desc') return raw
+  return 'asc'
+}
+
 function normalizeSizeUnit(raw: unknown): SizeUnit {
   if (raw === 'B' || raw === 'KB' || raw === 'MB' || raw === 'GB') return raw
   return 'MB'
@@ -503,6 +562,8 @@ function applyPersistedFilters(state: PersistedFiltersV1): void {
   kindFilter.value = normalizeKind(state.kind)
   hideDotfiles.value = Boolean(state.hideDotfiles)
   typeSort.value = normalizeTypeSort(state.typeSort)
+  sortBy.value = normalizeSortBy(state.sortBy)
+  sortDir.value = normalizeSortDir(state.sortDir)
 
   const sizeMin = normalizeNumberOrNull(state.sizeMin)
   const sizeMax = normalizeNumberOrNull(state.sizeMax)
@@ -525,6 +586,8 @@ function persistCurrentFilters(): void {
     kind: kindFilter.value,
     hideDotfiles: hideDotfiles.value,
     typeSort: typeSort.value,
+    sortBy: sortBy.value,
+    sortDir: sortDir.value,
     sizeMin: sizeMinApplied.value,
     sizeMax: sizeMaxApplied.value,
     sizeUnit: sizeUnitApplied.value,
@@ -540,6 +603,8 @@ watch(
     () => kindFilter.value,
     () => hideDotfiles.value,
     () => typeSort.value,
+    () => sortBy.value,
+    () => sortDir.value,
     () => sizeMinApplied.value,
     () => sizeMaxApplied.value,
     () => sizeUnitApplied.value,
@@ -755,6 +820,8 @@ function buildFsListUrl(path: string, cursor: string | null): string {
   params.set('path', path)
   params.set('limit', String(PAGE_LIMIT))
   if (cursor && cursor.trim()) params.set('cursor', cursor.trim())
+  params.set('sort_by', sortBy.value)
+  params.set('sort_dir', sortDir.value)
 
   const effectiveKind = isSingleDirMode.value ? 'dir' : kindFilter.value === 'all' ? null : kindFilter.value
   if (effectiveKind) params.set('kind', effectiveKind)
@@ -1253,6 +1320,12 @@ defineExpose<FsPathPickerModalExpose>({ open })
             </n-form-item>
             <n-form-item :label="t('common.typeSort')">
               <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
+            </n-form-item>
+            <n-form-item :label="t('common.sort')">
+              <div class="grid grid-cols-2 gap-2">
+                <n-select v-model:value="sortBy" :options="sortByOptions" @update:value="refreshForFilters" />
+                <n-select v-model:value="sortDir" :options="sortDirOptions" @update:value="refreshForFilters" />
+              </div>
             </n-form-item>
           </n-form>
 
