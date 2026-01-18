@@ -20,7 +20,7 @@
 - [x] 4.1 Update FsPathPickerModal to fetch paged results and render “加载更多”
 - [x] 4.2 Move filtering semantics to server-side fetch (refresh list when filters change)
 - [x] 4.3 Add UI tests for paging/filter fetch behavior
-- [ ] 4.4 Commit UI changes (detailed message)
+- [x] 4.4 Commit UI changes (detailed message)
 
 ## 5. Verification
 - [x] 5.1 Run `cargo test` (or targeted tests if full suite is too slow)
