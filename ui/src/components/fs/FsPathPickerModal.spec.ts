@@ -24,6 +24,7 @@ vi.mock('naive-ui', async () => {
     NAlert: stub('NAlert'),
     NBadge: stub('NBadge'),
     NButton: stub('NButton'),
+    NCard: stub('NCard'),
     NDataTable: stub('NDataTable'),
     NDrawer: stub('NDrawer'),
     NDrawerContent: stub('NDrawerContent'),
@@ -36,6 +37,7 @@ vi.mock('naive-ui', async () => {
     NPopover: stub('NPopover'),
     NSelect: stub('NSelect'),
     NSpace: stub('NSpace'),
+    NSpin: stub('NSpin'),
     NSwitch: stub('NSwitch'),
     NTag: stub('NTag'),
     useMessage: () => messageApi,
@@ -328,6 +330,28 @@ describe('FsPathPickerModal', () => {
     expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(
       new Set(['/root/b', '/root/c', '/root/d']),
     )
+  })
+
+  it('persists per-node filters in localStorage and restores them on next open', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { hideDotfiles: boolean }).hideDotfiles = true
+    await flushAsync()
+
+    const raw = localStorage.getItem('bastion.fsPicker.filters.hub')
+    expect(raw).toContain('"hideDotfiles":true')
+
+    ;(wrapper.vm as unknown as { show: boolean }).show = false
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+    expect((wrapper.vm as unknown as { hideDotfiles: boolean }).hideDotfiles).toBe(true)
   })
 
   it('navigates to the parent directory on Backspace when not typing in an input', async () => {

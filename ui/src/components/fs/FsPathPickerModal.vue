@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import {
   NAlert,
   NBadge,
@@ -22,12 +22,14 @@ import { useI18n } from 'vue-i18n'
 import { ListOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
+import { copyText } from '@/lib/clipboard'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
+import AppEmptyState from '@/components/AppEmptyState.vue'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
@@ -83,6 +85,10 @@ const entries = ref<FsListEntry[]>([])
 const checked = ref<string[]>([])
 const nextCursor = ref<string | null>(null)
 const total = ref<number | null>(null)
+
+type ListErrorKind = 'none' | 'agent_offline' | 'permission_denied' | 'not_found' | 'invalid_cursor' | 'error'
+const listErrorKind = ref<ListErrorKind>('none')
+const listErrorMessage = ref<string>('')
 
 const searchDraft = ref<string>('')
 const searchApplied = ref<string>('')
@@ -195,6 +201,8 @@ const activeFilterCount = computed(() => {
   if (typeSort.value !== 'dir_first') count += 1
   return count
 })
+
+const hasAnySearchOrFilters = computed(() => searchApplied.value.trim().length > 0 || activeFilterCount.value > 0)
 
 function sizeUnitMultiplier(unit: SizeUnit): number {
   if (unit === 'KB') return 1024
@@ -428,6 +436,130 @@ function saveLastDir(id: string, path: string): void {
   }
 }
 
+const FILTERS_KEY_PREFIX = 'bastion.fsPicker.filters.'
+
+type PersistedFiltersV1 = {
+  v: 1
+  search?: string
+  kind?: 'all' | 'dir' | 'file' | 'symlink'
+  hideDotfiles?: boolean
+  typeSort?: 'dir_first' | 'file_first'
+  sizeMin?: number | null
+  sizeMax?: number | null
+  sizeUnit?: SizeUnit
+}
+
+function filtersStorageKey(id: string): string {
+  return `${FILTERS_KEY_PREFIX}${encodeURIComponent(id)}`
+}
+
+function loadPersistedFilters(id: string): PersistedFiltersV1 | null {
+  try {
+    const raw = localStorage.getItem(filtersStorageKey(id))
+    if (!raw || !raw.trim()) return null
+    const parsed = JSON.parse(raw) as Partial<PersistedFiltersV1>
+    if (!parsed || typeof parsed !== 'object' || parsed.v !== 1) return null
+    return parsed as PersistedFiltersV1
+  } catch {
+    return null
+  }
+}
+
+function savePersistedFilters(id: string, state: PersistedFiltersV1): void {
+  try {
+    localStorage.setItem(filtersStorageKey(id), JSON.stringify(state))
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeKind(raw: unknown): NonNullable<PersistedFiltersV1['kind']> {
+  if (raw === 'all' || raw === 'dir' || raw === 'file' || raw === 'symlink') return raw
+  return 'all'
+}
+
+function normalizeTypeSort(raw: unknown): NonNullable<PersistedFiltersV1['typeSort']> {
+  if (raw === 'dir_first' || raw === 'file_first') return raw
+  return 'dir_first'
+}
+
+function normalizeSizeUnit(raw: unknown): SizeUnit {
+  if (raw === 'B' || raw === 'KB' || raw === 'MB' || raw === 'GB') return raw
+  return 'MB'
+}
+
+function normalizeNumberOrNull(raw: unknown): number | null {
+  if (raw == null) return null
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
+function applyPersistedFilters(state: PersistedFiltersV1): void {
+  const search = (typeof state.search === 'string' ? state.search : '').trim()
+  searchDraft.value = search
+  searchApplied.value = search
+
+  kindFilter.value = normalizeKind(state.kind)
+  hideDotfiles.value = Boolean(state.hideDotfiles)
+  typeSort.value = normalizeTypeSort(state.typeSort)
+
+  const sizeMin = normalizeNumberOrNull(state.sizeMin)
+  const sizeMax = normalizeNumberOrNull(state.sizeMax)
+  const sizeUnit = normalizeSizeUnit(state.sizeUnit)
+  sizeMinDraft.value = sizeMin
+  sizeMaxDraft.value = sizeMax
+  sizeMinApplied.value = sizeMin
+  sizeMaxApplied.value = sizeMax
+  sizeUnitDraft.value = sizeUnit
+  sizeUnitApplied.value = sizeUnit
+}
+
+function persistCurrentFilters(): void {
+  if (!show.value) return
+  if (isSingleDirMode.value) return
+  const id = nodeId.value
+  savePersistedFilters(id, {
+    v: 1,
+    search: searchApplied.value.trim(),
+    kind: kindFilter.value,
+    hideDotfiles: hideDotfiles.value,
+    typeSort: typeSort.value,
+    sizeMin: sizeMinApplied.value,
+    sizeMax: sizeMaxApplied.value,
+    sizeUnit: sizeUnitApplied.value,
+  })
+}
+
+watch(
+  [
+    () => show.value,
+    () => nodeId.value,
+    () => pickerMode.value,
+    () => searchApplied.value,
+    () => kindFilter.value,
+    () => hideDotfiles.value,
+    () => typeSort.value,
+    () => sizeMinApplied.value,
+    () => sizeMaxApplied.value,
+    () => sizeUnitApplied.value,
+  ],
+  () => {
+    persistCurrentFilters()
+  },
+)
+
+async function copyCurrentPath(): Promise<void> {
+  const p = normalizePath(currentPath.value)
+  if (!p) {
+    message.error(t('errors.fsPathRequired'))
+    return
+  }
+  const ok = await copyText(p)
+  if (ok) message.success(t('messages.copied'))
+  else message.error(t('errors.copyFailed'))
+}
+
 async function refresh(): Promise<void> {
   const p = normalizePath(currentPath.value)
   if (!p) {
@@ -446,6 +578,9 @@ async function refresh(): Promise<void> {
     singleDirMessage.value = ''
     singleDirValidatedPath.value = p
     singleDirNotFoundConfirmPath.value = ''
+  } else {
+    listErrorKind.value = 'none'
+    listErrorMessage.value = ''
   }
   try {
     const res = await apiFetch<FsListResponse>(buildFsListUrl(p, null))
@@ -535,15 +670,47 @@ async function refresh(): Promise<void> {
           nextCursor.value = normalizeCursor(res.next_cursor)
           total.value = typeof res.total === 'number' ? res.total : null
           saveLastDir(nodeId.value, currentPath.value)
+          listErrorKind.value = 'none'
+          listErrorMessage.value = ''
           return
         } catch (error2) {
-          message.error(formatToastError(t('errors.fsListFailed'), error2, t))
+          const info2 = toApiErrorInfo(error2, t)
+          listErrorKind.value = 'error'
+          listErrorMessage.value = info2.message || t('errors.fsListFailed')
+          entries.value = []
           return
         }
       }
     }
 
-    message.error(formatToastError(t('errors.fsListFailed'), error, t))
+    if (code === 'agent_offline') {
+      listErrorKind.value = 'agent_offline'
+      listErrorMessage.value = info.message
+      entries.value = []
+      return
+    }
+    if (code === 'permission_denied') {
+      listErrorKind.value = 'permission_denied'
+      listErrorMessage.value = info.message
+      entries.value = []
+      return
+    }
+    if (code === 'path_not_found') {
+      listErrorKind.value = 'not_found'
+      listErrorMessage.value = info.message
+      entries.value = []
+      return
+    }
+    if (code === 'invalid_cursor') {
+      listErrorKind.value = 'invalid_cursor'
+      listErrorMessage.value = info.message
+      entries.value = []
+      return
+    }
+
+    listErrorKind.value = 'error'
+    listErrorMessage.value = info.message || t('errors.fsListFailed')
+    entries.value = []
   } finally {
     if (seq === listFetchSeq) loading.value = false
   }
@@ -570,6 +737,13 @@ async function loadMore(): Promise<void> {
     saveLastDir(nodeId.value, currentPath.value)
   } catch (error) {
     if (seq !== listFetchSeq) return
+    const info = toApiErrorInfo(error, t)
+    if (info.code === 'invalid_cursor' || info.code === 'agent_offline' || info.code === 'permission_denied') {
+      listErrorKind.value = info.code === 'agent_offline' ? 'agent_offline' : info.code === 'permission_denied' ? 'permission_denied' : 'invalid_cursor'
+      listErrorMessage.value = info.message
+      nextCursor.value = null
+      return
+    }
     message.error(formatToastError(t('errors.fsListFailed'), error, t))
   } finally {
     if (seq === listFetchSeq) loadingMore.value = false
@@ -633,7 +807,15 @@ function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpe
   nextCursor.value = null
   total.value = null
   loadingMore.value = false
-  resetAllFilters()
+  if (isSingleDirMode.value) {
+    resetAllFilters()
+  } else {
+    const persisted = loadPersistedFilters(nextNodeId)
+    if (persisted) applyPersistedFilters(persisted)
+    else resetAllFilters()
+  }
+  listErrorKind.value = 'none'
+  listErrorMessage.value = ''
   singleDirStatus.value = 'unknown'
   singleDirMessage.value = ''
   filtersPopoverOpen.value = false
@@ -739,6 +921,28 @@ const tableData = computed(() => {
   }
   return visibleEntries.value
 })
+
+const showListErrorState = computed(
+  () => !loading.value && !isSingleDirMode.value && listErrorKind.value !== 'none',
+)
+const showListErrorBanner = computed(() => showListErrorState.value && tableData.value.length > 0)
+const showListErrorEmptyState = computed(() => showListErrorState.value && tableData.value.length === 0)
+const showEmptyDirState = computed(
+  () =>
+    !loading.value &&
+    !isSingleDirMode.value &&
+    listErrorKind.value === 'none' &&
+    tableData.value.length === 0 &&
+    !hasAnySearchOrFilters.value,
+)
+const showNoMatchesState = computed(
+  () =>
+    !loading.value &&
+    !isSingleDirMode.value &&
+    listErrorKind.value === 'none' &&
+    tableData.value.length === 0 &&
+    hasAnySearchOrFilters.value,
+)
 
 function loadedRowPaths(): string[] {
   if (isSingleDirMode.value) return []
@@ -1074,9 +1278,62 @@ defineExpose<FsPathPickerModalExpose>({ open })
         @clear="resetAllFiltersAndRefresh"
       />
 
-      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden gap-2">
+        <n-alert v-if="showListErrorBanner" type="error" :bordered="false">
+          <div class="space-y-2">
+            <div>{{ listErrorMessage || t('errors.fsListFailed') }}</div>
+            <div class="flex flex-wrap gap-2">
+              <n-button size="tiny" secondary @click="refresh">{{ t('common.refresh') }}</n-button>
+              <n-button size="tiny" secondary @click="up">{{ t('fsPicker.up') }}</n-button>
+              <n-button size="tiny" secondary @click="copyCurrentPath">{{ t('common.copy') }}</n-button>
+              <n-button v-if="hasAnySearchOrFilters" size="tiny" tertiary @click="resetAllFiltersAndRefresh">
+                {{ t('common.clear') }}
+              </n-button>
+            </div>
+          </div>
+        </n-alert>
+
         <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
+          <AppEmptyState
+            v-if="showListErrorEmptyState"
+            :title="listErrorMessage || t('errors.fsListFailed')"
+            :description="currentDirNormalized"
+          >
+            <template #actions>
+              <n-button size="small" secondary @click="refresh">{{ t('common.refresh') }}</n-button>
+              <n-button size="small" secondary @click="up">{{ t('fsPicker.up') }}</n-button>
+              <n-button size="small" secondary @click="copyCurrentPath">{{ t('common.copy') }}</n-button>
+              <n-button v-if="hasAnySearchOrFilters" size="small" tertiary @click="resetAllFiltersAndRefresh">
+                {{ t('common.clear') }}
+              </n-button>
+            </template>
+          </AppEmptyState>
+
+          <AppEmptyState
+            v-else-if="showNoMatchesState"
+            :title="t('fsPicker.noMatchesTitle')"
+            :description="t('fsPicker.noMatchesDescription')"
+          >
+            <template #actions>
+              <n-button size="small" secondary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
+              <n-button size="small" secondary @click="refresh">{{ t('common.refresh') }}</n-button>
+            </template>
+          </AppEmptyState>
+
+          <AppEmptyState
+            v-else-if="showEmptyDirState"
+            :title="t('fsPicker.emptyDirTitle')"
+            :description="t('fsPicker.emptyDirDescription')"
+          >
+            <template #actions>
+              <n-button size="small" secondary @click="refresh">{{ t('common.refresh') }}</n-button>
+              <n-button size="small" secondary @click="up">{{ t('fsPicker.up') }}</n-button>
+              <n-button size="small" secondary @click="copyCurrentPath">{{ t('common.copy') }}</n-button>
+            </template>
+          </AppEmptyState>
+
           <n-data-table
+            v-else
             :loading="loading"
             :columns="columns"
             :data="tableData"
