@@ -92,6 +92,10 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 
+function onPrefixNavigate(): void {
+  refresh()
+}
+
 watch(show, (open) => {
   if (!open) return
   nextTick().then(() => {
@@ -502,6 +506,7 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         @up="up"
         @refresh="refresh"
         @enter="refresh"
+        @navigate="onPrefixNavigate"
       />
 
       <div class="flex items-center gap-2">

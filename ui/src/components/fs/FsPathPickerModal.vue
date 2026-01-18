@@ -139,6 +139,10 @@ const currentPathModel = computed({
   },
 })
 
+function onPathBarNavigate(): void {
+  refresh()
+}
+
 const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
 
 function applySearch(): void {
@@ -749,6 +753,7 @@ defineExpose<FsPathPickerModalExpose>({ open })
           @up="up"
           @refresh="refresh"
           @enter="refresh"
+          @navigate="onPathBarNavigate"
         />
         <n-alert v-if="isSingleDirMode && singleDirStatus === 'not_found'" type="warning" :bordered="false">
           {{ t('fsPicker.dirNotFoundWillCreate') }}
