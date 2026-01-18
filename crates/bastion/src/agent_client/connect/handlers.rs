@@ -195,22 +195,39 @@ where
     Ok(HandlerFlow::Continue)
 }
 
+pub(super) struct FsListRequest {
+    pub(super) request_id: String,
+    pub(super) path: String,
+    pub(super) cursor: Option<String>,
+    pub(super) limit: Option<u32>,
+    pub(super) q: Option<String>,
+    pub(super) kind: Option<String>,
+    pub(super) hide_dotfiles: Option<bool>,
+    pub(super) type_sort: Option<String>,
+    pub(super) size_min_bytes: Option<u64>,
+    pub(super) size_max_bytes: Option<u64>,
+}
+
 pub(super) async fn handle_fs_list<S>(
     tx: &mut S,
-    request_id: String,
-    path: String,
-    cursor: Option<String>,
-    limit: Option<u32>,
-    q: Option<String>,
-    kind: Option<String>,
-    hide_dotfiles: Option<bool>,
-    type_sort: Option<String>,
-    size_min_bytes: Option<u64>,
-    size_max_bytes: Option<u64>,
+    req: FsListRequest,
 ) -> Result<HandlerFlow, anyhow::Error>
 where
     S: Sink<Message, Error = tungstenite::Error> + Unpin,
 {
+    let FsListRequest {
+        request_id,
+        path,
+        cursor,
+        limit,
+        q,
+        kind,
+        hide_dotfiles,
+        type_sort,
+        size_min_bytes,
+        size_max_bytes,
+    } = req;
+
     let path = path.trim().to_string();
     let cursor = cursor.and_then(|v| {
         let t = v.trim().to_string();
@@ -240,8 +257,10 @@ where
         size_max_bytes,
     };
 
-    let result = tokio::task::spawn_blocking(move || super::super::fs_list::fs_list_dir_entries_paged(&path, opts))
-        .await;
+    let result = tokio::task::spawn_blocking(move || {
+        super::super::fs_list::fs_list_dir_entries_paged(&path, opts)
+    })
+    .await;
 
     let (entries, next_cursor, total, error) = match result {
         Ok(Ok(page)) => (page.entries, page.next_cursor, Some(page.total), None),

@@ -82,9 +82,10 @@ pub(super) async fn fs_list(
             size_min_bytes: query.size_min_bytes,
             size_max_bytes: query.size_max_bytes,
         };
-        let page = tokio::task::spawn_blocking(move || list_dir_entries_paged(&path_for_worker, opts))
-            .await
-            .map_err(|e| anyhow::anyhow!(e))??;
+        let page =
+            tokio::task::spawn_blocking(move || list_dir_entries_paged(&path_for_worker, opts))
+                .await
+                .map_err(|e| anyhow::anyhow!(e))??;
         return Ok(Json(FsListResponse {
             path,
             entries: page.entries,
@@ -230,7 +231,9 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
     fn read_meta(path: &PathBuf) -> (u64, Option<i64>) {
         let meta = std::fs::metadata(path).ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mtime = meta.and_then(|m| m.modified().ok()).and_then(to_unix_seconds);
+        let mtime = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(to_unix_seconds);
         (size, mtime)
     }
 
@@ -269,35 +272,19 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
 
     let cursor = opts.cursor.and_then(|v| {
         let t = v.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
+        if t.is_empty() { None } else { Some(t) }
     });
     let q = opts.q.and_then(|v| {
         let t = v.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
+        if t.is_empty() { None } else { Some(t) }
     });
     let kind_filter = opts.kind.and_then(|v| {
         let t = v.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
+        if t.is_empty() { None } else { Some(t) }
     });
     let type_sort = opts.type_sort.and_then(|v| {
         let t = v.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
+        if t.is_empty() { None } else { Some(t) }
     });
 
     let needle = q.as_deref().map(|v| v.to_lowercase());
@@ -344,10 +331,10 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
         if opts.hide_dotfiles && name.starts_with('.') {
             continue;
         }
-        if let Some(needle) = needle.as_deref() {
-            if !name.to_lowercase().contains(needle) {
-                continue;
-            }
+        if let Some(needle) = needle.as_deref()
+            && !name.to_lowercase().contains(needle)
+        {
+            continue;
         }
 
         let ft = match entry.file_type() {
@@ -367,10 +354,10 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
             "other"
         };
 
-        if let Some(k) = kind_filter {
-            if kind != k {
-                continue;
-            }
+        if let Some(k) = kind_filter
+            && kind != k
+        {
+            continue;
         }
 
         // Size filter applies to non-dir entries only (matches UI semantics).
@@ -380,15 +367,15 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
             let (s, t) = read_meta(&entry.path());
             size = Some(s);
             mtime = t;
-            if let Some(min) = min_bytes {
-                if s < min {
-                    continue;
-                }
+            if let Some(min) = min_bytes
+                && s < min
+            {
+                continue;
             }
-            if let Some(max) = max_bytes {
-                if s > max {
-                    continue;
-                }
+            if let Some(max) = max_bytes
+                && s > max
+            {
+                continue;
             }
         }
 
@@ -399,10 +386,10 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
             rank,
             name: name.clone(),
         };
-        if let Some(cursor_key) = cursor_key.as_ref() {
-            if (key.rank, &key.name) <= (cursor_key.rank, &cursor_key.name) {
-                continue;
-            }
+        if let Some(cursor_key) = cursor_key.as_ref()
+            && (key.rank, &key.name) <= (cursor_key.rank, &cursor_key.name)
+        {
+            continue;
         }
 
         after_cursor_total = after_cursor_total.saturating_add(1);
@@ -525,8 +512,16 @@ mod tests {
         .unwrap();
         assert!(!page2.entries.is_empty());
 
-        let names1 = page1.entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
-        let names2 = page2.entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        let names1 = page1
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect::<Vec<_>>();
+        let names2 = page2
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect::<Vec<_>>();
         for n in names2 {
             assert!(!names1.contains(&n));
         }

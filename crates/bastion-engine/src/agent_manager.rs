@@ -199,12 +199,7 @@ impl AgentManager {
         Ok(page.entries)
     }
 
-    pub async fn complete_fs_list(
-        &self,
-        agent_id: &str,
-        request_id: &str,
-        result: FsListResult,
-    ) {
+    pub async fn complete_fs_list(&self, agent_id: &str, request_id: &str, result: FsListResult) {
         let key = (agent_id.to_string(), request_id.to_string());
         let tx = self.pending_fs_list.lock().await.remove(&key);
         if let Some(tx) = tx {

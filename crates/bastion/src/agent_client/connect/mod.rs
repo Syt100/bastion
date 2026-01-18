@@ -154,16 +154,18 @@ pub(super) async fn connect_and_run(
                             }) if v == PROTOCOL_VERSION => {
                                 if handlers::handle_fs_list(
                                     &mut tx,
-                                    request_id,
-                                    path,
-                                    cursor,
-                                    limit,
-                                    q,
-                                    kind,
-                                    hide_dotfiles,
-                                    type_sort,
-                                    size_min_bytes,
-                                    size_max_bytes,
+                                    handlers::FsListRequest {
+                                        request_id,
+                                        path,
+                                        cursor,
+                                        limit,
+                                        q,
+                                        kind,
+                                        hide_dotfiles,
+                                        type_sort,
+                                        size_min_bytes,
+                                        size_max_bytes,
+                                    },
                                 )
                                 .await?
                                     == handlers::HandlerFlow::Reconnect

@@ -107,11 +107,16 @@ fn to_unix_seconds(t: std::time::SystemTime) -> Option<i64> {
 fn read_meta(path: &PathBuf) -> (u64, Option<i64>) {
     let meta = std::fs::metadata(path).ok();
     let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-    let mtime = meta.and_then(|m| m.modified().ok()).and_then(to_unix_seconds);
+    let mtime = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(to_unix_seconds);
     (size, mtime)
 }
 
-pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage, String> {
+pub(super) fn fs_list_dir_entries_paged(
+    path: &str,
+    opts: FsListOptions,
+) -> Result<FsListPage, String> {
     const DEFAULT_LIMIT: u32 = 200;
     const MAX_LIMIT: u32 = 2000;
 
@@ -145,7 +150,9 @@ pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Resu
                 continue;
             }
 
-            let ft = entry.file_type().map_err(|e| format!("file_type failed: {e}"))?;
+            let ft = entry
+                .file_type()
+                .map_err(|e| format!("file_type failed: {e}"))?;
             let kind = if ft.is_dir() {
                 "dir"
             } else if ft.is_file() {
@@ -203,13 +210,15 @@ pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Resu
         if opts.hide_dotfiles && name.starts_with('.') {
             continue;
         }
-        if let Some(needle) = needle.as_deref() {
-            if !name.to_lowercase().contains(needle) {
-                continue;
-            }
+        if let Some(needle) = needle.as_deref()
+            && !name.to_lowercase().contains(needle)
+        {
+            continue;
         }
 
-        let ft = entry.file_type().map_err(|e| format!("file_type failed: {e}"))?;
+        let ft = entry
+            .file_type()
+            .map_err(|e| format!("file_type failed: {e}"))?;
         let kind = if ft.is_dir() {
             "dir"
         } else if ft.is_file() {
@@ -220,10 +229,10 @@ pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Resu
             "other"
         };
 
-        if let Some(k) = kind_filter {
-            if kind != k {
-                continue;
-            }
+        if let Some(k) = kind_filter
+            && kind != k
+        {
+            continue;
         }
 
         // Size filter applies to non-dir entries only (matches UI semantics).
@@ -233,15 +242,15 @@ pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Resu
             let (s, t) = read_meta(&entry.path());
             size = Some(s);
             mtime = t;
-            if let Some(min) = min_bytes {
-                if s < min {
-                    continue;
-                }
+            if let Some(min) = min_bytes
+                && s < min
+            {
+                continue;
             }
-            if let Some(max) = max_bytes {
-                if s > max {
-                    continue;
-                }
+            if let Some(max) = max_bytes
+                && s > max
+            {
+                continue;
             }
         }
 
@@ -252,10 +261,10 @@ pub(super) fn fs_list_dir_entries_paged(path: &str, opts: FsListOptions) -> Resu
             rank,
             name: name.clone(),
         };
-        if let Some(cursor_key) = cursor_key.as_ref() {
-            if (key.rank, &key.name) <= (cursor_key.rank, &cursor_key.name) {
-                continue;
-            }
+        if let Some(cursor_key) = cursor_key.as_ref()
+            && (key.rank, &key.name) <= (cursor_key.rank, &cursor_key.name)
+        {
+            continue;
         }
 
         after_cursor_total = after_cursor_total.saturating_add(1);
