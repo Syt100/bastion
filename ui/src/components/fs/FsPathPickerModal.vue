@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref, watch } from 'vue'
+import { computed, h, ref } from 'vue'
 import {
   NAlert,
   NBadge,
@@ -9,20 +9,14 @@ import {
   NDrawerContent,
   NForm,
   NFormItem,
-  NIcon,
-  NInput,
   NInputNumber,
   NModal,
-  NPopover,
   NSelect,
-  NSpace,
   NSwitch,
-  NTag,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { FilterOutline, SearchOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
@@ -31,8 +25,13 @@ import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
-import { useObservedElementHeightPx } from '@/lib/resizeObserver'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
+import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
+import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
+import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
+import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
+import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
+import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 
 type FsListEntry = {
   name: string
@@ -111,43 +110,18 @@ const singleDirMessage = ref<string>('')
 const singleDirValidatedPath = ref<string>('')
 const singleDirNotFoundConfirmPath = ref<string>('')
 
-const tableContainerEl = ref<HTMLElement | null>(null)
-function computeTableBodyMaxHeightPx(container: HTMLElement): number {
-  const containerHeight = container.clientHeight
-  const headerEl = container.querySelector('.n-data-table-base-table-header') as HTMLElement | null
-  const theadEl = container.querySelector('thead') as HTMLElement | null
-  const headerHeight = headerEl?.clientHeight || theadEl?.clientHeight || 0
-  return containerHeight - headerHeight
-}
-const {
-  heightPx: tableBodyMaxHeightPx,
-  start: startTableHeightObserver,
-  stop: stopTableHeightObserver,
-  measure: measureTableHeight,
-} = useObservedElementHeightPx(tableContainerEl, computeTableBodyMaxHeightPx)
-
-watch(show, (open) => {
-  if (!open) {
-    pickCurrentDirConfirmOpen.value = false
-    stopTableHeightObserver()
-    return
-  }
-
-  // Keep the initial focus on the path input so the first action button doesn't look "selected".
-  nextTick().then(() => {
+const { tableContainerEl, tableBodyMaxHeightPx } = usePickerTableBodyMaxHeightPx(show, {
+  onOpen: () => {
+    // Keep the initial focus on the path input so the first action button doesn't look "selected".
     try {
       pathBar.value?.focus?.()
     } catch {
       // ignore
     }
-    startTableHeightObserver()
-    requestAnimationFrame(() => {
-      measureTableHeight()
-      requestAnimationFrame(() => {
-        measureTableHeight()
-      })
-    })
-  })
+  },
+  onClose: () => {
+    pickCurrentDirConfirmOpen.value = false
+  },
 })
 
 const modalTitle = computed(() => (isSingleDirMode.value ? t('fsPicker.dirTitle') : t('fsPicker.title')))
@@ -839,11 +813,9 @@ defineExpose<FsPathPickerModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal
+  <PickerModalCard
     v-model:show="show"
-    preset="card"
     :style="modalStyle"
-    :content-style="{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }"
     :title="modalTitle"
   >
     <div class="flex flex-col gap-3 flex-1 min-h-0">
@@ -872,101 +844,20 @@ defineExpose<FsPathPickerModalExpose>({ open })
       </div>
 
       <div v-if="!isSingleDirMode" class="flex items-center gap-2">
-        <n-input
+        <PickerSearchInput
           v-model:value="searchDraft"
-          class="flex-1 min-w-0"
           :placeholder="t('fsPicker.searchPlaceholder')"
-          @keyup.enter="applySearch"
+          :search-disabled="!hasSearchDraftChanges"
+          @search="applySearch"
+        />
+
+        <PickerFiltersPopoverDrawer
+          :is-desktop="isDesktop"
+          :title="t('common.filters')"
+          :active-count="activeFilterCount"
+          v-model:popover-open="filtersPopoverOpen"
+          v-model:drawer-open="filtersDrawerOpen"
         >
-          <template #suffix>
-            <n-button
-              size="tiny"
-              quaternary
-              :disabled="!hasSearchDraftChanges"
-              :title="t('common.search')"
-              @click="applySearch"
-            >
-              <template #icon>
-                <n-icon><search-outline /></n-icon>
-              </template>
-            </n-button>
-          </template>
-        </n-input>
-
-        <n-popover
-          v-if="isDesktop"
-          v-model:show="filtersPopoverOpen"
-          trigger="click"
-          placement="bottom-end"
-          :show-arrow="false"
-        >
-          <template #trigger>
-            <n-badge :value="activeFilterCount" :show="activeFilterCount > 0">
-              <n-button size="small" secondary :title="t('common.filters')">
-                <template #icon>
-                  <n-icon><filter-outline /></n-icon>
-                </template>
-              </n-button>
-            </n-badge>
-          </template>
-          <div class="w-80">
-            <n-form label-placement="top" size="small">
-              <n-form-item :label="t('common.type')">
-                <n-select v-model:value="kindFilter" :options="kindOptions" @update:value="refreshForFilters" />
-              </n-form-item>
-              <n-form-item :label="t('common.hideDotfiles')">
-                <n-switch v-model:value="hideDotfiles" @update:value="refreshForFilters" />
-              </n-form-item>
-              <n-form-item :label="t('common.fileSize')">
-                <div class="space-y-2">
-                  <div class="grid grid-cols-2 gap-2">
-                    <n-input-number
-                      v-model:value="sizeMinDraft"
-                      :min="0"
-                      :placeholder="t('common.min')"
-                      class="w-full"
-                    />
-                    <n-input-number
-                      v-model:value="sizeMaxDraft"
-                      :min="0"
-                      :placeholder="t('common.max')"
-                      class="w-full"
-                    />
-                  </div>
-                  <div class="grid grid-cols-[1fr_auto] gap-2 items-center">
-                    <n-select v-model:value="sizeUnitDraft" :options="sizeUnitOptions" />
-                    <n-button size="small" @click="applySizeFilter">{{ t('common.apply') }}</n-button>
-                  </div>
-                </div>
-              </n-form-item>
-              <n-form-item :label="t('common.typeSort')">
-                <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
-              </n-form-item>
-            </n-form>
-            <div class="flex justify-end">
-              <n-button size="tiny" tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
-            </div>
-          </div>
-        </n-popover>
-
-        <n-badge v-else :value="activeFilterCount" :show="activeFilterCount > 0">
-          <n-button size="small" secondary :title="t('common.filters')" @click="filtersDrawerOpen = true">
-            <template #icon>
-              <n-icon><filter-outline /></n-icon>
-            </template>
-          </n-button>
-        </n-badge>
-      </div>
-
-      <div v-if="!isSingleDirMode && activeChips.length > 0" class="flex flex-wrap gap-2 items-center">
-        <n-tag v-for="chip in activeChips" :key="chip.key" size="small" closable @close="chip.onClose">
-          {{ chip.label }}
-        </n-tag>
-        <n-button size="tiny" tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
-      </div>
-
-      <n-drawer v-if="!isSingleDirMode" v-model:show="filtersDrawerOpen" placement="bottom" height="80vh">
-        <n-drawer-content :title="t('common.filters')" closable>
           <n-form label-placement="top" size="small">
             <n-form-item :label="t('common.type')">
               <n-select v-model:value="kindFilter" :options="kindOptions" @update:value="refreshForFilters" />
@@ -1000,12 +891,28 @@ defineExpose<FsPathPickerModalExpose>({ open })
               <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
             </n-form-item>
           </n-form>
-          <div class="flex justify-end gap-2 pt-2">
-            <n-button tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
-            <n-button type="primary" @click="filtersDrawerOpen = false">{{ t('common.done') }}</n-button>
-          </div>
-        </n-drawer-content>
-      </n-drawer>
+
+          <template #popoverFooter>
+            <div class="flex justify-end">
+              <n-button size="tiny" tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
+            </div>
+          </template>
+
+          <template #drawerFooter>
+            <div class="flex justify-end gap-2 pt-2">
+              <n-button tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
+              <n-button type="primary" @click="filtersDrawerOpen = false">{{ t('common.done') }}</n-button>
+            </div>
+          </template>
+        </PickerFiltersPopoverDrawer>
+      </div>
+
+      <PickerActiveChipsRow
+        v-if="!isSingleDirMode"
+        :chips="activeChips"
+        :clear-label="t('common.clear')"
+        @clear="resetAllFiltersAndRefresh"
+      />
 
       <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
@@ -1027,40 +934,41 @@ defineExpose<FsPathPickerModalExpose>({ open })
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-end sm:justify-between gap-2">
-        <div v-if="!isSingleDirMode && isDesktop" class="text-xs opacity-70">
-          {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
-        </div>
-        <div class="flex items-center justify-end gap-2 ml-auto">
-          <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-          <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
-            {{ t('fsPicker.selectCurrentDir') }}
-          </n-button>
-          <n-button
-            v-if="isSingleDirMode"
-            type="primary"
-            :loading="loading"
-            :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
-            @click="pick"
-          >
-            {{ singleDirConfirmLabel }}
-          </n-button>
-          <n-badge
-            v-else-if="!isDesktop"
-            :value="selectedCount"
-            :show="selectedCount > 0"
-          >
-            <n-button type="primary" :disabled="checked.length === 0" @click="pick">
-              {{ t('fsPicker.addSelected') }}
-            </n-button>
-          </n-badge>
-          <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
+      <PickerFooterRow>
+        <template #left>
+          <div v-if="!isSingleDirMode && isDesktop" class="text-xs opacity-70">
+            {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
+          </div>
+        </template>
+
+        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+        <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
+          {{ t('fsPicker.selectCurrentDir') }}
+        </n-button>
+        <n-button
+          v-if="isSingleDirMode"
+          type="primary"
+          :loading="loading"
+          :disabled="!currentPath.trim() || ['permission_denied', 'not_directory', 'agent_offline', 'error'].includes(singleDirStatus)"
+          @click="pick"
+        >
+          {{ singleDirConfirmLabel }}
+        </n-button>
+        <n-badge
+          v-else-if="!isDesktop"
+          :value="selectedCount"
+          :show="selectedCount > 0"
+        >
+          <n-button type="primary" :disabled="checked.length === 0" @click="pick">
             {{ t('fsPicker.addSelected') }}
           </n-button>
-        </div>
-      </div>
+        </n-badge>
+        <n-button v-else type="primary" :disabled="checked.length === 0" @click="pick">
+          {{ t('fsPicker.addSelected') }}
+        </n-button>
+      </PickerFooterRow>
     </template>
-  </n-modal>
+  </PickerModalCard>
 
   <n-modal
     v-if="isDesktop"
