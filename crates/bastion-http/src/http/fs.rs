@@ -206,7 +206,11 @@ impl Ord for SortKey {
         use std::cmp::Ordering;
 
         // Ensure a total order even if sort options differ (should not happen in practice).
-        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(other.by as u8, other.dir as u8, other.rank));
+        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(
+            other.by as u8,
+            other.dir as u8,
+            other.rank,
+        ));
         if order != Ordering::Equal {
             return order;
         }
@@ -312,7 +316,10 @@ fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
         None => Ok(SortDir::Asc),
         Some("asc") => Ok(SortDir::Asc),
         Some("desc") => Ok(SortDir::Desc),
-        Some(_) => Err(AppError::bad_request("invalid_sort_dir", "invalid sort_dir")),
+        Some(_) => Err(AppError::bad_request(
+            "invalid_sort_dir",
+            "invalid sort_dir",
+        )),
     }
 }
 

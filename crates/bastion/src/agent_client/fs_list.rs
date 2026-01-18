@@ -62,7 +62,11 @@ impl PartialOrd for SortKey {
 impl Ord for SortKey {
     fn cmp(&self, other: &Self) -> Ordering {
         // Ensure a total order even if sort options differ (should not happen in practice).
-        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(other.by as u8, other.dir as u8, other.rank));
+        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(
+            other.by as u8,
+            other.dir as u8,
+            other.rank,
+        ));
         if order != Ordering::Equal {
             return order;
         }
