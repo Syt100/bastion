@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NDrawer, NDrawerContent, NIcon, NInput, NPopover } from 'naive-ui'
 import { ArrowUpOutline, RefreshOutline } from '@vicons/ionicons5'
 
@@ -49,12 +49,16 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 
 const input = ref<InstanceType<typeof NInput> | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
+const actionsEl = ref<HTMLElement | null>(null)
+const breadcrumbMeasureEl = ref<HTMLElement | null>(null)
 
 const editing = ref<boolean>(false)
 const collapsedPopoverOpen = ref<boolean>(false)
 const collapsedDrawerOpen = ref<boolean>(false)
 
 const tailSegments = computed(() => (isDesktop.value ? props.tailSegmentsDesktop : props.tailSegmentsMobile))
+
+const collapseByOverflow = ref<boolean>(false)
 
 function buildBreadcrumbSegments(rawValue: string): BreadcrumbSegment[] {
   const raw = rawValue.trim()
@@ -84,7 +88,8 @@ function buildBreadcrumbSegments(rawValue: string): BreadcrumbSegment[] {
 
 const allSegments = computed(() => buildBreadcrumbSegments(props.value))
 
-const collapseMiddle = computed(() => allSegments.value.length > tailSegments.value + 2)
+const canCollapseMiddle = computed(() => allSegments.value.length > tailSegments.value + 2)
+const collapseMiddle = computed(() => canCollapseMiddle.value && collapseByOverflow.value)
 
 const hiddenSegments = computed(() => {
   if (!collapseMiddle.value) return []
@@ -101,6 +106,35 @@ const shownSegments = computed<BreadcrumbSegment[]>(() => {
     ...tail,
   ]
 })
+
+function getAvailableBreadcrumbWidthPx(): number {
+  const bar = rootEl.value
+  if (!bar) return 0
+
+  const barWidth = Math.floor(bar.getBoundingClientRect().width)
+  const actionsWidth = Math.ceil(actionsEl.value?.getBoundingClientRect().width ?? 0)
+
+  // Small tolerance to avoid sub-pixel jitter when comparing widths.
+  return Math.max(0, barWidth - actionsWidth - 8)
+}
+
+function getFullBreadcrumbWidthPx(): number {
+  const el = breadcrumbMeasureEl.value
+  if (!el) return 0
+  return Math.ceil(el.scrollWidth)
+}
+
+async function recalcBreadcrumbCollapse(): Promise<void> {
+  if (!canCollapseMiddle.value) {
+    collapseByOverflow.value = false
+    return
+  }
+
+  await nextTick()
+  const available = getAvailableBreadcrumbWidthPx()
+  const needed = getFullBreadcrumbWidthPx()
+  collapseByOverflow.value = needed > available + 2
+}
 
 function focus(): void {
   try {
@@ -173,11 +207,36 @@ function navigateTo(value: string): void {
   maybeExitEditMode()
 }
 
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  recalcBreadcrumbCollapse()
+
+  if (typeof ResizeObserver === 'undefined') return
+  resizeObserver = new ResizeObserver(() => {
+    recalcBreadcrumbCollapse()
+  })
+  if (rootEl.value) resizeObserver.observe(rootEl.value)
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
+watch([() => props.value, tailSegments, isDesktop], () => {
+  recalcBreadcrumbCollapse()
+})
+
+watch(editing, (isEditing) => {
+  if (isEditing) return
+  recalcBreadcrumbCollapse()
+})
+
 defineExpose<PickerPathBarInputExpose>({ focus })
 </script>
 
 <template>
-  <div ref="rootEl" @click="onContainerClick">
+  <div ref="rootEl" class="relative" @click="onContainerClick">
     <n-input
       ref="input"
       :value="editing ? value : ''"
@@ -192,7 +251,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
     >
       <template #prefix>
         <div class="flex items-center gap-1 -ml-1 min-w-0">
-          <div class="flex items-center gap-1 shrink-0">
+          <div ref="actionsEl" class="flex items-center gap-1 shrink-0">
             <n-button
               circle
               quaternary
@@ -224,7 +283,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
           </div>
 
           <div v-if="!editing" class="flex items-center min-w-0 overflow-hidden">
-            <div v-if="allSegments.length === 0" class="text-xs opacity-60 truncate" @click.stop="enterEditMode">
+            <div v-if="allSegments.length === 0" class="text-sm opacity-60 truncate" @click.stop="enterEditMode">
               {{ placeholder }}
             </div>
 
@@ -232,7 +291,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               <template v-for="(seg, idx) in shownSegments" :key="`${idx}:${seg.label}:${seg.value}`">
                 <span
                   v-if="idx > 0 && !(shownSegments[0]?.label === '/' && idx === 1)"
-                  class="text-xs opacity-50 mx-0.5 shrink-0"
+                  class="text-sm opacity-50 mx-0.5 shrink-0"
                 >
                   /
                 </span>
@@ -240,7 +299,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
                 <template v-if="seg.label !== '…'">
                   <button
                     type="button"
-                    class="text-xs hover:underline truncate max-w-[16rem] text-[var(--n-text-color-1)]"
+                    class="text-sm hover:underline truncate max-w-[16rem] text-[var(--n-text-color-1)]"
                     :title="seg.label"
                     @click.stop="navigateTo(seg.value)"
                   >
@@ -258,7 +317,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
                     <template #trigger>
                       <button
                         type="button"
-                        class="text-xs hover:underline shrink-0 text-[var(--n-text-color-1)]"
+                        class="text-sm hover:underline shrink-0 text-[var(--n-text-color-1)]"
                         title="..."
                         @click.stop
                       >
@@ -282,7 +341,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
                   <button
                     v-else
                     type="button"
-                    class="text-xs hover:underline shrink-0 text-[var(--n-text-color-1)]"
+                    class="text-sm hover:underline shrink-0 text-[var(--n-text-color-1)]"
                     title="..."
                     @click.stop="collapsedDrawerOpen = true"
                   >
@@ -295,6 +354,21 @@ defineExpose<PickerPathBarInputExpose>({ focus })
         </div>
       </template>
     </n-input>
+
+    <!-- Measure the full breadcrumb width (without collapse) to decide whether collapsing is needed. -->
+    <div
+      v-if="!editing && canCollapseMiddle && allSegments.length > 0"
+      ref="breadcrumbMeasureEl"
+      class="absolute left-0 top-0 opacity-0 pointer-events-none whitespace-nowrap flex items-center"
+      aria-hidden="true"
+    >
+      <template v-for="(seg, idx) in allSegments" :key="`m:${idx}:${seg.label}:${seg.value}`">
+        <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm opacity-50 mx-0.5">
+          /
+        </span>
+        <span class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]">{{ seg.label }}</span>
+      </template>
+    </div>
 
     <n-drawer v-if="!isDesktop" v-model:show="collapsedDrawerOpen" placement="bottom" height="60vh">
       <n-drawer-content :title="placeholder" closable>
