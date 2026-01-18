@@ -1,7 +1,7 @@
 ## 1. Spec
 - [x] 1.1 Draft proposal, tasks, and spec deltas (no omissions)
 - [x] 1.2 Run `openspec validate add-fs-list-pagination --strict`
-- [ ] 1.3 Commit the spec proposal (detailed message)
+- [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Backend - HTTP FS List Pagination
 - [ ] 2.1 Extend `/api/nodes/{node_id}/fs/list` query params (cursor/limit + filters)
