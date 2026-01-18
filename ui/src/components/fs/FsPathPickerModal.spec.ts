@@ -256,6 +256,80 @@ describe('FsPathPickerModal', () => {
     expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
   })
 
+  it('selects all loaded rows via selectAllLoadedRows', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        path: '/root',
+        entries: [
+          { name: 'a', path: '/root/a', kind: 'file', size: 1 },
+          { name: 'b', path: '/root/b', kind: 'file', size: 1 },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { selectAllLoadedRows: () => void }).selectAllLoadedRows()
+    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(new Set(['/root/a', '/root/b']))
+  })
+
+  it('inverts selection for loaded rows only via invertLoadedRowsSelection', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        path: '/root',
+        entries: [
+          { name: 'a', path: '/root/a', kind: 'file', size: 1 },
+          { name: 'b', path: '/root/b', kind: 'file', size: 1 },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/other/x', '/root/a']
+    ;(wrapper.vm as unknown as { invertLoadedRowsSelection: () => void }).invertLoadedRowsSelection()
+
+    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(new Set(['/other/x', '/root/b']))
+  })
+
+  it('shift-selects a range within loaded rows', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        path: '/root',
+        entries: [
+          { name: 'a', path: '/root/a', kind: 'file', size: 1 },
+          { name: 'b', path: '/root/b', kind: 'file', size: 1 },
+          { name: 'c', path: '/root/c', kind: 'file', size: 1 },
+          { name: 'd', path: '/root/d', kind: 'file', size: 1 },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
+      '/root/b',
+    ])
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))
+    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
+      '/root/b',
+      '/root/d',
+    ])
+
+    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(
+      new Set(['/root/b', '/root/c', '/root/d']),
+    )
+  })
+
   it('navigates to the parent directory on Backspace when not typing in an input', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

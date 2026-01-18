@@ -4,15 +4,20 @@ import {
   NBadge,
   NButton,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
   NForm,
   NFormItem,
+  NIcon,
   NInputNumber,
+  NPopover,
   NSelect,
   NSwitch,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { ListOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
@@ -28,6 +33,7 @@ import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
+import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
 
 export type RunEntriesSelection = {
   files: string[]
@@ -89,6 +95,11 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+const selectionPopoverOpen = ref<boolean>(false)
+const selectionDrawerOpen = ref<boolean>(false)
+
+const lastRangeAnchorPath = ref<string | null>(null)
+const { shiftPressed } = useShiftKeyPressed(show)
 
 const { tableContainerEl, tableBodyMaxHeightPx } = usePickerTableBodyMaxHeightPx(show, {
   onOpen: () => {
@@ -109,6 +120,7 @@ const selected = ref<Map<string, 'file' | 'dir'>>(new Map())
 const checkedRowKeys = computed<string[]>(() => Array.from(selected.value.keys()))
 
 const selectedCount = computed(() => selected.value.size)
+const selectedPreviewItems = computed(() => Array.from(selected.value.entries()).map(([path, kind]) => ({ path, kind })))
 const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
 
 const hasSizeApplied = computed(() => sizeMinApplied.value != null || sizeMaxApplied.value != null)
@@ -313,7 +325,10 @@ function open(nextRunId: string): void {
   sizeUnitApplied.value = 'MB'
   filtersPopoverOpen.value = false
   filtersDrawerOpen.value = false
+  selectionPopoverOpen.value = false
+  selectionDrawerOpen.value = false
   selected.value = new Map()
+  lastRangeAnchorPath.value = null
   show.value = true
   void refresh()
 }
@@ -389,24 +404,72 @@ function resetAllFilters(): void {
   onFiltersChanged()
 }
 
+function clearSelection(): void {
+  selected.value = new Map()
+  lastRangeAnchorPath.value = null
+}
+
+function selectAllLoadedRows(): void {
+  const next = new Map(selected.value)
+  for (const row of entries.value) {
+    next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
+  }
+  selected.value = next
+}
+
+function invertLoadedRowsSelection(): void {
+  const next = new Map(selected.value)
+  for (const row of entries.value) {
+    if (next.has(row.path)) next.delete(row.path)
+    else next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
+  }
+  selected.value = next
+}
+
 function updateCheckedRowKeys(keys: Array<string | number>): void {
-  const current = selected.value
-  const nextKeys = new Set(keys.map((k) => String(k)))
+  const loaded = entries.value.map((e) => e.path)
+  const loadedSet = new Set(loaded)
+  const desiredLoaded = new Set(keys.map((k) => String(k)).filter((p) => loadedSet.has(p)))
 
-  // Remove unchecked keys.
-  const next = new Map<string, 'file' | 'dir'>()
-  for (const [p, k] of current.entries()) {
-    if (nextKeys.has(p)) next.set(p, k)
+  const prev = selected.value
+  const next = new Map(prev)
+
+  // Apply the desired selection state for loaded rows only; keep selection from other pages intact.
+  for (const row of entries.value) {
+    if (desiredLoaded.has(row.path)) next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
+    else next.delete(row.path)
   }
 
-  // Add newly checked keys with kind from current page (fallback to file).
-  for (const raw of keys) {
-    const p = String(raw)
-    if (next.has(p)) continue
-    const row = entries.value.find((e) => e.path === p)
-    const kind = row?.kind === 'dir' ? 'dir' : 'file'
-    next.set(p, kind)
+  const added: string[] = []
+  const removed: string[] = []
+  for (const p of loaded) {
+    const was = prev.has(p)
+    const now = next.has(p)
+    if (!was && now) added.push(p)
+    else if (was && !now) removed.push(p)
   }
+
+  if (shiftPressed.value && lastRangeAnchorPath.value && added.length === 1 && removed.length === 0) {
+    const a = lastRangeAnchorPath.value
+    const b = added[0]
+    if (!b) {
+      selected.value = next
+      return
+    }
+    const idxA = loaded.indexOf(a)
+    const idxB = loaded.indexOf(b)
+    if (idxA !== -1 && idxB !== -1) {
+      const from = Math.min(idxA, idxB)
+      const to = Math.max(idxA, idxB)
+      for (const row of entries.value.slice(from, to + 1)) {
+        next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
+      }
+    }
+  }
+
+  if (added.length === 1 && removed.length === 0) lastRangeAnchorPath.value = added[0] ?? null
+  else if (removed.length === 1 && added.length === 0) lastRangeAnchorPath.value = removed[0] ?? null
+  else if (next.size === 0) lastRangeAnchorPath.value = null
 
   selected.value = next
 }
@@ -482,7 +545,12 @@ const columns = computed<DataTableColumns<RunEntry>>(() => [
 ])
 
 function isShortcutBlocked(): boolean {
-  return filtersPopoverOpen.value || filtersDrawerOpen.value
+  return (
+    selectionPopoverOpen.value ||
+    selectionDrawerOpen.value ||
+    filtersPopoverOpen.value ||
+    filtersDrawerOpen.value
+  )
 }
 
 function isTableFocused(): boolean {
@@ -505,6 +573,14 @@ function enterSelectedDirByKeyboard(): boolean {
 
 usePickerKeyboardShortcuts(show, {
   onEscape: () => {
+    if (selectionDrawerOpen.value) {
+      selectionDrawerOpen.value = false
+      return
+    }
+    if (selectionPopoverOpen.value) {
+      selectionPopoverOpen.value = false
+      return
+    }
     if (filtersDrawerOpen.value) {
       filtersDrawerOpen.value = false
       return
@@ -643,12 +719,61 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
     <template #footer>
       <PickerFooterRow>
         <template #left>
-          <div v-if="isDesktop" class="text-xs opacity-70">
-            {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
-          </div>
+          <n-popover
+            v-if="isDesktop"
+            v-model:show="selectionPopoverOpen"
+            trigger="click"
+            placement="bottom-start"
+            :show-arrow="false"
+          >
+            <template #trigger>
+              <n-button size="tiny" tertiary>
+                {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
+              </n-button>
+            </template>
+            <div class="w-96 space-y-2">
+              <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+              <div class="flex flex-wrap gap-2">
+                <n-button size="tiny" secondary @click="selectAllLoadedRows">
+                  {{ t('common.selectAllLoaded') }}
+                </n-button>
+                <n-button size="tiny" secondary @click="invertLoadedRowsSelection">
+                  {{ t('common.invertLoaded') }}
+                </n-button>
+                <n-button size="tiny" tertiary :disabled="selectedCount === 0" @click="clearSelection">
+                  {{ t('common.clearSelection') }}
+                </n-button>
+              </div>
+
+              <div
+                v-if="selectedPreviewItems.length > 0"
+                class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+              >
+                <div v-for="it in selectedPreviewItems" :key="it.path" class="font-mono text-xs break-all">
+                  {{ it.kind === 'dir' ? `📁 ${it.path}` : `📄 ${it.path}` }}
+                </div>
+              </div>
+              <div v-else class="text-xs opacity-60">
+                {{ t('common.noSelection') }}
+              </div>
+            </div>
+          </n-popover>
         </template>
 
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+        <n-badge v-if="!isDesktop" :value="selectedCount" :show="selectedCount > 0">
+          <n-button
+            size="small"
+            tertiary
+            :title="t('common.selection')"
+            :aria-label="t('common.selection')"
+            @click="selectionDrawerOpen = true"
+          >
+            <template #icon>
+              <n-icon><list-outline /></n-icon>
+            </template>
+          </n-button>
+        </n-badge>
         <n-badge v-if="!isDesktop" :value="selectedCount" :show="selectedCount > 0">
           <n-button type="primary" :disabled="selectedCount === 0" @click="pick">
             {{ t('restore.pick.confirm') }}
@@ -660,4 +785,35 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
       </PickerFooterRow>
     </template>
   </PickerModalCard>
+
+  <n-drawer v-if="!isDesktop" v-model:show="selectionDrawerOpen" placement="bottom" height="80vh">
+    <n-drawer-content :title="t('fsPicker.confirm.selectedItems', { count: selectedCount })" closable>
+      <div class="space-y-2">
+        <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+        <div class="flex flex-wrap gap-2">
+          <n-button size="small" secondary @click="selectAllLoadedRows">
+            {{ t('common.selectAllLoaded') }}
+          </n-button>
+          <n-button size="small" secondary @click="invertLoadedRowsSelection">
+            {{ t('common.invertLoaded') }}
+          </n-button>
+          <n-button size="small" tertiary :disabled="selectedCount === 0" @click="clearSelection">
+            {{ t('common.clearSelection') }}
+          </n-button>
+        </div>
+
+        <div
+          v-if="selectedPreviewItems.length > 0"
+          class="max-h-[55vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+        >
+          <div v-for="it in selectedPreviewItems" :key="it.path" class="font-mono text-xs break-all">
+            {{ it.kind === 'dir' ? `📁 ${it.path}` : `📄 ${it.path}` }}
+          </div>
+        </div>
+        <div v-else class="text-xs opacity-60">
+          {{ t('common.noSelection') }}
+        </div>
+      </div>
+    </n-drawer-content>
+  </n-drawer>
 </template>

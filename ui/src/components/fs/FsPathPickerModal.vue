@@ -9,14 +9,17 @@ import {
   NDrawerContent,
   NForm,
   NFormItem,
+  NIcon,
   NInputNumber,
   NModal,
+  NPopover,
   NSelect,
   NSwitch,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { ListOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
@@ -33,6 +36,7 @@ import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
+import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
 
 type FsListEntry = {
   name: string
@@ -99,8 +103,13 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+const selectionPopoverOpen = ref<boolean>(false)
+const selectionDrawerOpen = ref<boolean>(false)
 const pickCurrentDirConfirmOpen = ref<boolean>(false)
 const loadingMore = ref<boolean>(false)
+
+const lastRangeAnchorPath = ref<string | null>(null)
+const { shiftPressed } = useShiftKeyPressed(show)
 
 const PAGE_LIMIT = 200
 let listFetchSeq = 0
@@ -620,6 +629,7 @@ function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpe
   }
   entries.value = []
   checked.value = []
+  lastRangeAnchorPath.value = null
   nextCursor.value = null
   total.value = null
   loadingMore.value = false
@@ -628,6 +638,8 @@ function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpe
   singleDirMessage.value = ''
   filtersPopoverOpen.value = false
   filtersDrawerOpen.value = false
+  selectionPopoverOpen.value = false
+  selectionDrawerOpen.value = false
   pickCurrentDirConfirmOpen.value = false
   show.value = true
   void refresh()
@@ -728,6 +740,81 @@ const tableData = computed(() => {
   return visibleEntries.value
 })
 
+function loadedRowPaths(): string[] {
+  if (isSingleDirMode.value) return []
+  return tableData.value.map((e) => normalizePath(e.path)).filter((v) => v.length > 0)
+}
+
+function clearSelection(): void {
+  checked.value = []
+  lastRangeAnchorPath.value = null
+}
+
+function selectAllLoadedRows(): void {
+  checked.value = uniqueNormalizedPaths([...checked.value, ...loadedRowPaths()])
+}
+
+function invertLoadedRowsSelection(): void {
+  const loaded = loadedRowPaths()
+  const loadedSet = new Set(loaded)
+  const current = new Set(selectedUnique.value)
+
+  // Toggle only the loaded rows; keep selection from other directories intact.
+  for (const p of loadedSet) {
+    if (current.has(p)) current.delete(p)
+    else current.add(p)
+  }
+
+  checked.value = Array.from(current)
+}
+
+function updateCheckedRowKeys(keys: Array<string | number>): void {
+  if (isSingleDirMode.value) return
+
+  const loaded = loadedRowPaths()
+  const loadedSet = new Set(loaded)
+
+  const desiredLoaded = new Set(keys.map((k) => normalizePath(String(k))).filter((v) => v.length > 0))
+  const prev = new Set(selectedUnique.value)
+
+  const next = new Set(prev)
+  for (const p of loadedSet) {
+    if (desiredLoaded.has(p)) next.add(p)
+    else next.delete(p)
+  }
+
+  const added: string[] = []
+  const removed: string[] = []
+  for (const p of loaded) {
+    const was = prev.has(p)
+    const now = next.has(p)
+    if (!was && now) added.push(p)
+    else if (was && !now) removed.push(p)
+  }
+
+  if (shiftPressed.value && lastRangeAnchorPath.value && added.length === 1 && removed.length === 0) {
+    const a = lastRangeAnchorPath.value
+    const b = added[0]
+    if (!b) {
+      checked.value = Array.from(next)
+      return
+    }
+    const idxA = loaded.indexOf(a)
+    const idxB = loaded.indexOf(b)
+    if (idxA !== -1 && idxB !== -1) {
+      const from = Math.min(idxA, idxB)
+      const to = Math.max(idxA, idxB)
+      for (const p of loaded.slice(from, to + 1)) next.add(p)
+    }
+  }
+
+  if (added.length === 1 && removed.length === 0) lastRangeAnchorPath.value = added[0] ?? null
+  else if (removed.length === 1 && added.length === 0) lastRangeAnchorPath.value = removed[0] ?? null
+  else if (next.size === 0) lastRangeAnchorPath.value = null
+
+  checked.value = Array.from(next)
+}
+
 const columns = computed<DataTableColumns<FsListEntry>>(() => {
   const nameColumn = {
     title: t('common.name'),
@@ -811,7 +898,13 @@ const columns = computed<DataTableColumns<FsListEntry>>(() => {
 })
 
 function isShortcutBlocked(): boolean {
-  return pickCurrentDirConfirmOpen.value || filtersPopoverOpen.value || filtersDrawerOpen.value
+  return (
+    pickCurrentDirConfirmOpen.value ||
+    selectionPopoverOpen.value ||
+    selectionDrawerOpen.value ||
+    filtersPopoverOpen.value ||
+    filtersDrawerOpen.value
+  )
 }
 
 function isTableFocused(): boolean {
@@ -839,6 +932,14 @@ usePickerKeyboardShortcuts(show, {
   onEscape: () => {
     if (pickCurrentDirConfirmOpen.value) {
       pickCurrentDirConfirmOpen.value = false
+      return
+    }
+    if (selectionDrawerOpen.value) {
+      selectionDrawerOpen.value = false
+      return
+    }
+    if (selectionPopoverOpen.value) {
+      selectionPopoverOpen.value = false
       return
     }
     if (filtersDrawerOpen.value) {
@@ -980,7 +1081,8 @@ defineExpose<FsPathPickerModalExpose>({ open })
             :columns="columns"
             :data="tableData"
             :row-key="(row) => row.path"
-            v-model:checked-row-keys="checked"
+            :checked-row-keys="checked"
+            @update:checked-row-keys="updateCheckedRowKeys"
             :max-height="tableBodyMaxHeightPx || undefined"
           />
         </div>
@@ -995,12 +1097,61 @@ defineExpose<FsPathPickerModalExpose>({ open })
     <template #footer>
       <PickerFooterRow>
         <template #left>
-          <div v-if="!isSingleDirMode && isDesktop" class="text-xs opacity-70">
-            {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
-          </div>
+          <n-popover
+            v-if="!isSingleDirMode && isDesktop"
+            v-model:show="selectionPopoverOpen"
+            trigger="click"
+            placement="bottom-start"
+            :show-arrow="false"
+          >
+            <template #trigger>
+              <n-button size="tiny" tertiary>
+                {{ t('fsPicker.selectedCount', { count: selectedCount }) }}
+              </n-button>
+            </template>
+            <div class="w-96 space-y-2">
+              <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+              <div class="flex flex-wrap gap-2">
+                <n-button size="tiny" secondary @click="selectAllLoadedRows">
+                  {{ t('common.selectAllLoaded') }}
+                </n-button>
+                <n-button size="tiny" secondary @click="invertLoadedRowsSelection">
+                  {{ t('common.invertLoaded') }}
+                </n-button>
+                <n-button size="tiny" tertiary :disabled="selectedCount === 0" @click="clearSelection">
+                  {{ t('common.clearSelection') }}
+                </n-button>
+              </div>
+
+              <div
+                v-if="selectedUnique.length > 0"
+                class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+              >
+                <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
+                  {{ p }}
+                </div>
+              </div>
+              <div v-else class="text-xs opacity-60">
+                {{ t('common.noSelection') }}
+              </div>
+            </div>
+          </n-popover>
         </template>
 
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+        <n-badge v-if="!isDesktop && !isSingleDirMode" :value="selectedCount" :show="selectedCount > 0">
+          <n-button
+            size="small"
+            tertiary
+            :title="t('common.selection')"
+            :aria-label="t('common.selection')"
+            @click="selectionDrawerOpen = true"
+          >
+            <template #icon>
+              <n-icon><list-outline /></n-icon>
+            </template>
+          </n-button>
+        </n-badge>
         <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
           {{ t('fsPicker.selectCurrentDir') }}
         </n-button>
@@ -1028,6 +1179,42 @@ defineExpose<FsPathPickerModalExpose>({ open })
       </PickerFooterRow>
     </template>
   </PickerModalCard>
+
+  <n-drawer
+    v-if="!isDesktop && !isSingleDirMode"
+    v-model:show="selectionDrawerOpen"
+    placement="bottom"
+    height="80vh"
+  >
+    <n-drawer-content :title="t('fsPicker.confirm.selectedItems', { count: selectedCount })" closable>
+      <div class="space-y-2">
+        <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+        <div class="flex flex-wrap gap-2">
+          <n-button size="small" secondary @click="selectAllLoadedRows">
+            {{ t('common.selectAllLoaded') }}
+          </n-button>
+          <n-button size="small" secondary @click="invertLoadedRowsSelection">
+            {{ t('common.invertLoaded') }}
+          </n-button>
+          <n-button size="small" tertiary :disabled="selectedCount === 0" @click="clearSelection">
+            {{ t('common.clearSelection') }}
+          </n-button>
+        </div>
+
+        <div
+          v-if="selectedUnique.length > 0"
+          class="max-h-[55vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+        >
+          <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
+            {{ p }}
+          </div>
+        </div>
+        <div v-else class="text-xs opacity-60">
+          {{ t('common.noSelection') }}
+        </div>
+      </div>
+    </n-drawer-content>
+  </n-drawer>
 
   <n-modal
     v-if="isDesktop"

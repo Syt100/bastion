@@ -4,15 +4,15 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Web UI
-- [ ] 2.1 Add selection helper actions (select all loaded / invert loaded / clear)
-- [ ] 2.2 Implement shift-range selection within loaded rows
-- [ ] 2.3 Add selected-items preview/clear UX (desktop + mobile)
-- [ ] 2.4 Add/adjust unit tests for selection helpers
+- [x] 2.1 Add selection helper actions (select all loaded / invert loaded / clear)
+- [x] 2.2 Implement shift-range selection within loaded rows
+- [x] 2.3 Add selected-items preview/clear UX (desktop + mobile)
+- [x] 2.4 Add/adjust unit tests for selection helpers
 
 ## 3. Validation
-- [ ] 3.1 Run `npm test --prefix ui`
-- [ ] 3.2 Run `npm run type-check --prefix ui`
-- [ ] 3.3 Run `npm run build-only --prefix ui`
+- [x] 3.1 Run `npm test --prefix ui`
+- [x] 3.2 Run `npm run type-check --prefix ui`
+- [x] 3.3 Run `npm run build-only --prefix ui`
 
 ## 4. Commits
-- [ ] 4.1 Commit the UI changes (detailed message with Modules/Tests)
+- [x] 4.1 Commit the UI changes (detailed message with Modules/Tests)

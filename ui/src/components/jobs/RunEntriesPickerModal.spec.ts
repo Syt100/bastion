@@ -151,6 +151,63 @@ describe('RunEntriesPickerModal', () => {
     expect(wrapper.emitted('picked')?.[0]).toEqual([{ dirs: ['etc'], files: ['a.txt'] }])
   })
 
+  it('selects all loaded rows via selectAllLoadedRows', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { entries: Array<{ path: string; kind: string; size: number }> }).entries = [
+      { path: 'etc', kind: 'dir', size: 0 },
+      { path: 'a.txt', kind: 'file', size: 1 },
+    ]
+
+    ;(wrapper.vm as unknown as { selectAllLoadedRows: () => void }).selectAllLoadedRows()
+    expect(new Set((wrapper.vm as unknown as { checkedRowKeys: string[] }).checkedRowKeys)).toEqual(new Set(['etc', 'a.txt']))
+  })
+
+  it('inverts selection for loaded rows only via invertLoadedRowsSelection', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { entries: Array<{ path: string; kind: string; size: number }> }).entries = [
+      { path: 'a.txt', kind: 'file', size: 1 },
+      { path: 'b.txt', kind: 'file', size: 1 },
+    ]
+    ;(wrapper.vm as unknown as { selected: Map<string, 'file' | 'dir'> }).selected = new Map([['a.txt', 'file'], ['other', 'file']])
+    ;(wrapper.vm as unknown as { invertLoadedRowsSelection: () => void }).invertLoadedRowsSelection()
+
+    expect(new Set((wrapper.vm as unknown as { checkedRowKeys: string[] }).checkedRowKeys)).toEqual(new Set(['b.txt', 'other']))
+  })
+
+  it('shift-selects a range within loaded rows', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { entries: Array<{ path: string; kind: string; size: number }> }).entries = [
+      { path: 'a', kind: 'file', size: 1 },
+      { path: 'b', kind: 'file', size: 1 },
+      { path: 'c', kind: 'file', size: 1 },
+      { path: 'd', kind: 'file', size: 1 },
+    ]
+
+    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys(['b'])
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))
+    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys(['b', 'd'])
+
+    expect(new Set((wrapper.vm as unknown as { checkedRowKeys: string[] }).checkedRowKeys)).toEqual(new Set(['b', 'c', 'd']))
+  })
+
   it('navigates to the parent prefix on Backspace when not typing in an input', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
