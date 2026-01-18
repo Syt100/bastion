@@ -59,6 +59,17 @@ const messages = {
     yes: 'Yes',
     no: 'No',
   },
+  pickers: {
+    shortcuts: {
+      title: 'Shortcuts',
+      enterDir: 'Open selected directory (when exactly 1 directory is selected)',
+      up: 'Parent directory',
+      focusPath: 'Focus path input',
+      close: 'Close',
+      rangeSelect: 'Range select (loaded rows)',
+      note: 'Tip: shortcuts are disabled while typing in an input.',
+    },
+  },
   nav: {
     dashboard: 'Dashboard',
     jobs: 'Jobs',

@@ -59,6 +59,17 @@ const messages = {
     yes: '是',
     no: '否',
   },
+  pickers: {
+    shortcuts: {
+      title: '快捷键',
+      enterDir: '进入选中的目录（选中 1 个目录时）',
+      up: '上一级',
+      focusPath: '聚焦路径输入',
+      close: '关闭',
+      rangeSelect: '范围选择（已加载）',
+      note: '提示：输入框聚焦时快捷键不会生效。',
+    },
+  },
   nav: {
     dashboard: '概览',
     jobs: '备份任务',

@@ -36,6 +36,7 @@ import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopove
 import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
+import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/pickers/PickerShortcutsHelp.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
@@ -115,6 +116,8 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+const shortcutsPopoverOpen = ref<boolean>(false)
+const shortcutsDrawerOpen = ref<boolean>(false)
 const selectionPopoverOpen = ref<boolean>(false)
 const selectionDrawerOpen = ref<boolean>(false)
 const pickCurrentDirConfirmOpen = ref<boolean>(false)
@@ -143,6 +146,8 @@ const { tableContainerEl, tableBodyMaxHeightPx } = usePickerTableBodyMaxHeightPx
   },
   onClose: () => {
     pickCurrentDirConfirmOpen.value = false
+    shortcutsPopoverOpen.value = false
+    shortcutsDrawerOpen.value = false
   },
 })
 
@@ -287,6 +292,16 @@ const activeChips = computed<ActiveChip[]>(() => {
 
   return out
 })
+
+const pickerShortcuts = computed<PickerShortcutItem[]>(() => [
+  { combo: 'Enter', description: t('pickers.shortcuts.enterDir') },
+  { combo: 'Backspace', description: t('pickers.shortcuts.up') },
+  { combo: 'Ctrl/Cmd+L', description: t('pickers.shortcuts.focusPath') },
+  { combo: 'Esc', description: t('pickers.shortcuts.close') },
+  { combo: 'Shift', description: t('pickers.shortcuts.rangeSelect') },
+])
+
+const pickerShortcutsNote = computed(() => t('pickers.shortcuts.note'))
 
 const visibleEntries = computed(() => entries.value)
 
@@ -1178,6 +1193,8 @@ const columns = computed<DataTableColumns<FsListEntry>>(() => {
 function isShortcutBlocked(): boolean {
   return (
     pickCurrentDirConfirmOpen.value ||
+    shortcutsPopoverOpen.value ||
+    shortcutsDrawerOpen.value ||
     selectionPopoverOpen.value ||
     selectionDrawerOpen.value ||
     filtersPopoverOpen.value ||
@@ -1210,6 +1227,14 @@ usePickerKeyboardShortcuts(show, {
   onEscape: () => {
     if (pickCurrentDirConfirmOpen.value) {
       pickCurrentDirConfirmOpen.value = false
+      return
+    }
+    if (shortcutsDrawerOpen.value) {
+      shortcutsDrawerOpen.value = false
+      return
+    }
+    if (shortcutsPopoverOpen.value) {
+      shortcutsPopoverOpen.value = false
       return
     }
     if (selectionDrawerOpen.value) {
@@ -1329,9 +1354,21 @@ defineExpose<FsPathPickerModalExpose>({ open })
               <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
             </n-form-item>
             <n-form-item :label="t('common.sort')">
-              <div class="grid grid-cols-2 gap-2">
-                <n-select v-model:value="sortBy" :options="sortByOptions" @update:value="refreshForFilters" />
-                <n-select v-model:value="sortDir" :options="sortDirOptions" @update:value="refreshForFilters" />
+              <div :class="isDesktop ? 'grid grid-cols-2 gap-2' : 'space-y-2'">
+                <n-select
+                  v-model:value="sortBy"
+                  class="w-full"
+                  :options="sortByOptions"
+                  :consistent-menu-width="false"
+                  @update:value="refreshForFilters"
+                />
+                <n-select
+                  v-model:value="sortDir"
+                  class="w-full"
+                  :options="sortDirOptions"
+                  :consistent-menu-width="false"
+                  @update:value="refreshForFilters"
+                />
               </div>
             </n-form-item>
           </n-form>
@@ -1349,6 +1386,15 @@ defineExpose<FsPathPickerModalExpose>({ open })
             </div>
           </template>
         </PickerFiltersPopoverDrawer>
+
+        <PickerShortcutsHelp
+          :is-desktop="isDesktop"
+          :title="t('pickers.shortcuts.title')"
+          :shortcuts="pickerShortcuts"
+          :note="pickerShortcutsNote"
+          v-model:popover-open="shortcutsPopoverOpen"
+          v-model:drawer-open="shortcutsDrawerOpen"
+        />
       </div>
 
       <PickerActiveChipsRow
@@ -1481,19 +1527,18 @@ defineExpose<FsPathPickerModalExpose>({ open })
         </template>
 
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-badge v-if="!isDesktop && !isSingleDirMode" :value="selectedCount" :show="selectedCount > 0">
-          <n-button
-            size="small"
-            tertiary
-            :title="t('common.selection')"
-            :aria-label="t('common.selection')"
-            @click="selectionDrawerOpen = true"
-          >
-            <template #icon>
-              <n-icon><list-outline /></n-icon>
-            </template>
-          </n-button>
-        </n-badge>
+        <n-button
+          v-if="!isDesktop && !isSingleDirMode"
+          size="small"
+          secondary
+          :title="t('fsPicker.selectedCount', { count: selectedCount })"
+          :aria-label="t('fsPicker.selectedCount', { count: selectedCount })"
+          @click="selectionDrawerOpen = true"
+        >
+          <template #icon>
+            <n-icon><list-outline /></n-icon>
+          </template>
+        </n-button>
         <n-button v-if="!isSingleDirMode" :disabled="!currentPath.trim()" @click="requestPickCurrentDir">
           {{ t('fsPicker.selectCurrentDir') }}
         </n-button>

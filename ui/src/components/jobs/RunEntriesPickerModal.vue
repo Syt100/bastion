@@ -31,6 +31,7 @@ import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopove
 import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
+import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/pickers/PickerShortcutsHelp.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
@@ -95,6 +96,8 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+const shortcutsPopoverOpen = ref<boolean>(false)
+const shortcutsDrawerOpen = ref<boolean>(false)
 const selectionPopoverOpen = ref<boolean>(false)
 const selectionDrawerOpen = ref<boolean>(false)
 
@@ -118,6 +121,16 @@ function onPrefixNavigate(): void {
 
 const selected = ref<Map<string, 'file' | 'dir'>>(new Map())
 const checkedRowKeys = computed<string[]>(() => Array.from(selected.value.keys()))
+
+const pickerShortcuts = computed<PickerShortcutItem[]>(() => [
+  { combo: 'Enter', description: t('pickers.shortcuts.enterDir') },
+  { combo: 'Backspace', description: t('pickers.shortcuts.up') },
+  { combo: 'Ctrl/Cmd+L', description: t('pickers.shortcuts.focusPath') },
+  { combo: 'Esc', description: t('pickers.shortcuts.close') },
+  { combo: 'Shift', description: t('pickers.shortcuts.rangeSelect') },
+])
+
+const pickerShortcutsNote = computed(() => t('pickers.shortcuts.note'))
 
 function rowClassName(row: RunEntry): string {
   if (selected.value.has(row.path)) return 'app-picker-row app-picker-row--checked'
@@ -330,6 +343,8 @@ function open(nextRunId: string): void {
   sizeUnitApplied.value = 'MB'
   filtersPopoverOpen.value = false
   filtersDrawerOpen.value = false
+  shortcutsPopoverOpen.value = false
+  shortcutsDrawerOpen.value = false
   selectionPopoverOpen.value = false
   selectionDrawerOpen.value = false
   selected.value = new Map()
@@ -551,6 +566,8 @@ const columns = computed<DataTableColumns<RunEntry>>(() => [
 
 function isShortcutBlocked(): boolean {
   return (
+    shortcutsPopoverOpen.value ||
+    shortcutsDrawerOpen.value ||
     selectionPopoverOpen.value ||
     selectionDrawerOpen.value ||
     filtersPopoverOpen.value ||
@@ -578,6 +595,14 @@ function enterSelectedDirByKeyboard(): boolean {
 
 usePickerKeyboardShortcuts(show, {
   onEscape: () => {
+    if (shortcutsDrawerOpen.value) {
+      shortcutsDrawerOpen.value = false
+      return
+    }
+    if (shortcutsPopoverOpen.value) {
+      shortcutsPopoverOpen.value = false
+      return
+    }
     if (selectionDrawerOpen.value) {
       selectionDrawerOpen.value = false
       return
@@ -698,6 +723,15 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
             </div>
           </template>
         </PickerFiltersPopoverDrawer>
+
+        <PickerShortcutsHelp
+          :is-desktop="isDesktop"
+          :title="t('pickers.shortcuts.title')"
+          :shortcuts="pickerShortcuts"
+          :note="pickerShortcutsNote"
+          v-model:popover-open="shortcutsPopoverOpen"
+          v-model:drawer-open="shortcutsDrawerOpen"
+        />
       </div>
 
       <PickerActiveChipsRow :chips="activeChips" :clear-label="t('common.clear')" @clear="resetAllFilters" />
@@ -772,19 +806,18 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         </template>
 
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-badge v-if="!isDesktop" :value="selectedCount" :show="selectedCount > 0">
-          <n-button
-            size="small"
-            tertiary
-            :title="t('common.selection')"
-            :aria-label="t('common.selection')"
-            @click="selectionDrawerOpen = true"
-          >
-            <template #icon>
-              <n-icon><list-outline /></n-icon>
-            </template>
-          </n-button>
-        </n-badge>
+        <n-button
+          v-if="!isDesktop"
+          size="small"
+          secondary
+          :title="t('fsPicker.selectedCount', { count: selectedCount })"
+          :aria-label="t('fsPicker.selectedCount', { count: selectedCount })"
+          @click="selectionDrawerOpen = true"
+        >
+          <template #icon>
+            <n-icon><list-outline /></n-icon>
+          </template>
+        </n-button>
         <n-badge v-if="!isDesktop" :value="selectedCount" :show="selectedCount > 0">
           <n-button type="primary" :disabled="selectedCount === 0" @click="pick">
             {{ t('restore.pick.confirm') }}
