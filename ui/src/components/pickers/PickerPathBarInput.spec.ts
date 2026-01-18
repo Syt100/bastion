@@ -153,8 +153,8 @@ describe('PickerPathBarInput', () => {
     await flushAsync()
 
     // Wide bar: no need to collapse.
-    wrapper.find('div.relative').element.dataset.testWidth = '800'
-    wrapper.find('.flex.items-center.gap-1.shrink-0').element.dataset.testWidth = '60'
+    ;(wrapper.find('div.relative').element as HTMLElement).dataset.testWidth = '800'
+    ;(wrapper.find('.flex.items-center.gap-1.shrink-0').element as HTMLElement).dataset.testWidth = '60'
 
     const longPath = '/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t'
     await wrapper.setProps({ value: longPath })
@@ -181,8 +181,8 @@ describe('PickerPathBarInput', () => {
     await flushAsync()
 
     // Narrow bar: will overflow for long paths.
-    wrapper.find('div.relative').element.dataset.testWidth = '300'
-    wrapper.find('.flex.items-center.gap-1.shrink-0').element.dataset.testWidth = '60'
+    ;(wrapper.find('div.relative').element as HTMLElement).dataset.testWidth = '300'
+    ;(wrapper.find('.flex.items-center.gap-1.shrink-0').element as HTMLElement).dataset.testWidth = '60'
 
     const longPath = '/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t'
     await wrapper.setProps({ value: longPath })

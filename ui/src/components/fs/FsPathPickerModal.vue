@@ -31,6 +31,7 @@ import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError, toApiErrorInfo } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
+import { useObservedElementHeightPx } from '@/lib/resizeObserver'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 
 type FsListEntry = {
@@ -102,9 +103,25 @@ const singleDirMessage = ref<string>('')
 const singleDirValidatedPath = ref<string>('')
 const singleDirNotFoundConfirmPath = ref<string>('')
 
+const tableContainerEl = ref<HTMLElement | null>(null)
+function computeTableBodyMaxHeightPx(container: HTMLElement): number {
+  const containerHeight = container.clientHeight
+  const headerEl = container.querySelector('.n-data-table-base-table-header') as HTMLElement | null
+  const theadEl = container.querySelector('thead') as HTMLElement | null
+  const headerHeight = headerEl?.clientHeight || theadEl?.clientHeight || 0
+  return containerHeight - headerHeight
+}
+const {
+  heightPx: tableBodyMaxHeightPx,
+  start: startTableHeightObserver,
+  stop: stopTableHeightObserver,
+  measure: measureTableHeight,
+} = useObservedElementHeightPx(tableContainerEl, computeTableBodyMaxHeightPx)
+
 watch(show, (open) => {
   if (!open) {
     pickCurrentDirConfirmOpen.value = false
+    stopTableHeightObserver()
     return
   }
 
@@ -115,6 +132,13 @@ watch(show, (open) => {
     } catch {
       // ignore
     }
+    startTableHeightObserver()
+    requestAnimationFrame(() => {
+      measureTableHeight()
+      requestAnimationFrame(() => {
+        measureTableHeight()
+      })
+    })
   })
 })
 
@@ -380,7 +404,6 @@ function computeParentPath(p: string): string {
   return trimmed.slice(0, idxSlash) || '/'
 }
 
-const tableMaxHeight = computed(() => (isDesktop.value ? 420 : 'calc(100vh - 390px)'))
 const modalStyle = computed(() =>
   isDesktop.value
     ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
@@ -739,10 +762,10 @@ defineExpose<FsPathPickerModalExpose>({ open })
     v-model:show="show"
     preset="card"
     :style="modalStyle"
-    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :content-style="{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }"
     :title="modalTitle"
   >
-    <div class="space-y-3">
+    <div class="flex flex-col gap-3 flex-1 min-h-0">
       <div class="space-y-2">
         <PickerPathBarInput
           ref="pathBar"
@@ -903,14 +926,16 @@ defineExpose<FsPathPickerModalExpose>({ open })
         </n-drawer-content>
       </n-drawer>
 
-      <n-data-table
-        :loading="loading"
-        :columns="columns"
-        :data="tableData"
-        :row-key="(row) => row.path"
-        v-model:checked-row-keys="checked"
-        :max-height="tableMaxHeight"
-      />
+      <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
+        <n-data-table
+          :loading="loading"
+          :columns="columns"
+          :data="tableData"
+          :row-key="(row) => row.path"
+          v-model:checked-row-keys="checked"
+          :max-height="tableBodyMaxHeightPx || undefined"
+        />
+      </div>
     </div>
 
     <template #footer>

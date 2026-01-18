@@ -29,6 +29,7 @@ import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { useObservedElementHeightPx } from '@/lib/resizeObserver'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 
 export type RunEntriesSelection = {
@@ -92,18 +93,44 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 
+const tableContainerEl = ref<HTMLElement | null>(null)
+function computeTableBodyMaxHeightPx(container: HTMLElement): number {
+  const containerHeight = container.clientHeight
+  const headerEl = container.querySelector('.n-data-table-base-table-header') as HTMLElement | null
+  const theadEl = container.querySelector('thead') as HTMLElement | null
+  const headerHeight = headerEl?.clientHeight || theadEl?.clientHeight || 0
+  return containerHeight - headerHeight
+}
+const {
+  heightPx: tableBodyMaxHeightPx,
+  start: startTableHeightObserver,
+  stop: stopTableHeightObserver,
+  measure: measureTableHeight,
+} = useObservedElementHeightPx(tableContainerEl, computeTableBodyMaxHeightPx)
+
 function onPrefixNavigate(): void {
   refresh()
 }
 
 watch(show, (open) => {
-  if (!open) return
+  if (!open) {
+    stopTableHeightObserver()
+    return
+  }
+
   nextTick().then(() => {
     try {
       prefixBar.value?.focus?.()
     } catch {
       // ignore
     }
+    startTableHeightObserver()
+    requestAnimationFrame(() => {
+      measureTableHeight()
+      requestAnimationFrame(() => {
+        measureTableHeight()
+      })
+    })
   })
 })
 
@@ -201,7 +228,6 @@ const activeChips = computed<ActiveChip[]>(() => {
   return out
 })
 
-const tableMaxHeight = computed(() => (isDesktop.value ? 420 : 'calc(100vh - 420px)'))
 const modalStyle = computed(() =>
   isDesktop.value
     ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
@@ -492,10 +518,10 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
     v-model:show="show"
     preset="card"
     :style="modalStyle"
-    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :content-style="{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }"
     :title="t('restore.pick.title')"
   >
-    <div class="space-y-3">
+    <div class="flex flex-col gap-3 flex-1 min-h-0">
       <PickerPathBarInput
         ref="prefixBar"
         v-model:value="prefix"
@@ -645,18 +671,22 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         </n-drawer-content>
       </n-drawer>
 
-      <n-data-table
-        :loading="loading"
-        :columns="columns"
-        :data="entries"
-        :row-key="(row) => row.path"
-        :checked-row-keys="checkedRowKeys"
-        @update:checked-row-keys="updateCheckedRowKeys"
-        :max-height="tableMaxHeight"
-      />
+      <div class="flex flex-col gap-2 flex-1 min-h-0">
+        <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
+          <n-data-table
+            :loading="loading"
+            :columns="columns"
+            :data="entries"
+            :row-key="(row) => row.path"
+            :checked-row-keys="checkedRowKeys"
+            @update:checked-row-keys="updateCheckedRowKeys"
+            :max-height="tableBodyMaxHeightPx || undefined"
+          />
+        </div>
 
-      <div v-if="nextCursor != null" class="flex justify-center">
-        <n-button size="small" :loading="loadingMore" @click="loadMore">{{ t('common.more') }}</n-button>
+        <div v-if="nextCursor != null" class="flex justify-center shrink-0">
+          <n-button size="small" :loading="loadingMore" @click="loadMore">{{ t('common.more') }}</n-button>
+        </div>
       </div>
     </div>
 
