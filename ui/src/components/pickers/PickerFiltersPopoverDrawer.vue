@@ -33,7 +33,7 @@ const emit = defineEmits<{
   >
     <template #trigger>
       <n-badge :value="activeCount" :show="activeCount > 0">
-        <n-button size="small" secondary :title="title">
+        <n-button size="small" secondary :title="title" :aria-label="title">
           <template #icon>
             <n-icon><filter-outline /></n-icon>
           </template>
@@ -48,7 +48,13 @@ const emit = defineEmits<{
   </n-popover>
 
   <n-badge v-else :value="activeCount" :show="activeCount > 0">
-    <n-button size="small" secondary :title="title" @click="emit('update:drawerOpen', true)">
+    <n-button
+      size="small"
+      secondary
+      :title="title"
+      :aria-label="title"
+      @click="emit('update:drawerOpen', true)"
+    >
       <template #icon>
         <n-icon><filter-outline /></n-icon>
       </template>
@@ -68,4 +74,3 @@ const emit = defineEmits<{
     </n-drawer-content>
   </n-drawer>
 </template>
-

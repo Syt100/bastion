@@ -27,6 +27,7 @@ import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
+import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 
 export type RunEntriesSelection = {
   files: string[]
@@ -479,6 +480,57 @@ const columns = computed<DataTableColumns<RunEntry>>(() => [
       ] as const)
     : []),
 ])
+
+function isShortcutBlocked(): boolean {
+  return filtersPopoverOpen.value || filtersDrawerOpen.value
+}
+
+function isTableFocused(): boolean {
+  const active = document.activeElement as HTMLElement | null
+  return Boolean(active && tableContainerEl.value && tableContainerEl.value.contains(active))
+}
+
+function enterSelectedDirByKeyboard(): boolean {
+  if (!isTableFocused()) return false
+  if (selected.value.size !== 1) return false
+
+  const first = selected.value.entries().next().value as [string, 'file' | 'dir'] | undefined
+  const p = first?.[0]
+  const kind = first?.[1]
+  if (!p || kind !== 'dir') return false
+
+  enterDir(p)
+  return true
+}
+
+usePickerKeyboardShortcuts(show, {
+  onEscape: () => {
+    if (filtersDrawerOpen.value) {
+      filtersDrawerOpen.value = false
+      return
+    }
+    if (filtersPopoverOpen.value) {
+      filtersPopoverOpen.value = false
+      return
+    }
+    show.value = false
+  },
+  onFocusPath: () => {
+    try {
+      prefixBar.value?.focus?.()
+    } catch {
+      // ignore
+    }
+  },
+  onBackspace: () => {
+    if (isShortcutBlocked()) return
+    up()
+  },
+  onEnter: () => {
+    if (isShortcutBlocked()) return false
+    return enterSelectedDirByKeyboard()
+  },
+})
 
 defineExpose<RunEntriesPickerModalExpose>({ open })
 </script>

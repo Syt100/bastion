@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 const messageApi = {
@@ -73,9 +73,16 @@ async function flushAsync(): Promise<void> {
 }
 
 describe('RunEntriesPickerModal', () => {
+  let wrapper: ReturnType<typeof mount> | null = null
+
   beforeEach(() => {
     vi.clearAllMocks()
     stubMatchMedia(true)
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
   })
 
   it('does not apply search until user clicks Search (or presses Enter)', async () => {
@@ -85,7 +92,7 @@ describe('RunEntriesPickerModal', () => {
     })
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(RunEntriesPickerModal)
+    wrapper = mount(RunEntriesPickerModal)
     ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
     await flushAsync()
 
@@ -108,7 +115,7 @@ describe('RunEntriesPickerModal', () => {
     )
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(RunEntriesPickerModal)
+    wrapper = mount(RunEntriesPickerModal)
     ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
     await flushAsync()
 
@@ -127,7 +134,7 @@ describe('RunEntriesPickerModal', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(RunEntriesPickerModal)
+    wrapper = mount(RunEntriesPickerModal)
     ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
     await flushAsync()
 
@@ -142,5 +149,56 @@ describe('RunEntriesPickerModal', () => {
 
     ;(wrapper.vm as unknown as { pick: () => void }).pick()
     expect(wrapper.emitted('picked')?.[0]).toEqual([{ dirs: ['etc'], files: ['a.txt'] }])
+  })
+
+  it('navigates to the parent prefix on Backspace when not typing in an input', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      return jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [], _url: url })
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { prefix: string }).prefix = 'a/b'
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    await flushAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('prefix=a')
+  })
+
+  it('does not navigate on Backspace when the event target is an input', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    await flushAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    input.remove()
+  })
+
+  it('closes on Escape', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(true)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushAsync()
+    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(false)
   })
 })

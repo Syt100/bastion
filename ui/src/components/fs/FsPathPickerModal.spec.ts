@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 const messageApi = {
@@ -74,10 +74,17 @@ async function flushAsync(): Promise<void> {
 }
 
 describe('FsPathPickerModal', () => {
+  let wrapper: ReturnType<typeof mount> | null = null
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
     stubMatchMedia(true)
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
   })
 
   it('remembers the last successfully listed directory per node', async () => {
@@ -93,7 +100,7 @@ describe('FsPathPickerModal', () => {
     })
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -118,7 +125,7 @@ describe('FsPathPickerModal', () => {
     })
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: unknown) => void }).open('hub', {
       mode: 'single_dir',
       path: '/missing',
@@ -137,7 +144,7 @@ describe('FsPathPickerModal', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -149,7 +156,7 @@ describe('FsPathPickerModal', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -166,7 +173,7 @@ describe('FsPathPickerModal', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -199,7 +206,7 @@ describe('FsPathPickerModal', () => {
     })
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -236,7 +243,7 @@ describe('FsPathPickerModal', () => {
     })
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
 
-    const wrapper = mount(FsPathPickerModal)
+    wrapper = mount(FsPathPickerModal)
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
@@ -247,5 +254,57 @@ describe('FsPathPickerModal', () => {
     expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(1)
     const calls = fetchMock.mock.calls.map((c) => String(c[0]))
     expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
+  })
+
+  it('navigates to the parent directory on Backspace when not typing in an input', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('path=%2Froot%2Fsub')) return jsonResponse({ path: '/root/sub', entries: [] })
+      if (url.includes('path=%2Froot')) return jsonResponse({ path: '/root', entries: [] })
+      return jsonResponse({ error: 'unexpected', message: `unexpected url: ${url}` }, 500)
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root/sub')
+    await flushAsync()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    await flushAsync()
+
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(calls[calls.length - 1]).toContain('path=%2Froot')
+  })
+
+  it('does not navigate on Backspace when the event target is an input', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root/sub', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root/sub')
+    await flushAsync()
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    await flushAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    input.remove()
+  })
+
+  it('closes on Escape', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(true)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushAsync()
+    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(false)
   })
 })

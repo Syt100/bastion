@@ -36,6 +36,7 @@ const { t } = useI18n()
         quaternary
         :disabled="searchDisabled"
         :title="t('common.search')"
+        :aria-label="t('common.search')"
         @click="emit('search')"
       >
         <template #icon>
@@ -45,4 +46,3 @@ const { t } = useI18n()
     </template>
   </n-input>
 </template>
-

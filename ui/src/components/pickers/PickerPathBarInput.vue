@@ -308,6 +308,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               size="small"
               :disabled="disabledUp"
               :title="upTitle"
+              :aria-label="upTitle"
               @click.stop="emit('up')"
             >
               <template #icon>
@@ -322,6 +323,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               size="small"
               :disabled="disabledRefresh"
               :title="refreshTitle"
+              :aria-label="refreshTitle"
               @click.stop="emit('refresh')"
             >
               <template #icon>

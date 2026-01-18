@@ -32,6 +32,7 @@ import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
+import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 
 type FsListEntry = {
   name: string
@@ -807,6 +808,64 @@ const columns = computed<DataTableColumns<FsListEntry>>(() => {
         ] as const)
       : []),
   ]
+})
+
+function isShortcutBlocked(): boolean {
+  return pickCurrentDirConfirmOpen.value || filtersPopoverOpen.value || filtersDrawerOpen.value
+}
+
+function isTableFocused(): boolean {
+  const active = document.activeElement as HTMLElement | null
+  return Boolean(active && tableContainerEl.value && tableContainerEl.value.contains(active))
+}
+
+function enterSelectedDirByKeyboard(): boolean {
+  if (isSingleDirMode.value) return false
+  if (!isTableFocused()) return false
+  if (checked.value.length !== 1) return false
+
+  const key = normalizePath(checked.value[0] ?? '')
+  if (!key) return false
+
+  const row = entries.value.find((e) => normalizePath(e.path) === key)
+  if (!row || row.kind !== 'dir') return false
+
+  currentPath.value = row.path
+  void refresh()
+  return true
+}
+
+usePickerKeyboardShortcuts(show, {
+  onEscape: () => {
+    if (pickCurrentDirConfirmOpen.value) {
+      pickCurrentDirConfirmOpen.value = false
+      return
+    }
+    if (filtersDrawerOpen.value) {
+      filtersDrawerOpen.value = false
+      return
+    }
+    if (filtersPopoverOpen.value) {
+      filtersPopoverOpen.value = false
+      return
+    }
+    show.value = false
+  },
+  onFocusPath: () => {
+    try {
+      pathBar.value?.focus?.()
+    } catch {
+      // ignore
+    }
+  },
+  onBackspace: () => {
+    if (isShortcutBlocked()) return
+    up()
+  },
+  onEnter: () => {
+    if (isShortcutBlocked()) return false
+    return enterSelectedDirByKeyboard()
+  },
 })
 
 defineExpose<FsPathPickerModalExpose>({ open })
