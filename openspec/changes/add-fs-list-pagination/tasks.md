@@ -8,7 +8,7 @@
 - [x] 2.2 Return `next_cursor` (and optional `total`) in the response
 - [x] 2.3 Ensure Hub local listing is memory-safe for huge directories (bounded memory per request)
 - [x] 2.4 Add/adjust backend tests (as available) and verify error mapping unchanged
-- [ ] 2.5 Commit backend HTTP changes (detailed message)
+- [x] 2.5 Commit backend HTTP changes (detailed message)
 
 ## 3. Backend - Agent Protocol FS List Pagination
 - [x] 3.1 Extend `HubToAgentMessageV1::FsList` and `AgentToHubMessageV1::FsListResult` with optional paging/filter fields
@@ -17,13 +17,13 @@
 - [x] 3.4 Commit protocol + agent/hub changes (detailed message)
 
 ## 4. UI - Filesystem Picker
-- [ ] 4.1 Update FsPathPickerModal to fetch paged results and render “加载更多”
-- [ ] 4.2 Move filtering semantics to server-side fetch (refresh list when filters change)
-- [ ] 4.3 Add UI tests for paging/filter fetch behavior
+- [x] 4.1 Update FsPathPickerModal to fetch paged results and render “加载更多”
+- [x] 4.2 Move filtering semantics to server-side fetch (refresh list when filters change)
+- [x] 4.3 Add UI tests for paging/filter fetch behavior
 - [ ] 4.4 Commit UI changes (detailed message)
 
 ## 5. Verification
-- [ ] 5.1 Run `cargo test` (or targeted tests if full suite is too slow)
-- [ ] 5.2 Run `npm test --prefix ui`
-- [ ] 5.3 Run `npm run type-check --prefix ui`
-- [ ] 5.4 Verify manually in browser (desktop + mobile)
+- [x] 5.1 Run `cargo test` (or targeted tests if full suite is too slow)
+- [x] 5.2 Run `npm test --prefix ui`
+- [x] 5.3 Run `npm run type-check --prefix ui`
+- [x] 5.4 Verify manually in browser (desktop + mobile)

@@ -13,6 +13,7 @@ const messages = {
     more: '更多',
     refresh: '刷新',
     loading: '加载中',
+    loadMore: '加载更多',
     close: '关闭',
     noData: '暂无数据',
     add: '添加',

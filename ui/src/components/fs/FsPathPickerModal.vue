@@ -45,6 +45,8 @@ type FsListEntry = {
 type FsListResponse = {
   path: string
   entries: FsListEntry[]
+  next_cursor?: string | null
+  total?: number | null
 }
 
 export type FsPathPickerModalExpose = {
@@ -75,6 +77,8 @@ const isSingleDirMode = computed(() => pickerMode.value === 'single_dir')
 const currentPath = ref<string>('/')
 const entries = ref<FsListEntry[]>([])
 const checked = ref<string[]>([])
+const nextCursor = ref<string | null>(null)
+const total = ref<number | null>(null)
 
 const searchDraft = ref<string>('')
 const searchApplied = ref<string>('')
@@ -96,6 +100,10 @@ const sizeUnitApplied = ref<SizeUnit>('MB')
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 const pickCurrentDirConfirmOpen = ref<boolean>(false)
+const loadingMore = ref<boolean>(false)
+
+const PAGE_LIMIT = 200
+let listFetchSeq = 0
 
 type SingleDirStatus = 'unknown' | 'ok' | 'not_found' | 'not_directory' | 'permission_denied' | 'agent_offline' | 'error'
 const singleDirStatus = ref<SingleDirStatus>('unknown')
@@ -171,6 +179,7 @@ const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== search
 
 function applySearch(): void {
   searchApplied.value = searchDraft.value.trim()
+  refreshForFilters()
 }
 
 const kindOptions = computed(() => [
@@ -228,25 +237,25 @@ const activeChips = computed<ActiveChip[]>(() => {
   const out: ActiveChip[] = []
 
   const q = searchApplied.value.trim()
-  if (q) out.push({ key: 'search', label: `${t('common.search')}: ${q}`, onClose: clearSearch })
+  if (q) out.push({ key: 'search', label: `${t('common.search')}: ${q}`, onClose: clearSearchAndRefresh })
 
   if (kindFilter.value !== 'all') {
     out.push({
       key: 'kind',
       label: `${t('common.type')}: ${kindLabel(kindFilter.value)}`,
-      onClose: clearKindFilter,
+      onClose: clearKindFilterAndRefresh,
     })
   }
 
   if (hideDotfiles.value) {
-    out.push({ key: 'dotfiles', label: t('common.hideDotfiles'), onClose: clearDotfiles })
+    out.push({ key: 'dotfiles', label: t('common.hideDotfiles'), onClose: clearDotfilesAndRefresh })
   }
 
   if (hasSizeApplied.value) {
     out.push({
       key: 'size',
       label: `${t('common.fileSize')}: ${formatSizeRange(sizeMinApplied.value, sizeMaxApplied.value, sizeUnitApplied.value)}`,
-      onClose: clearSizeFilter,
+      onClose: clearSizeFilterAndRefresh,
     })
   }
 
@@ -254,51 +263,14 @@ const activeChips = computed<ActiveChip[]>(() => {
     out.push({
       key: 'typeSort',
       label: `${t('common.typeSort')}: ${typeSort.value === 'file_first' ? t('common.fileFirst') : t('common.dirFirst')}`,
-      onClose: resetTypeSort,
+      onClose: resetTypeSortAndRefresh,
     })
   }
 
   return out
 })
 
-const visibleEntries = computed(() => {
-  const needle = searchApplied.value.trim().toLowerCase()
-  const mult = sizeUnitMultiplier(sizeUnitApplied.value)
-  const minBytes =
-    sizeMinApplied.value != null && Number.isFinite(sizeMinApplied.value)
-      ? Math.max(0, Math.floor(sizeMinApplied.value * mult))
-      : null
-  const maxBytes =
-    sizeMaxApplied.value != null && Number.isFinite(sizeMaxApplied.value)
-      ? Math.max(0, Math.floor(sizeMaxApplied.value * mult))
-      : null
-
-  const filtered = entries.value.filter((e) => {
-    if (hideDotfiles.value && e.name.startsWith('.')) return false
-    if (kindFilter.value !== 'all' && e.kind !== kindFilter.value) return false
-    if (needle && !e.name.toLowerCase().includes(needle)) return false
-    if ((minBytes != null || maxBytes != null) && e.kind !== 'dir') {
-      if (minBytes != null && e.size < minBytes) return false
-      if (maxBytes != null && e.size > maxBytes) return false
-    }
-    return true
-  })
-
-  function rank(kind: string): number {
-    const fileLike = kind === 'file' || kind === 'symlink'
-    if (typeSort.value === 'file_first') return fileLike ? 0 : kind === 'dir' ? 1 : 2
-    return kind === 'dir' ? 0 : fileLike ? 1 : 2
-  }
-
-  filtered.sort((a, b) => {
-    const ra = rank(a.kind)
-    const rb = rank(b.kind)
-    if (ra !== rb) return ra - rb
-    return a.name.localeCompare(b.name)
-  })
-
-  return filtered
-})
+const visibleEntries = computed(() => entries.value)
 
 function formatMtimeDesktop(ts?: number | null): string {
   if (!Number.isFinite(ts as number) || !ts) return '-'
@@ -352,6 +324,7 @@ function applySizeFilter(): void {
   sizeMinApplied.value = nextMin
   sizeMaxApplied.value = nextMax
   sizeUnitApplied.value = sizeUnitDraft.value
+  refreshForFilters()
 }
 
 function clearSearch(): void {
@@ -386,6 +359,42 @@ function resetAllFilters(): void {
   sizeUnitDraft.value = 'MB'
   sizeUnitApplied.value = 'MB'
   resetTypeSort()
+}
+
+function refreshForFilters(): void {
+  if (!show.value) return
+  if (isSingleDirMode.value) return
+  void refresh()
+}
+
+function clearSearchAndRefresh(): void {
+  clearSearch()
+  refreshForFilters()
+}
+
+function clearKindFilterAndRefresh(): void {
+  clearKindFilter()
+  refreshForFilters()
+}
+
+function clearDotfilesAndRefresh(): void {
+  clearDotfiles()
+  refreshForFilters()
+}
+
+function clearSizeFilterAndRefresh(): void {
+  clearSizeFilter()
+  refreshForFilters()
+}
+
+function resetTypeSortAndRefresh(): void {
+  resetTypeSort()
+  refreshForFilters()
+}
+
+function resetAllFiltersAndRefresh(): void {
+  resetAllFilters()
+  refreshForFilters()
 }
 
 function computeParentPath(p: string): string {
@@ -442,7 +451,12 @@ async function refresh(): Promise<void> {
     return
   }
 
+  const seq = ++listFetchSeq
+
   loading.value = true
+  loadingMore.value = false
+  nextCursor.value = null
+  total.value = null
   if (isSingleDirMode.value) {
     singleDirStatus.value = 'unknown'
     singleDirMessage.value = ''
@@ -450,12 +464,12 @@ async function refresh(): Promise<void> {
     singleDirNotFoundConfirmPath.value = ''
   }
   try {
-    const url = (path: string) =>
-      `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(path)}`
-
-    const res = await apiFetch<FsListResponse>(url(p))
+    const res = await apiFetch<FsListResponse>(buildFsListUrl(p, null))
+    if (seq !== listFetchSeq) return
     currentPath.value = res.path
     entries.value = res.entries
+    nextCursor.value = normalizeCursor(res.next_cursor)
+    total.value = typeof res.total === 'number' ? res.total : null
     saveLastDir(nodeId.value, currentPath.value)
     if (isSingleDirMode.value) {
       singleDirStatus.value = 'ok'
@@ -464,6 +478,7 @@ async function refresh(): Promise<void> {
       singleDirNotFoundConfirmPath.value = ''
     }
   } catch (error) {
+    if (seq !== listFetchSeq) return
     const info = toApiErrorInfo(error, t)
     const code = info.code
     const msgLower = info.message.toLowerCase()
@@ -529,11 +544,12 @@ async function refresh(): Promise<void> {
       const parent = computeParentPath(p)
       if (parent && parent !== p) {
         try {
-          const res = await apiFetch<FsListResponse>(
-            `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?path=${encodeURIComponent(parent)}`,
-          )
+          const res = await apiFetch<FsListResponse>(buildFsListUrl(parent, null))
+          if (seq !== listFetchSeq) return
           currentPath.value = res.path
           entries.value = res.entries
+          nextCursor.value = normalizeCursor(res.next_cursor)
+          total.value = typeof res.total === 'number' ? res.total : null
           saveLastDir(nodeId.value, currentPath.value)
           return
         } catch (error2) {
@@ -545,8 +561,72 @@ async function refresh(): Promise<void> {
 
     message.error(formatToastError(t('errors.fsListFailed'), error, t))
   } finally {
-    loading.value = false
+    if (seq === listFetchSeq) loading.value = false
   }
+}
+
+async function loadMore(): Promise<void> {
+  if (loading.value || loadingMore.value) return
+  const cursor = nextCursor.value
+  if (!cursor) return
+
+  const p = normalizePath(currentPath.value)
+  if (!p) return
+
+  const seq = ++listFetchSeq
+  loadingMore.value = true
+  try {
+    const res = await apiFetch<FsListResponse>(buildFsListUrl(p, cursor))
+    if (seq !== listFetchSeq) return
+
+    currentPath.value = res.path
+    entries.value = [...entries.value, ...res.entries]
+    nextCursor.value = normalizeCursor(res.next_cursor)
+    total.value = typeof res.total === 'number' ? res.total : null
+    saveLastDir(nodeId.value, currentPath.value)
+  } catch (error) {
+    if (seq !== listFetchSeq) return
+    message.error(formatToastError(t('errors.fsListFailed'), error, t))
+  } finally {
+    if (seq === listFetchSeq) loadingMore.value = false
+  }
+}
+
+function buildFsListUrl(path: string, cursor: string | null): string {
+  const params = new URLSearchParams()
+  params.set('path', path)
+  params.set('limit', String(PAGE_LIMIT))
+  if (cursor && cursor.trim()) params.set('cursor', cursor.trim())
+
+  const effectiveKind = isSingleDirMode.value ? 'dir' : kindFilter.value === 'all' ? null : kindFilter.value
+  if (effectiveKind) params.set('kind', effectiveKind)
+
+  if (!isSingleDirMode.value) {
+    const q = searchApplied.value.trim()
+    if (q) params.set('q', q)
+    if (hideDotfiles.value) params.set('hide_dotfiles', 'true')
+    if (typeSort.value) params.set('type_sort', typeSort.value)
+
+    const mult = sizeUnitMultiplier(sizeUnitApplied.value)
+    const minBytes =
+      sizeMinApplied.value != null && Number.isFinite(sizeMinApplied.value)
+        ? Math.max(0, Math.floor(sizeMinApplied.value * mult))
+        : null
+    const maxBytes =
+      sizeMaxApplied.value != null && Number.isFinite(sizeMaxApplied.value)
+        ? Math.max(0, Math.floor(sizeMaxApplied.value * mult))
+        : null
+
+    if (minBytes != null) params.set('size_min_bytes', String(minBytes))
+    if (maxBytes != null) params.set('size_max_bytes', String(maxBytes))
+  }
+
+  return `/api/nodes/${encodeURIComponent(nodeId.value)}/fs/list?${params.toString()}`
+}
+
+function normalizeCursor(v?: string | null): string | null {
+  const t = (v ?? '').trim()
+  return t ? t : null
 }
 
 function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpenOptions): void {
@@ -565,6 +645,9 @@ function open(nextNodeId: 'hub' | string, initialPath?: string | FsPathPickerOpe
   }
   entries.value = []
   checked.value = []
+  nextCursor.value = null
+  total.value = null
+  loadingMore.value = false
   resetAllFilters()
   singleDirStatus.value = 'unknown'
   singleDirMessage.value = ''
@@ -665,9 +748,7 @@ async function pick(): Promise<void> {
 
 const tableData = computed(() => {
   if (isSingleDirMode.value) {
-    const dirs = entries.value.filter((e) => e.kind === 'dir')
-    dirs.sort((a, b) => a.name.localeCompare(b.name))
-    return dirs
+    return entries.value.filter((e) => e.kind === 'dir')
   }
   return visibleEntries.value
 })
@@ -831,10 +912,10 @@ defineExpose<FsPathPickerModalExpose>({ open })
           <div class="w-80">
             <n-form label-placement="top" size="small">
               <n-form-item :label="t('common.type')">
-                <n-select v-model:value="kindFilter" :options="kindOptions" />
+                <n-select v-model:value="kindFilter" :options="kindOptions" @update:value="refreshForFilters" />
               </n-form-item>
               <n-form-item :label="t('common.hideDotfiles')">
-                <n-switch v-model:value="hideDotfiles" />
+                <n-switch v-model:value="hideDotfiles" @update:value="refreshForFilters" />
               </n-form-item>
               <n-form-item :label="t('common.fileSize')">
                 <div class="space-y-2">
@@ -859,11 +940,11 @@ defineExpose<FsPathPickerModalExpose>({ open })
                 </div>
               </n-form-item>
               <n-form-item :label="t('common.typeSort')">
-                <n-select v-model:value="typeSort" :options="typeSortOptions" />
+                <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
               </n-form-item>
             </n-form>
             <div class="flex justify-end">
-              <n-button size="tiny" tertiary @click="resetAllFilters">{{ t('common.clear') }}</n-button>
+              <n-button size="tiny" tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
             </div>
           </div>
         </n-popover>
@@ -881,17 +962,17 @@ defineExpose<FsPathPickerModalExpose>({ open })
         <n-tag v-for="chip in activeChips" :key="chip.key" size="small" closable @close="chip.onClose">
           {{ chip.label }}
         </n-tag>
-        <n-button size="tiny" tertiary @click="resetAllFilters">{{ t('common.clear') }}</n-button>
+        <n-button size="tiny" tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
       </div>
 
       <n-drawer v-if="!isSingleDirMode" v-model:show="filtersDrawerOpen" placement="bottom" height="80vh">
         <n-drawer-content :title="t('common.filters')" closable>
           <n-form label-placement="top" size="small">
             <n-form-item :label="t('common.type')">
-              <n-select v-model:value="kindFilter" :options="kindOptions" />
+              <n-select v-model:value="kindFilter" :options="kindOptions" @update:value="refreshForFilters" />
             </n-form-item>
             <n-form-item :label="t('common.hideDotfiles')">
-              <n-switch v-model:value="hideDotfiles" />
+              <n-switch v-model:value="hideDotfiles" @update:value="refreshForFilters" />
             </n-form-item>
             <n-form-item :label="t('common.fileSize')">
               <div class="space-y-2">
@@ -916,25 +997,32 @@ defineExpose<FsPathPickerModalExpose>({ open })
               </div>
             </n-form-item>
             <n-form-item :label="t('common.typeSort')">
-              <n-select v-model:value="typeSort" :options="typeSortOptions" />
+              <n-select v-model:value="typeSort" :options="typeSortOptions" @update:value="refreshForFilters" />
             </n-form-item>
           </n-form>
           <div class="flex justify-end gap-2 pt-2">
-            <n-button tertiary @click="resetAllFilters">{{ t('common.clear') }}</n-button>
+            <n-button tertiary @click="resetAllFiltersAndRefresh">{{ t('common.clear') }}</n-button>
             <n-button type="primary" @click="filtersDrawerOpen = false">{{ t('common.done') }}</n-button>
           </div>
         </n-drawer-content>
       </n-drawer>
 
-      <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
-        <n-data-table
-          :loading="loading"
-          :columns="columns"
-          :data="tableData"
-          :row-key="(row) => row.path"
-          v-model:checked-row-keys="checked"
-          :max-height="tableBodyMaxHeightPx || undefined"
-        />
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
+          <n-data-table
+            :loading="loading"
+            :columns="columns"
+            :data="tableData"
+            :row-key="(row) => row.path"
+            v-model:checked-row-keys="checked"
+            :max-height="tableBodyMaxHeightPx || undefined"
+          />
+        </div>
+        <div v-if="nextCursor" class="pt-2 flex justify-center">
+          <n-button size="small" :loading="loadingMore" :disabled="loading" @click="loadMore">
+            {{ t('common.loadMore') }}
+          </n-button>
+        </div>
       </div>
     </div>
 

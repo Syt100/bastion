@@ -13,6 +13,7 @@ const messages = {
     more: 'More',
     refresh: 'Refresh',
     loading: 'Loading',
+    loadMore: 'Load more',
     close: 'Close',
     noData: 'No data',
     add: 'Add',

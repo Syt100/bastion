@@ -177,4 +177,75 @@ describe('FsPathPickerModal', () => {
     const picked = wrapper.emitted('picked') ?? []
     expect(picked[picked.length - 1]).toEqual([['/root', '/a', '/b']])
   })
+
+  it('fetches paged results and can load more with next_cursor', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('path=%2Froot') && url.includes('cursor=c1')) {
+        return jsonResponse({ path: '/root', entries: [{ name: 'c', path: '/root/c', kind: 'file', size: 1 }], next_cursor: null })
+      }
+      if (url.includes('path=%2Froot')) {
+        return jsonResponse({
+          path: '/root',
+          entries: [
+            { name: 'a', path: '/root/a', kind: 'dir', size: 0 },
+            { name: 'b', path: '/root/b', kind: 'file', size: 1 },
+          ],
+          next_cursor: 'c1',
+          total: 3,
+        })
+      }
+      return jsonResponse({ error: 'unexpected', message: `unexpected url: ${url}` }, 500)
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(2)
+
+    await (wrapper.vm as unknown as { loadMore: () => Promise<void> }).loadMore()
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(3)
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(calls.some((c) => c.includes('limit=200'))).toBe(true)
+    expect(calls.some((c) => c.includes('cursor=c1'))).toBe(true)
+  })
+
+  it('re-fetches from the server when search is applied', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('q=foo')) {
+        return jsonResponse({
+          path: '/root',
+          entries: [{ name: 'foo.txt', path: '/root/foo.txt', kind: 'file', size: 1 }],
+        })
+      }
+      if (url.includes('path=%2Froot')) {
+        return jsonResponse({
+          path: '/root',
+          entries: [
+            { name: 'a.txt', path: '/root/a.txt', kind: 'file', size: 1 },
+            { name: 'b.txt', path: '/root/b.txt', kind: 'file', size: 1 },
+          ],
+        })
+      }
+      return jsonResponse({ error: 'unexpected', message: `unexpected url: ${url}` }, 500)
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { searchDraft: string }).searchDraft = 'foo'
+    ;(wrapper.vm as unknown as { applySearch: () => void }).applySearch()
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(1)
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
+  })
 })
