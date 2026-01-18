@@ -53,6 +53,80 @@ body {
   @apply hover:bg-black/5 dark:hover:bg-white/5;
 }
 
+.app-picker-table {
+  --n-border-color: rgba(0, 0, 0, 0.06);
+  --n-border-color-modal: rgba(0, 0, 0, 0.06);
+  --n-border-color-popover: rgba(0, 0, 0, 0.06);
+
+  --n-th-color: rgba(0, 0, 0, 0.02);
+  --n-th-color-hover: rgba(0, 0, 0, 0.02);
+  --n-th-color-sorting: rgba(0, 0, 0, 0.02);
+  --n-th-color-modal: rgba(0, 0, 0, 0.02);
+  --n-th-color-hover-modal: rgba(0, 0, 0, 0.02);
+  --n-th-color-sorting-modal: rgba(0, 0, 0, 0.02);
+  --n-th-color-popover: rgba(0, 0, 0, 0.02);
+  --n-th-color-hover-popover: rgba(0, 0, 0, 0.02);
+  --n-th-color-sorting-popover: rgba(0, 0, 0, 0.02);
+
+  --n-td-color: transparent;
+  --n-td-color-hover: rgba(0, 0, 0, 0.03);
+  --n-td-color-sorting: rgba(0, 0, 0, 0.03);
+  --n-td-color-striped: rgba(0, 0, 0, 0.015);
+  --n-td-color-modal: transparent;
+  --n-td-color-hover-modal: rgba(0, 0, 0, 0.03);
+  --n-td-color-sorting-modal: rgba(0, 0, 0, 0.03);
+  --n-td-color-striped-modal: rgba(0, 0, 0, 0.015);
+  --n-td-color-popover: transparent;
+  --n-td-color-hover-popover: rgba(0, 0, 0, 0.03);
+  --n-td-color-sorting-popover: rgba(0, 0, 0, 0.03);
+  --n-td-color-striped-popover: rgba(0, 0, 0, 0.015);
+}
+
+.dark .app-picker-table {
+  --n-border-color: rgba(255, 255, 255, 0.12);
+  --n-border-color-modal: rgba(255, 255, 255, 0.12);
+  --n-border-color-popover: rgba(255, 255, 255, 0.12);
+
+  --n-th-color: rgba(255, 255, 255, 0.04);
+  --n-th-color-hover: rgba(255, 255, 255, 0.04);
+  --n-th-color-sorting: rgba(255, 255, 255, 0.04);
+  --n-th-color-modal: rgba(255, 255, 255, 0.04);
+  --n-th-color-hover-modal: rgba(255, 255, 255, 0.04);
+  --n-th-color-sorting-modal: rgba(255, 255, 255, 0.04);
+  --n-th-color-popover: rgba(255, 255, 255, 0.04);
+  --n-th-color-hover-popover: rgba(255, 255, 255, 0.04);
+  --n-th-color-sorting-popover: rgba(255, 255, 255, 0.04);
+
+  --n-td-color: transparent;
+  --n-td-color-hover: rgba(255, 255, 255, 0.05);
+  --n-td-color-sorting: rgba(255, 255, 255, 0.05);
+  --n-td-color-striped: rgba(255, 255, 255, 0.02);
+  --n-td-color-modal: transparent;
+  --n-td-color-hover-modal: rgba(255, 255, 255, 0.05);
+  --n-td-color-sorting-modal: rgba(255, 255, 255, 0.05);
+  --n-td-color-striped-modal: rgba(255, 255, 255, 0.02);
+  --n-td-color-popover: transparent;
+  --n-td-color-hover-popover: rgba(255, 255, 255, 0.05);
+  --n-td-color-sorting-popover: rgba(255, 255, 255, 0.05);
+  --n-td-color-striped-popover: rgba(255, 255, 255, 0.02);
+}
+
+.app-picker-table :where(.app-picker-row--checked > .n-data-table-td) {
+  background-color: rgba(59, 130, 246, 0.08) !important;
+}
+
+.app-picker-table :where(.app-picker-row--checked > .n-data-table-td--hover) {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+
+.dark .app-picker-table :where(.app-picker-row--checked > .n-data-table-td) {
+  background-color: rgba(59, 130, 246, 0.16) !important;
+}
+
+.dark .app-picker-table :where(.app-picker-row--checked > .n-data-table-td--hover) {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
 :root {
   --app-glass-bg: rgba(255, 255, 255, 0.7);
   --app-glass-soft-bg: rgba(255, 255, 255, 0.6);

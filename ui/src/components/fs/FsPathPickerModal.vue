@@ -290,6 +290,13 @@ const activeChips = computed<ActiveChip[]>(() => {
 
 const visibleEntries = computed(() => entries.value)
 
+const checkedSet = computed(() => new Set(checked.value))
+
+function rowClassName(row: FsListEntry): string {
+  if (checkedSet.value.has(row.path)) return 'app-picker-row app-picker-row--checked'
+  return 'app-picker-row'
+}
+
 function formatMtimeDesktop(ts?: number | null): string {
   if (!Number.isFinite(ts as number) || !ts) return '-'
   return formatUnixSecondsYmdHms(ts)
@@ -1405,16 +1412,21 @@ defineExpose<FsPathPickerModalExpose>({ open })
             </template>
           </AppEmptyState>
 
-          <n-data-table
-            v-else
-            :loading="loading"
-            :columns="columns"
-            :data="tableData"
-            :row-key="(row) => row.path"
-            :checked-row-keys="checked"
-            @update:checked-row-keys="updateCheckedRowKeys"
-            :max-height="tableBodyMaxHeightPx || undefined"
-          />
+          <div v-else class="h-full overflow-hidden rounded-lg app-border-subtle">
+            <n-data-table
+              class="app-picker-table"
+              :bordered="false"
+              :size="isDesktop ? 'medium' : 'small'"
+              :row-class-name="rowClassName"
+              :loading="loading"
+              :columns="columns"
+              :data="tableData"
+              :row-key="(row) => row.path"
+              :checked-row-keys="checked"
+              @update:checked-row-keys="updateCheckedRowKeys"
+              :max-height="tableBodyMaxHeightPx || undefined"
+            />
+          </div>
         </div>
         <div v-if="nextCursor" class="pt-2 flex justify-center">
           <n-button size="small" :loading="loadingMore" :disabled="loading" @click="loadMore">

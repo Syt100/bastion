@@ -119,6 +119,11 @@ function onPrefixNavigate(): void {
 const selected = ref<Map<string, 'file' | 'dir'>>(new Map())
 const checkedRowKeys = computed<string[]>(() => Array.from(selected.value.keys()))
 
+function rowClassName(row: RunEntry): string {
+  if (selected.value.has(row.path)) return 'app-picker-row app-picker-row--checked'
+  return 'app-picker-row'
+}
+
 const selectedCount = computed(() => selected.value.size)
 const selectedPreviewItems = computed(() => Array.from(selected.value.entries()).map(([path, kind]) => ({ path, kind })))
 const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== searchApplied.value)
@@ -699,15 +704,21 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
 
       <div class="flex flex-col gap-2 flex-1 min-h-0">
         <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
-          <n-data-table
-            :loading="loading"
-            :columns="columns"
-            :data="entries"
-            :row-key="(row) => row.path"
-            :checked-row-keys="checkedRowKeys"
-            @update:checked-row-keys="updateCheckedRowKeys"
-            :max-height="tableBodyMaxHeightPx || undefined"
-          />
+          <div class="h-full overflow-hidden rounded-lg app-border-subtle">
+            <n-data-table
+              class="app-picker-table"
+              :bordered="false"
+              :size="isDesktop ? 'medium' : 'small'"
+              :row-class-name="rowClassName"
+              :loading="loading"
+              :columns="columns"
+              :data="entries"
+              :row-key="(row) => row.path"
+              :checked-row-keys="checkedRowKeys"
+              @update:checked-row-keys="updateCheckedRowKeys"
+              :max-height="tableBodyMaxHeightPx || undefined"
+            />
+          </div>
         </div>
 
         <div v-if="nextCursor != null" class="flex justify-center shrink-0">
