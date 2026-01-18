@@ -7,7 +7,7 @@
 - [x] 2.1 Refactor picker modal content to a flex column layout with a single scroll region
 - [x] 2.2 Replace hard-coded table `max-height` with a ResizeObserver-derived pixel height
 - [x] 2.3 Apply to both filesystem and restore-entry pickers
-- [ ] 2.4 Commit UI change (detailed message)
+- [x] 2.4 Commit UI change (detailed message)
 
 ## 3. Verification
 - [x] 3.1 Run `npm test --prefix ui`
