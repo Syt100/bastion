@@ -349,7 +349,10 @@ defineExpose<PickerPathBarInputExpose>({ focus })
                 <template v-if="seg.label !== '…'">
                   <button
                     type="button"
-                    class="text-sm hover:underline truncate max-w-[16rem] text-[var(--n-text-color-1)]"
+                    :class="[
+                      'text-sm hover:underline truncate min-w-0 text-[var(--n-text-color-1)]',
+                      idx === shownSegments.length - 1 ? 'flex-1' : '',
+                    ]"
                     :title="seg.label"
                     @click.stop="navigateTo(seg.value)"
                   >
@@ -416,7 +419,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
           <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm opacity-50 mx-0.5">
             /
           </span>
-          <span class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]">{{ seg.label }}</span>
+          <span class="text-sm inline-block truncate min-w-0 text-[var(--n-text-color-1)]">{{ seg.label }}</span>
         </template>
       </div>
 
@@ -439,7 +442,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
           </span>
           <span
             v-else
-            class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]"
+            class="text-sm inline-block truncate min-w-0 text-[var(--n-text-color-1)]"
           >
             {{ seg.label }}
           </span>

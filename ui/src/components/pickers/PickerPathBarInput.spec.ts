@@ -165,6 +165,8 @@ describe('PickerPathBarInput', () => {
       .filter((b) => b.attributes('title') && !['Up', 'Refresh'].includes(b.attributes('title')!))
 
     expect(segmentButtons.some((b) => b.text().trim() === '…')).toBe(false)
+    expect(wrapper.html()).not.toContain('max-w-[16rem]')
+    expect(segmentButtons[segmentButtons.length - 1]?.classes()).toContain('flex-1')
   })
 
   it('collapses only when overflowing and shows more than the default tail segment count when space permits', async () => {
@@ -191,6 +193,8 @@ describe('PickerPathBarInput', () => {
       .filter((b) => b.attributes('title') && !['Up', 'Refresh'].includes(b.attributes('title')!))
 
     expect(segmentButtons.some((b) => b.text().trim() === '…')).toBe(true)
+    expect(wrapper.html()).not.toContain('max-w-[16rem]')
+    expect(segmentButtons[segmentButtons.length - 1]?.classes()).toContain('flex-1')
 
     // Default desktop tail is 2, which would render: "/" + "…" + 2 segments = 4 segment buttons.
     // We expect the component to maximize tail segments to fill available width when collapsed.
@@ -213,6 +217,6 @@ describe('PickerPathBarInput', () => {
     // Ensure the hidden measurement container exists and cannot affect scroll width.
     const measureContainer = wrapper.find('.w-0.h-0.overflow-hidden.opacity-0.pointer-events-none')
     expect(measureContainer.exists()).toBe(true)
+    expect(wrapper.html()).not.toContain('max-w-[16rem]')
   })
 })
-
