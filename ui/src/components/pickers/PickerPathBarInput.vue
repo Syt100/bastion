@@ -50,7 +50,8 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const input = ref<InstanceType<typeof NInput> | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
 const actionsEl = ref<HTMLElement | null>(null)
-const breadcrumbMeasureEl = ref<HTMLElement | null>(null)
+const fullMeasureInnerEl = ref<HTMLElement | null>(null)
+const collapsedMeasureInnerEl = ref<HTMLElement | null>(null)
 
 const editing = ref<boolean>(false)
 const collapsedPopoverOpen = ref<boolean>(false)
@@ -59,6 +60,8 @@ const collapsedDrawerOpen = ref<boolean>(false)
 const tailSegments = computed(() => (isDesktop.value ? props.tailSegmentsDesktop : props.tailSegmentsMobile))
 
 const collapseByOverflow = ref<boolean>(false)
+const effectiveTailSegments = ref<number>(tailSegments.value)
+const measureTailSegments = ref<number>(tailSegments.value)
 
 function buildBreadcrumbSegments(rawValue: string): BreadcrumbSegment[] {
   const raw = rawValue.trim()
@@ -93,13 +96,24 @@ const collapseMiddle = computed(() => canCollapseMiddle.value && collapseByOverf
 
 const hiddenSegments = computed(() => {
   if (!collapseMiddle.value) return []
-  return allSegments.value.slice(1, -tailSegments.value)
+  return allSegments.value.slice(1, -effectiveTailSegments.value)
 })
 
 const shownSegments = computed<BreadcrumbSegment[]>(() => {
   if (!collapseMiddle.value) return allSegments.value
   const head = allSegments.value[0]
-  const tail = allSegments.value.slice(-tailSegments.value)
+  const tail = allSegments.value.slice(-effectiveTailSegments.value)
+  return [
+    ...(head ? [head] : []),
+    { label: '…', value: '' },
+    ...tail,
+  ]
+})
+
+const collapsedMeasureSegments = computed<BreadcrumbSegment[]>(() => {
+  if (!canCollapseMiddle.value) return allSegments.value
+  const head = allSegments.value[0]
+  const tail = allSegments.value.slice(-measureTailSegments.value)
   return [
     ...(head ? [head] : []),
     { label: '…', value: '' },
@@ -119,21 +133,57 @@ function getAvailableBreadcrumbWidthPx(): number {
 }
 
 function getFullBreadcrumbWidthPx(): number {
-  const el = breadcrumbMeasureEl.value
+  const el = fullMeasureInnerEl.value
   if (!el) return 0
-  return Math.ceil(el.scrollWidth)
+  return Math.ceil(el.getBoundingClientRect().width)
+}
+
+function getCollapsedBreadcrumbWidthPx(): number {
+  const el = collapsedMeasureInnerEl.value
+  if (!el) return 0
+  return Math.ceil(el.getBoundingClientRect().width)
 }
 
 async function recalcBreadcrumbCollapse(): Promise<void> {
   if (!canCollapseMiddle.value) {
     collapseByOverflow.value = false
+    effectiveTailSegments.value = tailSegments.value
     return
   }
 
   await nextTick()
   const available = getAvailableBreadcrumbWidthPx()
-  const needed = getFullBreadcrumbWidthPx()
-  collapseByOverflow.value = needed > available + 2
+  const fullNeeded = getFullBreadcrumbWidthPx()
+  const shouldCollapse = fullNeeded > available + 2
+  collapseByOverflow.value = shouldCollapse
+
+  if (!shouldCollapse) {
+    effectiveTailSegments.value = tailSegments.value
+    return
+  }
+
+  // Find the maximum number of tail segments that still fits when collapsed (head + … + tail).
+  const minTail = Math.max(1, tailSegments.value)
+  const maxTail = Math.max(minTail, allSegments.value.length - 2)
+
+  let lo = minTail
+  let hi = maxTail
+  let best = minTail
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    measureTailSegments.value = mid
+    await nextTick()
+    const w = getCollapsedBreadcrumbWidthPx()
+    if (w <= available + 2) {
+      best = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+
+  effectiveTailSegments.value = best
 }
 
 function focus(): void {
@@ -355,19 +405,46 @@ defineExpose<PickerPathBarInputExpose>({ focus })
       </template>
     </n-input>
 
-    <!-- Measure the full breadcrumb width (without collapse) to decide whether collapsing is needed. -->
+    <!-- Hidden measurement nodes (kept out of layout/overflow to avoid mobile horizontal scrollbars). -->
     <div
-      v-if="!editing && canCollapseMiddle && allSegments.length > 0"
-      ref="breadcrumbMeasureEl"
-      class="absolute left-0 top-0 opacity-0 pointer-events-none whitespace-nowrap flex items-center"
+      v-if="!editing && allSegments.length > 0"
+      class="absolute left-0 top-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none"
       aria-hidden="true"
     >
-      <template v-for="(seg, idx) in allSegments" :key="`m:${idx}:${seg.label}:${seg.value}`">
-        <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm opacity-50 mx-0.5">
-          /
-        </span>
-        <span class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]">{{ seg.label }}</span>
-      </template>
+      <div ref="fullMeasureInnerEl" class="inline-flex items-center whitespace-nowrap">
+        <template v-for="(seg, idx) in allSegments" :key="`m:full:${idx}:${seg.label}:${seg.value}`">
+          <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm opacity-50 mx-0.5">
+            /
+          </span>
+          <span class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]">{{ seg.label }}</span>
+        </template>
+      </div>
+
+      <div v-if="canCollapseMiddle" ref="collapsedMeasureInnerEl" class="inline-flex items-center whitespace-nowrap">
+        <template
+          v-for="(seg, idx) in collapsedMeasureSegments"
+          :key="`m:collapsed:${idx}:${seg.label}:${seg.value}`"
+        >
+          <span
+            v-if="idx > 0 && !(collapsedMeasureSegments[0]?.label === '/' && idx === 1)"
+            class="text-sm opacity-50 mx-0.5"
+          >
+            /
+          </span>
+          <span
+            v-if="seg.label === '…'"
+            class="text-sm shrink-0 text-[var(--n-text-color-1)]"
+          >
+            …
+          </span>
+          <span
+            v-else
+            class="text-sm inline-block truncate max-w-[16rem] text-[var(--n-text-color-1)]"
+          >
+            {{ seg.label }}
+          </span>
+        </template>
+      </div>
     </div>
 
     <n-drawer v-if="!isDesktop" v-model:show="collapsedDrawerOpen" placement="bottom" height="60vh">
@@ -390,6 +467,11 @@ defineExpose<PickerPathBarInputExpose>({ focus })
 </template>
 
 <style scoped>
+/* Allow the prefix (actions + breadcrumbs) to take more horizontal space without forcing overflow. */
+:deep(.n-input__input) {
+  min-width: 0;
+}
+
 /* Ionicons outline icons default to a fairly heavy stroke; soften for path bar actions. */
 .app-picker-path-action-icon :deep(svg) {
   stroke-width: 24;
