@@ -808,7 +808,6 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
         <n-button
           v-if="!isDesktop"
-          size="small"
           :title="t('fsPicker.selectedCount', { count: selectedCount })"
           :aria-label="t('fsPicker.selectedCount', { count: selectedCount })"
           @click="selectionDrawerOpen = true"
