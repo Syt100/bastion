@@ -259,12 +259,18 @@ async fn handle_agent_socket(
                         v,
                         request_id,
                         entries,
+                        next_cursor,
+                        total,
                         error,
                     }) if v == PROTOCOL_VERSION => {
                         let result = if let Some(error) = error {
                             Err(error)
                         } else {
-                            Ok(entries)
+                            Ok(bastion_engine::agent_manager::FsListPage {
+                                entries,
+                                next_cursor,
+                                total,
+                            })
                         };
                         agent_manager
                             .complete_fs_list(&agent_id, &request_id, result)

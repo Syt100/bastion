@@ -120,6 +120,22 @@ pub enum HubToAgentMessageV1 {
         v: u32,
         request_id: String,
         path: String,
+        #[serde(default)]
+        cursor: Option<String>,
+        #[serde(default)]
+        limit: Option<u32>,
+        #[serde(default)]
+        q: Option<String>,
+        #[serde(default)]
+        kind: Option<String>,
+        #[serde(default)]
+        hide_dotfiles: Option<bool>,
+        #[serde(default)]
+        type_sort: Option<String>,
+        #[serde(default)]
+        size_min_bytes: Option<u64>,
+        #[serde(default)]
+        size_max_bytes: Option<u64>,
     },
     ConfigSnapshot {
         v: u32,
@@ -189,6 +205,10 @@ pub enum AgentToHubMessageV1 {
         request_id: String,
         #[serde(default)]
         entries: Vec<FsDirEntryV1>,
+        #[serde(default)]
+        next_cursor: Option<String>,
+        #[serde(default)]
+        total: Option<u64>,
         #[serde(default)]
         error: Option<String>,
     },

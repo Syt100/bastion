@@ -8,9 +8,28 @@ use bastion_core::agent;
 use bastion_core::agent_protocol::{FsDirEntryV1, HubToAgentMessageV1, PROTOCOL_VERSION};
 
 type FsListKey = (String, String); // (agent_id, request_id)
-type FsListResult = Result<Vec<FsDirEntryV1>, String>;
+type FsListResult = Result<FsListPage, String>;
 type FsListSender = oneshot::Sender<FsListResult>;
 type PendingFsList = HashMap<FsListKey, FsListSender>;
+
+#[derive(Debug, Clone)]
+pub struct FsListOptions {
+    pub cursor: Option<String>,
+    pub limit: Option<u32>,
+    pub q: Option<String>,
+    pub kind: Option<String>,
+    pub hide_dotfiles: bool,
+    pub type_sort: Option<String>,
+    pub size_min_bytes: Option<u64>,
+    pub size_max_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FsListPage {
+    pub entries: Vec<FsDirEntryV1>,
+    pub next_cursor: Option<String>,
+    pub total: Option<u64>,
+}
 
 #[derive(Debug, Clone)]
 struct AgentConnection {
@@ -103,14 +122,15 @@ impl AgentManager {
         Ok(true)
     }
 
-    pub async fn fs_list(
+    pub async fn fs_list_page(
         &self,
         agent_id: &str,
         path: String,
+        opts: FsListOptions,
         timeout: std::time::Duration,
-    ) -> Result<Vec<FsDirEntryV1>, anyhow::Error> {
+    ) -> Result<FsListPage, anyhow::Error> {
         let request_id = agent::generate_token_b64_urlsafe(16);
-        let (tx, rx) = oneshot::channel::<Result<Vec<FsDirEntryV1>, String>>();
+        let (tx, rx) = oneshot::channel::<FsListResult>();
         self.pending_fs_list
             .lock()
             .await
@@ -120,6 +140,14 @@ impl AgentManager {
             v: PROTOCOL_VERSION,
             request_id: request_id.clone(),
             path,
+            cursor: opts.cursor,
+            limit: opts.limit,
+            q: opts.q,
+            kind: opts.kind,
+            hide_dotfiles: if opts.hide_dotfiles { Some(true) } else { None },
+            type_sort: opts.type_sort,
+            size_min_bytes: opts.size_min_bytes,
+            size_max_bytes: opts.size_max_bytes,
         };
         if let Err(error) = self.send_json(agent_id, &msg).await {
             let _ = self
@@ -142,17 +170,40 @@ impl AgentManager {
             .await
             .remove(&(agent_id.to_string(), request_id));
 
-        match result {
-            Ok(entries) => Ok(entries),
-            Err(msg) => Err(anyhow::anyhow!(msg)),
-        }
+        result.map_err(anyhow::Error::msg)
+    }
+
+    pub async fn fs_list(
+        &self,
+        agent_id: &str,
+        path: String,
+        timeout: std::time::Duration,
+    ) -> Result<Vec<FsDirEntryV1>, anyhow::Error> {
+        let page = self
+            .fs_list_page(
+                agent_id,
+                path,
+                FsListOptions {
+                    cursor: None,
+                    limit: None,
+                    q: None,
+                    kind: None,
+                    hide_dotfiles: false,
+                    type_sort: None,
+                    size_min_bytes: None,
+                    size_max_bytes: None,
+                },
+                timeout,
+            )
+            .await?;
+        Ok(page.entries)
     }
 
     pub async fn complete_fs_list(
         &self,
         agent_id: &str,
         request_id: &str,
-        result: Result<Vec<FsDirEntryV1>, String>,
+        result: FsListResult,
     ) {
         let key = (agent_id.to_string(), request_id.to_string());
         let tx = self.pending_fs_list.lock().await.remove(&key);

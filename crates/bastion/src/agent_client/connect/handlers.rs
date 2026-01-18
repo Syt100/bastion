@@ -11,7 +11,6 @@ use bastion_core::agent_protocol::{
 };
 use bastion_core::run_failure::RunFailedWithSummary;
 
-use super::super::fs_list::fs_list_dir_entries;
 use super::super::identity::AgentIdentityV1;
 use super::super::managed::{
     load_cached_task_result, save_managed_config_snapshot, save_managed_secrets_snapshot,
@@ -200,22 +199,67 @@ pub(super) async fn handle_fs_list<S>(
     tx: &mut S,
     request_id: String,
     path: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+    q: Option<String>,
+    kind: Option<String>,
+    hide_dotfiles: Option<bool>,
+    type_sort: Option<String>,
+    size_min_bytes: Option<u64>,
+    size_max_bytes: Option<u64>,
 ) -> Result<HandlerFlow, anyhow::Error>
 where
     S: Sink<Message, Error = tungstenite::Error> + Unpin,
 {
     let path = path.trim().to_string();
-    let result = tokio::task::spawn_blocking(move || fs_list_dir_entries(&path)).await;
-    let (entries, error) = match result {
-        Ok(Ok(entries)) => (entries, None),
-        Ok(Err(msg)) => (Vec::new(), Some(msg)),
-        Err(error) => (Vec::new(), Some(format!("fs list task failed: {error}"))),
+    let cursor = cursor.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let q = q.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let kind = kind.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let type_sort = type_sort.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+
+    let opts = super::super::fs_list::FsListOptions {
+        cursor,
+        limit: limit.map(|v| v.max(1)),
+        q,
+        kind,
+        hide_dotfiles: hide_dotfiles.unwrap_or(false),
+        type_sort,
+        size_min_bytes,
+        size_max_bytes,
+    };
+
+    let result = tokio::task::spawn_blocking(move || super::super::fs_list::fs_list_dir_entries_paged(&path, opts))
+        .await;
+
+    let (entries, next_cursor, total, error) = match result {
+        Ok(Ok(page)) => (page.entries, page.next_cursor, Some(page.total), None),
+        Ok(Err(msg)) => (Vec::new(), None, None, Some(msg)),
+        Err(error) => (
+            Vec::new(),
+            None,
+            None,
+            Some(format!("fs list task failed: {error}")),
+        ),
     };
 
     let msg = AgentToHubMessageV1::FsListResult {
         v: PROTOCOL_VERSION,
         request_id,
         entries,
+        next_cursor,
+        total,
         error,
     };
     send_json(tx, &msg).await

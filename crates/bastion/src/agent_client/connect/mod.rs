@@ -139,8 +139,33 @@ pub(super) async fn connect_and_run(
                                     return Ok(LoopAction::Reconnect);
                                 }
                             }
-                            Ok(HubToAgentMessageV1::FsList { v, request_id, path }) if v == PROTOCOL_VERSION => {
-                                if handlers::handle_fs_list(&mut tx, request_id, path).await?
+                            Ok(HubToAgentMessageV1::FsList {
+                                v,
+                                request_id,
+                                path,
+                                cursor,
+                                limit,
+                                q,
+                                kind,
+                                hide_dotfiles,
+                                type_sort,
+                                size_min_bytes,
+                                size_max_bytes,
+                            }) if v == PROTOCOL_VERSION => {
+                                if handlers::handle_fs_list(
+                                    &mut tx,
+                                    request_id,
+                                    path,
+                                    cursor,
+                                    limit,
+                                    q,
+                                    kind,
+                                    hide_dotfiles,
+                                    type_sort,
+                                    size_min_bytes,
+                                    size_max_bytes,
+                                )
+                                .await?
                                     == handlers::HandlerFlow::Reconnect
                                 {
                                     return Ok(LoopAction::Reconnect);
