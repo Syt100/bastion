@@ -49,6 +49,7 @@ vi.mock('vue-i18n', () => ({
 }))
 
 import FsPathPickerModal from './FsPathPickerModal.vue'
+import PathPickerModal from '@/components/pickers/pathPicker/PathPickerModal.vue'
 
 function stubMatchMedia(matches: boolean): void {
   vi.stubGlobal(
@@ -78,6 +79,11 @@ async function flushAsync(): Promise<void> {
 describe('FsPathPickerModal', () => {
   let wrapper: ReturnType<typeof mount> | null = null
 
+  function pickerVm(): unknown {
+    if (!wrapper) throw new Error('wrapper not mounted')
+    return wrapper.getComponent(PathPickerModal).vm
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -106,8 +112,8 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { currentPath: string; refresh: () => Promise<void> }).currentPath = '/root/sub'
-    await (wrapper.vm as unknown as { refresh: () => Promise<void> }).refresh()
+    ;(pickerVm() as unknown as { currentPath: string; refresh: () => Promise<void> }).currentPath = '/root/sub'
+    await (pickerVm() as unknown as { refresh: () => Promise<void> }).refresh()
 
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string) => void }).open('hub')
     await flushAsync()
@@ -134,10 +140,10 @@ describe('FsPathPickerModal', () => {
     })
     await flushAsync()
 
-    await (wrapper.vm as unknown as { pick: () => Promise<void> }).pick()
+    await (pickerVm() as unknown as { pick: () => Promise<void> }).pick()
     expect(wrapper.emitted('picked')).toBeUndefined()
 
-    await (wrapper.vm as unknown as { pick: () => Promise<void> }).pick()
+    await (pickerVm() as unknown as { pick: () => Promise<void> }).pick()
     expect(wrapper.emitted('picked')).toBeTruthy()
     expect(wrapper.emitted('picked')?.[0]).toEqual([['/missing']])
   })
@@ -150,7 +156,7 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+    ;(pickerVm() as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
     expect(wrapper.emitted('picked')?.[0]).toEqual([['/root']])
   })
 
@@ -162,12 +168,12 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/a', '/b']
-    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+    ;(pickerVm() as unknown as { checked: string[] }).checked = ['/a', '/b']
+    ;(pickerVm() as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
 
-    expect((wrapper.vm as unknown as { pickCurrentDirConfirmOpen: boolean }).pickCurrentDirConfirmOpen).toBe(true)
+    expect((pickerVm() as unknown as { pickCurrentDirConfirmOpen: boolean }).pickCurrentDirConfirmOpen).toBe(true)
 
-    ;(wrapper.vm as unknown as { confirmPickCurrentDirOnly: () => void }).confirmPickCurrentDirOnly()
+    ;(pickerVm() as unknown as { confirmPickCurrentDirOnly: () => void }).confirmPickCurrentDirOnly()
     expect(wrapper.emitted('picked')?.[0]).toEqual([['/root']])
   })
 
@@ -179,9 +185,9 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/a', '/b']
-    ;(wrapper.vm as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
-    ;(wrapper.vm as unknown as { confirmPickCurrentDirWithSelected: () => void }).confirmPickCurrentDirWithSelected()
+    ;(pickerVm() as unknown as { checked: string[] }).checked = ['/a', '/b']
+    ;(pickerVm() as unknown as { requestPickCurrentDir: () => void }).requestPickCurrentDir()
+    ;(pickerVm() as unknown as { confirmPickCurrentDirWithSelected: () => void }).confirmPickCurrentDirWithSelected()
 
     const picked = wrapper.emitted('picked') ?? []
     expect(picked[picked.length - 1]).toEqual([['/root', '/a', '/b']])
@@ -212,12 +218,12 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(2)
+    expect((pickerVm() as unknown as { entries: unknown[] }).entries).toHaveLength(2)
 
-    await (wrapper.vm as unknown as { loadMore: () => Promise<void> }).loadMore()
+    await (pickerVm() as unknown as { loadMore: () => Promise<void> }).loadMore()
     await flushAsync()
 
-    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(3)
+    expect((pickerVm() as unknown as { entries: unknown[] }).entries).toHaveLength(3)
     const calls = fetchMock.mock.calls.map((c) => String(c[0]))
     expect(calls.some((c) => c.includes('limit=200'))).toBe(true)
     expect(calls.some((c) => c.includes('cursor=c1'))).toBe(true)
@@ -249,11 +255,11 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { searchDraft: string }).searchDraft = 'foo'
-    ;(wrapper.vm as unknown as { applySearch: () => void }).applySearch()
+    ;(pickerVm() as unknown as { searchDraft: string }).searchDraft = 'foo'
+    ;(pickerVm() as unknown as { applySearch: () => void }).applySearch()
     await flushAsync()
 
-    expect((wrapper.vm as unknown as { entries: unknown[] }).entries).toHaveLength(1)
+    expect((pickerVm() as unknown as { entries: unknown[] }).entries).toHaveLength(1)
     const calls = fetchMock.mock.calls.map((c) => String(c[0]))
     expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
   })
@@ -281,8 +287,8 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { sortBy: string }).sortBy = 'mtime'
-    ;(wrapper.vm as unknown as { refreshForFilters: () => void }).refreshForFilters()
+    ;(pickerVm() as unknown as { sortBy: string }).sortBy = 'mtime'
+    ;(pickerVm() as unknown as { refreshForFilters: () => void }).refreshForFilters()
     await flushAsync()
 
     const calls = fetchMock.mock.calls.map((c) => String(c[0]))
@@ -306,8 +312,8 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { selectAllLoadedRows: () => void }).selectAllLoadedRows()
-    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(new Set(['/root/a', '/root/b']))
+    ;(pickerVm() as unknown as { selectAllLoadedRows: () => void }).selectAllLoadedRows()
+    expect(new Set((pickerVm() as unknown as { checked: string[] }).checked)).toEqual(new Set(['/root/a', '/root/b']))
   })
 
   it('inverts selection for loaded rows only via invertLoadedRowsSelection', async () => {
@@ -326,10 +332,10 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { checked: string[] }).checked = ['/other/x', '/root/a']
-    ;(wrapper.vm as unknown as { invertLoadedRowsSelection: () => void }).invertLoadedRowsSelection()
+    ;(pickerVm() as unknown as { checked: string[] }).checked = ['/other/x', '/root/a']
+    ;(pickerVm() as unknown as { invertLoadedRowsSelection: () => void }).invertLoadedRowsSelection()
 
-    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(new Set(['/other/x', '/root/b']))
+    expect(new Set((pickerVm() as unknown as { checked: string[] }).checked)).toEqual(new Set(['/other/x', '/root/b']))
   })
 
   it('shift-selects a range within loaded rows', async () => {
@@ -350,16 +356,16 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
+    ;(pickerVm() as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
       '/root/b',
     ])
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))
-    ;(wrapper.vm as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
+    ;(pickerVm() as unknown as { updateCheckedRowKeys: (keys: Array<string | number>) => void }).updateCheckedRowKeys([
       '/root/b',
       '/root/d',
     ])
 
-    expect(new Set((wrapper.vm as unknown as { checked: string[] }).checked)).toEqual(
+    expect(new Set((pickerVm() as unknown as { checked: string[] }).checked)).toEqual(
       new Set(['/root/b', '/root/c', '/root/d']),
     )
   })
@@ -372,18 +378,18 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    ;(wrapper.vm as unknown as { hideDotfiles: boolean }).hideDotfiles = true
+    ;(pickerVm() as unknown as { hideDotfiles: boolean }).hideDotfiles = true
     await flushAsync()
 
     const raw = localStorage.getItem('bastion.fsPicker.filters.hub')
     expect(raw).toContain('"hideDotfiles":true')
 
-    ;(wrapper.vm as unknown as { show: boolean }).show = false
+    ;(pickerVm() as unknown as { show: boolean }).show = false
     await flushAsync()
 
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
-    expect((wrapper.vm as unknown as { hideDotfiles: boolean }).hideDotfiles).toBe(true)
+    expect((pickerVm() as unknown as { hideDotfiles: boolean }).hideDotfiles).toBe(true)
   })
 
   it('navigates to the parent directory on Backspace when not typing in an input', async () => {
@@ -432,9 +438,9 @@ describe('FsPathPickerModal', () => {
     ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
     await flushAsync()
 
-    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(true)
+    expect((pickerVm() as unknown as { show: boolean }).show).toBe(true)
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushAsync()
-    expect((wrapper.vm as unknown as { show: boolean }).show).toBe(false)
+    expect((pickerVm() as unknown as { show: boolean }).show).toBe(false)
   })
 })
