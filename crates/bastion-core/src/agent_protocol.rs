@@ -80,6 +80,72 @@ pub struct BackupRunTaskV1 {
     pub spec: JobSpecResolvedV1,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct RestoreSelectionV1 {
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub dirs: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RestoreTaskV1 {
+    pub op_id: String,
+    pub run_id: String,
+    pub destination_dir: String,
+    pub conflict_policy: String,
+    #[serde(default)]
+    pub selection: Option<RestoreSelectionV1>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OperationEventV1 {
+    pub op_id: String,
+    pub level: String,
+    pub kind: String,
+    pub message: String,
+    #[serde(default)]
+    pub fields: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OperationResultV1 {
+    pub op_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub summary: Option<serde_json::Value>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtifactStreamOpenV1 {
+    pub stream_id: String,
+    pub op_id: String,
+    pub run_id: String,
+    pub artifact: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtifactStreamOpenResultV1 {
+    pub stream_id: String,
+    #[serde(default)]
+    pub size: Option<u64>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtifactStreamPullV1 {
+    pub stream_id: String,
+    pub max_bytes: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtifactStreamCloseV1 {
+    pub stream_id: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OverlapPolicyV1 {
@@ -115,6 +181,11 @@ pub enum HubToAgentMessageV1 {
         v: u32,
         task_id: String,
         task: Box<BackupRunTaskV1>,
+    },
+    RestoreTask {
+        v: u32,
+        task_id: String,
+        task: Box<RestoreTaskV1>,
     },
     FsList {
         v: u32,
@@ -155,6 +226,22 @@ pub enum HubToAgentMessageV1 {
         issued_at: i64,
         #[serde(default)]
         webdav: Vec<WebdavSecretV1>,
+    },
+    ArtifactStreamOpen {
+        v: u32,
+        req: ArtifactStreamOpenV1,
+    },
+    ArtifactStreamOpenResult {
+        v: u32,
+        res: ArtifactStreamOpenResultV1,
+    },
+    ArtifactStreamPull {
+        v: u32,
+        req: ArtifactStreamPullV1,
+    },
+    ArtifactStreamClose {
+        v: u32,
+        req: ArtifactStreamCloseV1,
     },
     Pong {
         v: u32,
@@ -204,6 +291,14 @@ pub enum AgentToHubMessageV1 {
         #[serde(default)]
         error: Option<String>,
     },
+    OperationEvent {
+        v: u32,
+        event: OperationEventV1,
+    },
+    OperationResult {
+        v: u32,
+        result: OperationResultV1,
+    },
     FsListResult {
         v: u32,
         request_id: String,
@@ -215,5 +310,21 @@ pub enum AgentToHubMessageV1 {
         total: Option<u64>,
         #[serde(default)]
         error: Option<String>,
+    },
+    ArtifactStreamOpen {
+        v: u32,
+        req: ArtifactStreamOpenV1,
+    },
+    ArtifactStreamOpenResult {
+        v: u32,
+        res: ArtifactStreamOpenResultV1,
+    },
+    ArtifactStreamPull {
+        v: u32,
+        req: ArtifactStreamPullV1,
+    },
+    ArtifactStreamClose {
+        v: u32,
+        req: ArtifactStreamCloseV1,
     },
 }

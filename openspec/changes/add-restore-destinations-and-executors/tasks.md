@@ -11,7 +11,7 @@
 - [x] 2.4 Commit control-plane changes (detailed message)
 
 ## 3. Hub↔Agent - Restore execution + relay
-- [ ] 3.1 Add Hub↔Agent protocol messages for restore tasks and operation events/results
+- [x] 3.1 Add Hub↔Agent protocol messages for restore tasks and operation events/results
 - [ ] 3.2 Implement Hub-side relay for artifact streaming across nodes (Hub as intermediary)
 - [ ] 3.3 Implement Agent-side restore task handler + artifact stream client
 - [ ] 3.4 Ensure reconnect-safe behavior: task persistence + idempotency + retries
