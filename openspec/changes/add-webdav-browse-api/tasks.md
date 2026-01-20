@@ -16,9 +16,9 @@
 - [ ] 3.4 Commit control-plane changes (detailed message)
 
 ## 4. Hub↔Agent protocol forwarding
-- [ ] 4.1 Add Hub↔Agent message types for WebDAV list requests/results
-- [ ] 4.2 Implement Agent handler that performs PROPFIND using its local secrets snapshot
-- [ ] 4.3 Commit hub/agent changes (detailed message)
+- [x] 4.1 Add Hub↔Agent message types for WebDAV list requests/results
+- [x] 4.2 Implement Agent handler that performs PROPFIND using its local secrets snapshot
+- [x] 4.3 Commit hub/agent changes (detailed message)
 
 ## 5. Web UI - Picker integration
 - [ ] 5.1 Implement WebDAV picker data source using the new API

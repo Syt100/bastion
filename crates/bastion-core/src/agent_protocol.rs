@@ -236,6 +236,33 @@ pub enum HubToAgentMessageV1 {
         #[serde(default)]
         size_max_bytes: Option<u64>,
     },
+    WebdavList {
+        v: u32,
+        request_id: String,
+        base_url: String,
+        secret_name: String,
+        path: String,
+        #[serde(default)]
+        cursor: Option<String>,
+        #[serde(default)]
+        limit: Option<u32>,
+        #[serde(default)]
+        q: Option<String>,
+        #[serde(default)]
+        kind: Option<String>,
+        #[serde(default)]
+        hide_dotfiles: Option<bool>,
+        #[serde(default)]
+        type_sort: Option<String>,
+        #[serde(default)]
+        sort_by: Option<String>,
+        #[serde(default)]
+        sort_dir: Option<String>,
+        #[serde(default)]
+        size_min_bytes: Option<u64>,
+        #[serde(default)]
+        size_max_bytes: Option<u64>,
+    },
     ConfigSnapshot {
         v: u32,
         node_id: String,
@@ -334,6 +361,20 @@ pub enum AgentToHubMessageV1 {
         next_cursor: Option<String>,
         #[serde(default)]
         total: Option<u64>,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    WebdavListResult {
+        v: u32,
+        request_id: String,
+        #[serde(default)]
+        entries: Vec<FsDirEntryV1>,
+        #[serde(default)]
+        next_cursor: Option<String>,
+        #[serde(default)]
+        total: Option<u64>,
+        #[serde(default)]
+        error_code: Option<String>,
         #[serde(default)]
         error: Option<String>,
     },

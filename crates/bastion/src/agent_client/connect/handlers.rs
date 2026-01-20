@@ -14,8 +14,8 @@ use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::identity::AgentIdentityV1;
 use super::super::managed::{
-    load_cached_operation_result, load_cached_task_result, save_managed_config_snapshot,
-    save_managed_secrets_snapshot, save_task_result,
+    load_cached_operation_result, load_cached_task_result, load_managed_webdav_credentials,
+    save_managed_config_snapshot, save_managed_secrets_snapshot, save_task_result,
 };
 use super::super::util::is_ws_error;
 
@@ -303,6 +303,23 @@ pub(super) struct FsListRequest {
     pub(super) size_max_bytes: Option<u64>,
 }
 
+pub(super) struct WebdavListRequest {
+    pub(super) request_id: String,
+    pub(super) base_url: String,
+    pub(super) secret_name: String,
+    pub(super) path: String,
+    pub(super) cursor: Option<String>,
+    pub(super) limit: Option<u32>,
+    pub(super) q: Option<String>,
+    pub(super) kind: Option<String>,
+    pub(super) hide_dotfiles: Option<bool>,
+    pub(super) type_sort: Option<String>,
+    pub(super) sort_by: Option<String>,
+    pub(super) sort_dir: Option<String>,
+    pub(super) size_min_bytes: Option<u64>,
+    pub(super) size_max_bytes: Option<u64>,
+}
+
 pub(super) async fn handle_fs_list<S>(
     tx: &mut S,
     req: FsListRequest,
@@ -386,6 +403,116 @@ where
         entries,
         next_cursor,
         total,
+        error,
+    };
+    send_json(tx, &msg).await
+}
+
+pub(super) async fn handle_webdav_list<S>(
+    tx: &mut S,
+    data_dir: &Path,
+    req: WebdavListRequest,
+) -> Result<HandlerFlow, anyhow::Error>
+where
+    S: Sink<Message, Error = tungstenite::Error> + Unpin,
+{
+    let WebdavListRequest {
+        request_id,
+        base_url,
+        secret_name,
+        path,
+        cursor,
+        limit,
+        q,
+        kind,
+        hide_dotfiles,
+        type_sort,
+        sort_by,
+        sort_dir,
+        size_min_bytes,
+        size_max_bytes,
+    } = req;
+
+    let base_url = base_url.trim().to_string();
+    let secret_name = secret_name.trim().to_string();
+    let path = path.trim().to_string();
+    let cursor = cursor.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let q = q.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let kind = kind.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let type_sort = type_sort.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let sort_by = sort_by.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let sort_dir = sort_dir.and_then(|v| {
+        let t = v.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+
+    let (entries, next_cursor, total, error_code, error) = match load_managed_webdav_credentials(
+        data_dir,
+        &secret_name,
+    )? {
+        Some(credentials) => {
+            let opts = super::super::webdav_list::WebdavListOptions {
+                cursor,
+                limit: limit.map(|v| v.max(1)),
+                q,
+                kind,
+                hide_dotfiles: hide_dotfiles.unwrap_or(false),
+                type_sort,
+                sort_by,
+                sort_dir,
+                size_min_bytes,
+                size_max_bytes,
+            };
+
+            match super::super::webdav_list::webdav_list_dir_entries_paged(
+                &base_url,
+                credentials,
+                &path,
+                opts,
+            )
+            .await
+            {
+                Ok(page) => (page.entries, page.next_cursor, Some(page.total), None, None),
+                Err(e) => (
+                    Vec::new(),
+                    None,
+                    None,
+                    Some(e.code),
+                    Some(e.message),
+                ),
+            }
+        }
+        None => (
+            Vec::new(),
+            None,
+            None,
+            Some("missing_webdav_secret".to_string()),
+            Some("missing webdav secret for agent".to_string()),
+        ),
+    };
+
+    let msg = AgentToHubMessageV1::WebdavListResult {
+        v: PROTOCOL_VERSION,
+        request_id,
+        entries,
+        next_cursor,
+        total,
+        error_code,
         error,
     };
     send_json(tx, &msg).await

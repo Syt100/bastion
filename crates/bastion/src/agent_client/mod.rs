@@ -6,6 +6,7 @@ use crate::config::AgentArgs;
 
 mod connect;
 mod fs_list;
+mod webdav_list;
 mod hub_stream;
 mod identity;
 mod managed;

@@ -297,6 +297,61 @@ pub(super) async fn connect_and_run(
                                     }
                                 });
                             }
+                            Ok(HubToAgentMessageV1::WebdavList {
+                                v,
+                                request_id,
+                                base_url,
+                                secret_name,
+                                path,
+                                cursor,
+                                limit,
+                                q,
+                                kind,
+                                hide_dotfiles,
+                                type_sort,
+                                sort_by,
+                                sort_dir,
+                                size_min_bytes,
+                                size_max_bytes,
+                            }) if v == PROTOCOL_VERSION => {
+                                let out_tx = out_tx.clone();
+                                let data_dir = data_dir.clone();
+                                let force_reconnect_tx = force_reconnect_tx.clone();
+                                tokio::spawn(async move {
+                                    let mut tx = OutboxSink { tx: out_tx };
+                                    let flow = handlers::handle_webdav_list(
+                                        &mut tx,
+                                        &data_dir,
+                                        handlers::WebdavListRequest {
+                                            request_id,
+                                            base_url,
+                                            secret_name,
+                                            path,
+                                            cursor,
+                                            limit,
+                                            q,
+                                            kind,
+                                            hide_dotfiles,
+                                            type_sort,
+                                            sort_by,
+                                            sort_dir,
+                                            size_min_bytes,
+                                            size_max_bytes,
+                                        },
+                                    )
+                                    .await;
+                                    match flow {
+                                        Ok(handlers::HandlerFlow::Continue) => {}
+                                        Ok(handlers::HandlerFlow::Reconnect) => {
+                                            let _ = force_reconnect_tx.send(());
+                                        }
+                                        Err(error) => {
+                                            warn!(error = %error, "webdav list handler failed");
+                                            let _ = force_reconnect_tx.send(());
+                                        }
+                                    }
+                                });
+                            }
                             Ok(HubToAgentMessageV1::ArtifactStreamOpenResult { v, res }) if v == PROTOCOL_VERSION => {
                                 hub_streams.complete_open(res).await;
                             }

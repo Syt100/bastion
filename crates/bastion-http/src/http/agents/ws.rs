@@ -314,6 +314,34 @@ async fn handle_agent_socket(
                             .complete_fs_list(&agent_id, &request_id, result)
                             .await;
                     }
+                    Ok(AgentToHubMessageV1::WebdavListResult {
+                        v,
+                        request_id,
+                        entries,
+                        next_cursor,
+                        total,
+                        error_code,
+                        error,
+                    }) if v == PROTOCOL_VERSION => {
+                        let result = if let Some(message) = error {
+                            Err(bastion_engine::agent_manager::WebdavListRemoteError {
+                                code: error_code
+                                    .unwrap_or_else(|| "error".to_string())
+                                    .trim()
+                                    .to_string(),
+                                message: message.trim().to_string(),
+                            })
+                        } else {
+                            Ok(bastion_engine::agent_manager::WebdavListPage {
+                                entries,
+                                next_cursor,
+                                total,
+                            })
+                        };
+                        agent_manager
+                            .complete_webdav_list(&agent_id, &request_id, result)
+                            .await;
+                    }
                     Ok(AgentToHubMessageV1::OperationEvent { v, event })
                         if v == PROTOCOL_VERSION =>
                     {
