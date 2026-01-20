@@ -25,6 +25,13 @@ pub trait ArtifactSource: Send {
         manifest: &ManifestV1,
         staging_dir: &Path,
     ) -> Result<Box<dyn Read + Send>, anyhow::Error>;
+
+    fn open_raw_tree_file_reader(
+        &self,
+        archive_path: &str,
+        expected_size: u64,
+        staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error>;
 }
 
 pub enum RunArtifactSource {
@@ -60,6 +67,18 @@ impl ArtifactSource for RunArtifactSource {
         match self {
             Self::Local(s) => s.open_payload_reader(manifest, staging_dir),
             Self::Webdav(s) => s.open_payload_reader(manifest, staging_dir),
+        }
+    }
+
+    fn open_raw_tree_file_reader(
+        &self,
+        archive_path: &str,
+        expected_size: u64,
+        staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
+        match self {
+            Self::Local(s) => s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir),
+            Self::Webdav(s) => s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir),
         }
     }
 }
@@ -109,8 +128,27 @@ impl ArtifactSource for LocalDirSource {
                         path: self.run_dir.join(&p.name),
                     },
                 })
-                .collect(),
+            .collect(),
         )))
+    }
+
+    fn open_raw_tree_file_reader(
+        &self,
+        archive_path: &str,
+        expected_size: u64,
+        _staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
+        let path = raw_tree_data_path(&self.run_dir, archive_path);
+        let actual = std::fs::metadata(&path)?.len();
+        if actual != expected_size {
+            anyhow::bail!(
+                "raw-tree file size mismatch for {}: expected {}, got {}",
+                archive_path,
+                expected_size,
+                actual
+            );
+        }
+        Ok(Box::new(std::fs::File::open(path)?))
     }
 }
 
@@ -190,9 +228,69 @@ impl ArtifactSource for WebdavSource {
                         },
                     })
                 })
-                .collect::<Result<Vec<_>, _>>()?,
+            .collect::<Result<Vec<_>, _>>()?,
         )))
     }
+
+    fn open_raw_tree_file_reader(
+        &self,
+        archive_path: &str,
+        expected_size: u64,
+        staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
+        std::fs::create_dir_all(staging_dir)?;
+        let raw_dir = staging_dir.join("raw_tree");
+        std::fs::create_dir_all(&raw_dir)?;
+
+        let digest = blake3::hash(archive_path.as_bytes()).to_hex().to_string();
+        let dst = raw_dir.join(format!("{digest}.bin"));
+
+        if let Ok(meta) = std::fs::metadata(&dst)
+            && meta.len() == expected_size
+        {
+            return Ok(Box::new(std::fs::File::open(dst)?));
+        }
+
+        let url = raw_tree_data_url(&self.run_url, archive_path)?;
+        let dst_for_get = dst.clone();
+        self.handle
+            .block_on(async move {
+                self.client
+                    .get_to_file(&url, &dst_for_get, Some(expected_size), 3)
+                    .await
+            })
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+
+        Ok(Box::new(std::fs::File::open(dst)?))
+    }
+}
+
+fn raw_tree_data_path(run_dir: &Path, archive_path: &str) -> PathBuf {
+    let mut out = run_dir.join("data");
+    for seg in archive_path.split('/').filter(|s| !s.is_empty()) {
+        out.push(seg);
+    }
+    out
+}
+
+fn raw_tree_data_url(run_url: &Url, archive_path: &str) -> Result<Url, anyhow::Error> {
+    let mut url = run_url.clone();
+    {
+        let mut segs = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+        segs.push("data");
+        for part in archive_path
+            .trim()
+            .trim_matches('/')
+            .split('/')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            segs.push(part);
+        }
+    }
+    Ok(url)
 }
 
 #[derive(Debug, Clone)]

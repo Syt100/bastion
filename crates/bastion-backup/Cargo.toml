@@ -12,6 +12,7 @@ age = "0.11.2"
 anyhow = "1.0.100"
 blake3 = "1.8.2"
 base64 = "0.22.1"
+filetime = "0.2.26"
 globset = "0.4.16"
 rusqlite = { version = "0.32.1", features = ["backup"] }
 serde = { version = "1.0.225", features = ["derive"] }
@@ -27,6 +28,7 @@ walkdir = "2.5.0"
 zstd = { version = "0.13.3", features = ["zstdmt"] }
 
 [target.'cfg(unix)'.dependencies]
+nix = { version = "0.30.1", default-features = false, features = ["fs", "user"] }
 xattr = "1.6.1"
 
 [dev-dependencies]

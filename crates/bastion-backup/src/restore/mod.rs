@@ -12,6 +12,8 @@ mod entries_index;
 mod operations;
 mod parts;
 mod path;
+mod raw_tree;
+mod selection;
 mod sinks;
 pub mod sources;
 mod unpack;

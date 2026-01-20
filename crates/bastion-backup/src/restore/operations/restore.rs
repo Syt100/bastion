@@ -9,10 +9,12 @@ use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
 
 use super::super::engine::RestoreEngine;
+use super::super::raw_tree;
 use super::super::sinks::{LocalFsSink, WebdavSink};
 use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
 use super::super::{ConflictPolicy, RestoreDestination, RestoreSelection, access};
 use bastion_core::HUB_NODE_ID;
+use bastion_core::manifest::ArtifactFormatV1;
 use bastion_targets::{WebdavClient, WebdavCredentials};
 use url::Url;
 
@@ -63,6 +65,7 @@ pub(super) async fn restore_operation(
     };
 
     let manifest = source.read_manifest().await?;
+    let artifact_format = manifest.pipeline.format.clone();
     operations_repo::append_event(
         db,
         op_id,
@@ -70,6 +73,7 @@ pub(super) async fn restore_operation(
         "manifest",
         "manifest",
         Some(serde_json::json!({
+            "format": format!("{:?}", artifact_format),
             "artifacts": manifest.artifacts.len(),
             "entries_count": manifest.entry_index.count,
         })),
@@ -141,6 +145,7 @@ pub(super) async fn restore_operation(
     info!(
         op_id = %op_id,
         run_id = %run_id,
+        artifact_format = ?artifact_format,
         parts_count = manifest.artifacts.len(),
         total_bytes = manifest.artifacts.iter().map(|p| p.size).sum::<u64>(),
         "backup parts ready for restore"
@@ -150,39 +155,97 @@ pub(super) async fn restore_operation(
     let op_id_for_blocking = op_id.to_string();
     let source = source;
     let manifest = manifest.clone();
+    let entries_index_path = if artifact_format == ArtifactFormatV1::RawTreeV1 {
+        Some(source.fetch_entries_index(&staging_dir).await?)
+    } else {
+        None
+    };
     let selection = selection.clone();
     let summary = tokio::task::spawn_blocking(move || {
-        let payload = source.open_payload_reader(&manifest, &staging_dir)?;
-        match resolved_destination {
-            ResolvedDestination::LocalFs { directory } => {
-                let mut sink = LocalFsSink::new(directory.clone(), conflict);
-                let mut engine = RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
-                engine.restore(payload)?;
-                Ok::<_, anyhow::Error>(serde_json::json!({
-                    "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
-                    "conflict_policy": conflict.as_str(),
-                }))
+        match artifact_format {
+            ArtifactFormatV1::ArchiveV1 => {
+                let payload = source.open_payload_reader(&manifest, &staging_dir)?;
+                match resolved_destination {
+                    ResolvedDestination::LocalFs { directory } => {
+                        let mut sink = LocalFsSink::new(directory.clone(), conflict);
+                        let mut engine =
+                            RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
+                        engine.restore(payload)?;
+                        Ok::<_, anyhow::Error>(serde_json::json!({
+                            "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
+                            "conflict_policy": conflict.as_str(),
+                        }))
+                    }
+                    ResolvedDestination::Webdav {
+                        prefix_url,
+                        credentials,
+                    } => {
+                        let client = WebdavClient::new(prefix_url.clone(), credentials)?;
+                        let handle = tokio::runtime::Handle::current();
+                        let mut sink = WebdavSink::new(
+                            handle,
+                            client,
+                            prefix_url.clone(),
+                            conflict,
+                            op_id_for_blocking,
+                            staging_dir.join("webdav_sink"),
+                        )?;
+                        let mut engine =
+                            RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
+                        engine.restore(payload)?;
+                        Ok::<_, anyhow::Error>(serde_json::json!({
+                            "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
+                            "conflict_policy": conflict.as_str(),
+                        }))
+                    }
+                }
             }
-            ResolvedDestination::Webdav {
-                prefix_url,
-                credentials,
-            } => {
-                let client = WebdavClient::new(prefix_url.clone(), credentials)?;
-                let handle = tokio::runtime::Handle::current();
-                let mut sink = WebdavSink::new(
-                    handle,
-                    client,
-                    prefix_url.clone(),
-                    conflict,
-                    op_id_for_blocking,
-                    staging_dir.join("webdav_sink"),
-                )?;
-                let mut engine = RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
-                engine.restore(payload)?;
-                Ok::<_, anyhow::Error>(serde_json::json!({
-                    "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
-                    "conflict_policy": conflict.as_str(),
-                }))
+            ArtifactFormatV1::RawTreeV1 => {
+                let entries_index_path = entries_index_path
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("missing entries index path"))?;
+                match resolved_destination {
+                    ResolvedDestination::LocalFs { directory } => {
+                        raw_tree::restore_raw_tree_to_local_fs(
+                            &source,
+                            entries_index_path,
+                            &staging_dir,
+                            &directory,
+                            conflict,
+                            selection.as_ref(),
+                        )?;
+                        Ok::<_, anyhow::Error>(serde_json::json!({
+                            "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
+                            "conflict_policy": conflict.as_str(),
+                        }))
+                    }
+                    ResolvedDestination::Webdav {
+                        prefix_url,
+                        credentials,
+                    } => {
+                        let client = WebdavClient::new(prefix_url.clone(), credentials)?;
+                        let handle = tokio::runtime::Handle::current();
+                        let mut sink = WebdavSink::new(
+                            handle,
+                            client,
+                            prefix_url.clone(),
+                            conflict,
+                            op_id_for_blocking,
+                            staging_dir.join("webdav_sink"),
+                        )?;
+                        raw_tree::restore_raw_tree_to_webdav(
+                            &source,
+                            entries_index_path,
+                            &staging_dir,
+                            &mut sink,
+                            selection.as_ref(),
+                        )?;
+                        Ok::<_, anyhow::Error>(serde_json::json!({
+                            "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
+                            "conflict_policy": conflict.as_str(),
+                        }))
+                    }
+                }
             }
         }
     })

@@ -11,6 +11,7 @@ use super::unpack::{PayloadDecryption, restore_from_parts, safe_join};
 use super::{ConflictPolicy, RestoreSelection};
 use crate::backup::PayloadEncryption;
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
+use bastion_core::manifest::ArtifactFormatV1;
 
 #[test]
 fn safe_join_rejects_parent() {
@@ -127,6 +128,73 @@ fn restore_from_parts_respects_selected_dirs() {
     assert!(dest.join("dir").join("a.txt").exists());
     assert!(dest.join("dir").join("b.txt").exists());
     assert!(!dest.join("c.txt").exists());
+}
+
+#[test]
+fn restore_raw_tree_to_local_fs_copies_files() {
+    let tmp = tempdir().unwrap();
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    let src_root = tmp.path().join("src");
+    std::fs::create_dir_all(&src_root).unwrap();
+    std::fs::write(src_root.join("hello.txt"), b"hi").unwrap();
+
+    let job_id = Uuid::new_v4().to_string();
+    let run_id = Uuid::new_v4().to_string();
+
+    let source = FilesystemSource {
+        paths: Vec::new(),
+        root: src_root.to_string_lossy().to_string(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let build = crate::backup::filesystem::build_filesystem_run(
+        &data_dir,
+        &job_id,
+        &run_id,
+        OffsetDateTime::now_utc(),
+        ArtifactFormatV1::RawTreeV1,
+        &source,
+        &PayloadEncryption::None,
+        4 * 1024 * 1024,
+    )
+    .unwrap();
+    assert_eq!(build.issues.errors_total, 0);
+    assert!(build.artifacts.parts.is_empty());
+
+    let target_base = tmp.path().join("target");
+    std::fs::create_dir_all(&target_base).unwrap();
+    let run_dir = bastion_targets::local_dir::store_run(
+        &target_base,
+        &job_id,
+        &run_id,
+        &build.artifacts,
+    )
+    .unwrap();
+
+    let entries_index_path = run_dir.join(bastion_core::backup_format::ENTRIES_INDEX_NAME);
+    let staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&staging_dir).unwrap();
+
+    let dest_dir = tmp.path().join("out_raw");
+    let local_source = super::sources::LocalDirSource::new(run_dir);
+    super::raw_tree::restore_raw_tree_to_local_fs(
+        &local_source,
+        &entries_index_path,
+        &staging_dir,
+        &dest_dir,
+        ConflictPolicy::Overwrite,
+        None,
+    )
+    .unwrap();
+
+    let out = std::fs::read(dest_dir.join("hello.txt")).unwrap();
+    assert_eq!(out, b"hi");
 }
 
 #[test]

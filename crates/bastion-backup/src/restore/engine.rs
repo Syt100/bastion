@@ -3,12 +3,13 @@ use std::path::Path;
 
 use super::{PayloadDecryption, RestoreSelection};
 use super::path;
+use super::selection;
 use super::sinks::RestoreSink;
 
 pub(super) struct RestoreEngine<'a, S: RestoreSink> {
     sink: &'a mut S,
     decryption: PayloadDecryption,
-    selection: Option<NormalizedRestoreSelection>,
+    selection: Option<selection::NormalizedRestoreSelection>,
 }
 
 impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
@@ -20,7 +21,9 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
         Ok(Self {
             sink,
             decryption,
-            selection: selection.map(normalize_restore_selection).transpose()?,
+            selection: selection
+                .map(selection::normalize_restore_selection)
+                .transpose()?,
         })
     }
 
@@ -66,81 +69,4 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
 
         Ok(())
     }
-}
-
-#[derive(Debug)]
-struct NormalizedRestoreSelection {
-    files: std::collections::HashSet<String>,
-    dirs: Vec<String>,
-}
-
-impl NormalizedRestoreSelection {
-    fn matches(&self, archive_path: &str) -> bool {
-        if self.files.contains(archive_path) {
-            return true;
-        }
-        for dir in &self.dirs {
-            if archive_path == dir {
-                return true;
-            }
-            if archive_path.starts_with(dir)
-                && archive_path.as_bytes().get(dir.len()) == Some(&b'/')
-            {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-fn normalize_restore_path(path: &str, allow_trailing_slash: bool) -> Option<String> {
-    let mut s = path.trim().replace('\\', "/");
-    if s.is_empty() {
-        return None;
-    }
-    while s.starts_with("./") {
-        s = s.trim_start_matches("./").to_string();
-    }
-    while s.starts_with('/') {
-        s = s.trim_start_matches('/').to_string();
-    }
-    if !allow_trailing_slash {
-        while s.ends_with('/') {
-            s = s.trim_end_matches('/').to_string();
-        }
-    }
-    let s = s.trim_matches('/').to_string();
-    if s.is_empty() {
-        return None;
-    }
-    if s.split('/').any(|seg| seg == "..") {
-        return None;
-    }
-    Some(s)
-}
-
-fn normalize_restore_selection(
-    selection: &RestoreSelection,
-) -> Result<NormalizedRestoreSelection, anyhow::Error> {
-    let mut files = std::collections::HashSet::<String>::new();
-    let mut dirs = std::collections::HashSet::<String>::new();
-
-    for f in &selection.files {
-        if let Some(v) = normalize_restore_path(f, false) {
-            files.insert(v);
-        }
-    }
-    for d in &selection.dirs {
-        if let Some(v) = normalize_restore_path(d, true) {
-            dirs.insert(v.trim_end_matches('/').to_string());
-        }
-    }
-
-    if files.is_empty() && dirs.is_empty() {
-        anyhow::bail!("restore selection is empty");
-    }
-
-    let mut dirs = dirs.into_iter().collect::<Vec<_>>();
-    dirs.sort_by_key(|v| std::cmp::Reverse(v.len())); // longest first for prefix checks
-    Ok(NormalizedRestoreSelection { files, dirs })
 }

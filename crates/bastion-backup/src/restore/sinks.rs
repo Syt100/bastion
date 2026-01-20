@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use super::ConflictPolicy;
+use super::entries_index::EntryRecord;
 use bastion_targets::WebdavClient;
 use serde::Serialize;
 use tokio::runtime::Handle;
@@ -72,7 +73,7 @@ impl RestoreSink for LocalFsSink {
     }
 }
 
-fn remove_existing_path(path: &Path) -> Result<(), anyhow::Error> {
+pub(super) fn remove_existing_path(path: &Path) -> Result<(), anyhow::Error> {
     let meta = std::fs::symlink_metadata(path)?;
     if meta.is_dir() {
         std::fs::remove_dir_all(path)?;
@@ -99,6 +100,10 @@ struct WebdavMetaEntry {
     mtime: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    xattrs: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hardlink_group: Option<String>,
     action: String,
 }
 
@@ -252,6 +257,8 @@ impl WebdavSink {
             gid: entry.gid().ok(),
             mtime: entry.mtime().ok(),
             size: entry.size().ok(),
+            xattrs: None,
+            hardlink_group: None,
             action: action.to_string(),
         };
 
@@ -262,6 +269,133 @@ impl WebdavSink {
         self.handle
             .block_on(async move { client.put_bytes(&url, bytes, "application/json").await })
             .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+        Ok(())
+    }
+
+    fn write_meta_entry_from_record(
+        &self,
+        rel_path: &Path,
+        record: &EntryRecord,
+        action: &str,
+    ) -> Result<(), anyhow::Error> {
+        let path = super::path::archive_path_for_match(rel_path)
+            .ok_or_else(|| anyhow::anyhow!("invalid relative path: {}", rel_path.display()))?;
+
+        let link_name = record
+            .symlink_target
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string());
+
+        let meta = WebdavMetaEntry {
+            path,
+            kind: record.kind.clone(),
+            link_name,
+            mode: record.mode,
+            uid: record.uid,
+            gid: record.gid,
+            mtime: record.mtime,
+            size: Some(record.size),
+            xattrs: record.xattrs.clone(),
+            hardlink_group: record.hardlink_group.clone(),
+            action: action.to_string(),
+        };
+
+        let bytes = serde_json::to_vec(&meta)?;
+        let digest = blake3::hash(bytes.as_slice()).to_hex().to_string();
+        let url = self.meta_entries_url.join(&format!("{digest}.json"))?;
+        let client = self.client.clone();
+        self.handle
+            .block_on(async move { client.put_bytes(&url, bytes, "application/json").await })
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+        Ok(())
+    }
+
+    pub(super) fn apply_raw_tree_dir(
+        &mut self,
+        rel_path: &Path,
+        record: &EntryRecord,
+    ) -> Result<(), anyhow::Error> {
+        let url = self.url_for_rel_path(rel_path, true)?;
+        let client = self.client.clone();
+        self.handle
+            .block_on(async move { client.ensure_collection(&url).await })
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+        self.write_meta_entry_from_record(rel_path, record, "written")?;
+        Ok(())
+    }
+
+    pub(super) fn apply_raw_tree_file<R: Read>(
+        &mut self,
+        rel_path: &Path,
+        record: &EntryRecord,
+        mut reader: R,
+    ) -> Result<(), anyhow::Error> {
+        self.ensure_parent_collections(rel_path)?;
+
+        let url = self.url_for_rel_path(rel_path, false)?;
+        let exists = self
+            .handle
+            .block_on(self.client.head_size(&url))
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?
+            .is_some();
+
+        match self.conflict {
+            ConflictPolicy::Overwrite => {
+                if exists {
+                    let client = self.client.clone();
+                    let url = url.clone();
+                    self.handle
+                        .block_on(async move { client.delete(&url).await })
+                        .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+                }
+            }
+            ConflictPolicy::Skip => {
+                if exists {
+                    self.write_meta_entry_from_record(rel_path, record, "skipped_existing")?;
+                    return Ok(());
+                }
+            }
+            ConflictPolicy::Fail => {
+                if exists {
+                    anyhow::bail!("restore conflict: {} exists", rel_path.display());
+                }
+            }
+        }
+
+        let size = record.size;
+        let file_id = Uuid::new_v4().to_string();
+        let tmp_path = self.staging_dir.join(format!("raw-tree-{file_id}.bin"));
+        let mut tmp = std::fs::File::create(&tmp_path)?;
+        let written = std::io::copy(&mut reader, &mut tmp)?;
+        tmp.flush()?;
+        if written != size {
+            anyhow::bail!("restore entry size mismatch: expected {size}, got {written}");
+        }
+
+        let client = self.client.clone();
+        let tmp_path_for_put = tmp_path.clone();
+        self.handle
+            .block_on(async move {
+                client
+                    .put_file_with_retries(&url, &tmp_path_for_put, size, 3)
+                    .await
+            })
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+        let _ = std::fs::remove_file(&tmp_path);
+
+        self.write_meta_entry_from_record(rel_path, record, "written")?;
+        Ok(())
+    }
+
+    pub(super) fn apply_raw_tree_symlink(
+        &mut self,
+        rel_path: &Path,
+        record: &EntryRecord,
+        _target: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.write_meta_entry_from_record(rel_path, record, "skipped_unsupported")?;
         Ok(())
     }
 }
