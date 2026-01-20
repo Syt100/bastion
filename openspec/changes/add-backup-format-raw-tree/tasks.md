@@ -10,10 +10,10 @@
 - [x] 2.3 Commit core format changes (detailed message)
 
 ## 3. Backup - Build raw_tree_v1 for filesystem jobs
-- [ ] 3.1 Implement raw-tree builder that writes `data/<path>` and metadata records
-- [ ] 3.2 Ensure symlink/hardlink policies are respected and recorded
-- [ ] 3.3 Store raw-tree runs to LocalDir and WebDAV targets (recursive copy/upload)
-- [ ] 3.4 Commit backup changes (detailed message)
+- [x] 3.1 Implement raw-tree builder that writes `data/<path>` and metadata records
+- [x] 3.2 Ensure symlink/hardlink policies are respected and recorded
+- [x] 3.3 Store raw-tree runs to LocalDir and WebDAV targets (recursive copy/upload)
+- [x] 3.4 Commit backup changes (detailed message)
 
 ## 4. Restore - Support raw_tree_v1
 - [ ] 4.1 Implement raw-tree restore that streams file bytes from `data/<path>` and writes via restore sinks
