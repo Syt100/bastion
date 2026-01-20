@@ -798,6 +798,7 @@ const messages = {
       actions: 'Actions',
     },
     actions: {
+      detail: 'Details',
       events: 'Events',
       restore: 'Restore',
       verify: 'Restore drill',

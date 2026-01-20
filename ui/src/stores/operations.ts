@@ -13,6 +13,7 @@ export type Operation = {
   created_at: number
   started_at: number
   ended_at: number | null
+  progress?: unknown | null
   summary: unknown | null
   error: string | null
 }
@@ -86,9 +87,13 @@ export const useOperationsStore = defineStore('operations', () => {
     return await apiFetch<Operation>(`/api/operations/${encodeURIComponent(opId)}`)
   }
 
+  async function listRunOperations(runId: string): Promise<Operation[]> {
+    return await apiFetch<Operation[]>(`/api/runs/${encodeURIComponent(runId)}/operations`)
+  }
+
   async function listEvents(opId: string): Promise<OperationEvent[]> {
     return await apiFetch<OperationEvent[]>(`/api/operations/${encodeURIComponent(opId)}/events`)
   }
 
-  return { startRestore, startVerify, getOperation, listEvents }
+  return { startRestore, startVerify, getOperation, listRunOperations, listEvents }
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NCard, NDataTable, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -32,6 +32,7 @@ const jobs = useJobsStore()
 const agents = useAgentsStore()
 const secrets = useSecretsStore()
 const route = useRoute()
+const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -143,6 +144,10 @@ async function openDeploy(jobId: string): Promise<void> {
 
 async function openRunEvents(runId: string): Promise<void> {
   await runEventsModal.value?.open(runId)
+}
+
+function openRunDetail(runId: string): void {
+  void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/runs/${encodeURIComponent(runId)}`)
 }
 
 function openRestoreWizard(runId: string): void {
@@ -401,6 +406,7 @@ watch(showArchived, () => {
 
     <JobRunsModal
       ref="runsModal"
+      @open-detail="openRunDetail"
       @open-events="(id) => void openRunEvents(id)"
       @open-restore="openRestoreWizard"
       @open-verify="openVerifyWizard"

@@ -14,6 +14,7 @@ export type JobRunsModalExpose = {
 }
 
 const emit = defineEmits<{
+  (e: 'open-detail', runId: string): void
   (e: 'open-events', runId: string): void
   (e: 'open-restore', runId: string): void
   (e: 'open-verify', runId: string): void
@@ -69,6 +70,17 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
         { size: 8 },
         {
           default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                onClick: () => {
+                  show.value = false
+                  emit('open-detail', row.id)
+                },
+              },
+              { default: () => t('runs.actions.detail') },
+            ),
             h(NButton, { size: 'small', onClick: () => emit('open-events', row.id) }, { default: () => t('runs.actions.events') }),
             h(
               NButton,

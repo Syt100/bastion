@@ -57,6 +57,17 @@ export type RunEvent = {
   fields: unknown | null
 }
 
+export type RunDetail = {
+  id: string
+  job_id: string
+  status: RunStatus
+  started_at: number
+  ended_at: number | null
+  progress?: unknown | null
+  summary: unknown | null
+  error: string | null
+}
+
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
@@ -144,6 +155,10 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<RunEvent[]>(`/api/runs/${encodeURIComponent(runId)}/events`)
   }
 
+  async function getRun(runId: string): Promise<RunDetail> {
+    return await apiFetch<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`)
+  }
+
   return {
     items,
     loading,
@@ -157,5 +172,6 @@ export const useJobsStore = defineStore('jobs', () => {
     runNow,
     listRuns,
     listRunEvents,
+    getRun,
   }
 })

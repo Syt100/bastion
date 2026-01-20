@@ -4,6 +4,7 @@ const AppShell = () => import('@/layouts/AppShell.vue')
 const AgentsView = () => import('@/views/AgentsView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const JobsView = () => import('@/views/JobsView.vue')
+const RunDetailView = () => import('@/views/RunDetailView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
 const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
@@ -39,6 +40,7 @@ const router = createRouter({
           children: [
             { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
             { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
+            { path: 'runs/:runId', component: RunDetailView, meta: { titleKey: 'runs.title' } },
             {
               path: 'settings',
               component: SettingsShellView,

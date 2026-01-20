@@ -797,6 +797,7 @@ const messages = {
       actions: '操作',
     },
     actions: {
+      detail: '详情',
       events: '事件',
       restore: '恢复',
       verify: '恢复演练',
