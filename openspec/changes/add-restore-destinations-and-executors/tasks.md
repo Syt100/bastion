@@ -5,10 +5,10 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Control-plane - Restore API model
-- [ ] 2.1 Update `POST /api/runs/{run_id}/restore` request to accept a typed `destination` and optional `executor`
-- [ ] 2.2 Validate destination fields (local_fs path; webdav base_url/secret_name/prefix; conflict policy; selection non-empty)
-- [ ] 2.3 Persist restore request summary into operation events
-- [ ] 2.4 Commit control-plane changes (detailed message)
+- [x] 2.1 Update `POST /api/runs/{run_id}/restore` request to accept a typed `destination` and optional `executor`
+- [x] 2.2 Validate destination fields (local_fs path; webdav base_url/secret_name/prefix; conflict policy; selection non-empty)
+- [x] 2.3 Persist restore request summary into operation events
+- [x] 2.4 Commit control-plane changes (detailed message)
 
 ## 3. Hub↔Agent - Restore execution + relay
 - [ ] 3.1 Add Hub↔Agent protocol messages for restore tasks and operation events/results
