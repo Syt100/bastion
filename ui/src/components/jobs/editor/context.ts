@@ -15,6 +15,7 @@ export type JobEditorContext = {
 
   onJobTypeChanged: () => void
   onTargetTypeChanged: () => void
+  onArtifactFormatChanged: () => void
   onEncryptionEnabledChanged: () => void
 
   openFsPicker: () => void

@@ -31,6 +31,7 @@ describe('jobDetailToEditorForm', () => {
     })
     const form = jobDetailToEditorForm(job)
     expect(form.jobType).toBe('filesystem')
+    expect(form.artifactFormat).toBe('archive_v1')
     expect(form.fsPaths).toEqual(['/data'])
   })
 
@@ -46,6 +47,20 @@ describe('jobDetailToEditorForm', () => {
     const form = jobDetailToEditorForm(job)
     expect(form.encryptionEnabled).toBe(true)
     expect(form.encryptionKeyName).toBe('my-key')
+  })
+
+  it('parses raw-tree format and forces encryption off', () => {
+    const job = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: { format: 'raw_tree_v1', encryption: { type: 'age_x25519', key_name: 'k' } },
+      notifications: { mode: 'inherit' },
+      source: { paths: ['/tmp'] },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    const form = jobDetailToEditorForm(job)
+    expect(form.artifactFormat).toBe('raw_tree_v1')
+    expect(form.encryptionEnabled).toBe(false)
   })
 
   it('converts part_size_bytes into MiB', () => {
@@ -83,5 +98,23 @@ describe('editorFormToRequest', () => {
     const spec = req.spec as Record<string, unknown>
     const target = spec['target'] as Record<string, unknown>
     expect(target['part_size_bytes']).toBe(10 * 1024 * 1024)
+  })
+
+  it('forces pipeline.encryption=none for raw-tree', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'filesystem'
+    form.fsPaths = ['/tmp']
+    form.targetType = 'local_dir'
+    form.localBaseDir = '/tmp/backups'
+    form.artifactFormat = 'raw_tree_v1'
+    form.encryptionEnabled = true
+    form.encryptionKeyName = 'my-key'
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const pipeline = spec['pipeline'] as Record<string, unknown>
+    expect(pipeline['format']).toBe('raw_tree_v1')
+    expect(pipeline['encryption']).toEqual({ type: 'none' })
   })
 })

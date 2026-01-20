@@ -7,6 +7,7 @@ export type FsErrorPolicy = 'fail_fast' | 'skip_fail' | 'skip_ok'
 export type JobTargetType = 'webdav' | 'local_dir'
 export type NotifyMode = 'inherit' | 'custom'
 export type NodeIdOrHub = 'hub' | string
+export type ArtifactFormat = 'archive_v1' | 'raw_tree_v1'
 
 export type JobEditorMode = 'create' | 'edit'
 
@@ -41,6 +42,7 @@ export type JobEditorForm = {
   simpleMonthday: number
   overlapPolicy: OverlapPolicy
   jobType: JobType
+  artifactFormat: ArtifactFormat
   encryptionEnabled: boolean
   encryptionKeyName: string
   fsPaths: string[]

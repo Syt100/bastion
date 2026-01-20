@@ -1,6 +1,6 @@
 import type { CreateOrUpdateJobRequest, JobDetail } from '@/stores/jobs'
 
-import type { FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, JobEditorForm } from './types'
+import type { ArtifactFormat, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, JobEditorForm } from './types'
 import { cronToSimpleSchedule } from './schedule'
 
 function parseStringArray(value: unknown): string[] {
@@ -32,13 +32,19 @@ function normalizeErrorPolicy(value: unknown): FsErrorPolicy {
   return 'fail_fast'
 }
 
+function normalizeArtifactFormat(value: unknown): ArtifactFormat {
+  if (value === 'raw_tree_v1') return 'raw_tree_v1'
+  return 'archive_v1'
+}
+
 export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
   const spec = job.spec as Record<string, unknown>
 
   const pipeline = spec.pipeline as Record<string, unknown> | undefined
+  const artifactFormat = normalizeArtifactFormat(pipeline?.format)
   const enc = pipeline?.encryption as Record<string, unknown> | undefined
   const encType = typeof enc?.type === 'string' ? enc.type : 'none'
-  const encryptionEnabled = encType === 'age_x25519'
+  const encryptionEnabled = artifactFormat === 'raw_tree_v1' ? false : encType === 'age_x25519'
   const encryptionKeyName =
     encryptionEnabled && typeof enc?.key_name === 'string' && enc.key_name.trim() ? enc.key_name : 'default'
 
@@ -81,6 +87,7 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     simpleMonthday: simple?.monthday ?? 1,
     overlapPolicy: job.overlap_policy,
     jobType: job.spec.type,
+    artifactFormat,
     encryptionEnabled,
     encryptionKeyName,
     fsPaths,
@@ -108,9 +115,13 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
   const partSizeBytes = partSizeMiB * 1024 * 1024
 
   const pipeline = {
-    encryption: form.encryptionEnabled
-      ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() } as const)
-      : ({ type: 'none' as const } as const),
+    format: form.artifactFormat,
+    encryption:
+      form.artifactFormat === 'raw_tree_v1'
+        ? ({ type: 'none' as const } as const)
+        : form.encryptionEnabled
+          ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() } as const)
+          : ({ type: 'none' as const } as const),
   }
 
   const notifications =

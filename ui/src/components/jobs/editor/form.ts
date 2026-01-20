@@ -16,6 +16,7 @@ export function createInitialJobEditorForm(): JobEditorForm {
     simpleMonthday: 1,
     overlapPolicy: 'queue',
     jobType: 'filesystem',
+    artifactFormat: 'archive_v1',
     encryptionEnabled: false,
     encryptionKeyName: 'default',
     fsPaths: [],

@@ -237,6 +237,14 @@ function onTargetTypeChanged(): void {
   clearFieldError('localBaseDir')
 }
 
+function onArtifactFormatChanged(): void {
+  // raw_tree_v1 does not support encryption; keep the toggle off.
+  if (form.artifactFormat === 'raw_tree_v1') {
+    form.encryptionEnabled = false
+  }
+  clearFieldError('encryptionKeyName')
+}
+
 function onEncryptionEnabledChanged(): void {
   clearFieldError('encryptionKeyName')
 }
@@ -312,6 +320,7 @@ provide(jobEditorContextKey, {
   clearFieldError,
   onJobTypeChanged,
   onTargetTypeChanged,
+  onArtifactFormatChanged,
   onEncryptionEnabledChanged,
   openFsPicker,
   openLocalBaseDirPicker,

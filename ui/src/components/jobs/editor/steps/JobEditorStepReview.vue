@@ -165,6 +165,16 @@ async function copyPreviewJson(): Promise<void> {
         <div class="text-sm font-medium">{{ t('jobs.steps.security') }}</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="flex items-start justify-between gap-3">
+            <div class="opacity-70">{{ t('jobs.fields.artifactFormat') }}</div>
+            <div class="font-medium text-right break-all">
+              {{
+                form.artifactFormat === 'raw_tree_v1'
+                  ? t('jobs.fields.artifactFormatRawTreeV1')
+                  : t('jobs.fields.artifactFormatArchiveV1')
+              }}
+            </div>
+          </div>
+          <div class="flex items-start justify-between gap-3">
             <div class="opacity-70">{{ t('jobs.fields.encryptionEnabled') }}</div>
             <div class="font-medium text-right break-all">
               {{ form.encryptionEnabled ? t('common.yes') : t('common.no') }}
