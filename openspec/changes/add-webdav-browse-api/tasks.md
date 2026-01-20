@@ -27,6 +27,6 @@
 - [x] 5.4 Commit UI changes (detailed message)
 
 ## 6. Verification
-- [ ] 6.1 Run `cargo test --workspace`
-- [ ] 6.2 Run `npm test --prefix ui`
-- [ ] 6.3 Run `npm run type-check --prefix ui`
+- [x] 6.1 Run `cargo test --workspace`
+- [x] 6.2 Run `npm test --prefix ui`
+- [x] 6.3 Run `npm run type-check --prefix ui`
