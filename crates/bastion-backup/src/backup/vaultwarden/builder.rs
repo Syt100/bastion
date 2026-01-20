@@ -3,7 +3,7 @@ use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 use bastion_core::job_spec::VaultwardenSource;
-use bastion_core::manifest::{EntryIndexRef, ManifestV1, PipelineSettings};
+use bastion_core::manifest::{ArtifactFormatV1, EntryIndexRef, ManifestV1, PipelineSettings};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::info;
@@ -84,6 +84,7 @@ pub fn build_vaultwarden_run(
         started_at: started_at.format(&Rfc3339)?,
         ended_at: ended_at.format(&Rfc3339)?,
         pipeline: PipelineSettings {
+            format: ArtifactFormatV1::ArchiveV1,
             tar: "pax".to_string(),
             compression: "zstd".to_string(),
             encryption: match encryption {

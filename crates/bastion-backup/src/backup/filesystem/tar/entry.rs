@@ -74,6 +74,13 @@ pub(super) fn write_file_entry<W: Write>(
                     size: existing.size,
                     hash_alg: Some(HashAlgorithm::Blake3),
                     hash: Some(existing.hash.clone()),
+                    mtime: None,
+                    mode: None,
+                    uid: None,
+                    gid: None,
+                    xattrs: None,
+                    symlink_target: None,
+                    hardlink_group: None,
                 },
             )?;
             return Ok(());
@@ -118,6 +125,13 @@ pub(super) fn write_file_entry<W: Write>(
                 size,
                 hash_alg: Some(HashAlgorithm::Blake3),
                 hash: Some(hash),
+                mtime: None,
+                mode: None,
+                uid: None,
+                gid: None,
+                xattrs: None,
+                symlink_target: None,
+                hardlink_group: None,
             },
         )?;
         return Ok(());
@@ -154,6 +168,13 @@ pub(super) fn write_file_entry<W: Write>(
             size,
             hash_alg: Some(HashAlgorithm::Blake3),
             hash: Some(hash),
+            mtime: None,
+            mode: None,
+            uid: None,
+            gid: None,
+            xattrs: None,
+            symlink_target: None,
+            hardlink_group: None,
         },
     )?;
     Ok(())
@@ -194,6 +215,13 @@ pub(super) fn write_dir_entry<W: Write>(
             size: 0,
             hash_alg: None,
             hash: None,
+            mtime: None,
+            mode: None,
+            uid: None,
+            gid: None,
+            xattrs: None,
+            symlink_target: None,
+            hardlink_group: None,
         },
     )?;
     Ok(())
@@ -234,6 +262,13 @@ pub(super) fn write_symlink_entry<W: Write>(
             size: 0,
             hash_alg: None,
             hash: None,
+            mtime: None,
+            mode: None,
+            uid: None,
+            gid: None,
+            xattrs: None,
+            symlink_target: None,
+            hardlink_group: None,
         },
     )?;
     Ok(())

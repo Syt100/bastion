@@ -1,5 +1,6 @@
 use bastion_core::manifest::HashAlgorithm;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Deserialize)]
 pub(in crate::restore) struct EntryRecord {
@@ -8,6 +9,13 @@ pub(in crate::restore) struct EntryRecord {
     pub(in crate::restore) size: u64,
     pub(in crate::restore) hash_alg: Option<HashAlgorithm>,
     pub(in crate::restore) hash: Option<String>,
+    pub(in crate::restore) mtime: Option<u64>,
+    pub(in crate::restore) mode: Option<u32>,
+    pub(in crate::restore) uid: Option<u64>,
+    pub(in crate::restore) gid: Option<u64>,
+    pub(in crate::restore) xattrs: Option<BTreeMap<String, String>>,
+    pub(in crate::restore) symlink_target: Option<String>,
+    pub(in crate::restore) hardlink_group: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

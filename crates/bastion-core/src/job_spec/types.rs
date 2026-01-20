@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::manifest::ArtifactFormatV1;
+
 fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
@@ -16,6 +18,8 @@ pub enum EncryptionV1 {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PipelineV1 {
+    #[serde(default)]
+    pub format: ArtifactFormatV1,
     #[serde(default)]
     pub encryption: EncryptionV1,
 }

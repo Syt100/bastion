@@ -6,6 +6,7 @@ use super::types::{
     EncryptionV1, FilesystemSource, JobSpecV1, NotificationsModeV1, NotificationsV1, PipelineV1,
     TargetV1, VaultwardenSource,
 };
+use crate::manifest::ArtifactFormatV1;
 
 pub fn parse_value(spec: &serde_json::Value) -> Result<JobSpecV1, anyhow::Error> {
     Ok(serde_json::from_value(spec.clone())?)
@@ -65,6 +66,12 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
 }
 
 fn validate_pipeline(pipeline: &PipelineV1) -> Result<(), anyhow::Error> {
+    if pipeline.format == ArtifactFormatV1::RawTreeV1
+        && !matches!(pipeline.encryption, EncryptionV1::None)
+    {
+        anyhow::bail!("pipeline.encryption is not supported when pipeline.format is raw_tree_v1");
+    }
+
     match &pipeline.encryption {
         EncryptionV1::None => {}
         EncryptionV1::AgeX25519 { key_name } => {

@@ -8,6 +8,14 @@ pub enum HashAlgorithm {
     Sha256,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactFormatV1 {
+    #[default]
+    ArchiveV1,
+    RawTreeV1,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArtifactPart {
     pub name: String,
@@ -24,6 +32,8 @@ pub struct EntryIndexRef {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PipelineSettings {
+    #[serde(default)]
+    pub format: ArtifactFormatV1,
     pub tar: String,
     pub compression: String,
     pub encryption: String,
@@ -53,7 +63,9 @@ mod tests {
     use assert_json_diff::assert_json_eq;
     use uuid::Uuid;
 
-    use super::{ArtifactPart, EntryIndexRef, HashAlgorithm, ManifestV1, PipelineSettings};
+    use super::{
+        ArtifactFormatV1, ArtifactPart, EntryIndexRef, HashAlgorithm, ManifestV1, PipelineSettings,
+    };
 
     #[test]
     fn manifest_round_trip() {
@@ -64,6 +76,7 @@ mod tests {
             started_at: "2025-12-30T12:00:00Z".to_string(),
             ended_at: "2025-12-30T12:00:01Z".to_string(),
             pipeline: PipelineSettings {
+                format: ArtifactFormatV1::ArchiveV1,
                 tar: "pax".to_string(),
                 compression: "zstd".to_string(),
                 encryption: "none".to_string(),
@@ -95,6 +108,7 @@ mod tests {
               "started_at": "2025-12-30T12:00:00Z",
               "ended_at": "2025-12-30T12:00:01Z",
               "pipeline": {
+                "format": "archive_v1",
                 "tar": "pax",
                 "compression": "zstd",
                 "encryption": "none",
@@ -114,5 +128,27 @@ mod tests {
               }
             })
         );
+    }
+
+    #[test]
+    fn manifest_defaults_format_to_archive_v1_when_missing() {
+        let json = serde_json::json!({
+          "format_version": 1,
+          "job_id": "00000000-0000-0000-0000-000000000000",
+          "run_id": "00000000-0000-0000-0000-000000000000",
+          "started_at": "2025-12-30T12:00:00Z",
+          "ended_at": "2025-12-30T12:00:01Z",
+          "pipeline": {
+            "tar": "pax",
+            "compression": "zstd",
+            "encryption": "none",
+            "split_bytes": 268435456
+          },
+          "artifacts": [],
+          "entry_index": { "name": "entries.jsonl.zst", "count": 0 }
+        });
+
+        let de: ManifestV1 = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(de.pipeline.format, ArtifactFormatV1::ArchiveV1);
     }
 }
