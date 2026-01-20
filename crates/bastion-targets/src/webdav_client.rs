@@ -19,6 +19,20 @@ pub(crate) fn redact_url(url: &Url) -> String {
     redacted.to_string()
 }
 
+fn parent_collection_url(url: &Url) -> Option<Url> {
+    // `Url` always uses absolute paths. We treat `/` as the root boundary and do not attempt to
+    // `MKCOL` it (servers typically reject that).
+    let trimmed = url.path().trim_end_matches('/');
+    let slash = trimmed.rfind('/')?;
+    if slash == 0 {
+        return None;
+    }
+
+    let mut parent = url.clone();
+    parent.set_path(&format!("{}/", &trimmed[..slash]));
+    Some(parent)
+}
+
 #[derive(Debug, Clone)]
 pub struct WebdavCredentials {
     pub username: String,
@@ -114,19 +128,60 @@ impl WebdavClient {
     }
 
     pub async fn ensure_collection(&self, url: &Url) -> Result<(), anyhow::Error> {
-        tracing::debug!(url = %redact_url(url), "webdav mkcol");
-        let res = self
-            .authed(
-                self.http
-                    .request(Method::from_bytes(b"MKCOL")?, url.clone()),
-            )
-            .send()
-            .await?;
+        // WebDAV `MKCOL` doesn't create intermediate collections; many servers return HTTP 409
+        // Conflict if parent collections are missing. We iteratively create parents first.
+        let mut pending = Vec::<Url>::new();
+        let mut current = url.clone();
+        let mut base_ready = false;
 
-        match res.status() {
-            StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => Ok(()),
-            s => Err(anyhow::anyhow!("MKCOL failed: HTTP {s}")),
+        for _ in 0..=32 {
+            tracing::debug!(url = %redact_url(&current), "webdav mkcol");
+            let res = self
+                .authed(
+                    self.http
+                        .request(Method::from_bytes(b"MKCOL")?, current.clone()),
+                )
+                .send()
+                .await?;
+
+            match res.status() {
+                StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => {
+                    base_ready = true;
+                    break;
+                }
+                StatusCode::CONFLICT => {
+                    let parent = parent_collection_url(&current).ok_or_else(|| {
+                        anyhow::anyhow!("MKCOL failed: HTTP 409 (missing parent collections)")
+                    })?;
+                    pending.push(current);
+                    current = parent;
+                    continue;
+                }
+                s => return Err(anyhow::anyhow!("MKCOL failed: HTTP {s}")),
+            }
         }
+
+        if !base_ready {
+            anyhow::bail!("webdav ensure_collection recursion limit exceeded");
+        }
+
+        while let Some(next) = pending.pop() {
+            tracing::debug!(url = %redact_url(&next), "webdav mkcol");
+            let res = self
+                .authed(
+                    self.http
+                        .request(Method::from_bytes(b"MKCOL")?, next.clone()),
+                )
+                .send()
+                .await?;
+
+            match res.status() {
+                StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => {}
+                s => return Err(anyhow::anyhow!("MKCOL failed: HTTP {s}")),
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn head_size(&self, url: &Url) -> Result<Option<u64>, anyhow::Error> {
