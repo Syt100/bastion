@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::time::Duration;
+use std::time::UNIX_EPOCH;
 
+use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
@@ -46,6 +48,42 @@ pub struct WebdavClient {
     base_url: Url,
     credentials: WebdavCredentials,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebdavPropfindEntry {
+    pub href: String,
+    pub name: String,
+    pub kind: String,
+    pub size: Option<u64>,
+    pub mtime: Option<i64>,
+}
+
+#[derive(Debug)]
+pub struct WebdavNotDirectoryError {
+    pub href: String,
+}
+
+impl std::fmt::Display for WebdavNotDirectoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "webdav path is not a directory: {}", self.href)
+    }
+}
+
+impl std::error::Error for WebdavNotDirectoryError {}
+
+#[derive(Debug)]
+pub struct WebdavHttpError {
+    pub status: StatusCode,
+    pub message: String,
+}
+
+impl std::fmt::Display for WebdavHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "webdav request failed: HTTP {}: {}", self.status, self.message)
+    }
+}
+
+impl std::error::Error for WebdavHttpError {}
 
 impl WebdavClient {
     pub fn new(base_url: Url, credentials: WebdavCredentials) -> Result<Self, anyhow::Error> {
@@ -194,6 +232,68 @@ impl WebdavClient {
         }
     }
 
+    pub async fn propfind_depth1(&self, url: &Url) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
+        const BODY: &str = r#"<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+  </D:prop>
+</D:propfind>
+"#;
+
+        async fn send(
+            client: &WebdavClient,
+            url: &Url,
+            body: &'static str,
+        ) -> Result<reqwest::Response, anyhow::Error> {
+            let depth_name = reqwest::header::HeaderName::from_static("depth");
+            tracing::debug!(url = %redact_url(url), "webdav propfind depth=1");
+            Ok(client
+                .authed(
+                    client
+                        .http
+                        .request(Method::from_bytes(b"PROPFIND")?, url.clone()),
+                )
+                .header(depth_name, "1")
+                .header(CONTENT_TYPE, "application/xml")
+                .body(body)
+                .send()
+                .await?)
+        }
+
+        let res = send(self, url, BODY).await?;
+        let status = res.status();
+        if status == StatusCode::NOT_FOUND && !url.path().ends_with('/') {
+            let mut alt = url.clone();
+            alt.set_path(&format!("{}/", alt.path()));
+            let alt_res = send(self, &alt, BODY).await?;
+            let alt_status = alt_res.status();
+            if alt_status == StatusCode::MULTI_STATUS || alt_status == StatusCode::OK {
+                let text = alt_res.text().await?;
+                let mut entries = parse_propfind_multistatus(&text)?;
+                return filter_depth1_self(url, &mut entries);
+            }
+
+            let message = alt_res.text().await.unwrap_or_default();
+            return Err(WebdavHttpError {
+                status: alt_status,
+                message,
+            }
+            .into());
+        }
+
+        if status == StatusCode::MULTI_STATUS || status == StatusCode::OK {
+            let text = res.text().await?;
+            let mut entries = parse_propfind_multistatus(&text)?;
+            return filter_depth1_self(url, &mut entries);
+        }
+
+        let message = res.text().await.unwrap_or_default();
+        Err(WebdavHttpError { status, message }.into())
+    }
+
     pub async fn delete(&self, url: &Url) -> Result<bool, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav delete");
         let res = self.authed(self.http.delete(url.clone())).send().await?;
@@ -286,5 +386,313 @@ impl WebdavClient {
         let _ = tokio::fs::remove_file(dest).await;
         tokio::fs::rename(&tmp, dest).await?;
         Ok(written)
+    }
+}
+
+fn parse_propfind_multistatus(xml: &str) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
+    let doc = roxmltree::Document::parse(xml)?;
+
+    let mut out = Vec::<WebdavPropfindEntry>::new();
+    for response in doc
+        .descendants()
+        .filter(|n| n.is_element() && n.tag_name().name() == "response")
+    {
+        let Some(mut href) = response
+            .children()
+            .find(|n| n.is_element() && n.tag_name().name() == "href")
+            .and_then(|n| n.text())
+            .and_then(decode_href_path)
+        else {
+            continue;
+        };
+
+        let mut kind = "file".to_string();
+        let mut size = None::<u64>;
+        let mut mtime = None::<i64>;
+
+        for propstat in response
+            .children()
+            .filter(|n| n.is_element() && n.tag_name().name() == "propstat")
+        {
+            let status = propstat
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "status")
+                .and_then(|n| n.text())
+                .unwrap_or("");
+            if !status.contains(" 200 ") {
+                continue;
+            }
+
+            let Some(prop) = propstat
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "prop")
+            else {
+                continue;
+            };
+
+            if let Some(resourcetype) = prop
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "resourcetype")
+            {
+                let is_dir = resourcetype
+                    .children()
+                    .any(|n| n.is_element() && n.tag_name().name() == "collection");
+                if is_dir {
+                    kind = "dir".to_string();
+                    if !href.ends_with('/') {
+                        href.push('/');
+                    }
+                }
+            }
+
+            if let Some(v) = prop
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "getcontentlength")
+                .and_then(|n| n.text())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                size = v.parse::<u64>().ok();
+            }
+
+            if let Some(v) = prop
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "getlastmodified")
+                .and_then(|n| n.text())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                if let Ok(t) = httpdate::parse_http_date(v) {
+                    if let Ok(d) = t.duration_since(UNIX_EPOCH) {
+                        mtime = Some(d.as_secs() as i64);
+                    }
+                }
+            }
+
+            break;
+        }
+
+        out.push(WebdavPropfindEntry {
+            name: basename_from_href(&href),
+            href,
+            kind,
+            size,
+            mtime,
+        });
+    }
+
+    Ok(out)
+}
+
+fn decode_href_path(href: &str) -> Option<String> {
+    let raw = href.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let mut path_raw = if raw.starts_with("http://") || raw.starts_with("https://") {
+        // Absolute URL href (some servers).
+        Url::parse(raw).ok()?.path().to_string()
+    } else {
+        raw.to_string()
+    };
+
+    if !path_raw.starts_with('/') {
+        path_raw = format!("/{}", path_raw);
+    }
+
+    let trailing_slash = path_raw.ends_with('/');
+    let parts = path_raw
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(|s| percent_decode_str(s).decode_utf8_lossy().to_string())
+        .collect::<Vec<_>>();
+    let mut out = format!("/{}", parts.join("/"));
+    if trailing_slash && !out.ends_with('/') {
+        out.push('/');
+    }
+
+    Some(out)
+}
+
+fn basename_from_href(href: &str) -> String {
+    let trimmed = href.trim().trim_end_matches('/');
+    if trimmed == "/" || trimmed.is_empty() {
+        return "/".to_string();
+    }
+    trimmed
+        .rsplit('/')
+        .next()
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+fn filter_depth1_self(
+    request_url: &Url,
+    entries: &mut Vec<WebdavPropfindEntry>,
+) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
+    let request_href = decode_href_path(request_url.path()).unwrap_or_else(|| request_url.path().to_string());
+    let request_href_slash = if request_href.ends_with('/') {
+        request_href.clone()
+    } else {
+        format!("{request_href}/")
+    };
+
+    if let Some(self_entry) = entries
+        .iter()
+        .find(|e| e.href == request_href || e.href == request_href_slash)
+    {
+        if self_entry.kind != "dir" {
+            return Err(WebdavNotDirectoryError {
+                href: self_entry.href.clone(),
+            }
+            .into());
+        }
+    }
+
+    entries.retain(|e| e.href != request_href && e.href != request_href_slash);
+    Ok(std::mem::take(entries))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus};
+    use url::Url;
+
+    #[test]
+    fn parse_propfind_depth1_extracts_common_properties() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/backup/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <d:getlastmodified>Mon, 12 Jan 2026 10:00:00 GMT</d:getlastmodified>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/backup/dir/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/backup/file.txt</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:getcontentlength>5</d:getcontentlength>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+"#;
+
+        let entries = parse_propfind_multistatus(xml).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].href, "/backup/");
+        assert_eq!(entries[0].name, "backup");
+        assert_eq!(entries[0].kind, "dir");
+        assert!(entries[0].mtime.is_some());
+
+        assert_eq!(entries[1].href, "/backup/dir/");
+        assert_eq!(entries[1].name, "dir");
+        assert_eq!(entries[1].kind, "dir");
+
+        assert_eq!(entries[2].href, "/backup/file.txt");
+        assert_eq!(entries[2].name, "file.txt");
+        assert_eq!(entries[2].kind, "file");
+        assert_eq!(entries[2].size, Some(5));
+    }
+
+    #[test]
+    fn parse_propfind_depth1_skips_non_200_propstat() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/backup/file.txt</d:href>
+    <d:propstat>
+      <d:prop><d:getcontentlength>999</d:getcontentlength></d:prop>
+      <d:status>HTTP/1.1 404 Not Found</d:status>
+    </d:propstat>
+    <d:propstat>
+      <d:prop><d:getcontentlength>5</d:getcontentlength></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+"#;
+
+        let entries = parse_propfind_multistatus(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].size, Some(5));
+    }
+
+    #[test]
+    fn parse_propfind_depth1_normalizes_dir_slash() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/backup/dir</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+"#;
+
+        let entries = parse_propfind_multistatus(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].href, "/backup/dir/");
+        assert_eq!(entries[0].kind, "dir");
+    }
+
+    #[test]
+    fn decode_href_path_decodes_percent_encoding() {
+        assert_eq!(
+            decode_href_path("/backup/foo%20bar/").unwrap(),
+            "/backup/foo bar/"
+        );
+    }
+
+    #[test]
+    fn basename_from_href_handles_root() {
+        assert_eq!(basename_from_href("/"), "/");
+        assert_eq!(basename_from_href(""), "/");
+        assert_eq!(basename_from_href("/backup/"), "backup");
+        assert_eq!(basename_from_href("/backup/file.txt"), "file.txt");
+    }
+
+    #[test]
+    fn filter_depth1_self_returns_not_directory_error_for_file() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/backup/file.txt</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:getcontentlength>5</d:getcontentlength>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+"#;
+
+        let mut entries = parse_propfind_multistatus(xml).unwrap();
+        let url = Url::parse("http://example/backup/file.txt").unwrap();
+        let err = filter_depth1_self(&url, &mut entries).unwrap_err();
+        assert!(err.to_string().contains("not a directory"));
     }
 }

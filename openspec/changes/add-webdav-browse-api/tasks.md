@@ -5,9 +5,9 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Targets - WebDAV client PROPFIND support
-- [ ] 2.1 Add WebDAV directory listing helper (PROPFIND depth=1) and parse common properties
-- [ ] 2.2 Add unit tests for XML parsing and edge cases
-- [ ] 2.3 Commit targets-webdav changes (detailed message)
+- [x] 2.1 Add WebDAV directory listing helper (PROPFIND depth=1) and parse common properties
+- [x] 2.2 Add unit tests for XML parsing and edge cases
+- [x] 2.3 Commit targets-webdav changes (detailed message)
 
 ## 3. Control-plane - WebDAV list endpoint
 - [ ] 3.1 Add `GET/POST /api/nodes/{node_id}/webdav/list` endpoint and request/response types
