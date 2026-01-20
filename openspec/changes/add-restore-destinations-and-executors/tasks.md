@@ -25,13 +25,13 @@
 - [x] 4.5 Commit restore destination changes (detailed message)
 
 ## 5. Web UI - Restore wizard updates
-- [ ] 5.1 Extend restore wizard to select destination type and node (for local_fs) with mobile-friendly layout
-- [ ] 5.2 Add WebDAV destination form (base_url, secret, prefix input) with `.bastion-meta` note
-- [ ] 5.3 Wire request payload to updated restore API
-- [ ] 5.4 Update i18n strings and validation messages
-- [ ] 5.5 Commit UI changes (detailed message)
+- [x] 5.1 Extend restore wizard to select destination type and node (for local_fs) with mobile-friendly layout
+- [x] 5.2 Add WebDAV destination form (base_url, secret, prefix input) with `.bastion-meta` note
+- [x] 5.3 Wire request payload to updated restore API
+- [x] 5.4 Update i18n strings and validation messages
+- [x] 5.5 Commit UI changes (detailed message)
 
 ## 6. Verification
 - [x] 6.1 Run `cargo test --workspace`
-- [ ] 6.2 Run `npm test --prefix ui`
-- [ ] 6.3 Run `npm run type-check --prefix ui`
+- [x] 6.2 Run `npm test --prefix ui`
+- [x] 6.3 Run `npm run type-check --prefix ui`

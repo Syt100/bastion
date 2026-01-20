@@ -146,7 +146,7 @@ async function openRunEvents(runId: string): Promise<void> {
 }
 
 function openRestoreWizard(runId: string): void {
-  restoreModal.value?.open(runId)
+  restoreModal.value?.open(runId, { defaultNodeId: nodeIdOrHub.value })
 }
 
 function openVerifyWizard(runId: string): void {

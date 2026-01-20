@@ -29,12 +29,19 @@ export type OperationEvent = {
 
 export type ConflictPolicy = 'overwrite' | 'skip' | 'fail'
 
+export type RestoreDestination =
+  | { type: 'local_fs'; node_id: string; directory: string }
+  | { type: 'webdav'; base_url: string; secret_name: string; prefix: string }
+
+export type RestoreExecutor = { node_id: string }
+
 export const useOperationsStore = defineStore('operations', () => {
   async function startRestore(
     runId: string,
-    destinationDir: string,
+    destination: RestoreDestination,
     conflictPolicy: ConflictPolicy,
     selection?: { files: string[]; dirs: string[] } | null,
+    executor?: RestoreExecutor | null,
   ): Promise<string> {
     const csrf = await ensureCsrfToken()
     const normalizedSelection =
@@ -57,7 +64,8 @@ export const useOperationsStore = defineStore('operations', () => {
         'X-CSRF-Token': csrf,
       },
       body: JSON.stringify({
-        destination_dir: destinationDir,
+        destination,
+        ...(executor?.node_id?.trim() ? { executor: { node_id: executor.node_id.trim() } } : {}),
         conflict_policy: conflictPolicy,
         ...(normalizedSelection ? { selection: normalizedSelection } : {}),
       }),

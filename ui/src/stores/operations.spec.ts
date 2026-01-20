@@ -21,7 +21,11 @@ describe('useOperationsStore', () => {
     auth.csrfToken = 'csrf-123'
 
     const ops = useOperationsStore()
-    const opId = await ops.startRestore('run-1', '/tmp/restore', 'overwrite')
+    const opId = await ops.startRestore(
+      'run-1',
+      { type: 'local_fs', node_id: 'hub', directory: '/tmp/restore' },
+      'overwrite',
+    )
 
     expect(opId).toBe('op-1')
     expect(fetchMock).toHaveBeenCalledWith(
@@ -33,7 +37,12 @@ describe('useOperationsStore', () => {
     const headers = init.headers as Record<string, string>
     expect(headers['X-CSRF-Token']).toBe('csrf-123')
     expect(headers['Content-Type']).toBe('application/json')
-    expect(init.body).toBe(JSON.stringify({ destination_dir: '/tmp/restore', conflict_policy: 'overwrite' }))
+    expect(init.body).toBe(
+      JSON.stringify({
+        destination: { type: 'local_fs', node_id: 'hub', directory: '/tmp/restore' },
+        conflict_policy: 'overwrite',
+      }),
+    )
   })
 
   it('starts restore with selection when provided', async () => {
@@ -47,16 +56,21 @@ describe('useOperationsStore', () => {
     auth.csrfToken = 'csrf-abc'
 
     const ops = useOperationsStore()
-    const opId = await ops.startRestore('run-1', '/tmp/restore', 'overwrite', {
-      files: ['a', ' a ', ''],
-      dirs: ['b/', 'b', ''],
-    })
+    const opId = await ops.startRestore(
+      'run-1',
+      { type: 'local_fs', node_id: 'hub', directory: '/tmp/restore' },
+      'overwrite',
+      {
+        files: ['a', ' a ', ''],
+        dirs: ['b/', 'b', ''],
+      },
+    )
 
     expect(opId).toBe('op-3')
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
     expect(init.body).toBe(
       JSON.stringify({
-        destination_dir: '/tmp/restore',
+        destination: { type: 'local_fs', node_id: 'hub', directory: '/tmp/restore' },
         conflict_policy: 'overwrite',
         selection: { files: ['a'], dirs: ['b'] },
       }),
