@@ -21,9 +21,9 @@
 - [x] 4.3 Commit restore changes (detailed message)
 
 ## 5. Web UI - Format selection
-- [ ] 5.1 Add job editor option to choose artifact format (default archive)
-- [ ] 5.2 Disable encryption UI when raw-tree is selected; adjust validation/i18n
-- [ ] 5.3 Commit UI changes (detailed message)
+- [x] 5.1 Add job editor option to choose artifact format (default archive)
+- [x] 5.2 Disable encryption UI when raw-tree is selected; adjust validation/i18n
+- [x] 5.3 Commit UI changes (detailed message)
 
 ## 6. Verification
 - [ ] 6.1 Run `cargo test --workspace`
