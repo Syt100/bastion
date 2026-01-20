@@ -16,9 +16,9 @@
 - [x] 3.4 Commit backup changes (detailed message)
 
 ## 4. Restore - Support raw_tree_v1
-- [ ] 4.1 Implement raw-tree restore that streams file bytes from `data/<path>` and writes via restore sinks
-- [ ] 4.2 Apply metadata best-effort for filesystem sinks; write `.bastion-meta` for WebDAV sinks
-- [ ] 4.3 Commit restore changes (detailed message)
+- [x] 4.1 Implement raw-tree restore that streams file bytes from `data/<path>` and writes via restore sinks
+- [x] 4.2 Apply metadata best-effort for filesystem sinks; write `.bastion-meta` for WebDAV sinks
+- [x] 4.3 Commit restore changes (detailed message)
 
 ## 5. Web UI - Format selection
 - [ ] 5.1 Add job editor option to choose artifact format (default archive)
