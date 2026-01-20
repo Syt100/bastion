@@ -113,6 +113,7 @@ pub(super) struct WebdavSink {
     prefix_url: Url,
     conflict: ConflictPolicy,
     staging_dir: PathBuf,
+    meta_rel_path: PathBuf,
     meta_entries_url: Url,
     ensured_collections: HashSet<String>,
 }
@@ -126,6 +127,11 @@ impl WebdavSink {
         op_id: String,
         staging_dir: PathBuf,
     ) -> Result<Self, anyhow::Error> {
+        let meta_rel_path = PathBuf::from(".bastion-meta")
+            .join("restore")
+            .join(op_id.trim())
+            .join("entries");
+
         let mut meta_entries_url = prefix_url.clone();
         {
             let mut segs = meta_entries_url
@@ -146,6 +152,7 @@ impl WebdavSink {
             prefix_url,
             conflict,
             staging_dir,
+            meta_rel_path,
             meta_entries_url,
             ensured_collections: HashSet::new(),
         })
@@ -317,6 +324,7 @@ impl WebdavSink {
         rel_path: &Path,
         record: &EntryRecord,
     ) -> Result<(), anyhow::Error> {
+        self.ensure_parent_collections(rel_path)?;
         let url = self.url_for_rel_path(rel_path, true)?;
         let client = self.client.clone();
         self.handle
@@ -410,6 +418,11 @@ impl RestoreSink for WebdavSink {
             .map_err(|e| anyhow::anyhow!("{e:#}"))?;
 
         // Ensure `.bastion-meta/restore/<op_id>/entries/` exists.
+        //
+        // WebDAV `MKCOL` doesn't create intermediate collections; some servers return HTTP 409
+        // Conflict if parent collections are missing. Ensure parents first to be robust.
+        let meta_rel_path = self.meta_rel_path.clone();
+        self.ensure_parent_collections(&meta_rel_path)?;
         let meta_dir = self.meta_entries_url.clone();
         let client = self.client.clone();
         self.handle
@@ -431,6 +444,7 @@ impl RestoreSink for WebdavSink {
         // Directories: best-effort creation; do not enforce conflict semantics (WebDAV lacks a
         // consistent "exists" primitive for collections across servers).
         if entry_type.is_dir() {
+            self.ensure_parent_collections(rel_path)?;
             let url = self.url_for_rel_path(rel_path, true)?;
             let client = self.client.clone();
             self.handle
