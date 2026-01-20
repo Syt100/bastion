@@ -11,6 +11,7 @@ use super::entries_index::EntriesIndexWriter;
 mod entry;
 mod walk;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_tar_zstd_parts(
     stage_dir: &Path,
     source: &FilesystemSource,

@@ -294,6 +294,7 @@ async fn upload_raw_tree_data_dir(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upload_named_file(
     client: &WebdavClient,
     run_url: &Url,

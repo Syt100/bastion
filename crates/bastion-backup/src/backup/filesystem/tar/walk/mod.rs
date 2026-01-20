@@ -6,6 +6,7 @@ use bastion_core::job_spec::{FilesystemSource, FsSymlinkPolicy};
 
 use super::super::FilesystemBuildIssues;
 use super::super::entries_index::EntriesIndexWriter;
+use super::super::reborrow_progress;
 use super::super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
 use super::entry::{
     FileId, HardlinkRecord, source_meta_for_policy, write_dir_entry, write_file_entry,
@@ -83,7 +84,7 @@ pub(super) fn write_tar_entries<W: Write>(
                 issues,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
-                progress.as_deref_mut(),
+                reborrow_progress(&mut progress),
             )?;
         }
 
@@ -115,7 +116,7 @@ pub(super) fn write_tar_entries<W: Write>(
             issues,
             &mut hardlink_index,
             &mut seen_archive_paths,
-            progress.as_deref_mut(),
+            reborrow_progress(&mut progress),
         )?;
     }
 

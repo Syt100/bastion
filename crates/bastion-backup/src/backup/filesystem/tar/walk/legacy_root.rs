@@ -80,7 +80,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 issues,
                 hardlink_index,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         } else {
             write_symlink_entry(
@@ -92,7 +92,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         }
 
@@ -197,7 +197,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 issues,
                 hardlink_index,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }
@@ -212,7 +212,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }
@@ -227,7 +227,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }

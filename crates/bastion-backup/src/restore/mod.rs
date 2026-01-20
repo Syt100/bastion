@@ -102,6 +102,7 @@ pub fn restore_to_local_fs(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn restore_to_webdav(
     payload: Box<dyn Read + Send>,
     target: WebdavRestoreTarget<'_>,

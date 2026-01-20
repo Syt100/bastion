@@ -31,7 +31,7 @@ pub(super) fn spawn_operation_progress_writer(
         let mut last_done_bytes: u64 = 0;
 
         while rx.changed().await.is_ok() {
-            let Some(update) = rx.borrow().clone() else {
+            let Some(update) = *rx.borrow() else {
                 continue;
             };
 

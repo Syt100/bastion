@@ -79,6 +79,12 @@ impl<'a> FilesystemBuildProgressCtx<'a> {
     }
 }
 
+fn reborrow_progress<'p, 'a>(
+    progress: &'p mut Option<&mut FilesystemBuildProgressCtx<'a>>,
+) -> Option<&'p mut FilesystemBuildProgressCtx<'a>> {
+    progress.as_mut().map(|p| &mut **p)
+}
+
 #[derive(Debug, Default)]
 pub struct FilesystemBuildIssues {
     pub warnings_total: u64,

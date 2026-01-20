@@ -67,7 +67,7 @@ pub(super) fn scan_filesystem_source(
                 follow_links,
                 issues,
                 &mut totals,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         }
 
@@ -83,7 +83,7 @@ pub(super) fn scan_filesystem_source(
         follow_links,
         issues,
         &mut totals,
-        progress.as_deref_mut(),
+        super::reborrow_progress(&mut progress),
     )?;
 
     Ok(totals)
@@ -132,7 +132,7 @@ fn scan_source_path(
             && !exclude.is_match(format!("{prefix}/"))
         {
             totals.dirs = totals.dirs.saturating_add(1);
-            if let Some(ctx) = progress.as_deref_mut() {
+            if let Some(ctx) = super::reborrow_progress(&mut progress) {
                 ctx.done = *totals;
                 ctx.maybe_emit(false);
             }
@@ -214,7 +214,7 @@ fn scan_source_path(
 
                 totals.files = totals.files.saturating_add(1);
                 totals.bytes = totals.bytes.saturating_add(meta.len());
-                if let Some(ctx) = progress.as_deref_mut() {
+                if let Some(ctx) = super::reborrow_progress(&mut progress) {
                     ctx.done = *totals;
                     ctx.maybe_emit(false);
                 }
@@ -223,7 +223,7 @@ fn scan_source_path(
 
             if entry.file_type().is_dir() {
                 totals.dirs = totals.dirs.saturating_add(1);
-                if let Some(ctx) = progress.as_deref_mut() {
+                if let Some(ctx) = super::reborrow_progress(&mut progress) {
                     ctx.done = *totals;
                     ctx.maybe_emit(false);
                 }
@@ -232,7 +232,7 @@ fn scan_source_path(
 
             if entry.file_type().is_symlink() {
                 totals.files = totals.files.saturating_add(1);
-                if let Some(ctx) = progress.as_deref_mut() {
+                if let Some(ctx) = super::reborrow_progress(&mut progress) {
                     ctx.done = *totals;
                     ctx.maybe_emit(false);
                 }
@@ -269,7 +269,7 @@ fn scan_source_path(
         }
         totals.files = totals.files.saturating_add(1);
         totals.bytes = totals.bytes.saturating_add(meta.len());
-        if let Some(ctx) = progress.as_deref_mut() {
+        if let Some(ctx) = super::reborrow_progress(&mut progress) {
             ctx.done = *totals;
             ctx.maybe_emit(false);
         }
@@ -278,7 +278,7 @@ fn scan_source_path(
 
     if meta.file_type().is_symlink() {
         totals.files = totals.files.saturating_add(1);
-        if let Some(ctx) = progress.as_deref_mut() {
+        if let Some(ctx) = super::reborrow_progress(&mut progress) {
             ctx.done = *totals;
             ctx.maybe_emit(false);
         }
@@ -340,7 +340,7 @@ fn scan_legacy_root(
             totals.files = totals.files.saturating_add(1);
         }
 
-        if let Some(ctx) = progress.as_deref_mut() {
+        if let Some(ctx) = super::reborrow_progress(&mut progress) {
             ctx.done = *totals;
             ctx.maybe_emit(false);
         }
@@ -431,7 +431,7 @@ fn scan_legacy_root(
 
             totals.files = totals.files.saturating_add(1);
             totals.bytes = totals.bytes.saturating_add(meta.len());
-            if let Some(ctx) = progress.as_deref_mut() {
+            if let Some(ctx) = super::reborrow_progress(&mut progress) {
                 ctx.done = *totals;
                 ctx.maybe_emit(false);
             }
@@ -440,7 +440,7 @@ fn scan_legacy_root(
 
         if entry.file_type().is_dir() {
             totals.dirs = totals.dirs.saturating_add(1);
-            if let Some(ctx) = progress.as_deref_mut() {
+            if let Some(ctx) = super::reborrow_progress(&mut progress) {
                 ctx.done = *totals;
                 ctx.maybe_emit(false);
             }
@@ -449,7 +449,7 @@ fn scan_legacy_root(
 
         if entry.file_type().is_symlink() {
             totals.files = totals.files.saturating_add(1);
-            if let Some(ctx) = progress.as_deref_mut() {
+            if let Some(ctx) = super::reborrow_progress(&mut progress) {
                 ctx.done = *totals;
                 ctx.maybe_emit(false);
             }

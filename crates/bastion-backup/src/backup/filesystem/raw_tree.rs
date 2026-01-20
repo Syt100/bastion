@@ -90,7 +90,7 @@ pub(super) fn write_raw_tree(
                 &mut stats,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         }
 
@@ -123,7 +123,7 @@ pub(super) fn write_raw_tree(
             &mut stats,
             &mut hardlink_index,
             &mut seen_archive_paths,
-            progress.as_deref_mut(),
+            super::reborrow_progress(&mut progress),
         )?;
     }
 
@@ -202,7 +202,7 @@ fn write_legacy_root(
                 stats,
                 hardlink_index,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         } else {
             write_symlink_entry(
@@ -214,7 +214,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         }
 
@@ -320,7 +320,7 @@ fn write_legacy_root(
                 stats,
                 hardlink_index,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }
@@ -335,7 +335,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }
@@ -350,7 +350,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
             continue;
         }
@@ -420,7 +420,7 @@ fn write_source_entry(
                 entries_count,
                 issues,
                 seen_archive_paths,
-                progress.as_deref_mut(),
+                super::reborrow_progress(&mut progress),
             )?;
         }
 
@@ -515,7 +515,7 @@ fn write_source_entry(
                     stats,
                     hardlink_index,
                     seen_archive_paths,
-                    progress.as_deref_mut(),
+                    super::reborrow_progress(&mut progress),
                 )?;
                 continue;
             }
@@ -530,7 +530,7 @@ fn write_source_entry(
                     entries_count,
                     issues,
                     seen_archive_paths,
-                    progress.as_deref_mut(),
+                    super::reborrow_progress(&mut progress),
                 )?;
                 continue;
             }
@@ -545,7 +545,7 @@ fn write_source_entry(
                     entries_count,
                     issues,
                     seen_archive_paths,
-                    progress.as_deref_mut(),
+                    super::reborrow_progress(&mut progress),
                 )?;
                 continue;
             }
@@ -605,7 +605,7 @@ fn write_source_entry(
             stats,
             hardlink_index,
             seen_archive_paths,
-            progress.as_deref_mut(),
+            super::reborrow_progress(&mut progress),
         )?;
         return Ok(());
     }
@@ -620,7 +620,7 @@ fn write_source_entry(
             entries_count,
             issues,
             seen_archive_paths,
-            progress.as_deref_mut(),
+            super::reborrow_progress(&mut progress),
         )?;
         return Ok(());
     }
