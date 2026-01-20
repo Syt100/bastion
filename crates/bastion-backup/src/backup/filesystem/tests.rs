@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::backup::PayloadEncryption;
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
+use bastion_core::manifest::ArtifactFormatV1;
 
 use super::build_filesystem_run;
 use super::util::archive_prefix_for_path;
@@ -69,6 +70,7 @@ fn filesystem_paths_can_backup_single_file() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
+        ArtifactFormatV1::ArchiveV1,
         &source,
         &PayloadEncryption::None,
         4 * 1024 * 1024,
@@ -88,6 +90,61 @@ fn filesystem_paths_can_backup_single_file() {
 
     let index_paths = list_index_paths(&build.artifacts.entries_index_path);
     assert!(index_paths.contains(&expected));
+}
+
+#[test]
+fn filesystem_paths_can_build_raw_tree_single_file() {
+    let tmp = tempdir().expect("tempdir");
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    let src = tmp.path().join("hello.txt");
+    std::fs::write(&src, b"hi").unwrap();
+
+    let expected = archive_prefix_for_path(&src).unwrap();
+
+    let source = FilesystemSource {
+        paths: vec![src.to_string_lossy().to_string()],
+        root: String::new(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let build = build_filesystem_run(
+        &data_dir,
+        &Uuid::new_v4().to_string(),
+        &Uuid::new_v4().to_string(),
+        OffsetDateTime::now_utc(),
+        ArtifactFormatV1::RawTreeV1,
+        &source,
+        &PayloadEncryption::None,
+        4 * 1024 * 1024,
+    )
+    .unwrap();
+    assert_eq!(build.issues.errors_total, 0);
+    assert!(build.artifacts.parts.is_empty());
+
+    let stage_dir = build
+        .artifacts
+        .manifest_path
+        .parent()
+        .expect("manifest parent");
+    let mut dst = stage_dir.join("data");
+    for seg in expected.split('/') {
+        dst.push(seg);
+    }
+    assert_eq!(std::fs::read(&dst).unwrap(), b"hi");
+
+    let index_paths = list_index_paths(&build.artifacts.entries_index_path);
+    assert!(index_paths.contains(&expected));
+
+    let manifest_bytes = std::fs::read(&build.artifacts.manifest_path).unwrap();
+    let manifest: bastion_core::manifest::ManifestV1 = serde_json::from_slice(&manifest_bytes).unwrap();
+    assert_eq!(manifest.pipeline.format, ArtifactFormatV1::RawTreeV1);
+    assert!(manifest.artifacts.is_empty());
 }
 
 #[test]
@@ -121,6 +178,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
+        ArtifactFormatV1::ArchiveV1,
         &source,
         &PayloadEncryption::None,
         4 * 1024 * 1024,
@@ -167,6 +225,7 @@ fn legacy_root_can_backup_single_file() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
+        ArtifactFormatV1::ArchiveV1,
         &source,
         &PayloadEncryption::None,
         4 * 1024 * 1024,

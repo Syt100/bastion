@@ -41,6 +41,7 @@ pub(super) async fn execute_filesystem_run(
     let run_id_owned = run_id.to_string();
     let part_size = target.part_size_bytes();
     let error_policy = source.error_policy;
+    let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
     let artifacts = tokio::task::spawn_blocking(move || {
         backup::filesystem::build_filesystem_run(
@@ -48,6 +49,7 @@ pub(super) async fn execute_filesystem_run(
             &job_id,
             &run_id_owned,
             started_at,
+            artifact_format,
             &source,
             &encryption,
             part_size,

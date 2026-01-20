@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::manifest::ArtifactFormatV1;
 use crate::job_spec::{FilesystemSource, SqliteSource, VaultwardenSource};
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -27,6 +28,8 @@ pub enum EncryptionResolvedV1 {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PipelineResolvedV1 {
+    #[serde(default)]
+    pub format: ArtifactFormatV1,
     #[serde(default)]
     pub encryption: EncryptionResolvedV1,
 }

@@ -19,6 +19,7 @@ pub fn build_vaultwarden_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
+    artifact_format: ArtifactFormatV1,
     source: &VaultwardenSource,
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
@@ -27,10 +28,15 @@ pub fn build_vaultwarden_run(
         job_id = %job_id,
         run_id = %run_id,
         vw_data_dir = %source.data_dir,
+        artifact_format = ?artifact_format,
         encryption = ?encryption,
         part_size_bytes,
         "building vaultwarden backup artifacts"
     );
+
+    if artifact_format != ArtifactFormatV1::ArchiveV1 {
+        anyhow::bail!("vaultwarden backups currently support only archive_v1 artifact format");
+    }
 
     let stage = stage_dir(data_dir, run_id);
     std::fs::create_dir_all(&stage)?;
@@ -84,7 +90,7 @@ pub fn build_vaultwarden_run(
         started_at: started_at.format(&Rfc3339)?,
         ended_at: ended_at.format(&Rfc3339)?,
         pipeline: PipelineSettings {
-            format: ArtifactFormatV1::ArchiveV1,
+            format: artifact_format,
             tar: "pax".to_string(),
             compression: "zstd".to_string(),
             encryption: match encryption {

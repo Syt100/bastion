@@ -40,6 +40,7 @@ pub(super) async fn execute_vaultwarden_run(
     let run_id_owned = run_id.to_string();
     let vw_data_dir = source.data_dir.clone();
     let part_size = target.part_size_bytes();
+    let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
     let artifacts = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
@@ -47,6 +48,7 @@ pub(super) async fn execute_vaultwarden_run(
             &job_id,
             &run_id_owned,
             started_at,
+            artifact_format,
             &source,
             &encryption,
             part_size,

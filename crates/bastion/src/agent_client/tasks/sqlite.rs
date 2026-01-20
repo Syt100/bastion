@@ -19,6 +19,7 @@ pub(super) async fn run_sqlite_backup(
     let sqlite_path = source.path.clone();
     let part_size = target_part_size_bytes(&target);
     let encryption = super::payload_encryption(pipeline.encryption);
+    let artifact_format = pipeline.format;
     let started_at = ctx.started_at;
 
     let data_dir_buf = ctx.data_dir.to_path_buf();
@@ -30,6 +31,7 @@ pub(super) async fn run_sqlite_backup(
             &job_id_clone,
             &run_id_clone,
             started_at,
+            artifact_format,
             &source,
             &encryption,
             part_size,

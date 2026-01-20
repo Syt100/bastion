@@ -40,6 +40,7 @@ pub(super) async fn execute_sqlite_run(
     let job_id = job.id.clone();
     let run_id_owned = run_id.to_string();
     let part_size = target.part_size_bytes();
+    let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
     let build = tokio::task::spawn_blocking(move || {
         backup::sqlite::build_sqlite_run(
@@ -47,6 +48,7 @@ pub(super) async fn execute_sqlite_run(
             &job_id,
             &run_id_owned,
             started_at,
+            artifact_format,
             &source,
             &encryption,
             part_size,

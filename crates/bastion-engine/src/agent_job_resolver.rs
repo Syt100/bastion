@@ -60,6 +60,7 @@ async fn resolve_pipeline_for_agent(
     secrets: &SecretsCrypto,
     pipeline: &job_spec::PipelineV1,
 ) -> Result<PipelineResolvedV1, anyhow::Error> {
+    let format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, pipeline).await?;
     let encryption = match encryption {
         bastion_backup::backup::PayloadEncryption::None => EncryptionResolvedV1::None,
@@ -71,7 +72,7 @@ async fn resolve_pipeline_for_agent(
             key_name,
         },
     };
-    Ok(PipelineResolvedV1 { encryption })
+    Ok(PipelineResolvedV1 { format, encryption })
 }
 
 async fn resolve_target_for_agent(

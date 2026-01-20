@@ -6,6 +6,7 @@ use url::Url;
 use bastion_core::backup_format::{
     COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
 };
+use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
 use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
 
@@ -16,6 +17,10 @@ pub async fn store_run(
     run_id: &str,
     artifacts: &LocalRunArtifacts,
 ) -> Result<Url, anyhow::Error> {
+    let manifest_bytes = std::fs::read(&artifacts.manifest_path)?;
+    let manifest: ManifestV1 = serde_json::from_slice(&manifest_bytes)?;
+    let artifact_format = manifest.pipeline.format;
+
     let parts_count = artifacts.parts.len();
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
     let mut base_url = Url::parse(base_url)?;
@@ -26,6 +31,7 @@ pub async fn store_run(
         job_id = %job_id,
         run_id = %run_id,
         base_url = %redact_url(&base_url),
+        artifact_format = ?artifact_format,
         parts_count,
         parts_bytes,
         "storing run to webdav"
@@ -38,7 +44,7 @@ pub async fn store_run(
     let run_url = job_url.join(&format!("{run_id}/"))?;
     client.ensure_collection(&run_url).await?;
 
-    upload_artifacts(&client, &run_url, artifacts).await?;
+    upload_artifacts(&client, &run_url, artifacts, artifact_format).await?;
 
     info!(
         job_id = %job_id,
@@ -53,6 +59,7 @@ async fn upload_artifacts(
     client: &WebdavClient,
     run_url: &Url,
     artifacts: &LocalRunArtifacts,
+    artifact_format: ArtifactFormatV1,
 ) -> Result<(), anyhow::Error> {
     for part in &artifacts.parts {
         let url = run_url.join(&part.name)?;
@@ -86,6 +93,10 @@ async fn upload_artifacts(
     )
     .await?;
 
+    if artifact_format == ArtifactFormatV1::RawTreeV1 {
+        upload_raw_tree_data_dir(client, run_url, artifacts).await?;
+    }
+
     // Completion marker must be written last.
     upload_named_file(
         client,
@@ -95,6 +106,99 @@ async fn upload_artifacts(
         false,
     )
     .await?;
+
+    Ok(())
+}
+
+async fn upload_raw_tree_data_dir(
+    client: &WebdavClient,
+    run_url: &Url,
+    artifacts: &LocalRunArtifacts,
+) -> Result<(), anyhow::Error> {
+    let stage_dir = artifacts
+        .manifest_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid manifest path"))?;
+    let src = stage_dir.join("data");
+
+    let meta = match tokio::fs::metadata(&src).await {
+        Ok(m) => m,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(anyhow::Error::new(error)),
+    };
+    if !meta.is_dir() {
+        anyhow::bail!("raw-tree data path is not a directory: {}", src.display());
+    }
+
+    let mut data_url = run_url.clone();
+    {
+        let mut segs = data_url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+        segs.push("data");
+    }
+    if !data_url.path().ends_with('/') {
+        data_url.set_path(&format!("{}/", data_url.path()));
+    }
+    client.ensure_collection(&data_url).await?;
+
+    struct StackItem {
+        dir_path: std::path::PathBuf,
+        dir_url: Url,
+    }
+
+    let mut stack = vec![StackItem {
+        dir_path: src,
+        dir_url: data_url,
+    }];
+
+    while let Some(next) = stack.pop() {
+        let mut rd = tokio::fs::read_dir(&next.dir_path).await?;
+        while let Some(entry) = rd.next_entry().await? {
+            let ty = entry.file_type().await?;
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            let path = entry.path();
+
+            if ty.is_dir() {
+                let mut url = next.dir_url.clone();
+                {
+                    let mut segs = url
+                        .path_segments_mut()
+                        .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                    segs.push(&name_str);
+                }
+                if !url.path().ends_with('/') {
+                    url.set_path(&format!("{}/", url.path()));
+                }
+                client.ensure_collection(&url).await?;
+                stack.push(StackItem { dir_path: path, dir_url: url });
+                continue;
+            }
+
+            if ty.is_file() {
+                let size = tokio::fs::metadata(&path).await?.len();
+                let mut url = next.dir_url.clone();
+                {
+                    let mut segs = url
+                        .path_segments_mut()
+                        .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                    segs.push(&name_str);
+                }
+
+                if let Some(existing) = client.head_size(&url).await?
+                    && existing == size
+                {
+                    debug!(url = %redact_url(&url), size, "skipping existing webdav file");
+                    continue;
+                }
+
+                debug!(url = %redact_url(&url), size, "uploading webdav file");
+                client.put_file_with_retries(&url, &path, size, 3).await?;
+                continue;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -211,7 +315,27 @@ mod tests {
         std::fs::write(&entries_path, b"entries").unwrap();
 
         let manifest_path = stage.join("manifest.json");
-        std::fs::write(&manifest_path, b"{}").unwrap();
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec(&serde_json::json!({
+              "format_version": 1,
+              "job_id": "00000000-0000-0000-0000-000000000000",
+              "run_id": "00000000-0000-0000-0000-000000000000",
+              "started_at": "2025-12-30T12:00:00Z",
+              "ended_at": "2025-12-30T12:00:01Z",
+              "pipeline": {
+                "format": "archive_v1",
+                "tar": "pax",
+                "compression": "zstd",
+                "encryption": "none",
+                "split_bytes": 0
+              },
+              "artifacts": [],
+              "entry_index": { "name": "entries.jsonl.zst", "count": 0 }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
 
         let complete_path = stage.join("complete.json");
         std::fs::write(&complete_path, b"{}").unwrap();

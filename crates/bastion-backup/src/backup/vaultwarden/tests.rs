@@ -1,6 +1,7 @@
 use super::build_vaultwarden_run;
 use crate::backup::PayloadEncryption;
 use bastion_core::job_spec::VaultwardenSource;
+use bastion_core::manifest::ArtifactFormatV1;
 use rusqlite::Connection;
 use std::fs;
 use tempfile::tempdir;
@@ -47,6 +48,7 @@ fn vaultwarden_run_includes_snapshot_and_files() {
         &job_id,
         &run_id,
         OffsetDateTime::now_utc(),
+        ArtifactFormatV1::ArchiveV1,
         &source,
         &encryption,
         4 * 1024 * 1024,

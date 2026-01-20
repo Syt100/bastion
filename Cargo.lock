@@ -367,6 +367,7 @@ version = "0.1.0"
 dependencies = [
  "age",
  "anyhow",
+ "base64 0.22.1",
  "bastion-core",
  "bastion-storage",
  "bastion-targets",
@@ -384,6 +385,7 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
+ "xattr",
  "zstd",
 ]
 

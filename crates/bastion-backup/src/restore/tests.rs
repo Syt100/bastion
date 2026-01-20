@@ -233,6 +233,7 @@ fn restore_from_parts_extracts_tar_zstd_age() {
         &job_id,
         &run_id,
         OffsetDateTime::now_utc(),
+        bastion_core::manifest::ArtifactFormatV1::ArchiveV1,
         &source,
         &encryption,
         4 * 1024 * 1024,

@@ -15,6 +15,7 @@ use crate::backup::{
 use bastion_core::job_spec::FilesystemSource;
 
 mod entries_index;
+mod raw_tree;
 mod tar;
 mod util;
 
@@ -55,6 +56,7 @@ pub fn build_filesystem_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
+    artifact_format: ArtifactFormatV1,
     source: &FilesystemSource,
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
@@ -71,6 +73,7 @@ pub fn build_filesystem_run(
         symlink_policy = ?source.symlink_policy,
         hardlink_policy = ?source.hardlink_policy,
         error_policy = ?source.error_policy,
+        artifact_format = ?artifact_format,
         encryption = ?encryption,
         part_size_bytes,
         "building filesystem backup artifacts"
@@ -90,15 +93,45 @@ pub fn build_filesystem_run(
     let mut entries_count = 0u64;
     let mut issues = FilesystemBuildIssues::default();
 
-    let parts = tar::write_tar_zstd_parts(
-        &stage,
-        source,
-        encryption,
-        &mut entries_writer,
-        &mut entries_count,
-        part_size_bytes,
-        &mut issues,
-    )?;
+    let (artifact_format, parts, raw_tree_stats, tar_kind, compression_kind, split_bytes) =
+        match artifact_format {
+            ArtifactFormatV1::ArchiveV1 => (
+                ArtifactFormatV1::ArchiveV1,
+                tar::write_tar_zstd_parts(
+                    &stage,
+                    source,
+                    encryption,
+                    &mut entries_writer,
+                    &mut entries_count,
+                    part_size_bytes,
+                    &mut issues,
+                )?,
+                None,
+                "pax",
+                "zstd",
+                part_size_bytes,
+            ),
+            ArtifactFormatV1::RawTreeV1 => {
+                if !matches!(encryption, PayloadEncryption::None) {
+                    anyhow::bail!("raw_tree_v1 does not support payload encryption");
+                }
+                let stats = raw_tree::write_raw_tree(
+                    &stage,
+                    source,
+                    &mut entries_writer,
+                    &mut entries_count,
+                    &mut issues,
+                )?;
+                (
+                    ArtifactFormatV1::RawTreeV1,
+                    Vec::new(),
+                    Some(stats),
+                    "none",
+                    "none",
+                    0,
+                )
+            }
+        };
     entries_writer.finish()?;
 
     let ended_at = OffsetDateTime::now_utc();
@@ -113,9 +146,9 @@ pub fn build_filesystem_run(
         started_at: started_at.format(&Rfc3339)?,
         ended_at: ended_at.format(&Rfc3339)?,
         pipeline: PipelineSettings {
-            format: ArtifactFormatV1::ArchiveV1,
-            tar: "pax".to_string(),
-            compression: "zstd".to_string(),
+            format: artifact_format,
+            tar: tar_kind.to_string(),
+            compression: compression_kind.to_string(),
             encryption: match encryption {
                 PayloadEncryption::None => "none".to_string(),
                 PayloadEncryption::AgeX25519 { .. } => "age".to_string(),
@@ -124,7 +157,7 @@ pub fn build_filesystem_run(
                 PayloadEncryption::None => None,
                 PayloadEncryption::AgeX25519 { key_name, .. } => Some(key_name.clone()),
             },
-            split_bytes: part_size_bytes,
+            split_bytes,
         },
         artifacts: parts
             .iter()
@@ -155,6 +188,8 @@ pub fn build_filesystem_run(
         entries_count,
         parts_count,
         parts_bytes,
+        raw_tree_files = raw_tree_stats.as_ref().map(|s| s.data_files).unwrap_or(0),
+        raw_tree_bytes = raw_tree_stats.as_ref().map(|s| s.data_bytes).unwrap_or(0),
         warnings_total = issues.warnings_total,
         errors_total = issues.errors_total,
         "built filesystem backup artifacts"

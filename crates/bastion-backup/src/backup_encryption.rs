@@ -107,6 +107,12 @@ pub async fn ensure_payload_encryption(
     secrets: &SecretsCrypto,
     pipeline: &job_spec::PipelineV1,
 ) -> Result<PayloadEncryption, anyhow::Error> {
+    if pipeline.format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+        && !matches!(pipeline.encryption, job_spec::EncryptionV1::None)
+    {
+        anyhow::bail!("pipeline.encryption is not supported when pipeline.format is raw_tree_v1");
+    }
+
     match &pipeline.encryption {
         job_spec::EncryptionV1::None => Ok(PayloadEncryption::None),
         job_spec::EncryptionV1::AgeX25519 { key_name } => {

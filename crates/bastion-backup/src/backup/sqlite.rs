@@ -6,6 +6,7 @@ use time::OffsetDateTime;
 use tracing::{info, warn};
 
 use crate::backup::{LocalRunArtifacts, PayloadEncryption};
+use bastion_core::manifest::ArtifactFormatV1;
 use bastion_core::job_spec::{
     FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, SqliteSource,
 };
@@ -36,6 +37,7 @@ pub fn build_sqlite_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
+    artifact_format: ArtifactFormatV1,
     source: &SqliteSource,
     encryption: &PayloadEncryption,
     part_size_bytes: u64,
@@ -45,6 +47,7 @@ pub fn build_sqlite_run(
         run_id = %run_id,
         source_path = %source.path,
         integrity_check = source.integrity_check,
+        artifact_format = ?artifact_format,
         encryption = ?encryption,
         part_size_bytes,
         "building sqlite backup artifacts"
@@ -91,6 +94,7 @@ pub fn build_sqlite_run(
         job_id,
         run_id,
         started_at,
+        artifact_format,
         &fs_source,
         encryption,
         part_size_bytes,
@@ -179,6 +183,7 @@ mod tests {
     use super::{build_sqlite_run, integrity_check};
     use crate::backup::PayloadEncryption;
     use bastion_core::job_spec::SqliteSource;
+    use bastion_core::manifest::ArtifactFormatV1;
     use rusqlite::Connection;
     use tempfile::tempdir;
     use time::OffsetDateTime;
@@ -223,6 +228,7 @@ mod tests {
             &job_id,
             &run_id,
             OffsetDateTime::now_utc(),
+            ArtifactFormatV1::ArchiveV1,
             &source,
             &encryption,
             4 * 1024 * 1024,
