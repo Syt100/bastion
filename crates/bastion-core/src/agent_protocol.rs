@@ -89,9 +89,24 @@ pub struct RestoreSelectionV1 {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RestoreDestinationV1 {
+    LocalFs { directory: String },
+    Webdav {
+        base_url: String,
+        secret_name: String,
+        prefix: String,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RestoreTaskV1 {
     pub op_id: String,
     pub run_id: String,
+    #[serde(default)]
+    pub destination: Option<RestoreDestinationV1>,
+    // Legacy field for older task payloads (local_fs only).
+    #[serde(default)]
     pub destination_dir: String,
     pub conflict_policy: String,
     #[serde(default)]

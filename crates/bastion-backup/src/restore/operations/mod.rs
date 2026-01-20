@@ -6,7 +6,7 @@ use tracing::warn;
 use bastion_storage::operations_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
-use super::{ConflictPolicy, RestoreSelection};
+use super::{ConflictPolicy, RestoreDestination, RestoreSelection};
 
 mod restore;
 mod util;
@@ -32,7 +32,7 @@ pub async fn spawn_restore_operation(
     data_dir: PathBuf,
     op_id: String,
     run_id: String,
-    destination_dir: PathBuf,
+    destination: RestoreDestination,
     conflict: ConflictPolicy,
     selection: Option<RestoreSelection>,
 ) {
@@ -43,7 +43,7 @@ pub async fn spawn_restore_operation(
             &data_dir,
             &op_id,
             &run_id,
-            &destination_dir,
+            &destination,
             conflict,
             selection,
         )
@@ -52,7 +52,7 @@ pub async fn spawn_restore_operation(
             warn!(
                 op_id = %op_id,
                 run_id = %run_id,
-                destination_dir = %destination_dir.display(),
+                destination = ?destination,
                 error = %error,
                 "restore operation failed"
             );

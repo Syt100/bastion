@@ -17,7 +17,7 @@ use bastion_storage::jobs_repo;
 use bastion_storage::operations_repo;
 use bastion_storage::runs_repo;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum RestoreDestination {
     LocalFs {
@@ -31,7 +31,7 @@ pub(super) enum RestoreDestination {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(super) struct RestoreExecutor {
     node_id: String,
 }
@@ -61,74 +61,6 @@ pub(super) async fn start_restore(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
-    let (destination_node_id, destination_dir) = match &req.destination {
-        RestoreDestination::LocalFs { node_id, directory } => {
-            let node_id = node_id.trim();
-            let directory = directory.trim();
-            if node_id.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
-                    "destination.node_id is required",
-                ));
-            }
-            if directory.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
-                    "destination.directory is required",
-                ));
-            }
-            (node_id.to_string(), directory.to_string())
-        }
-        RestoreDestination::Webdav {
-            base_url,
-            secret_name,
-            prefix,
-        } => {
-            let base_url = base_url.trim();
-            let secret_name = secret_name.trim();
-            let prefix = prefix.trim();
-            if base_url.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
-                    "destination.base_url is required",
-                ));
-            }
-            if secret_name.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
-                    "destination.secret_name is required",
-                ));
-            }
-            if prefix.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
-                    "destination.prefix is required",
-                ));
-            }
-            // TODO(spec): implement webdav destination restore (sink + .bastion-meta sidecar).
-            return Err(AppError::bad_request(
-                "unsupported_destination",
-                "webdav destination is not supported yet",
-            ));
-        }
-    };
-
-    let executor_node_id = req
-        .executor
-        .as_ref()
-        .map(|e| e.node_id.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| destination_node_id.clone());
-
-    // Executor rules:
-    // - local_fs destination MUST execute on that node (Hub or Agent).
-    if executor_node_id != destination_node_id {
-        return Err(AppError::bad_request(
-            "invalid_executor",
-            "executor.node_id must match destination.node_id for local_fs destinations",
-        ));
-    }
-
     let conflict = req
         .conflict_policy
         .parse::<restore::ConflictPolicy>()
@@ -157,6 +89,110 @@ pub(super) async fn start_restore(
         ));
     }
 
+    let job = jobs_repo::get_job(&state.db, &run.job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+    let run_node_id = job
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(HUB_NODE_ID)
+        .to_string();
+
+    let destination = match &req.destination {
+        RestoreDestination::LocalFs { node_id, directory } => {
+            let node_id = node_id.trim();
+            let directory = directory.trim();
+            if node_id.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_destination",
+                    "destination.node_id is required",
+                ));
+            }
+            if directory.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_destination",
+                    "destination.directory is required",
+                ));
+            }
+            req.executor
+                .as_ref()
+                .map(|e| e.node_id.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .map(|executor_node_id| {
+                    if executor_node_id != node_id {
+                        Err(AppError::bad_request(
+                            "invalid_executor",
+                            "executor.node_id must match destination.node_id for local_fs destinations",
+                        ))
+                    } else {
+                        Ok(executor_node_id)
+                    }
+                })
+                .transpose()?;
+
+            (
+                node_id.to_string(),
+                restore::RestoreDestination::LocalFs {
+                    directory: std::path::PathBuf::from(directory),
+                },
+                bastion_core::agent_protocol::RestoreDestinationV1::LocalFs {
+                    directory: directory.to_string(),
+                },
+            )
+        }
+        RestoreDestination::Webdav {
+            base_url,
+            secret_name,
+            prefix,
+        } => {
+            let base_url = base_url.trim();
+            let secret_name = secret_name.trim();
+            let prefix = prefix.trim();
+            if base_url.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_destination",
+                    "destination.base_url is required",
+                ));
+            }
+            if secret_name.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_destination",
+                    "destination.secret_name is required",
+                ));
+            }
+            if prefix.is_empty() {
+                return Err(AppError::bad_request(
+                    "invalid_destination",
+                    "destination.prefix is required",
+                ));
+            }
+
+            (
+                run_node_id.clone(),
+                restore::RestoreDestination::Webdav {
+                    base_url: base_url.to_string(),
+                    secret_name: secret_name.to_string(),
+                    prefix: prefix.to_string(),
+                },
+                bastion_core::agent_protocol::RestoreDestinationV1::Webdav {
+                    base_url: base_url.to_string(),
+                    secret_name: secret_name.to_string(),
+                    prefix: prefix.to_string(),
+                },
+            )
+        }
+    };
+    let (default_executor_node_id, destination_for_hub, destination_for_agent) = destination;
+
+    let executor_node_id = req
+        .executor
+        .as_ref()
+        .map(|e| e.node_id.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or(default_executor_node_id);
+
     let op = operations_repo::create_operation(&state.db, operations_repo::OperationKind::Restore)
         .await?;
     let _ = operations_repo::append_event(
@@ -167,11 +203,7 @@ pub(super) async fn start_restore(
         "requested",
         Some(serde_json::json!({
             "run_id": run_id.clone(),
-            "destination": {
-                "type": "local_fs",
-                "node_id": destination_node_id,
-                "directory": destination_dir,
-            },
+            "destination": serde_json::to_value(&req.destination).ok(),
             "executor": serde_json::json!({ "node_id": executor_node_id }),
             "conflict_policy": conflict.as_str(),
             "selection": req.selection.as_ref().map(|s| serde_json::json!({
@@ -182,23 +214,51 @@ pub(super) async fn start_restore(
     )
     .await;
 
-    if destination_node_id != HUB_NODE_ID {
-        if !state.agent_manager.is_connected(&destination_node_id).await {
+    if executor_node_id != HUB_NODE_ID {
+        if !state.agent_manager.is_connected(&executor_node_id).await {
+            let _ = operations_repo::complete_operation(
+                &state.db,
+                &op.id,
+                operations_repo::OperationStatus::Failed,
+                None,
+                Some("destination agent is not connected"),
+            )
+            .await;
             return Err(AppError::bad_request(
                 "agent_not_connected",
-                "destination agent is not connected",
+                "executor agent is not connected",
             ));
         }
 
         // Ensure the destination agent has any required decryption key before we dispatch the task,
         // so the agent can immediately start restoring once it pulls the manifest/payload.
-        let job = jobs_repo::get_job(&state.db, &run.job_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
-        let spec = job_spec::parse_value(&job.spec)
-            .map_err(|e| AppError::bad_request("invalid_job_spec", format!("{e:#}")))?;
-        job_spec::validate(&spec)
-            .map_err(|e| AppError::bad_request("invalid_job_spec", format!("{e:#}")))?;
+        let spec = match job_spec::parse_value(&job.spec) {
+            Ok(spec) => spec,
+            Err(error) => {
+                let msg = format!("{error:#}");
+                let _ = operations_repo::complete_operation(
+                    &state.db,
+                    &op.id,
+                    operations_repo::OperationStatus::Failed,
+                    None,
+                    Some(&msg),
+                )
+                .await;
+                return Err(AppError::bad_request("invalid_job_spec", msg));
+            }
+        };
+        if let Err(error) = job_spec::validate(&spec) {
+            let msg = format!("{error:#}");
+            let _ = operations_repo::complete_operation(
+                &state.db,
+                &op.id,
+                operations_repo::OperationStatus::Failed,
+                None,
+                Some(&msg),
+            )
+            .await;
+            return Err(AppError::bad_request("invalid_job_spec", msg));
+        }
 
         let pipeline = match &spec {
             job_spec::JobSpecV1::Filesystem { pipeline, .. } => pipeline,
@@ -208,14 +268,25 @@ pub(super) async fn start_restore(
         if let job_spec::EncryptionV1::AgeX25519 { key_name } = &pipeline.encryption {
             let key_name = key_name.trim();
             if !key_name.is_empty() {
-                backup_encryption::distribute_age_identity_to_node(
+                if let Err(error) = backup_encryption::distribute_age_identity_to_node(
                     &state.db,
                     &state.secrets,
-                    &destination_node_id,
+                    &executor_node_id,
                     key_name,
                 )
                 .await
-                .map_err(|e| AppError::bad_request("age_identity_distribute_failed", format!("{e:#}")))?;
+                {
+                    let msg = format!("{error:#}");
+                    let _ = operations_repo::complete_operation(
+                        &state.db,
+                        &op.id,
+                        operations_repo::OperationStatus::Failed,
+                        None,
+                        Some(&msg),
+                    )
+                    .await;
+                    return Err(AppError::bad_request("age_identity_distribute_failed", msg));
+                }
 
                 let _ = operations_repo::append_event(
                     &state.db,
@@ -225,28 +296,72 @@ pub(super) async fn start_restore(
                     "age_identity",
                     Some(serde_json::json!({
                         "action": "distributed",
-                        "node_id": destination_node_id.as_str(),
+                        "node_id": executor_node_id.as_str(),
                         "key_name": key_name,
                     })),
                 )
                 .await;
 
                 // Send an updated secrets snapshot so the agent can persist the distributed key.
-                agent_snapshots::send_node_secrets_snapshot(
+                if let Err(error) = agent_snapshots::send_node_secrets_snapshot(
                     &state.db,
                     &state.secrets,
                     &state.agent_manager,
-                    &destination_node_id,
+                    &executor_node_id,
                 )
                 .await
-                .map_err(|e| AppError::bad_request("secrets_snapshot_failed", format!("{e:#}")))?;
+                {
+                    let msg = format!("{error:#}");
+                    let _ = operations_repo::complete_operation(
+                        &state.db,
+                        &op.id,
+                        operations_repo::OperationStatus::Failed,
+                        None,
+                        Some(&msg),
+                    )
+                    .await;
+                    return Err(AppError::bad_request("secrets_snapshot_failed", msg));
+                }
+            }
+        }
+
+        // Ensure any WebDAV destination secret exists in the executor scope.
+        if let bastion_core::agent_protocol::RestoreDestinationV1::Webdav { secret_name, .. } =
+            &destination_for_agent
+        {
+            if bastion_storage::secrets_repo::get_secret(
+                &state.db,
+                &state.secrets,
+                &executor_node_id,
+                "webdav",
+                secret_name,
+            )
+            .await?
+            .is_none()
+            {
+                let _ = operations_repo::complete_operation(
+                    &state.db,
+                    &op.id,
+                    operations_repo::OperationStatus::Failed,
+                    None,
+                    Some("missing webdav secret"),
+                )
+                .await;
+                return Err(AppError::bad_request(
+                    "missing_webdav_secret",
+                    "Missing WebDAV secret for executor node",
+                ));
             }
         }
 
         let task = RestoreTaskV1 {
             op_id: op.id.clone(),
             run_id: run_id.clone(),
-            destination_dir: destination_dir.clone(),
+            destination: Some(destination_for_agent),
+            destination_dir: match &req.destination {
+                RestoreDestination::LocalFs { directory, .. } => directory.trim().to_string(),
+                RestoreDestination::Webdav { .. } => String::new(),
+            },
             conflict_policy: conflict.as_str().to_string(),
             selection: req.selection.as_ref().map(|s| RestoreSelectionV1 {
                 files: s.files.clone(),
@@ -259,26 +374,55 @@ pub(super) async fn start_restore(
             task: Box::new(task),
         };
         let payload = serde_json::to_value(&msg)?;
-        agent_tasks_repo::upsert_task(
+        if let Err(error) = agent_tasks_repo::upsert_task(
             &state.db,
             &op.id,
-            &destination_node_id,
+            &executor_node_id,
             &run_id,
             "sent",
             &payload,
         )
-        .await?;
+        .await
+        {
+            let msg = format!("{error:#}");
+            let _ = operations_repo::complete_operation(
+                &state.db,
+                &op.id,
+                operations_repo::OperationStatus::Failed,
+                None,
+                Some(&msg),
+            )
+            .await;
+            return Err(AppError::bad_request("dispatch_failed", msg));
+        }
         state
             .agent_manager
-            .send_json(&destination_node_id, &msg)
+            .send_json(&executor_node_id, &msg)
             .await
-            .map_err(|e| AppError::bad_request("dispatch_failed", format!("{e:#}")))?;
+            .map_err(|e| {
+                let msg = format!("{e:#}");
+                let msg_for_op = msg.clone();
+                // Best-effort: mark operation failed so it doesn't remain stuck in running state.
+                // Ignore errors from completion, since we are already returning an error.
+                let db = state.db.clone();
+                let op_id = op.id.clone();
+                tokio::spawn(async move {
+                    let _ = operations_repo::complete_operation(
+                        &db,
+                        &op_id,
+                        operations_repo::OperationStatus::Failed,
+                        None,
+                        Some(&msg_for_op),
+                    )
+                    .await;
+                });
+                AppError::bad_request("dispatch_failed", msg)
+            })?;
 
         tracing::info!(
             op_id = %op.id,
             run_id = %run_id,
-            destination_node_id = %destination_node_id,
-            destination_dir = %destination_dir,
+            executor_node_id = %executor_node_id,
             conflict = %conflict.as_str(),
             "restore dispatched to agent"
         );
@@ -291,7 +435,7 @@ pub(super) async fn start_restore(
         state.config.data_dir.clone(),
         op.id.clone(),
         run_id.clone(),
-        std::path::PathBuf::from(&destination_dir),
+        destination_for_hub,
         conflict,
         req.selection,
     )
@@ -300,8 +444,7 @@ pub(super) async fn start_restore(
     tracing::info!(
         op_id = %op.id,
         run_id = %run_id,
-        destination_node_id = %destination_node_id,
-        destination_dir = %destination_dir,
+        executor_node_id = %executor_node_id,
         conflict = %conflict.as_str(),
         "restore requested"
     );

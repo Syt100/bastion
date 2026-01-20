@@ -3,6 +3,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use bastion_targets::{WebdavClient, WebdavCredentials};
+use url::Url;
+
 mod access;
 mod engine;
 mod entries_index;
@@ -63,6 +66,16 @@ pub enum PayloadDecryption {
     AgeX25519 { identity: String },
 }
 
+#[derive(Debug, Clone)]
+pub enum RestoreDestination {
+    LocalFs { directory: PathBuf },
+    Webdav {
+        base_url: String,
+        secret_name: String,
+        prefix: String,
+    },
+}
+
 pub fn restore_to_local_fs(
     payload: Box<dyn Read + Send>,
     destination_dir: PathBuf,
@@ -71,6 +84,56 @@ pub fn restore_to_local_fs(
     selection: Option<&RestoreSelection>,
 ) -> Result<(), anyhow::Error> {
     let mut sink = sinks::LocalFsSink::new(destination_dir, conflict);
+    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection)?;
+    engine.restore(payload)?;
+    Ok(())
+}
+
+pub fn restore_to_webdav(
+    payload: Box<dyn Read + Send>,
+    base_url: &str,
+    credentials: WebdavCredentials,
+    prefix: &str,
+    op_id: &str,
+    conflict: ConflictPolicy,
+    decryption: PayloadDecryption,
+    selection: Option<&RestoreSelection>,
+    staging_dir: PathBuf,
+) -> Result<(), anyhow::Error> {
+    let mut base_url = Url::parse(base_url.trim())?;
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+
+    let mut prefix_url = base_url;
+    {
+        let mut segs = prefix_url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("webdav base_url cannot be a base"))?;
+        for part in prefix
+            .trim()
+            .trim_matches('/')
+            .split('/')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            segs.push(part);
+        }
+    }
+    if !prefix_url.path().ends_with('/') {
+        prefix_url.set_path(&format!("{}/", prefix_url.path()));
+    }
+
+    let client = WebdavClient::new(prefix_url.clone(), credentials)?;
+    let handle = tokio::runtime::Handle::current();
+    let mut sink = sinks::WebdavSink::new(
+        handle,
+        client,
+        prefix_url,
+        conflict,
+        op_id.trim().to_string(),
+        staging_dir,
+    )?;
     let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection)?;
     engine.restore(payload)?;
     Ok(())

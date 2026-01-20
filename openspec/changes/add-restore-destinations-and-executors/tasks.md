@@ -18,11 +18,11 @@
 - [x] 3.5 Commit hub/agent changes (detailed message)
 
 ## 4. Restore destinations
-- [ ] 4.1 Implement `local_fs` destination on Hub (existing behavior via sink)
+- [x] 4.1 Implement `local_fs` destination on Hub (existing behavior via sink)
 - [x] 4.2 Implement `local_fs` destination on Agent (executor=agent)
-- [ ] 4.3 Implement `webdav` destination sink with prefix support
-- [ ] 4.4 Implement `.bastion-meta/` sidecar write for WebDAV destinations (per op_id)
-- [ ] 4.5 Commit restore destination changes (detailed message)
+- [x] 4.3 Implement `webdav` destination sink with prefix support
+- [x] 4.4 Implement `.bastion-meta/` sidecar write for WebDAV destinations (per op_id)
+- [x] 4.5 Commit restore destination changes (detailed message)
 
 ## 5. Web UI - Restore wizard updates
 - [ ] 5.1 Extend restore wizard to select destination type and node (for local_fs) with mobile-friendly layout

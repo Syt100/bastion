@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use bastion_core::agent_protocol::{BackupAgeIdentitySecretV1, WebdavSecretV1};
 use bastion_storage::secrets::{EncryptedSecret, SecretsCrypto};
+use bastion_targets::WebdavCredentials;
 
 use super::io::write_json_pretty_atomic;
 use super::paths::managed_secrets_path;
@@ -150,4 +151,53 @@ pub(in super::super) fn load_managed_backup_age_identity(
         return Ok(None);
     }
     Ok(Some(identity))
+}
+
+pub(in super::super) fn load_managed_webdav_credentials(
+    data_dir: &Path,
+    secret_name: &str,
+) -> Result<Option<WebdavCredentials>, anyhow::Error> {
+    let secret_name = secret_name.trim();
+    if secret_name.is_empty() {
+        return Ok(None);
+    }
+
+    let path = managed_secrets_path(data_dir);
+    let bytes = match std::fs::read(&path) {
+        Ok(v) => v,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+
+    let doc: ManagedSecretsFileV1 = serde_json::from_slice(&bytes)?;
+    if doc.v != 1 {
+        anyhow::bail!("unsupported managed secrets snapshot version: {}", doc.v);
+    }
+    let node_id = doc.node_id.as_str();
+
+    let Some(entry) = doc.webdav.iter().find(|e| e.name == secret_name) else {
+        return Ok(None);
+    };
+
+    let nonce: [u8; 24] = entry
+        .nonce
+        .clone()
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("invalid nonce length"))?;
+    let secret = EncryptedSecret {
+        kid: entry.kid,
+        nonce,
+        ciphertext: entry.ciphertext.clone(),
+    };
+
+    let crypto = SecretsCrypto::load_or_create(data_dir)?;
+    let plaintext = crypto.decrypt(node_id, "webdav", secret_name, &secret)?;
+    let payload = serde_json::from_slice::<WebdavSecretPayload>(&plaintext)?;
+
+    let username = payload.username.trim().to_string();
+    let password = payload.password.to_string();
+    if username.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(WebdavCredentials { username, password }))
 }

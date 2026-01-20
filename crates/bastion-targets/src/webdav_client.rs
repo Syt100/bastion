@@ -131,6 +131,27 @@ impl WebdavClient {
         }
     }
 
+    pub async fn put_bytes(
+        &self,
+        url: &Url,
+        bytes: Vec<u8>,
+        content_type: &'static str,
+    ) -> Result<(), anyhow::Error> {
+        tracing::debug!(url = %redact_url(url), size = bytes.len(), "webdav put bytes");
+        let res = self
+            .authed(self.http.put(url.clone()))
+            .header(CONTENT_TYPE, content_type)
+            .header(CONTENT_LENGTH, bytes.len() as u64)
+            .body(bytes)
+            .send()
+            .await?;
+
+        match res.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            s => Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+        }
+    }
+
     pub async fn put_file_with_retries(
         &self,
         url: &Url,

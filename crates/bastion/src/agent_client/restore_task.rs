@@ -11,8 +11,8 @@ use bastion_backup::restore::{self, PayloadDecryption};
 use bastion_core::backup_format::MANIFEST_NAME;
 use bastion_core::manifest::ManifestV1;
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, ArtifactStreamOpenV1, OperationEventV1, OperationResultV1, RestoreTaskV1,
-    PROTOCOL_VERSION,
+    AgentToHubMessageV1, ArtifactStreamOpenV1, OperationEventV1, OperationResultV1,
+    RestoreDestinationV1, RestoreTaskV1, PROTOCOL_VERSION,
 };
 
 use super::hub_stream::{HubStreamManager, HubStreamReader};
@@ -31,16 +31,18 @@ pub(super) async fn handle_restore_task(
 ) -> Result<(), anyhow::Error> {
     let op_id = task.op_id.trim().to_string();
     let run_id = task.run_id.trim().to_string();
-    let destination_dir = task.destination_dir.trim().to_string();
     if op_id.is_empty() {
         anyhow::bail!("restore task op_id is required");
     }
     if run_id.is_empty() {
         anyhow::bail!("restore task run_id is required");
     }
-    if destination_dir.is_empty() {
-        anyhow::bail!("restore task destination_dir is required");
-    }
+
+    let destination = task.destination.clone().unwrap_or_else(|| {
+        RestoreDestinationV1::LocalFs {
+            directory: task.destination_dir.clone(),
+        }
+    });
 
     send_op_event(tx, &op_id, "info", "start", "start", None).await?;
 
@@ -137,21 +139,73 @@ pub(super) async fn handle_restore_task(
         HUB_STREAM_PULL_TIMEOUT,
     );
 
-    let dest = PathBuf::from(&destination_dir);
-    let summary = tokio::task::spawn_blocking(move || {
-        restore::restore_to_local_fs(
-            Box::new(reader),
-            dest.clone(),
-            conflict,
-            decryption,
-            selection.as_ref(),
-        )?;
-        Ok::<_, anyhow::Error>(serde_json::json!({
-            "destination_dir": dest.to_string_lossy().to_string(),
-            "conflict_policy": conflict.as_str(),
-        }))
+    let data_dir_owned = data_dir.to_path_buf();
+    let restore_staging_root = data_dir_owned.join("restore_staging").join(op_id.clone());
+    let restore_staging_dir = restore_staging_root.join("webdav_sink");
+    let restore_staging_root_cleanup = restore_staging_root.clone();
+    let op_id_for_restore = op_id.clone();
+    let summary = tokio::task::spawn_blocking(move || match destination {
+        RestoreDestinationV1::LocalFs { directory } => {
+            let directory = directory.trim().to_string();
+            if directory.is_empty() {
+                anyhow::bail!("restore task destination.directory is required");
+            }
+            let dest = PathBuf::from(&directory);
+            restore::restore_to_local_fs(
+                Box::new(reader),
+                dest.clone(),
+                conflict,
+                decryption,
+                selection.as_ref(),
+            )?;
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "destination": { "type": "local_fs", "directory": dest.to_string_lossy().to_string() },
+                "conflict_policy": conflict.as_str(),
+            }))
+        }
+        RestoreDestinationV1::Webdav {
+            base_url,
+            secret_name,
+            prefix,
+        } => {
+            let base_url = base_url.trim().to_string();
+            let secret_name = secret_name.trim().to_string();
+            let prefix = prefix.trim().to_string();
+            if base_url.is_empty() {
+                anyhow::bail!("restore task destination.base_url is required");
+            }
+            if secret_name.is_empty() {
+                anyhow::bail!("restore task destination.secret_name is required");
+            }
+            if prefix.is_empty() {
+                anyhow::bail!("restore task destination.prefix is required");
+            }
+
+            let credentials =
+                super::managed::load_managed_webdav_credentials(&data_dir_owned, &secret_name)?
+                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", secret_name))?;
+
+            restore::restore_to_webdav(
+                Box::new(reader),
+                &base_url,
+                credentials,
+                &prefix,
+                &op_id_for_restore,
+                conflict,
+                decryption,
+                selection.as_ref(),
+                restore_staging_dir,
+            )?;
+            Ok::<_, anyhow::Error>(serde_json::json!({
+                "destination": { "type": "webdav", "base_url": base_url, "prefix": prefix },
+                "conflict_policy": conflict.as_str(),
+            }))
+        }
     })
     .await??;
+
+    // Best-effort cleanup for any staging created by the restore.
+    let _ = tokio::fs::remove_dir_all(restore_staging_root_cleanup).await;
 
     send_op_event(tx, &op_id, "info", "complete", "complete", None).await?;
 
