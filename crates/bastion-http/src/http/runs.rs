@@ -1,13 +1,50 @@
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::Query;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
 use bastion_backup::restore;
+use bastion_storage::runs_repo;
 
 use super::shared::require_session;
 use super::{AppError, AppState};
+
+#[derive(Debug, Serialize)]
+pub(super) struct RunResponse {
+    id: String,
+    job_id: String,
+    status: runs_repo::RunStatus,
+    started_at: i64,
+    ended_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    progress: Option<serde_json::Value>,
+    summary: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+pub(super) async fn get_run(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(run_id): Path<String>,
+) -> Result<Json<RunResponse>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let run = runs_repo::get_run(&state.db, &run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
+
+    Ok(Json(RunResponse {
+        id: run.id,
+        job_id: run.job_id,
+        status: run.status,
+        started_at: run.started_at,
+        ended_at: run.ended_at,
+        progress: run.progress,
+        summary: run.summary,
+        error: run.error,
+    }))
+}
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ListRunEntriesQuery {

@@ -282,10 +282,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/jobs/{id}/unarchive", post(jobs::unarchive_job))
         .route("/api/jobs/{id}/run", post(jobs::trigger_job_run))
         .route("/api/jobs/{id}/runs", get(jobs::list_job_runs))
+        .route("/api/runs/{id}", get(runs::get_run))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
-        .route("/api/runs/{id}/operations", get(operations::list_run_operations))
+        .route(
+            "/api/runs/{id}/operations",
+            get(operations::list_run_operations),
+        )
         .route("/api/runs/{id}/restore", post(operations::start_restore))
         .route("/api/runs/{id}/verify", post(operations::start_verify))
         .route(
@@ -377,3 +381,6 @@ mod bulk_operations_tests;
 
 #[cfg(test)]
 mod operations_tests;
+
+#[cfg(test)]
+mod runs_tests;
