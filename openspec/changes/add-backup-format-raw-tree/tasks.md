@@ -5,9 +5,9 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Core - Manifest and entries index extensions
-- [ ] 2.1 Add manifest field(s) to record artifact format (`archive_v1` vs `raw_tree_v1`)
-- [ ] 2.2 Extend entries index records to include metadata fields (best-effort; backward compatible)
-- [ ] 2.3 Commit core format changes (detailed message)
+- [x] 2.1 Add manifest field(s) to record artifact format (`archive_v1` vs `raw_tree_v1`)
+- [x] 2.2 Extend entries index records to include metadata fields (best-effort; backward compatible)
+- [x] 2.3 Commit core format changes (detailed message)
 
 ## 3. Backup - Build raw_tree_v1 for filesystem jobs
 - [ ] 3.1 Implement raw-tree builder that writes `data/<path>` and metadata records
