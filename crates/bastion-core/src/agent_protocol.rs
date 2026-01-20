@@ -177,6 +177,13 @@ pub struct WebdavSecretV1 {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BackupAgeIdentitySecretV1 {
+    pub name: String,
+    pub identity: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HubToAgentMessageV1 {
     Task {
@@ -228,6 +235,8 @@ pub enum HubToAgentMessageV1 {
         issued_at: i64,
         #[serde(default)]
         webdav: Vec<WebdavSecretV1>,
+        #[serde(default)]
+        backup_age_identities: Vec<BackupAgeIdentitySecretV1>,
     },
     ArtifactStreamOpen {
         v: u32,

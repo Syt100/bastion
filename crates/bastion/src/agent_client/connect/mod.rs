@@ -161,10 +161,10 @@ pub(super) async fn connect_and_run(
                             Ok(HubToAgentMessageV1::Pong { .. }) => {
                                 last_pong = tokio::time::Instant::now();
                             }
-                            Ok(HubToAgentMessageV1::SecretsSnapshot { v, node_id, issued_at, webdav })
+                            Ok(HubToAgentMessageV1::SecretsSnapshot { v, node_id, issued_at, webdav, backup_age_identities })
                                 if v == PROTOCOL_VERSION =>
                             {
-                                if handlers::handle_secrets_snapshot(identity, &data_dir, node_id, issued_at, webdav).await
+                                if handlers::handle_secrets_snapshot(identity, &data_dir, node_id, issued_at, webdav, backup_age_identities).await
                                     == handlers::HandlerFlow::Reconnect
                                 {
                                     break 'main LoopAction::Reconnect;

@@ -65,6 +65,43 @@ pub async fn ensure_age_identity(
     Ok(identity_str.expose_secret().to_string())
 }
 
+pub async fn distribute_age_identity_to_node(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    node_id: &str,
+    key_name: &str,
+) -> Result<(), anyhow::Error> {
+    let node_id = node_id.trim();
+    if node_id.is_empty() {
+        anyhow::bail!("node_id is required");
+    }
+
+    let key_name = key_name.trim();
+    if key_name.is_empty() {
+        anyhow::bail!("backup age identity key_name is empty");
+    }
+
+    let Some(bytes) =
+        secrets_repo::get_secret(db, secrets, HUB_NODE_ID, BACKUP_AGE_IDENTITY_KIND, key_name)
+            .await?
+    else {
+        anyhow::bail!("missing backup age identity: {}", key_name);
+    };
+
+    // Re-encrypt under the destination node scope (associated data includes node_id).
+    secrets_repo::upsert_secret(
+        db,
+        secrets,
+        node_id,
+        BACKUP_AGE_IDENTITY_KIND,
+        key_name,
+        &bytes,
+    )
+    .await?;
+
+    Ok(())
+}
+
 pub async fn ensure_payload_encryption(
     db: &SqlitePool,
     secrets: &SecretsCrypto,

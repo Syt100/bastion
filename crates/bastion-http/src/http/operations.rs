@@ -6,10 +6,14 @@ use tower_cookies::Cookies;
 
 use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
+use bastion_backup::backup_encryption;
 use bastion_backup::restore;
 use bastion_core::agent_protocol::{HubToAgentMessageV1, RestoreSelectionV1, RestoreTaskV1, PROTOCOL_VERSION};
 use bastion_core::HUB_NODE_ID;
+use bastion_core::job_spec;
+use bastion_engine::agent_snapshots;
 use bastion_storage::agent_tasks_repo;
+use bastion_storage::jobs_repo;
 use bastion_storage::operations_repo;
 use bastion_storage::runs_repo;
 
@@ -184,6 +188,59 @@ pub(super) async fn start_restore(
                 "agent_not_connected",
                 "destination agent is not connected",
             ));
+        }
+
+        // Ensure the destination agent has any required decryption key before we dispatch the task,
+        // so the agent can immediately start restoring once it pulls the manifest/payload.
+        let job = jobs_repo::get_job(&state.db, &run.job_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+        let spec = job_spec::parse_value(&job.spec)
+            .map_err(|e| AppError::bad_request("invalid_job_spec", format!("{e:#}")))?;
+        job_spec::validate(&spec)
+            .map_err(|e| AppError::bad_request("invalid_job_spec", format!("{e:#}")))?;
+
+        let pipeline = match &spec {
+            job_spec::JobSpecV1::Filesystem { pipeline, .. } => pipeline,
+            job_spec::JobSpecV1::Sqlite { pipeline, .. } => pipeline,
+            job_spec::JobSpecV1::Vaultwarden { pipeline, .. } => pipeline,
+        };
+        if let job_spec::EncryptionV1::AgeX25519 { key_name } = &pipeline.encryption {
+            let key_name = key_name.trim();
+            if !key_name.is_empty() {
+                backup_encryption::distribute_age_identity_to_node(
+                    &state.db,
+                    &state.secrets,
+                    &destination_node_id,
+                    key_name,
+                )
+                .await
+                .map_err(|e| AppError::bad_request("age_identity_distribute_failed", format!("{e:#}")))?;
+
+                let _ = operations_repo::append_event(
+                    &state.db,
+                    &op.id,
+                    "info",
+                    "age_identity",
+                    "age_identity",
+                    Some(serde_json::json!({
+                        "action": "distributed",
+                        "node_id": destination_node_id.as_str(),
+                        "key_name": key_name,
+                    })),
+                )
+                .await;
+
+                // Send an updated secrets snapshot so the agent can persist the distributed key.
+                agent_snapshots::send_node_secrets_snapshot(
+                    &state.db,
+                    &state.secrets,
+                    &state.agent_manager,
+                    &destination_node_id,
+                )
+                .await
+                .map_err(|e| AppError::bad_request("secrets_snapshot_failed", format!("{e:#}")))?;
+            }
         }
 
         let task = RestoreTaskV1 {

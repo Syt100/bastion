@@ -72,8 +72,30 @@ pub(super) async fn handle_restore_task(
 
     let decryption = match manifest.pipeline.encryption.as_str() {
         "none" => PayloadDecryption::None,
-        // TODO(spec): implement backup age identity distribution + local agent key storage.
-        "age" => anyhow::bail!("encrypted restore on agent is not supported yet"),
+        "age" => {
+            let key_name = manifest
+                .pipeline
+                .encryption_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("missing manifest.pipeline.encryption_key"))?;
+
+            let identity = super::managed::load_managed_backup_age_identity(data_dir, key_name)?
+                .ok_or_else(|| anyhow::anyhow!("missing backup age identity: {}", key_name))?;
+
+            send_op_event(
+                tx,
+                &op_id,
+                "info",
+                "age_identity",
+                "age_identity",
+                Some(serde_json::json!({ "key_name": key_name })),
+            )
+            .await?;
+
+            PayloadDecryption::AgeX25519 { identity }
+        }
         other => anyhow::bail!("unsupported manifest.pipeline.encryption: {other}"),
     };
 
@@ -173,4 +195,3 @@ async fn send_op_event(
         .await?;
     Ok(())
 }
-

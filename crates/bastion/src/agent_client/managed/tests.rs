@@ -11,8 +11,20 @@ fn managed_secrets_snapshot_is_persisted_encrypted() {
         password: "pass".to_string(),
         updated_at: 10,
     }];
+    let backup_age_identities = vec![bastion_core::agent_protocol::BackupAgeIdentitySecretV1 {
+        name: "key1".to_string(),
+        identity: "AGE-SECRET-KEY-1".to_string(),
+        updated_at: 11,
+    }];
 
-    super::save_managed_secrets_snapshot(tmp.path(), "a", 123, &webdav).unwrap();
+    super::save_managed_secrets_snapshot(
+        tmp.path(),
+        "a",
+        123,
+        &webdav,
+        &backup_age_identities,
+    )
+    .unwrap();
 
     let path = managed_secrets_path(tmp.path());
     assert!(path.exists());
@@ -20,6 +32,7 @@ fn managed_secrets_snapshot_is_persisted_encrypted() {
     let bytes = std::fs::read(&path).unwrap();
     let text = String::from_utf8_lossy(&bytes);
     assert!(!text.contains("pass"));
+    assert!(!text.contains("AGE-SECRET-KEY-1"));
 
     let saved: ManagedSecretsFileV1 = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(saved.v, 1);
@@ -30,6 +43,17 @@ fn managed_secrets_snapshot_is_persisted_encrypted() {
     assert_eq!(saved.webdav[0].updated_at, 10);
     assert_eq!(saved.webdav[0].nonce.len(), 24);
     assert!(!saved.webdav[0].ciphertext.is_empty());
+
+    assert_eq!(saved.backup_age_identities.len(), 1);
+    assert_eq!(saved.backup_age_identities[0].name, "key1");
+    assert_eq!(saved.backup_age_identities[0].updated_at, 11);
+    assert_eq!(saved.backup_age_identities[0].nonce.len(), 24);
+    assert!(!saved.backup_age_identities[0].ciphertext.is_empty());
+
+    let loaded = super::load_managed_backup_age_identity(tmp.path(), "key1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded, "AGE-SECRET-KEY-1");
 
     assert!(tmp.path().join("master.key").exists());
 }

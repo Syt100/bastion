@@ -7,8 +7,8 @@ use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
 
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, BackupRunTaskV1, JobConfigV1, OperationResultV1, PROTOCOL_VERSION,
-    RestoreTaskV1, WebdavSecretV1,
+    AgentToHubMessageV1, BackupAgeIdentitySecretV1, BackupRunTaskV1, JobConfigV1,
+    OperationResultV1, PROTOCOL_VERSION, RestoreTaskV1, WebdavSecretV1,
 };
 use bastion_core::run_failure::RunFailedWithSummary;
 
@@ -42,6 +42,7 @@ pub(super) async fn handle_secrets_snapshot(
     node_id: String,
     issued_at: i64,
     webdav: Vec<WebdavSecretV1>,
+    backup_age_identities: Vec<BackupAgeIdentitySecretV1>,
 ) -> HandlerFlow {
     if node_id != identity.agent_id {
         warn!(
@@ -52,7 +53,13 @@ pub(super) async fn handle_secrets_snapshot(
         return HandlerFlow::Continue;
     }
 
-    if let Err(error) = save_managed_secrets_snapshot(data_dir, &node_id, issued_at, &webdav) {
+    if let Err(error) = save_managed_secrets_snapshot(
+        data_dir,
+        &node_id,
+        issued_at,
+        &webdav,
+        &backup_age_identities,
+    ) {
         warn!(
             agent_id = %identity.agent_id,
             error = %error,
@@ -62,6 +69,7 @@ pub(super) async fn handle_secrets_snapshot(
         debug!(
             agent_id = %identity.agent_id,
             webdav = webdav.len(),
+            backup_age_identities = backup_age_identities.len(),
             "persisted secrets snapshot"
         );
     }

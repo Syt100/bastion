@@ -1,6 +1,7 @@
 use bastion_core::agent;
 use bastion_core::agent_protocol::{
-    HubToAgentMessageV1, JobConfigV1, OverlapPolicyV1, PROTOCOL_VERSION, WebdavSecretV1,
+    BackupAgeIdentitySecretV1, HubToAgentMessageV1, JobConfigV1, OverlapPolicyV1, PROTOCOL_VERSION,
+    WebdavSecretV1,
 };
 use bastion_core::job_spec;
 use serde::Deserialize;
@@ -43,11 +44,31 @@ pub async fn send_node_secrets_snapshot(
         });
     }
 
+    let list = secrets_repo::list_secrets(db, node_id, "backup_age_identity").await?;
+    let mut backup_age_identities = Vec::with_capacity(list.len());
+    for entry in list {
+        let Some(bytes) = secrets_repo::get_secret(db, secrets, node_id, "backup_age_identity", &entry.name).await? else {
+            continue;
+        };
+
+        let identity = String::from_utf8(bytes)?.trim().to_string();
+        if identity.is_empty() {
+            continue;
+        }
+
+        backup_age_identities.push(BackupAgeIdentitySecretV1 {
+            name: entry.name,
+            identity,
+            updated_at: entry.updated_at,
+        });
+    }
+
     let msg = HubToAgentMessageV1::SecretsSnapshot {
         v: PROTOCOL_VERSION,
         node_id: node_id.to_string(),
         issued_at: time::OffsetDateTime::now_utc().unix_timestamp(),
         webdav,
+        backup_age_identities,
     };
 
     agent_manager.send_json(node_id, &msg).await?;
