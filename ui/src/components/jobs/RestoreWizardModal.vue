@@ -13,6 +13,7 @@ import RunEntriesPickerModal, {
   type RunEntriesSelection,
 } from '@/components/jobs/RunEntriesPickerModal.vue'
 import FsPathPickerModal, { type FsPathPickerModalExpose } from '@/components/fs/FsPathPickerModal.vue'
+import WebdavPathPickerModal, { type WebdavPathPickerModalExpose } from '@/components/webdav/WebdavPathPickerModal.vue'
 
 export type RestoreWizardModalExpose = {
   open: (runId: string, opts?: { defaultNodeId?: string | null }) => void
@@ -43,6 +44,7 @@ const conflictPolicy = ref<ConflictPolicy>('overwrite')
 const selection = ref<RunEntriesSelection | null>(null)
 const entriesPicker = ref<RunEntriesPickerModalExpose | null>(null)
 const fsPicker = ref<FsPathPickerModalExpose | null>(null)
+const webdavPicker = ref<WebdavPathPickerModalExpose | null>(null)
 
 const conflictOptions = computed(() => [
   { label: t('restore.conflict.overwrite'), value: 'overwrite' },
@@ -114,6 +116,31 @@ function openLocalFsDirectoryPicker(): void {
 
 function onFsPicked(paths: string[]): void {
   localFsDirectory.value = paths[0] || ''
+}
+
+function openWebdavPrefixPicker(): void {
+  const baseUrl = webdavBaseUrl.value.trim()
+  const secretName = webdavSecretName.value.trim()
+  if (!baseUrl || !secretName) {
+    message.error(t('errors.webdavBrowseRequiresBaseUrlAndSecret'))
+    return
+  }
+
+  const prefix = webdavPrefix.value.trim().replace(/^\/+/, '').replace(/\/+$/, '')
+  const initialPath = prefix ? `/${prefix}` : '/'
+  webdavPicker.value?.open(
+    { nodeId: webdavNodeId.value, baseUrl, secretName },
+    { mode: 'single_dir', path: initialPath },
+  )
+}
+
+function onWebdavPicked(paths: string[]): void {
+  const picked = (paths[0] || '').trim()
+  if (!picked || picked === '/') {
+    message.error(t('errors.webdavPrefixRootNotAllowed'))
+    return
+  }
+  webdavPrefix.value = picked.replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
 function clearSelection(): void {
@@ -208,7 +235,14 @@ defineExpose<RestoreWizardModalExpose>({ open })
           </n-form-item>
           <n-form-item :label="t('restore.fields.webdavPrefix')">
             <div class="space-y-1 w-full">
-              <n-input v-model:value="webdavPrefix" :placeholder="t('restore.fields.webdavPrefixPlaceholder')" />
+              <div class="flex gap-2">
+                <n-input
+                  v-model:value="webdavPrefix"
+                  class="flex-1"
+                  :placeholder="t('restore.fields.webdavPrefixPlaceholder')"
+                />
+                <n-button @click="openWebdavPrefixPicker">{{ t('restore.actions.browse') }}</n-button>
+              </div>
               <div class="text-xs opacity-70">{{ t('restore.fields.webdavPrefixHelp') }}</div>
             </div>
           </n-form-item>
@@ -246,4 +280,5 @@ defineExpose<RestoreWizardModalExpose>({ open })
 
   <RunEntriesPickerModal ref="entriesPicker" @picked="onPicked" />
   <FsPathPickerModal ref="fsPicker" @picked="onFsPicked" />
+  <WebdavPathPickerModal ref="webdavPicker" @picked="onWebdavPicked" />
 </template>

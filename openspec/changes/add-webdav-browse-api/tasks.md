@@ -21,10 +21,10 @@
 - [x] 4.3 Commit hub/agent changes (detailed message)
 
 ## 5. Web UI - Picker integration
-- [ ] 5.1 Implement WebDAV picker data source using the new API
-- [ ] 5.2 Add “Browse” for WebDAV prefix selection in restore wizard (mobile-friendly)
-- [ ] 5.3 Add i18n strings and validation messages
-- [ ] 5.4 Commit UI changes (detailed message)
+- [x] 5.1 Implement WebDAV picker data source using the new API
+- [x] 5.2 Add “Browse” for WebDAV prefix selection in restore wizard (mobile-friendly)
+- [x] 5.3 Add i18n strings and validation messages
+- [x] 5.4 Commit UI changes (detailed message)
 
 ## 6. Verification
 - [ ] 6.1 Run `cargo test --workspace`
