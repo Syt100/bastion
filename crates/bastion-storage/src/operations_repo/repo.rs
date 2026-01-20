@@ -4,19 +4,60 @@ use uuid::Uuid;
 
 use super::types::{Operation, OperationEvent, OperationKind, OperationStatus};
 
+fn parse_operation_row(row: &sqlx::sqlite::SqliteRow) -> Result<Operation, anyhow::Error> {
+    let kind = row.get::<String, _>("kind").parse::<OperationKind>()?;
+    let status = row
+        .get::<String, _>("status")
+        .parse::<OperationStatus>()?;
+    let summary_json = row.get::<Option<String>, _>("summary_json");
+    let summary = match summary_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
+
+    Ok(Operation {
+        id: row.get::<String, _>("id"),
+        kind,
+        status,
+        created_at: row.get::<i64, _>("created_at"),
+        started_at: row.get::<i64, _>("started_at"),
+        ended_at: row.get::<Option<i64>, _>("ended_at"),
+        summary,
+        error: row.get::<Option<String>, _>("error"),
+    })
+}
+
 pub async fn create_operation(
     db: &SqlitePool,
     kind: OperationKind,
+    subject: Option<(&str, &str)>,
 ) -> Result<Operation, anyhow::Error> {
     let id = Uuid::new_v4().to_string();
     let now = OffsetDateTime::now_utc().unix_timestamp();
+
+    let subject = subject.and_then(|(k, id)| {
+        let k = k.trim();
+        let id = id.trim();
+        if k.is_empty() || id.is_empty() {
+            None
+        } else {
+            Some((k, id))
+        }
+    });
+    let (subject_kind, subject_id) = match subject {
+        Some((k, id)) => (Some(k), Some(id)),
+        None => (None, None),
+    };
+
     sqlx::query(
-        "INSERT INTO operations (id, kind, status, created_at, started_at) VALUES (?, ?, 'running', ?, ?)",
+        "INSERT INTO operations (id, kind, status, created_at, started_at, subject_kind, subject_id) VALUES (?, ?, 'running', ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(kind.as_str())
     .bind(now)
     .bind(now)
+    .bind(subject_kind)
+    .bind(subject_id)
     .execute(db)
     .await?;
 
@@ -47,24 +88,29 @@ pub async fn get_operation(
         return Ok(None);
     };
 
-    let kind = row.get::<String, _>("kind").parse::<OperationKind>()?;
-    let status = row.get::<String, _>("status").parse::<OperationStatus>()?;
-    let summary_json = row.get::<Option<String>, _>("summary_json");
-    let summary = match summary_json {
-        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
-        None => None,
-    };
+    Ok(Some(parse_operation_row(&row)?))
+}
 
-    Ok(Some(Operation {
-        id: row.get::<String, _>("id"),
-        kind,
-        status,
-        created_at: row.get::<i64, _>("created_at"),
-        started_at: row.get::<i64, _>("started_at"),
-        ended_at: row.get::<Option<i64>, _>("ended_at"),
-        summary,
-        error: row.get::<Option<String>, _>("error"),
-    }))
+pub async fn list_operations_by_subject(
+    db: &SqlitePool,
+    subject_kind: &str,
+    subject_id: &str,
+    limit: u32,
+) -> Result<Vec<Operation>, anyhow::Error> {
+    let rows = sqlx::query(
+        "SELECT id, kind, status, created_at, started_at, ended_at, summary_json, error FROM operations WHERE subject_kind = ? AND subject_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
+    )
+    .bind(subject_kind)
+    .bind(subject_id)
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
+
+    let mut ops = Vec::with_capacity(rows.len());
+    for row in rows {
+        ops.push(parse_operation_row(&row)?);
+    }
+    Ok(ops)
 }
 
 pub async fn append_event(

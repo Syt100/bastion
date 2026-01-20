@@ -195,7 +195,11 @@ pub(super) async fn start_restore(
         .filter(|v| !v.is_empty())
         .unwrap_or(default_executor_node_id);
 
-    let op = operations_repo::create_operation(&state.db, operations_repo::OperationKind::Restore)
+    let op = operations_repo::create_operation(
+        &state.db,
+        operations_repo::OperationKind::Restore,
+        Some(("run", run_id.as_str())),
+    )
         .await?;
     let _ = operations_repo::append_event(
         &state.db,
@@ -470,7 +474,11 @@ pub(super) async fn start_verify(
         ));
     }
 
-    let op = operations_repo::create_operation(&state.db, operations_repo::OperationKind::Verify)
+    let op = operations_repo::create_operation(
+        &state.db,
+        operations_repo::OperationKind::Verify,
+        Some(("run", run_id.as_str())),
+    )
         .await?;
     let _ = operations_repo::append_event(
         &state.db,
@@ -536,4 +544,33 @@ pub(super) async fn list_operation_events(
     let _session = require_session(&state, &cookies).await?;
     let events = operations_repo::list_events(&state.db, &op_id, 500).await?;
     Ok(Json(events))
+}
+
+pub(super) async fn list_run_operations(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(run_id): Path<String>,
+) -> Result<Json<Vec<OperationResponse>>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let run = runs_repo::get_run(&state.db, &run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
+
+    // Run exists; list operations linked to it.
+    let ops = operations_repo::list_operations_by_subject(&state.db, "run", &run.id, 200).await?;
+    Ok(Json(
+        ops.into_iter()
+            .map(|op| OperationResponse {
+                id: op.id,
+                kind: op.kind,
+                status: op.status,
+                created_at: op.created_at,
+                started_at: op.started_at,
+                ended_at: op.ended_at,
+                summary: op.summary,
+                error: op.error,
+            })
+            .collect(),
+    ))
 }

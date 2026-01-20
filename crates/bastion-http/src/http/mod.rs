@@ -285,6 +285,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
+        .route("/api/runs/{id}/operations", get(operations::list_run_operations))
         .route("/api/runs/{id}/restore", post(operations::start_restore))
         .route("/api/runs/{id}/verify", post(operations::start_verify))
         .route(
@@ -373,3 +374,6 @@ mod filter_multiselect_tests;
 
 #[cfg(test)]
 mod bulk_operations_tests;
+
+#[cfg(test)]
+mod operations_tests;
