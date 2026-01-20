@@ -22,6 +22,7 @@ mod auth;
 mod bulk_operations;
 mod error;
 mod fs;
+mod list_paging;
 mod jobs;
 mod maintenance;
 mod middleware;
@@ -32,6 +33,7 @@ mod secrets;
 mod settings;
 mod shared;
 mod ui;
+mod webdav;
 
 use error::AppError;
 
@@ -203,6 +205,10 @@ pub fn router(state: AppState) -> Router {
                 .delete(secrets::delete_webdav_secret_node),
         )
         .route("/api/nodes/{node_id}/fs/list", get(fs::fs_list))
+        .route(
+            "/api/nodes/{node_id}/webdav/list",
+            get(webdav::webdav_list).post(webdav::webdav_list_post),
+        )
         .route(
             "/api/secrets/wecom-bot",
             get(secrets::list_wecom_bot_secrets),

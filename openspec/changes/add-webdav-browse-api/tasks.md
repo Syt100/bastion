@@ -10,10 +10,10 @@
 - [x] 2.3 Commit targets-webdav changes (detailed message)
 
 ## 3. Control-plane - WebDAV list endpoint
-- [ ] 3.1 Add `GET/POST /api/nodes/{node_id}/webdav/list` endpoint and request/response types
-- [ ] 3.2 Implement hub execution and agent forwarding (node-scoped)
-- [ ] 3.3 Map errors to stable picker-friendly error codes
-- [ ] 3.4 Commit control-plane changes (detailed message)
+- [x] 3.1 Add `GET/POST /api/nodes/{node_id}/webdav/list` endpoint and request/response types
+- [x] 3.2 Implement hub execution and agent forwarding (node-scoped)
+- [x] 3.3 Map errors to stable picker-friendly error codes
+- [x] 3.4 Commit control-plane changes (detailed message)
 
 ## 4. Hub↔Agent protocol forwarding
 - [x] 4.1 Add Hub↔Agent message types for WebDAV list requests/results

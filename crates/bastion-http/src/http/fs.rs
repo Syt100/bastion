@@ -4,13 +4,16 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::Query;
-use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 use tracing::debug;
 
 use bastion_core::HUB_NODE_ID;
 
+use super::list_paging::{
+    CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key, parse_sort_by,
+    parse_sort_dir, rank_kind,
+};
 use super::shared::require_session;
 use super::{AppError, AppState};
 
@@ -168,159 +171,6 @@ struct FsListPage {
     entries: Vec<FsListEntry>,
     next_cursor: Option<String>,
     total: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SortBy {
-    Name,
-    Mtime,
-    Size,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SortDir {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SortKey {
-    by: SortBy,
-    dir: SortDir,
-    rank: u8,
-    name: String,
-    mtime: i64,
-    size: u64,
-}
-
-impl PartialOrd for SortKey {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for SortKey {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
-        // Ensure a total order even if sort options differ (should not happen in practice).
-        let order = (self.by as u8, self.dir as u8, self.rank).cmp(&(
-            other.by as u8,
-            other.dir as u8,
-            other.rank,
-        ));
-        if order != Ordering::Equal {
-            return order;
-        }
-
-        match self.by {
-            SortBy::Name => {
-                let o = match self.dir {
-                    SortDir::Asc => self.name.cmp(&other.name),
-                    SortDir::Desc => other.name.cmp(&self.name),
-                };
-                if o != Ordering::Equal {
-                    return o;
-                }
-                Ordering::Equal
-            }
-            SortBy::Mtime => {
-                let o = match self.dir {
-                    SortDir::Asc => self.mtime.cmp(&other.mtime),
-                    SortDir::Desc => other.mtime.cmp(&self.mtime),
-                };
-                if o != Ordering::Equal {
-                    return o;
-                }
-                self.name.cmp(&other.name)
-            }
-            SortBy::Size => {
-                let o = match self.dir {
-                    SortDir::Asc => self.size.cmp(&other.size),
-                    SortDir::Desc => other.size.cmp(&self.size),
-                };
-                if o != Ordering::Equal {
-                    return o;
-                }
-                self.name.cmp(&other.name)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CursorKey {
-    rank: u8,
-    name: String,
-    #[serde(default)]
-    sort_by: Option<SortBy>,
-    #[serde(default)]
-    sort_dir: Option<SortDir>,
-    #[serde(default)]
-    mtime: Option<i64>,
-    #[serde(default)]
-    size: Option<u64>,
-}
-
-fn encode_cursor_key(key: &CursorKey) -> String {
-    let json = serde_json::to_vec(key).unwrap_or_default();
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
-}
-
-fn decode_cursor_key(cursor: &str) -> Result<CursorKey, AppError> {
-    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(cursor)
-        .map_err(|_| AppError::bad_request("invalid_cursor", "invalid cursor encoding"))?;
-    serde_json::from_slice::<CursorKey>(&bytes)
-        .map_err(|_| AppError::bad_request("invalid_cursor", "invalid cursor payload"))
-}
-
-fn rank_kind(kind: &str, type_sort: Option<&str>) -> u8 {
-    let file_like = kind == "file" || kind == "symlink";
-    match type_sort {
-        Some("file_first") => {
-            if file_like {
-                0
-            } else if kind == "dir" {
-                1
-            } else {
-                2
-            }
-        }
-        _ => {
-            if kind == "dir" {
-                0
-            } else if file_like {
-                1
-            } else {
-                2
-            }
-        }
-    }
-}
-
-fn parse_sort_by(raw: Option<String>) -> Result<SortBy, AppError> {
-    match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
-        None => Ok(SortBy::Name),
-        Some("name") => Ok(SortBy::Name),
-        Some("mtime") => Ok(SortBy::Mtime),
-        Some("size") => Ok(SortBy::Size),
-        Some(_) => Err(AppError::bad_request("invalid_sort_by", "invalid sort_by")),
-    }
-}
-
-fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
-    match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
-        None => Ok(SortDir::Asc),
-        Some("asc") => Ok(SortDir::Asc),
-        Some("desc") => Ok(SortDir::Desc),
-        Some(_) => Err(AppError::bad_request(
-            "invalid_sort_dir",
-            "invalid sort_dir",
-        )),
-    }
 }
 
 fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage, AppError> {
