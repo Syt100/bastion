@@ -83,7 +83,9 @@ pub(super) async fn restore_operation(
     let decryption = super::util::resolve_payload_decryption(db, secrets, &manifest).await?;
 
     enum ResolvedDestination {
-        LocalFs { directory: std::path::PathBuf },
+        LocalFs {
+            directory: std::path::PathBuf,
+        },
         Webdav {
             prefix_url: Url,
             credentials: WebdavCredentials,

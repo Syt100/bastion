@@ -79,7 +79,11 @@ pub struct WebdavHttpError {
 
 impl std::fmt::Display for WebdavHttpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "webdav request failed: HTTP {}: {}", self.status, self.message)
+        write!(
+            f,
+            "webdav request failed: HTTP {}: {}",
+            self.status, self.message
+        )
     }
 }
 
@@ -232,7 +236,10 @@ impl WebdavClient {
         }
     }
 
-    pub async fn propfind_depth1(&self, url: &Url) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
+    pub async fn propfind_depth1(
+        &self,
+        url: &Url,
+    ) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
         const BODY: &str = r#"<?xml version="1.0" encoding="utf-8" ?>
 <D:propfind xmlns:D="DAV:">
   <D:prop>
@@ -461,12 +468,10 @@ fn parse_propfind_multistatus(xml: &str) -> Result<Vec<WebdavPropfindEntry>, any
                 .and_then(|n| n.text())
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
+                && let Ok(t) = httpdate::parse_http_date(v)
+                && let Ok(d) = t.duration_since(UNIX_EPOCH)
             {
-                if let Ok(t) = httpdate::parse_http_date(v) {
-                    if let Ok(d) = t.duration_since(UNIX_EPOCH) {
-                        mtime = Some(d.as_secs() as i64);
-                    }
-                }
+                mtime = Some(d.as_secs() as i64);
             }
 
             break;
@@ -520,18 +525,15 @@ fn basename_from_href(href: &str) -> String {
     if trimmed == "/" || trimmed.is_empty() {
         return "/".to_string();
     }
-    trimmed
-        .rsplit('/')
-        .next()
-        .unwrap_or(trimmed)
-        .to_string()
+    trimmed.rsplit('/').next().unwrap_or(trimmed).to_string()
 }
 
 fn filter_depth1_self(
     request_url: &Url,
     entries: &mut Vec<WebdavPropfindEntry>,
 ) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
-    let request_href = decode_href_path(request_url.path()).unwrap_or_else(|| request_url.path().to_string());
+    let request_href =
+        decode_href_path(request_url.path()).unwrap_or_else(|| request_url.path().to_string());
     let request_href_slash = if request_href.ends_with('/') {
         request_href.clone()
     } else {
@@ -541,13 +543,12 @@ fn filter_depth1_self(
     if let Some(self_entry) = entries
         .iter()
         .find(|e| e.href == request_href || e.href == request_href_slash)
+        && self_entry.kind != "dir"
     {
-        if self_entry.kind != "dir" {
-            return Err(WebdavNotDirectoryError {
-                href: self_entry.href.clone(),
-            }
-            .into());
+        return Err(WebdavNotDirectoryError {
+            href: self_entry.href.clone(),
         }
+        .into());
     }
 
     entries.retain(|e| e.href != request_href && e.href != request_href_slash);
@@ -556,7 +557,9 @@ fn filter_depth1_self(
 
 #[cfg(test)]
 mod tests {
-    use super::{basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus};
+    use super::{
+        basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus,
+    };
     use url::Url;
 
     #[test]

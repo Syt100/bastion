@@ -10,13 +10,12 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 use url::Url;
+use uuid::Uuid;
 
 use bastion_backup::restore::sources::{
     ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource,
 };
-use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_core::HUB_NODE_ID;
 use bastion_core::agent_protocol::{
     AgentToHubMessageV1, ArtifactStreamOpenResultV1, HubToAgentMessageV1, PROTOCOL_VERSION,
@@ -24,6 +23,7 @@ use bastion_core::agent_protocol::{
 use bastion_core::agent_stream::{
     ArtifactChunkFrameV1Flags, decode_artifact_chunk_frame_v1, encode_artifact_chunk_frame_v1,
 };
+use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_core::job_spec;
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
 use bastion_engine::agent_manager::AgentManager;
@@ -78,6 +78,7 @@ pub(in crate::http) async fn agent_ws(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_agent_socket(
     data_dir: PathBuf,
     db: SqlitePool,
@@ -396,10 +397,10 @@ async fn handle_agent_socket(
                         };
 
                         // Best-effort: close any previous stream with the same id.
-                        if let Some(prev) = hub_streams.remove(&stream_id) {
-                            if let Some(dir) = prev.cleanup_dir {
-                                let _ = tokio::fs::remove_dir_all(dir).await;
-                            }
+                        if let Some(prev) = hub_streams.remove(&stream_id)
+                            && let Some(dir) = prev.cleanup_dir
+                        {
+                            let _ = tokio::fs::remove_dir_all(dir).await;
                         }
 
                         let opened = open_hub_artifact_stream(
@@ -440,14 +441,14 @@ async fn handle_agent_socket(
                             continue;
                         };
 
-                        let max_bytes = (req.max_bytes as usize)
-                            .clamp(1, ARTIFACT_STREAM_MAX_BYTES);
+                        let max_bytes =
+                            (req.max_bytes as usize).clamp(1, ARTIFACT_STREAM_MAX_BYTES);
                         let reader = stream.reader.clone();
                         let read_res = tokio::task::spawn_blocking(move || {
                             let mut buf = vec![0u8; max_bytes];
-                            let mut guard = reader
-                                .lock()
-                                .map_err(|_| std::io::Error::other("stream reader lock poisoned"))?;
+                            let mut guard = reader.lock().map_err(|_| {
+                                std::io::Error::other("stream reader lock poisoned")
+                            })?;
                             let n = guard.read(&mut buf)?;
                             buf.truncate(n);
                             Ok::<_, std::io::Error>(buf)
@@ -463,10 +464,10 @@ async fn handle_agent_socket(
                                     error = %error,
                                     "artifact stream read failed"
                                 );
-                                if let Some(prev) = hub_streams.remove(&stream_id) {
-                                    if let Some(dir) = prev.cleanup_dir {
-                                        let _ = tokio::fs::remove_dir_all(dir).await;
-                                    }
+                                if let Some(prev) = hub_streams.remove(&stream_id)
+                                    && let Some(dir) = prev.cleanup_dir
+                                {
+                                    let _ = tokio::fs::remove_dir_all(dir).await;
                                 }
                                 continue;
                             }
@@ -491,12 +492,11 @@ async fn handle_agent_socket(
                             .send(&agent_id, Message::Binary(frame.into()))
                             .await;
 
-                        if eof {
-                            if let Some(prev) = hub_streams.remove(&stream_id) {
-                                if let Some(dir) = prev.cleanup_dir {
-                                    let _ = tokio::fs::remove_dir_all(dir).await;
-                                }
-                            }
+                        if eof
+                            && let Some(prev) = hub_streams.remove(&stream_id)
+                            && let Some(dir) = prev.cleanup_dir
+                        {
+                            let _ = tokio::fs::remove_dir_all(dir).await;
                         }
                     }
                     Ok(AgentToHubMessageV1::ArtifactStreamClose { v, req })
@@ -662,8 +662,8 @@ async fn open_hub_artifact_stream(
                 ))
             }
             RunArtifactsLocation::LocalDir { node_id, run_dir } => {
-                let manifest = read_agent_manifest(agent_manager, &node_id, op_id, run_id, &run_dir)
-                    .await?;
+                let manifest =
+                    read_agent_manifest(agent_manager, &node_id, op_id, run_id, &run_dir).await?;
                 let size = Some(manifest.artifacts.iter().map(|p| p.size).sum::<u64>());
 
                 let reader = RemoteAgentPartsReader::new(
@@ -721,19 +721,11 @@ async fn open_hub_artifact_stream(
                 ))
             }
             RunArtifactsLocation::LocalDir { node_id, run_dir } => {
-                let (reader, size) =
-                    {
-                        let path = run_dir.join(artifact);
-                        open_agent_file_reader(
-                            agent_manager,
-                            &node_id,
-                            op_id,
-                            run_id,
-                            artifact,
-                            &path,
-                        )
+                let (reader, size) = {
+                    let path = run_dir.join(artifact);
+                    open_agent_file_reader(agent_manager, &node_id, op_id, run_id, artifact, &path)
                         .await?
-                    };
+                };
                 Ok((
                     HubArtifactStream {
                         reader: Arc::new(Mutex::new(reader)),

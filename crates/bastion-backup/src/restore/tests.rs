@@ -9,7 +9,7 @@ use uuid::Uuid;
 use super::entries_index::{ListChildrenFromEntriesIndexOptions, list_children_from_entries_index};
 use super::unpack::{PayloadDecryption, restore_from_parts, safe_join};
 use super::{ConflictPolicy, RestoreSelection};
-use crate::backup::PayloadEncryption;
+use crate::backup::{BuildPipelineOptions, PayloadEncryption};
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 use bastion_core::manifest::ArtifactFormatV1;
 
@@ -158,10 +158,12 @@ fn restore_raw_tree_to_local_fs_copies_files() {
         &job_id,
         &run_id,
         OffsetDateTime::now_utc(),
-        ArtifactFormatV1::RawTreeV1,
         &source,
-        &PayloadEncryption::None,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::RawTreeV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -169,13 +171,9 @@ fn restore_raw_tree_to_local_fs_copies_files() {
 
     let target_base = tmp.path().join("target");
     std::fs::create_dir_all(&target_base).unwrap();
-    let run_dir = bastion_targets::local_dir::store_run(
-        &target_base,
-        &job_id,
-        &run_id,
-        &build.artifacts,
-    )
-    .unwrap();
+    let run_dir =
+        bastion_targets::local_dir::store_run(&target_base, &job_id, &run_id, &build.artifacts)
+            .unwrap();
 
     let entries_index_path = run_dir.join(bastion_core::backup_format::ENTRIES_INDEX_NAME);
     let staging_dir = tmp.path().join("staging");
@@ -301,10 +299,12 @@ fn restore_from_parts_extracts_tar_zstd_age() {
         &job_id,
         &run_id,
         OffsetDateTime::now_utc(),
-        bastion_core::manifest::ArtifactFormatV1::ArchiveV1,
         &source,
-        &encryption,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &encryption,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);

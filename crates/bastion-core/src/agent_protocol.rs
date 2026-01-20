@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::manifest::ArtifactFormatV1;
 use crate::job_spec::{FilesystemSource, SqliteSource, VaultwardenSource};
+use crate::manifest::ArtifactFormatV1;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
@@ -94,7 +94,9 @@ pub struct RestoreSelectionV1 {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RestoreDestinationV1 {
-    LocalFs { directory: String },
+    LocalFs {
+        directory: String,
+    },
     Webdav {
         base_url: String,
         secret_name: String,

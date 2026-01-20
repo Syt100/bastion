@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 pub use bastion_core::backup_format::{
     COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts, MANIFEST_NAME,
 };
-use bastion_core::manifest::{ArtifactPart, HashAlgorithm};
+use bastion_core::manifest::{ArtifactFormatV1, ArtifactPart, HashAlgorithm};
 
 #[derive(Debug, Clone, Default)]
 pub enum PayloadEncryption {
@@ -19,6 +19,13 @@ pub enum PayloadEncryption {
         recipient: String,
         key_name: String,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct BuildPipelineOptions<'a> {
+    pub artifact_format: ArtifactFormatV1,
+    pub encryption: &'a PayloadEncryption,
+    pub part_size_bytes: u64,
 }
 
 pub fn run_dir(data_dir: &Path, run_id: &str) -> PathBuf {

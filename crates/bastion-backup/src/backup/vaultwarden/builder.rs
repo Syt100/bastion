@@ -10,8 +10,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::backup::{
-    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME, PayloadEncryption,
-    stage_dir,
+    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
+    PayloadEncryption, stage_dir,
 };
 
 pub fn build_vaultwarden_run(
@@ -19,11 +19,14 @@ pub fn build_vaultwarden_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
-    artifact_format: ArtifactFormatV1,
     source: &VaultwardenSource,
-    encryption: &PayloadEncryption,
-    part_size_bytes: u64,
+    pipeline: BuildPipelineOptions<'_>,
 ) -> Result<LocalRunArtifacts, anyhow::Error> {
+    let BuildPipelineOptions {
+        artifact_format,
+        encryption,
+        part_size_bytes,
+    } = pipeline;
     info!(
         job_id = %job_id,
         run_id = %run_id,

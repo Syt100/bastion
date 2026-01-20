@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 
 use super::ConflictPolicy;
+use super::RestoreSelection;
 use super::entries_index::EntryRecord;
 use super::path;
 use super::selection;
 use super::sinks::{RestoreSink, WebdavSink, remove_existing_path};
 use super::sources::ArtifactSource;
-use super::RestoreSelection;
 
 pub(super) fn restore_raw_tree_to_local_fs(
     source: &dyn ArtifactSource,
@@ -40,7 +40,10 @@ pub(super) fn restore_raw_tree_to_local_fs(
         {
             return Ok(());
         }
-        if blocked_prefixes.iter().any(|p| is_under_prefix(&archive_path, p)) {
+        if blocked_prefixes
+            .iter()
+            .any(|p| is_under_prefix(&archive_path, p))
+        {
             return Ok(());
         }
 
@@ -103,11 +106,10 @@ pub(super) fn restore_raw_tree_to_local_fs(
                 // Hardlink best-effort: if we already restored a file for this group, link to it.
                 if let Some(group) = rec.hardlink_group.as_deref()
                     && let Some(first) = hardlink_first.get(group)
+                    && try_hard_link(first, &dest_path).is_ok()
                 {
-                    if try_hard_link(first, &dest_path).is_ok() {
-                        apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
-                        return Ok(());
-                    }
+                    apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
+                    return Ok(());
                 }
 
                 let mut reader =
@@ -116,9 +118,7 @@ pub(super) fn restore_raw_tree_to_local_fs(
                 apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
 
                 if let Some(group) = rec.hardlink_group.as_deref() {
-                    hardlink_first
-                        .entry(group.to_string())
-                        .or_insert(dest_path);
+                    hardlink_first.entry(group.to_string()).or_insert(dest_path);
                 }
                 Ok(())
             }
@@ -261,7 +261,7 @@ fn ensure_parent_dirs(
             return Ok(true);
         }
 
-        let dir_path = destination_dir.join(&PathBuf::from(&prefix));
+        let dir_path = destination_dir.join(&prefix);
         if dir_path.exists() {
             let meta = std::fs::symlink_metadata(&dir_path)?;
             if meta.is_dir() {

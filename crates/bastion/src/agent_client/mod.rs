@@ -6,7 +6,6 @@ use crate::config::AgentArgs;
 
 mod connect;
 mod fs_list;
-mod webdav_list;
 mod hub_stream;
 mod identity;
 mod managed;
@@ -15,6 +14,7 @@ mod restore_task;
 mod targets;
 mod tasks;
 mod util;
+mod webdav_list;
 
 use connect::{LoopAction, connect_and_run};
 use identity::{AgentIdentityV1, enroll, identity_path, load_identity, save_identity};
@@ -25,8 +25,8 @@ const MANAGED_CONFIG_FILE_NAME: &str = "config.json";
 const MANAGED_CONFIG_KIND: &str = "agent_config_snapshot";
 const MANAGED_CONFIG_NAME: &str = "config";
 
-use tasks::handle_backup_task;
 use restore_task::handle_restore_task;
+use tasks::handle_backup_task;
 
 pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
     if args.heartbeat_seconds == 0 {

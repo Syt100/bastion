@@ -17,14 +17,8 @@ fn managed_secrets_snapshot_is_persisted_encrypted() {
         updated_at: 11,
     }];
 
-    super::save_managed_secrets_snapshot(
-        tmp.path(),
-        "a",
-        123,
-        &webdav,
-        &backup_age_identities,
-    )
-    .unwrap();
+    super::save_managed_secrets_snapshot(tmp.path(), "a", 123, &webdav, &backup_age_identities)
+        .unwrap();
 
     let path = managed_secrets_path(tmp.path());
     assert!(path.exists());

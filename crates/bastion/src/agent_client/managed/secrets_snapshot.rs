@@ -78,8 +78,12 @@ pub(in super::super) fn save_managed_secrets_snapshot(
         if identity.is_empty() {
             continue;
         }
-        let encrypted =
-            crypto.encrypt(node_id, "backup_age_identity", &secret.name, identity.as_bytes())?;
+        let encrypted = crypto.encrypt(
+            node_id,
+            "backup_age_identity",
+            &secret.name,
+            identity.as_bytes(),
+        )?;
         age_entries.push(ManagedBackupAgeIdentitySecretV1 {
             name: secret.name.clone(),
             updated_at: secret.updated_at,

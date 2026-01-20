@@ -155,4 +155,3 @@ pub(super) fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
         )),
     }
 }
-

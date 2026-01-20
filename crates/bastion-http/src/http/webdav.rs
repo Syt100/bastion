@@ -13,8 +13,7 @@ use bastion_core::HUB_NODE_ID;
 use bastion_engine::agent_manager::WebdavListRemoteError;
 use bastion_storage::secrets_repo;
 use bastion_targets::{
-    WebdavClient, WebdavCredentials, WebdavHttpError, WebdavNotDirectoryError,
-    WebdavPropfindEntry,
+    WebdavClient, WebdavCredentials, WebdavHttpError, WebdavNotDirectoryError, WebdavPropfindEntry,
 };
 
 use super::list_paging::{
@@ -98,24 +97,33 @@ async fn webdav_list_impl(
 ) -> Result<Json<WebdavListResponse>, AppError> {
     let base_url = req.base_url.trim().to_string();
     if base_url.is_empty() {
-        return Err(AppError::bad_request("invalid_base_url", "base_url is required")
-            .with_details(serde_json::json!({ "field": "base_url" })));
+        return Err(
+            AppError::bad_request("invalid_base_url", "base_url is required")
+                .with_details(serde_json::json!({ "field": "base_url" })),
+        );
     }
     let secret_name = req.secret_name.trim().to_string();
     if secret_name.is_empty() {
-        return Err(AppError::bad_request("invalid_webdav_secret", "secret_name is required")
-            .with_details(serde_json::json!({ "field": "secret_name" })));
+        return Err(
+            AppError::bad_request("invalid_webdav_secret", "secret_name is required")
+                .with_details(serde_json::json!({ "field": "secret_name" })),
+        );
     }
 
     let path = normalize_picker_path(&req.path)?;
     if node_id == HUB_NODE_ID {
-        let creds_bytes =
-            secrets_repo::get_secret(&state.db, &state.secrets, HUB_NODE_ID, "webdav", &secret_name)
-                .await?
-                .ok_or_else(|| {
-                    AppError::bad_request("missing_webdav_secret", "WebDAV credential not found")
-                        .with_details(serde_json::json!({ "field": "secret_name" }))
-                })?;
+        let creds_bytes = secrets_repo::get_secret(
+            &state.db,
+            &state.secrets,
+            HUB_NODE_ID,
+            "webdav",
+            &secret_name,
+        )
+        .await?
+        .ok_or_else(|| {
+            AppError::bad_request("missing_webdav_secret", "WebDAV credential not found")
+                .with_details(serde_json::json!({ "field": "secret_name" }))
+        })?;
         let credentials = WebdavCredentials::from_json(&creds_bytes).map_err(|e| {
             AppError::bad_request(
                 "invalid_webdav_secret",
@@ -197,7 +205,8 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
                 format!("Agent WebDAV list failed: {message}"),
             ),
         };
-        err = err.with_details(serde_json::json!({ "path": path, "agent_error_code": remote_code }));
+        err =
+            err.with_details(serde_json::json!({ "path": path, "agent_error_code": remote_code }));
         return err;
     }
 
@@ -234,7 +243,10 @@ async fn list_webdav_on_hub(
             .filter(|v| !v.is_empty())
         {
             if part == "." || part == ".." {
-                return Err(AppError::bad_request("invalid_path", "invalid path segment"));
+                return Err(AppError::bad_request(
+                    "invalid_path",
+                    "invalid path segment",
+                ));
             }
             segs.push(part);
         }

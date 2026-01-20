@@ -78,7 +78,9 @@ impl ArtifactSource for RunArtifactSource {
     ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         match self {
             Self::Local(s) => s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir),
-            Self::Webdav(s) => s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir),
+            Self::Webdav(s) => {
+                s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir)
+            }
         }
     }
 }
@@ -128,7 +130,7 @@ impl ArtifactSource for LocalDirSource {
                         path: self.run_dir.join(&p.name),
                     },
                 })
-            .collect(),
+                .collect(),
         )))
     }
 
@@ -228,7 +230,7 @@ impl ArtifactSource for WebdavSource {
                         },
                     })
                 })
-            .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Vec<_>, _>>()?,
         )))
     }
 

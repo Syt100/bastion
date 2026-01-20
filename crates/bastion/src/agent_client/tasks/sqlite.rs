@@ -31,10 +31,12 @@ pub(super) async fn run_sqlite_backup(
             &job_id_clone,
             &run_id_clone,
             started_at,
-            artifact_format,
             &source,
-            &encryption,
-            part_size,
+            backup::BuildPipelineOptions {
+                artifact_format,
+                encryption: &encryption,
+                part_size_bytes: part_size,
+            },
         )
     })
     .await??;

@@ -1,6 +1,6 @@
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::collections::BTreeMap;
 
 use bastion_core::manifest::HashAlgorithm;
 use serde::Serialize;

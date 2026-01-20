@@ -9,8 +9,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::backup::{
-    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME, PayloadEncryption,
-    stage_dir,
+    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
+    PayloadEncryption, stage_dir,
 };
 use bastion_core::job_spec::FilesystemSource;
 
@@ -56,11 +56,14 @@ pub fn build_filesystem_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
-    artifact_format: ArtifactFormatV1,
     source: &FilesystemSource,
-    encryption: &PayloadEncryption,
-    part_size_bytes: u64,
+    pipeline: BuildPipelineOptions<'_>,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
+    let BuildPipelineOptions {
+        artifact_format,
+        encryption,
+        part_size_bytes,
+    } = pipeline;
     let using_paths = source.paths.iter().any(|p| !p.trim().is_empty());
     info!(
         job_id = %job_id,

@@ -5,7 +5,7 @@ use tempfile::tempdir;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::backup::PayloadEncryption;
+use crate::backup::{BuildPipelineOptions, PayloadEncryption};
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 use bastion_core::manifest::ArtifactFormatV1;
 
@@ -70,10 +70,12 @@ fn filesystem_paths_can_backup_single_file() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
-        ArtifactFormatV1::ArchiveV1,
         &source,
-        &PayloadEncryption::None,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -118,10 +120,12 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
-        ArtifactFormatV1::RawTreeV1,
         &source,
-        &PayloadEncryption::None,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::RawTreeV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -142,7 +146,8 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
     assert!(index_paths.contains(&expected));
 
     let manifest_bytes = std::fs::read(&build.artifacts.manifest_path).unwrap();
-    let manifest: bastion_core::manifest::ManifestV1 = serde_json::from_slice(&manifest_bytes).unwrap();
+    let manifest: bastion_core::manifest::ManifestV1 =
+        serde_json::from_slice(&manifest_bytes).unwrap();
     assert_eq!(manifest.pipeline.format, ArtifactFormatV1::RawTreeV1);
     assert!(manifest.artifacts.is_empty());
 }
@@ -178,10 +183,12 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
-        ArtifactFormatV1::ArchiveV1,
         &source,
-        &PayloadEncryption::None,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -225,10 +232,12 @@ fn legacy_root_can_backup_single_file() {
         &Uuid::new_v4().to_string(),
         &Uuid::new_v4().to_string(),
         OffsetDateTime::now_utc(),
-        ArtifactFormatV1::ArchiveV1,
         &source,
-        &PayloadEncryption::None,
-        4 * 1024 * 1024,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);

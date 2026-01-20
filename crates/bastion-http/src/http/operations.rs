@@ -8,8 +8,10 @@ use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
 use bastion_backup::backup_encryption;
 use bastion_backup::restore;
-use bastion_core::agent_protocol::{HubToAgentMessageV1, RestoreSelectionV1, RestoreTaskV1, PROTOCOL_VERSION};
 use bastion_core::HUB_NODE_ID;
+use bastion_core::agent_protocol::{
+    HubToAgentMessageV1, PROTOCOL_VERSION, RestoreSelectionV1, RestoreTaskV1,
+};
 use bastion_core::job_spec;
 use bastion_engine::agent_snapshots;
 use bastion_storage::agent_tasks_repo;
@@ -328,8 +330,7 @@ pub(super) async fn start_restore(
         // Ensure any WebDAV destination secret exists in the executor scope.
         if let bastion_core::agent_protocol::RestoreDestinationV1::Webdav { secret_name, .. } =
             &destination_for_agent
-        {
-            if bastion_storage::secrets_repo::get_secret(
+            && bastion_storage::secrets_repo::get_secret(
                 &state.db,
                 &state.secrets,
                 &executor_node_id,
@@ -338,20 +339,19 @@ pub(super) async fn start_restore(
             )
             .await?
             .is_none()
-            {
-                let _ = operations_repo::complete_operation(
-                    &state.db,
-                    &op.id,
-                    operations_repo::OperationStatus::Failed,
-                    None,
-                    Some("missing webdav secret"),
-                )
-                .await;
-                return Err(AppError::bad_request(
-                    "missing_webdav_secret",
-                    "Missing WebDAV secret for executor node",
-                ));
-            }
+        {
+            let _ = operations_repo::complete_operation(
+                &state.db,
+                &op.id,
+                operations_repo::OperationStatus::Failed,
+                None,
+                Some("missing webdav secret"),
+            )
+            .await;
+            return Err(AppError::bad_request(
+                "missing_webdav_secret",
+                "Missing WebDAV secret for executor node",
+            ));
         }
 
         let task = RestoreTaskV1 {

@@ -5,12 +5,10 @@ use rusqlite::{Connection, OpenFlags};
 use time::OffsetDateTime;
 use tracing::{info, warn};
 
-use crate::backup::{LocalRunArtifacts, PayloadEncryption};
-use bastion_core::manifest::ArtifactFormatV1;
+use crate::backup::{BuildPipelineOptions, LocalRunArtifacts};
 use bastion_core::job_spec::{
     FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, SqliteSource,
 };
-
 const SQLITE_BACKUP_PAGES_PER_STEP: i32 = 100;
 const SQLITE_BACKUP_PAUSE: Duration = Duration::from_millis(10);
 const SQLITE_INTEGRITY_MAX_LINES: usize = 64;
@@ -37,11 +35,14 @@ pub fn build_sqlite_run(
     job_id: &str,
     run_id: &str,
     started_at: OffsetDateTime,
-    artifact_format: ArtifactFormatV1,
     source: &SqliteSource,
-    encryption: &PayloadEncryption,
-    part_size_bytes: u64,
+    pipeline: BuildPipelineOptions<'_>,
 ) -> Result<SqliteRunArtifacts, anyhow::Error> {
+    let BuildPipelineOptions {
+        artifact_format,
+        encryption,
+        part_size_bytes,
+    } = pipeline;
     info!(
         job_id = %job_id,
         run_id = %run_id,
@@ -94,10 +95,12 @@ pub fn build_sqlite_run(
         job_id,
         run_id,
         started_at,
-        artifact_format,
         &fs_source,
-        encryption,
-        part_size_bytes,
+        BuildPipelineOptions {
+            artifact_format,
+            encryption,
+            part_size_bytes,
+        },
     )?;
     if build.issues.errors_total > 0 {
         anyhow::bail!(
@@ -181,7 +184,7 @@ fn integrity_check(snapshot_path: &Path) -> Result<IntegrityCheck, anyhow::Error
 #[cfg(test)]
 mod tests {
     use super::{build_sqlite_run, integrity_check};
-    use crate::backup::PayloadEncryption;
+    use crate::backup::{BuildPipelineOptions, PayloadEncryption};
     use bastion_core::job_spec::SqliteSource;
     use bastion_core::manifest::ArtifactFormatV1;
     use rusqlite::Connection;
@@ -228,10 +231,12 @@ mod tests {
             &job_id,
             &run_id,
             OffsetDateTime::now_utc(),
-            ArtifactFormatV1::ArchiveV1,
             &source,
-            &encryption,
-            4 * 1024 * 1024,
+            BuildPipelineOptions {
+                artifact_format: ArtifactFormatV1::ArchiveV1,
+                encryption: &encryption,
+                part_size_bytes: 4 * 1024 * 1024,
+            },
         )
         .unwrap();
 

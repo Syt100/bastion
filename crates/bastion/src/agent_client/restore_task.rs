@@ -8,12 +8,12 @@ use tracing::warn;
 use uuid::Uuid;
 
 use bastion_backup::restore::{self, PayloadDecryption};
-use bastion_core::backup_format::MANIFEST_NAME;
-use bastion_core::manifest::ManifestV1;
 use bastion_core::agent_protocol::{
     AgentToHubMessageV1, ArtifactStreamOpenV1, OperationEventV1, OperationResultV1,
-    RestoreDestinationV1, RestoreTaskV1, PROTOCOL_VERSION,
+    PROTOCOL_VERSION, RestoreDestinationV1, RestoreTaskV1,
 };
+use bastion_core::backup_format::MANIFEST_NAME;
+use bastion_core::manifest::ManifestV1;
 
 use super::hub_stream::{HubStreamManager, HubStreamReader};
 use super::managed::save_task_result;
@@ -38,11 +38,12 @@ pub(super) async fn handle_restore_task(
         anyhow::bail!("restore task run_id is required");
     }
 
-    let destination = task.destination.clone().unwrap_or_else(|| {
-        RestoreDestinationV1::LocalFs {
+    let destination = task
+        .destination
+        .clone()
+        .unwrap_or_else(|| RestoreDestinationV1::LocalFs {
             directory: task.destination_dir.clone(),
-        }
-    });
+        });
 
     send_op_event(tx, &op_id, "info", "start", "start", None).await?;
 
@@ -187,9 +188,11 @@ pub(super) async fn handle_restore_task(
 
             restore::restore_to_webdav(
                 Box::new(reader),
-                &base_url,
-                credentials,
-                &prefix,
+                restore::WebdavRestoreTarget {
+                    base_url: &base_url,
+                    credentials,
+                    prefix: &prefix,
+                },
                 &op_id_for_restore,
                 conflict,
                 decryption,

@@ -897,7 +897,7 @@ fn meta_fields(meta: &std::fs::Metadata) -> (Option<u64>, Option<u32>, Option<u6
         let mode = Some(meta.mode());
         let uid = Some(meta.uid() as u64);
         let gid = Some(meta.gid() as u64);
-        return (mtime, mode, uid, gid);
+        (mtime, mode, uid, gid)
     }
 
     #[cfg(not(unix))]
@@ -925,11 +925,7 @@ fn xattrs_for_path(path: &Path) -> Option<BTreeMap<String, String>> {
         );
     }
 
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 #[cfg(not(unix))]

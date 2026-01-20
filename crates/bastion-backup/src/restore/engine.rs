@@ -1,10 +1,10 @@
 use std::io::Read;
 use std::path::Path;
 
-use super::{PayloadDecryption, RestoreSelection};
 use super::path;
 use super::selection;
 use super::sinks::RestoreSink;
+use super::{PayloadDecryption, RestoreSelection};
 
 pub(super) struct RestoreEngine<'a, S: RestoreSink> {
     sink: &'a mut S,

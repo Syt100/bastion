@@ -3,7 +3,9 @@ use std::collections::BinaryHeap;
 
 use base64::Engine as _;
 use bastion_core::agent_protocol::FsDirEntryV1;
-use bastion_targets::{WebdavClient, WebdavCredentials, WebdavHttpError, WebdavNotDirectoryError, WebdavPropfindEntry};
+use bastion_targets::{
+    WebdavClient, WebdavCredentials, WebdavHttpError, WebdavNotDirectoryError, WebdavPropfindEntry,
+};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -237,12 +239,10 @@ pub(super) async fn webdav_list_dir_entries_paged(
 
     let mut list_url = base_url.clone();
     {
-        let mut segs = list_url
-            .path_segments_mut()
-            .map_err(|_| WebdavListError {
-                code: "error".to_string(),
-                message: "webdav base_url cannot be a base".to_string(),
-            })?;
+        let mut segs = list_url.path_segments_mut().map_err(|_| WebdavListError {
+            code: "error".to_string(),
+            message: "webdav base_url cannot be a base".to_string(),
+        })?;
         for part in path
             .trim_matches('/')
             .split('/')
@@ -267,34 +267,31 @@ pub(super) async fn webdav_list_dir_entries_paged(
         message: format!("failed to init webdav client: {e}"),
     })?;
 
-    let entries = client
-        .propfind_depth1(&list_url)
-        .await
-        .map_err(|error| {
-            if let Some(e) = error.downcast_ref::<WebdavNotDirectoryError>() {
-                return WebdavListError {
-                    code: "not_directory".to_string(),
-                    message: e.to_string(),
-                };
-            }
-            if let Some(e) = error.downcast_ref::<WebdavHttpError>() {
-                let code = match e.status {
-                    reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
-                        "permission_denied"
-                    }
-                    reqwest::StatusCode::NOT_FOUND => "path_not_found",
-                    _ => "error",
-                };
-                return WebdavListError {
-                    code: code.to_string(),
-                    message: e.to_string(),
-                };
-            }
-            WebdavListError {
-                code: "error".to_string(),
-                message: error.to_string(),
-            }
-        })?;
+    let entries = client.propfind_depth1(&list_url).await.map_err(|error| {
+        if let Some(e) = error.downcast_ref::<WebdavNotDirectoryError>() {
+            return WebdavListError {
+                code: "not_directory".to_string(),
+                message: e.to_string(),
+            };
+        }
+        if let Some(e) = error.downcast_ref::<WebdavHttpError>() {
+            let code = match e.status {
+                reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                    "permission_denied"
+                }
+                reqwest::StatusCode::NOT_FOUND => "path_not_found",
+                _ => "error",
+            };
+            return WebdavListError {
+                code: code.to_string(),
+                message: e.to_string(),
+            };
+        }
+        WebdavListError {
+            code: "error".to_string(),
+            message: error.to_string(),
+        }
+    })?;
 
     webdav_page_entries(path.as_str(), entries, opts)
 }
@@ -373,15 +370,15 @@ fn webdav_page_entries(
                 ));
             }
             let cursor_mtime = match sort_by {
-                SortBy::Mtime => decoded.mtime.ok_or_else(|| {
-                    WebdavListError::invalid_cursor("cursor missing mtime key")
-                })?,
+                SortBy::Mtime => decoded
+                    .mtime
+                    .ok_or_else(|| WebdavListError::invalid_cursor("cursor missing mtime key"))?,
                 _ => decoded.mtime.unwrap_or(0),
             };
             let cursor_size = match sort_by {
-                SortBy::Size => decoded.size.ok_or_else(|| {
-                    WebdavListError::invalid_cursor("cursor missing size key")
-                })?,
+                SortBy::Size => decoded
+                    .size
+                    .ok_or_else(|| WebdavListError::invalid_cursor("cursor missing size key"))?,
                 _ => decoded.size.unwrap_or(0),
             };
             Some(SortKey {
@@ -591,4 +588,3 @@ mod tests {
         }
     }
 }
-

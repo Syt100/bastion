@@ -172,7 +172,10 @@ async fn upload_raw_tree_data_dir(
                     url.set_path(&format!("{}/", url.path()));
                 }
                 client.ensure_collection(&url).await?;
-                stack.push(StackItem { dir_path: path, dir_url: url });
+                stack.push(StackItem {
+                    dir_path: path,
+                    dir_url: url,
+                });
                 continue;
             }
 

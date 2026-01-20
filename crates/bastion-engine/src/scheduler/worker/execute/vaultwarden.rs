@@ -48,10 +48,12 @@ pub(super) async fn execute_vaultwarden_run(
             &job_id,
             &run_id_owned,
             started_at,
-            artifact_format,
             &source,
-            &encryption,
-            part_size,
+            backup::BuildPipelineOptions {
+                artifact_format,
+                encryption: &encryption,
+                part_size_bytes: part_size,
+            },
         )
     })
     .await??;

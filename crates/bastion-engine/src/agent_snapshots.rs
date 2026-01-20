@@ -47,7 +47,10 @@ pub async fn send_node_secrets_snapshot(
     let list = secrets_repo::list_secrets(db, node_id, "backup_age_identity").await?;
     let mut backup_age_identities = Vec::with_capacity(list.len());
     for entry in list {
-        let Some(bytes) = secrets_repo::get_secret(db, secrets, node_id, "backup_age_identity", &entry.name).await? else {
+        let Some(bytes) =
+            secrets_repo::get_secret(db, secrets, node_id, "backup_age_identity", &entry.name)
+                .await?
+        else {
             continue;
         };
 

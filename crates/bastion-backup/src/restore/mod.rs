@@ -70,12 +70,21 @@ pub enum PayloadDecryption {
 
 #[derive(Debug, Clone)]
 pub enum RestoreDestination {
-    LocalFs { directory: PathBuf },
+    LocalFs {
+        directory: PathBuf,
+    },
     Webdav {
         base_url: String,
         secret_name: String,
         prefix: String,
     },
+}
+
+#[derive(Debug)]
+pub struct WebdavRestoreTarget<'a> {
+    pub base_url: &'a str,
+    pub credentials: WebdavCredentials,
+    pub prefix: &'a str,
 }
 
 pub fn restore_to_local_fs(
@@ -93,15 +102,18 @@ pub fn restore_to_local_fs(
 
 pub fn restore_to_webdav(
     payload: Box<dyn Read + Send>,
-    base_url: &str,
-    credentials: WebdavCredentials,
-    prefix: &str,
+    target: WebdavRestoreTarget<'_>,
     op_id: &str,
     conflict: ConflictPolicy,
     decryption: PayloadDecryption,
     selection: Option<&RestoreSelection>,
     staging_dir: PathBuf,
 ) -> Result<(), anyhow::Error> {
+    let WebdavRestoreTarget {
+        base_url,
+        credentials,
+        prefix,
+    } = target;
     let mut base_url = Url::parse(base_url.trim())?;
     if !base_url.path().ends_with('/') {
         base_url.set_path(&format!("{}/", base_url.path()));

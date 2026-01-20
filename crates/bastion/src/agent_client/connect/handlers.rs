@@ -461,50 +461,42 @@ where
         if t.is_empty() { None } else { Some(t) }
     });
 
-    let (entries, next_cursor, total, error_code, error) = match load_managed_webdav_credentials(
-        data_dir,
-        &secret_name,
-    )? {
-        Some(credentials) => {
-            let opts = super::super::webdav_list::WebdavListOptions {
-                cursor,
-                limit: limit.map(|v| v.max(1)),
-                q,
-                kind,
-                hide_dotfiles: hide_dotfiles.unwrap_or(false),
-                type_sort,
-                sort_by,
-                sort_dir,
-                size_min_bytes,
-                size_max_bytes,
-            };
+    let (entries, next_cursor, total, error_code, error) =
+        match load_managed_webdav_credentials(data_dir, &secret_name)? {
+            Some(credentials) => {
+                let opts = super::super::webdav_list::WebdavListOptions {
+                    cursor,
+                    limit: limit.map(|v| v.max(1)),
+                    q,
+                    kind,
+                    hide_dotfiles: hide_dotfiles.unwrap_or(false),
+                    type_sort,
+                    sort_by,
+                    sort_dir,
+                    size_min_bytes,
+                    size_max_bytes,
+                };
 
-            match super::super::webdav_list::webdav_list_dir_entries_paged(
-                &base_url,
-                credentials,
-                &path,
-                opts,
-            )
-            .await
-            {
-                Ok(page) => (page.entries, page.next_cursor, Some(page.total), None, None),
-                Err(e) => (
-                    Vec::new(),
-                    None,
-                    None,
-                    Some(e.code),
-                    Some(e.message),
-                ),
+                match super::super::webdav_list::webdav_list_dir_entries_paged(
+                    &base_url,
+                    credentials,
+                    &path,
+                    opts,
+                )
+                .await
+                {
+                    Ok(page) => (page.entries, page.next_cursor, Some(page.total), None, None),
+                    Err(e) => (Vec::new(), None, None, Some(e.code), Some(e.message)),
+                }
             }
-        }
-        None => (
-            Vec::new(),
-            None,
-            None,
-            Some("missing_webdav_secret".to_string()),
-            Some("missing webdav secret for agent".to_string()),
-        ),
-    };
+            None => (
+                Vec::new(),
+                None,
+                None,
+                Some("missing_webdav_secret".to_string()),
+                Some("missing webdav secret for agent".to_string()),
+            ),
+        };
 
     let msg = AgentToHubMessageV1::WebdavListResult {
         v: PROTOCOL_VERSION,

@@ -24,8 +24,8 @@ use bastion_core::agent_stream::{
     ArtifactChunkFrameV1Flags, decode_artifact_chunk_frame_v1, encode_artifact_chunk_frame_v1,
 };
 
-use super::identity::AgentIdentityV1;
 use super::hub_stream::{HubStreamChunk, HubStreamManager};
+use super::identity::AgentIdentityV1;
 use super::offline;
 use super::util::normalize_base_url;
 
@@ -108,7 +108,8 @@ pub(super) async fn connect_and_run(
     handshake::send_hello(&mut tx, identity).await?;
 
     if let Ok(base_url) = normalize_base_url(&identity.hub_url)
-        && let Err(error) = offline::sync_offline_runs(&base_url, &identity.agent_key, &data_dir).await
+        && let Err(error) =
+            offline::sync_offline_runs(&base_url, &identity.agent_key, &data_dir).await
     {
         warn!(
             agent_id = %identity.agent_id,
