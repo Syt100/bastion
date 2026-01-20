@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use bastion_core::HUB_NODE_ID;
-use bastion_core::manifest::ManifestV1;
 use sqlx::SqlitePool;
 use tracing::debug;
 use url::Url;
@@ -142,18 +141,4 @@ pub(super) async fn ensure_complete(access: &TargetAccess) -> Result<(), anyhow:
         }
     }
     Ok(())
-}
-
-pub(super) async fn read_manifest(access: &TargetAccess) -> Result<ManifestV1, anyhow::Error> {
-    let bytes = match access {
-        TargetAccess::Webdav { client, run_url } => {
-            let url = run_url.join(crate::backup::MANIFEST_NAME)?;
-            client.get_bytes(&url).await?
-        }
-        TargetAccess::LocalDir { run_dir } => {
-            tokio::fs::read(run_dir.join(crate::backup::MANIFEST_NAME)).await?
-        }
-    };
-
-    Ok(serde_json::from_slice::<ManifestV1>(&bytes)?)
 }

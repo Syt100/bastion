@@ -7,7 +7,10 @@ use sqlx::SqlitePool;
 use bastion_storage::operations_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
-use super::super::{ConflictPolicy, RestoreSelection, access, parts, unpack};
+use super::super::engine::RestoreEngine;
+use super::super::sinks::LocalFsSink;
+use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
+use super::super::{ConflictPolicy, RestoreSelection, access};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn restore_operation(
@@ -37,7 +40,17 @@ pub(super) async fn restore_operation(
     let op_dir = super::util::operation_dir(data_dir, op_id);
     tokio::fs::create_dir_all(op_dir.join("staging")).await?;
 
-    let manifest = access::read_manifest(&access).await?;
+    let handle = tokio::runtime::Handle::current();
+    let source = match access {
+        access::TargetAccess::Webdav { client, run_url } => RunArtifactSource::Webdav(Box::new(
+            WebdavSource::new(handle.clone(), *client, run_url),
+        )),
+        access::TargetAccess::LocalDir { run_dir } => {
+            RunArtifactSource::Local(LocalDirSource::new(run_dir))
+        }
+    };
+
+    let manifest = source.read_manifest().await?;
     operations_repo::append_event(
         db,
         op_id,
@@ -54,20 +67,24 @@ pub(super) async fn restore_operation(
     let decryption = super::util::resolve_payload_decryption(db, secrets, &manifest).await?;
 
     let staging_dir = op_dir.join("staging");
-    let parts = parts::fetch_parts(&access, &manifest, &staging_dir).await?;
     info!(
         op_id = %op_id,
         run_id = %run_id,
-        parts_count = parts.len(),
+        parts_count = manifest.artifacts.len(),
         total_bytes = manifest.artifacts.iter().map(|p| p.size).sum::<u64>(),
         "backup parts ready for restore"
     );
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let dest = destination_dir.to_path_buf();
+    let source = source;
+    let manifest = manifest.clone();
     let selection = selection.clone();
     let summary = tokio::task::spawn_blocking(move || {
-        unpack::restore_from_parts(&parts, &dest, conflict, decryption, selection.as_ref())?;
+        let payload = source.open_payload_reader(&manifest, &staging_dir)?;
+        let mut sink = LocalFsSink::new(dest.clone(), conflict);
+        let mut engine = RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
+        engine.restore(payload)?;
         Ok::<_, anyhow::Error>(serde_json::json!({
             "destination_dir": dest.to_string_lossy().to_string(),
             "conflict_policy": conflict.as_str(),

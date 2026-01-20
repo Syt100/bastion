@@ -6,7 +6,10 @@ use tracing::info;
 use bastion_storage::operations_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
-use super::super::{ConflictPolicy, access, entries_index, parts, unpack, verify};
+use super::super::engine::RestoreEngine;
+use super::super::sinks::LocalFsSink;
+use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
+use super::super::{ConflictPolicy, access, verify};
 
 pub(super) async fn verify_operation(
     db: &SqlitePool,
@@ -25,7 +28,17 @@ pub(super) async fn verify_operation(
     let staging_dir = op_dir.join("staging");
     tokio::fs::create_dir_all(&staging_dir).await?;
 
-    let manifest = access::read_manifest(&access).await?;
+    let handle = tokio::runtime::Handle::current();
+    let source = match access {
+        access::TargetAccess::Webdav { client, run_url } => RunArtifactSource::Webdav(Box::new(
+            WebdavSource::new(handle.clone(), *client, run_url),
+        )),
+        access::TargetAccess::LocalDir { run_dir } => {
+            RunArtifactSource::Local(LocalDirSource::new(run_dir))
+        }
+    };
+
+    let manifest = source.read_manifest().await?;
     operations_repo::append_event(
         db,
         op_id,
@@ -41,12 +54,10 @@ pub(super) async fn verify_operation(
 
     let decryption = super::util::resolve_payload_decryption(db, secrets, &manifest).await?;
 
-    let entries_path = entries_index::fetch_entries_index(&access, &staging_dir).await?;
-    let parts = parts::fetch_parts(&access, &manifest, &staging_dir).await?;
     info!(
         op_id = %op_id,
         run_id = %run_id,
-        parts_count = parts.len(),
+        parts_count = manifest.artifacts.len(),
         total_bytes = manifest.artifacts.iter().map(|p| p.size).sum::<u64>(),
         "backup parts ready for verify"
     );
@@ -57,15 +68,16 @@ pub(super) async fn verify_operation(
 
     let record_count = manifest.entry_index.count;
     let sqlite_paths = verify::sqlite_paths_for_verify(&run);
+    let entries_path = source.fetch_entries_index(&staging_dir).await?;
+    let source = source;
+    let manifest = manifest.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        unpack::restore_from_parts(
-            &parts,
-            &temp_restore_dir,
-            ConflictPolicy::Overwrite,
-            decryption,
-            None,
-        )?;
+        let payload = source.open_payload_reader(&manifest, &staging_dir)?;
+        let mut sink = LocalFsSink::new(temp_restore_dir.clone(), ConflictPolicy::Overwrite);
+        let mut engine = RestoreEngine::new(&mut sink, decryption, None)?;
+        engine.restore(payload)?;
+
         let verify = verify::verify_restored(&entries_path, &temp_restore_dir, record_count)?;
 
         let sqlite_results = verify::verify_sqlite_files(&temp_restore_dir, &sqlite_paths)?;

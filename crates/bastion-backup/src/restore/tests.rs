@@ -130,6 +130,72 @@ fn restore_from_parts_respects_selected_dirs() {
 }
 
 #[test]
+fn restore_from_parts_conflict_skip_keeps_existing_files() {
+    let tmp = tempdir().unwrap();
+    let part = tmp.path().join("payload.part000001");
+
+    let file = File::create(&part).unwrap();
+    let mut encoder = zstd::Encoder::new(file, 3).unwrap();
+    {
+        let mut tar = tar::Builder::new(&mut encoder);
+        let src = tmp.path().join("hello.txt");
+        std::fs::write(&src, b"from-archive").unwrap();
+        tar.append_path_with_name(&src, Path::new("hello.txt"))
+            .unwrap();
+        tar.finish().unwrap();
+    }
+    encoder.finish().unwrap();
+
+    let dest = tmp.path().join("out_conflict_skip");
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(dest.join("hello.txt"), b"existing").unwrap();
+
+    restore_from_parts(
+        &[part],
+        &dest,
+        ConflictPolicy::Skip,
+        PayloadDecryption::None,
+        None,
+    )
+    .unwrap();
+
+    let out = std::fs::read(dest.join("hello.txt")).unwrap();
+    assert_eq!(out, b"existing");
+}
+
+#[test]
+fn restore_from_parts_conflict_fail_errors_on_existing_files() {
+    let tmp = tempdir().unwrap();
+    let part = tmp.path().join("payload.part000001");
+
+    let file = File::create(&part).unwrap();
+    let mut encoder = zstd::Encoder::new(file, 3).unwrap();
+    {
+        let mut tar = tar::Builder::new(&mut encoder);
+        let src = tmp.path().join("hello.txt");
+        std::fs::write(&src, b"from-archive").unwrap();
+        tar.append_path_with_name(&src, Path::new("hello.txt"))
+            .unwrap();
+        tar.finish().unwrap();
+    }
+    encoder.finish().unwrap();
+
+    let dest = tmp.path().join("out_conflict_fail");
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(dest.join("hello.txt"), b"existing").unwrap();
+
+    let err = restore_from_parts(
+        &[part],
+        &dest,
+        ConflictPolicy::Fail,
+        PayloadDecryption::None,
+        None,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("restore conflict"));
+}
+
+#[test]
 fn restore_from_parts_extracts_tar_zstd_age() {
     use age::secrecy::ExposeSecret as _;
 

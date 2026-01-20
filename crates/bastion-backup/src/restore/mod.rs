@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 mod access;
+mod engine;
 mod entries_index;
 mod operations;
 mod parts;
+mod path;
+mod sinks;
+mod sources;
 mod unpack;
 mod verify;
 pub use entries_index::{
