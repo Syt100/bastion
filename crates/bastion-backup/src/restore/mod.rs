@@ -1,3 +1,6 @@
+use std::io::Read;
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 mod access;
@@ -7,7 +10,7 @@ mod operations;
 mod parts;
 mod path;
 mod sinks;
-mod sources;
+pub mod sources;
 mod unpack;
 mod verify;
 pub use entries_index::{
@@ -52,6 +55,25 @@ pub struct RestoreSelection {
     pub files: Vec<String>,
     #[serde(default)]
     pub dirs: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PayloadDecryption {
+    None,
+    AgeX25519 { identity: String },
+}
+
+pub fn restore_to_local_fs(
+    payload: Box<dyn Read + Send>,
+    destination_dir: PathBuf,
+    conflict: ConflictPolicy,
+    decryption: PayloadDecryption,
+    selection: Option<&RestoreSelection>,
+) -> Result<(), anyhow::Error> {
+    let mut sink = sinks::LocalFsSink::new(destination_dir, conflict);
+    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection)?;
+    engine.restore(payload)?;
+    Ok(())
 }
 
 #[cfg(test)]

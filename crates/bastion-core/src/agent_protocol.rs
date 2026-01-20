@@ -124,6 +124,8 @@ pub struct ArtifactStreamOpenV1 {
     pub op_id: String,
     pub run_id: String,
     pub artifact: String,
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

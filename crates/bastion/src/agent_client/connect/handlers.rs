@@ -7,14 +7,15 @@ use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
 
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, BackupRunTaskV1, JobConfigV1, PROTOCOL_VERSION, WebdavSecretV1,
+    AgentToHubMessageV1, BackupRunTaskV1, JobConfigV1, OperationResultV1, PROTOCOL_VERSION,
+    RestoreTaskV1, WebdavSecretV1,
 };
 use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::identity::AgentIdentityV1;
 use super::super::managed::{
-    load_cached_task_result, save_managed_config_snapshot, save_managed_secrets_snapshot,
-    save_task_result,
+    load_cached_operation_result, load_cached_task_result, save_managed_config_snapshot,
+    save_managed_secrets_snapshot, save_task_result,
 };
 use super::super::util::is_ws_error;
 
@@ -184,6 +185,90 @@ where
 
             if let Err(error) = save_task_result(data_dir, &result) {
                 warn!(task_id = %task_id, error = %error, "failed to persist task result");
+            }
+
+            if send_json(tx, &result).await? == HandlerFlow::Reconnect {
+                return Ok(HandlerFlow::Reconnect);
+            }
+        }
+    }
+
+    Ok(HandlerFlow::Continue)
+}
+
+pub(super) async fn handle_restore_task<S>(
+    tx: &mut S,
+    data_dir: &Path,
+    run_lock: Arc<tokio::sync::Mutex<()>>,
+    hub_streams: &super::super::hub_stream::HubStreamManager,
+    task_id: String,
+    task: Box<RestoreTaskV1>,
+) -> Result<HandlerFlow, anyhow::Error>
+where
+    S: Sink<Message, Error = tungstenite::Error> + Unpin,
+{
+    let op_id = task.op_id.clone();
+    let run_id = task.run_id.clone();
+    debug!(task_id = %task_id, op_id = %op_id, run_id = %run_id, "received restore task");
+
+    if let Some(cached) = load_cached_operation_result(data_dir, &op_id) {
+        debug!(task_id = %task_id, op_id = %op_id, "replaying cached restore result");
+        let ack = AgentToHubMessageV1::Ack {
+            v: PROTOCOL_VERSION,
+            task_id: task_id.clone(),
+        };
+        if send_json(tx, &ack).await? == HandlerFlow::Reconnect {
+            return Ok(HandlerFlow::Reconnect);
+        }
+        if send_json(tx, &cached).await? == HandlerFlow::Reconnect {
+            return Ok(HandlerFlow::Reconnect);
+        }
+        return Ok(HandlerFlow::Continue);
+    }
+
+    let ack = AgentToHubMessageV1::Ack {
+        v: PROTOCOL_VERSION,
+        task_id: task_id.clone(),
+    };
+    if send_json(tx, &ack).await? == HandlerFlow::Reconnect {
+        return Ok(HandlerFlow::Reconnect);
+    }
+
+    let _guard = run_lock.lock().await;
+    match super::super::handle_restore_task(data_dir, tx, hub_streams, &task_id, *task).await {
+        Ok(()) => {}
+        Err(error) => {
+            if is_ws_error(&error) {
+                warn!(
+                    task_id = %task_id,
+                    op_id = %op_id,
+                    run_id = %run_id,
+                    error = %error,
+                    "restore task aborted due to websocket error; reconnecting"
+                );
+                return Ok(HandlerFlow::Reconnect);
+            }
+
+            warn!(
+                task_id = %task_id,
+                op_id = %op_id,
+                run_id = %run_id,
+                error = %error,
+                "restore task failed"
+            );
+
+            let result = AgentToHubMessageV1::OperationResult {
+                v: PROTOCOL_VERSION,
+                result: OperationResultV1 {
+                    op_id: op_id.clone(),
+                    status: "failed".to_string(),
+                    summary: None,
+                    error: Some(format!("{error:#}")),
+                },
+            };
+
+            if let Err(error) = save_task_result(data_dir, &result) {
+                warn!(task_id = %task_id, error = %error, "failed to persist restore result");
             }
 
             if send_json(tx, &result).await? == HandlerFlow::Reconnect {

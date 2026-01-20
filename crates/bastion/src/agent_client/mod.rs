@@ -6,9 +6,11 @@ use crate::config::AgentArgs;
 
 mod connect;
 mod fs_list;
+mod hub_stream;
 mod identity;
 mod managed;
 mod offline;
+mod restore_task;
 mod targets;
 mod tasks;
 mod util;
@@ -23,6 +25,7 @@ const MANAGED_CONFIG_KIND: &str = "agent_config_snapshot";
 const MANAGED_CONFIG_NAME: &str = "config";
 
 use tasks::handle_backup_task;
+use restore_task::handle_restore_task;
 
 pub async fn run(args: AgentArgs) -> Result<(), anyhow::Error> {
     if args.heartbeat_seconds == 0 {

@@ -1,15 +1,9 @@
 use std::io::Read;
 use std::path::Path;
 
-use super::RestoreSelection;
+use super::{PayloadDecryption, RestoreSelection};
 use super::path;
 use super::sinks::RestoreSink;
-
-#[derive(Debug, Clone)]
-pub(super) enum PayloadDecryption {
-    None,
-    AgeX25519 { identity: String },
-}
 
 pub(super) struct RestoreEngine<'a, S: RestoreSink> {
     sink: &'a mut S,
@@ -30,9 +24,10 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
         })
     }
 
-    pub(super) fn restore(&mut self, payload: Box<dyn Read>) -> Result<(), anyhow::Error> {
+    pub(super) fn restore(&mut self, payload: Box<dyn Read + Send>) -> Result<(), anyhow::Error> {
         self.sink.prepare()?;
 
+        let payload: Box<dyn Read> = payload;
         let reader: Box<dyn Read> = match self.decryption.clone() {
             PayloadDecryption::None => payload,
             PayloadDecryption::AgeX25519 { identity } => {

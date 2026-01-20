@@ -26,12 +26,31 @@ pub(in super::super) fn load_cached_task_result(
     }
 }
 
+pub(in super::super) fn load_cached_operation_result(
+    data_dir: &Path,
+    op_id: &str,
+) -> Option<AgentToHubMessageV1> {
+    let path = task_result_path(data_dir, op_id)?;
+    let bytes = std::fs::read(path).ok()?;
+    let msg = serde_json::from_slice::<AgentToHubMessageV1>(&bytes).ok()?;
+    match &msg {
+        AgentToHubMessageV1::OperationResult { v, result }
+            if *v == PROTOCOL_VERSION && result.op_id == op_id =>
+        {
+            Some(msg)
+        }
+        _ => None,
+    }
+}
+
 pub(in super::super) fn save_task_result(
     data_dir: &Path,
     msg: &AgentToHubMessageV1,
 ) -> Result<(), anyhow::Error> {
-    let AgentToHubMessageV1::TaskResult { task_id, .. } = msg else {
-        return Ok(());
+    let task_id = match msg {
+        AgentToHubMessageV1::TaskResult { task_id, .. } => task_id.as_str(),
+        AgentToHubMessageV1::OperationResult { result, .. } => result.op_id.as_str(),
+        _ => return Ok(()),
     };
 
     let Some(path) = task_result_path(data_dir, task_id) else {

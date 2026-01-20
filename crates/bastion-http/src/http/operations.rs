@@ -7,7 +7,9 @@ use tower_cookies::Cookies;
 use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
 use bastion_backup::restore;
+use bastion_core::agent_protocol::{HubToAgentMessageV1, RestoreSelectionV1, RestoreTaskV1, PROTOCOL_VERSION};
 use bastion_core::HUB_NODE_ID;
+use bastion_storage::agent_tasks_repo;
 use bastion_storage::operations_repo;
 use bastion_storage::runs_repo;
 
@@ -107,21 +109,19 @@ pub(super) async fn start_restore(
         }
     };
 
-    if destination_node_id != HUB_NODE_ID {
-        // TODO(spec): support executor=agent and restoring to agent-local filesystems.
-        return Err(AppError::bad_request(
-            "unsupported_destination",
-            "only hub local filesystem destination is supported yet",
-        ));
-    }
+    let executor_node_id = req
+        .executor
+        .as_ref()
+        .map(|e| e.node_id.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| destination_node_id.clone());
 
-    if let Some(executor) = req.executor.as_ref()
-        && executor.node_id.trim() != HUB_NODE_ID
-    {
-        // TODO(spec): support selecting agent executor (and enforce executor rules).
+    // Executor rules:
+    // - local_fs destination MUST execute on that node (Hub or Agent).
+    if executor_node_id != destination_node_id {
         return Err(AppError::bad_request(
-            "unsupported_executor",
-            "only hub executor is supported yet",
+            "invalid_executor",
+            "executor.node_id must match destination.node_id for local_fs destinations",
         ));
     }
 
@@ -168,9 +168,7 @@ pub(super) async fn start_restore(
                 "node_id": destination_node_id,
                 "directory": destination_dir,
             },
-            "executor": req.executor.as_ref().map(|e| serde_json::json!({
-                "node_id": e.node_id.trim(),
-            })),
+            "executor": serde_json::json!({ "node_id": executor_node_id }),
             "conflict_policy": conflict.as_str(),
             "selection": req.selection.as_ref().map(|s| serde_json::json!({
                 "files": s.files.len(),
@@ -179,6 +177,56 @@ pub(super) async fn start_restore(
         })),
     )
     .await;
+
+    if destination_node_id != HUB_NODE_ID {
+        if !state.agent_manager.is_connected(&destination_node_id).await {
+            return Err(AppError::bad_request(
+                "agent_not_connected",
+                "destination agent is not connected",
+            ));
+        }
+
+        let task = RestoreTaskV1 {
+            op_id: op.id.clone(),
+            run_id: run_id.clone(),
+            destination_dir: destination_dir.clone(),
+            conflict_policy: conflict.as_str().to_string(),
+            selection: req.selection.as_ref().map(|s| RestoreSelectionV1 {
+                files: s.files.clone(),
+                dirs: s.dirs.clone(),
+            }),
+        };
+        let msg = HubToAgentMessageV1::RestoreTask {
+            v: PROTOCOL_VERSION,
+            task_id: op.id.clone(),
+            task: Box::new(task),
+        };
+        let payload = serde_json::to_value(&msg)?;
+        agent_tasks_repo::upsert_task(
+            &state.db,
+            &op.id,
+            &destination_node_id,
+            &run_id,
+            "sent",
+            &payload,
+        )
+        .await?;
+        state
+            .agent_manager
+            .send_json(&destination_node_id, &msg)
+            .await
+            .map_err(|e| AppError::bad_request("dispatch_failed", format!("{e:#}")))?;
+
+        tracing::info!(
+            op_id = %op.id,
+            run_id = %run_id,
+            destination_node_id = %destination_node_id,
+            destination_dir = %destination_dir,
+            conflict = %conflict.as_str(),
+            "restore dispatched to agent"
+        );
+        return Ok(Json(StartOperationResponse { op_id: op.id }));
+    }
 
     restore::spawn_restore_operation(
         state.db.clone(),

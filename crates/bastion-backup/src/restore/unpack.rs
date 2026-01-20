@@ -1,4 +1,4 @@
-pub(super) use super::engine::PayloadDecryption;
+pub(super) use super::PayloadDecryption;
 pub(super) use super::path::safe_join;
 
 #[cfg(test)]
@@ -21,7 +21,7 @@ pub(super) fn restore_from_parts(
         .iter()
         .map(File::open)
         .collect::<Result<Vec<_>, _>>()?;
-    let reader: Box<dyn Read> = Box::new(ConcatReader { files, index: 0 });
+    let reader: Box<dyn Read + Send> = Box::new(ConcatReader { files, index: 0 });
 
     let mut sink = LocalFsSink::new(destination_dir.to_path_buf(), conflict);
     let mut engine = RestoreEngine::new(&mut sink, decryption, selection)?;

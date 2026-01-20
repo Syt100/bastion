@@ -12,14 +12,14 @@
 
 ## 3. Hub↔Agent - Restore execution + relay
 - [x] 3.1 Add Hub↔Agent protocol messages for restore tasks and operation events/results
-- [ ] 3.2 Implement Hub-side relay for artifact streaming across nodes (Hub as intermediary)
-- [ ] 3.3 Implement Agent-side restore task handler + artifact stream client
-- [ ] 3.4 Ensure reconnect-safe behavior: task persistence + idempotency + retries
-- [ ] 3.5 Commit hub/agent changes (detailed message)
+- [x] 3.2 Implement Hub-side relay for artifact streaming across nodes (Hub as intermediary)
+- [x] 3.3 Implement Agent-side restore task handler + artifact stream client
+- [x] 3.4 Ensure reconnect-safe behavior: task persistence + idempotency + retries
+- [x] 3.5 Commit hub/agent changes (detailed message)
 
 ## 4. Restore destinations
 - [ ] 4.1 Implement `local_fs` destination on Hub (existing behavior via sink)
-- [ ] 4.2 Implement `local_fs` destination on Agent (executor=agent)
+- [x] 4.2 Implement `local_fs` destination on Agent (executor=agent)
 - [ ] 4.3 Implement `webdav` destination sink with prefix support
 - [ ] 4.4 Implement `.bastion-meta/` sidecar write for WebDAV destinations (per op_id)
 - [ ] 4.5 Commit restore destination changes (detailed message)
@@ -32,6 +32,6 @@
 - [ ] 5.5 Commit UI changes (detailed message)
 
 ## 6. Verification
-- [ ] 6.1 Run `cargo test --workspace`
+- [x] 6.1 Run `cargo test --workspace`
 - [ ] 6.2 Run `npm test --prefix ui`
 - [ ] 6.3 Run `npm run type-check --prefix ui`

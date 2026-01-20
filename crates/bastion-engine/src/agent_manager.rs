@@ -5,12 +5,27 @@ use axum::extract::ws::Message;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 
 use bastion_core::agent;
-use bastion_core::agent_protocol::{FsDirEntryV1, HubToAgentMessageV1, PROTOCOL_VERSION};
+use bastion_core::agent_protocol::{
+    ArtifactStreamOpenResultV1, ArtifactStreamOpenV1, ArtifactStreamPullV1, FsDirEntryV1,
+    HubToAgentMessageV1, PROTOCOL_VERSION,
+};
+use uuid::Uuid;
 
 type FsListKey = (String, String); // (agent_id, request_id)
 type FsListResult = Result<FsListPage, String>;
 type FsListSender = oneshot::Sender<FsListResult>;
 type PendingFsList = HashMap<FsListKey, FsListSender>;
+
+type ArtifactStreamKey = (String, Uuid); // (agent_id, stream_id)
+type PendingArtifactOpen = HashMap<ArtifactStreamKey, oneshot::Sender<ArtifactStreamOpenResultV1>>;
+type PendingArtifactChunk =
+    HashMap<ArtifactStreamKey, oneshot::Sender<Result<ArtifactChunk, String>>>;
+
+#[derive(Debug, Clone)]
+pub struct ArtifactChunk {
+    pub eof: bool,
+    pub bytes: Vec<u8>,
+}
 
 #[derive(Debug, Clone)]
 pub struct FsListOptions {
@@ -43,6 +58,8 @@ struct AgentConnection {
 pub struct AgentManager {
     inner: Arc<RwLock<HashMap<String, AgentConnection>>>,
     pending_fs_list: Arc<Mutex<PendingFsList>>,
+    pending_artifact_open: Arc<Mutex<PendingArtifactOpen>>,
+    pending_artifact_chunk: Arc<Mutex<PendingArtifactChunk>>,
 }
 
 impl AgentManager {
@@ -67,6 +84,28 @@ impl AgentManager {
             .collect::<Vec<_>>();
         for key in keys {
             if let Some(tx) = pending.remove(&key) {
+                let _ = tx.send(Err("agent disconnected".to_string()));
+            }
+        }
+
+        let mut pending_open = self.pending_artifact_open.lock().await;
+        let open_keys = pending_open
+            .keys()
+            .filter(|(id, _)| id == agent_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for key in open_keys {
+            let _ = pending_open.remove(&key);
+        }
+
+        let mut pending_chunk = self.pending_artifact_chunk.lock().await;
+        let chunk_keys = pending_chunk
+            .keys()
+            .filter(|(id, _)| id == agent_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for key in chunk_keys {
+            if let Some(tx) = pending_chunk.remove(&key) {
                 let _ = tx.send(Err("agent disconnected".to_string()));
             }
         }
@@ -210,6 +249,98 @@ impl AgentManager {
         let tx = self.pending_fs_list.lock().await.remove(&key);
         if let Some(tx) = tx {
             let _ = tx.send(result);
+        }
+    }
+
+    pub async fn artifact_stream_open(
+        &self,
+        agent_id: &str,
+        req: ArtifactStreamOpenV1,
+        timeout: std::time::Duration,
+    ) -> Result<ArtifactStreamOpenResultV1, anyhow::Error> {
+        let stream_id = Uuid::parse_str(req.stream_id.trim())?;
+        let key = (agent_id.to_string(), stream_id);
+        let (tx, rx) = oneshot::channel::<ArtifactStreamOpenResultV1>();
+        self.pending_artifact_open
+            .lock()
+            .await
+            .insert(key.clone(), tx);
+
+        let msg = HubToAgentMessageV1::ArtifactStreamOpen {
+            v: PROTOCOL_VERSION,
+            req,
+        };
+        if let Err(error) = self.send_json(agent_id, &msg).await {
+            let _ = self.pending_artifact_open.lock().await.remove(&key);
+            return Err(error);
+        }
+
+        let res = tokio::time::timeout(timeout, rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("agent artifact stream open timeout"))?
+            .map_err(|_| anyhow::anyhow!("agent artifact stream open channel closed"))?;
+
+        let _ = self.pending_artifact_open.lock().await.remove(&key);
+        Ok(res)
+    }
+
+    pub async fn complete_artifact_stream_open(
+        &self,
+        agent_id: &str,
+        res: ArtifactStreamOpenResultV1,
+    ) {
+        let Ok(stream_id) = Uuid::parse_str(res.stream_id.trim()) else {
+            return;
+        };
+        let key = (agent_id.to_string(), stream_id);
+        let tx = self.pending_artifact_open.lock().await.remove(&key);
+        if let Some(tx) = tx {
+            let _ = tx.send(res);
+        }
+    }
+
+    pub async fn artifact_stream_pull(
+        &self,
+        agent_id: &str,
+        req: ArtifactStreamPullV1,
+        timeout: std::time::Duration,
+    ) -> Result<ArtifactChunk, anyhow::Error> {
+        let stream_id = Uuid::parse_str(req.stream_id.trim())?;
+        let key = (agent_id.to_string(), stream_id);
+        let (tx, rx) = oneshot::channel::<Result<ArtifactChunk, String>>();
+        self.pending_artifact_chunk
+            .lock()
+            .await
+            .insert(key.clone(), tx);
+
+        let msg = HubToAgentMessageV1::ArtifactStreamPull {
+            v: PROTOCOL_VERSION,
+            req,
+        };
+        if let Err(error) = self.send_json(agent_id, &msg).await {
+            let _ = self.pending_artifact_chunk.lock().await.remove(&key);
+            return Err(error);
+        }
+
+        let res = tokio::time::timeout(timeout, rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("agent artifact stream pull timeout"))?
+            .map_err(|_| anyhow::anyhow!("agent artifact stream pull channel closed"))?;
+
+        let _ = self.pending_artifact_chunk.lock().await.remove(&key);
+        res.map_err(anyhow::Error::msg)
+    }
+
+    pub async fn complete_artifact_stream_chunk(
+        &self,
+        agent_id: &str,
+        stream_id: Uuid,
+        chunk: ArtifactChunk,
+    ) {
+        let key = (agent_id.to_string(), stream_id);
+        let tx = self.pending_artifact_chunk.lock().await.remove(&key);
+        if let Some(tx) = tx {
+            let _ = tx.send(Ok(chunk));
         }
     }
 }

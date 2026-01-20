@@ -10,7 +10,7 @@ use bastion_targets::WebdavClient;
 use tokio::runtime::Handle;
 use url::Url;
 
-pub(super) trait ArtifactSource: Send {
+pub trait ArtifactSource: Send {
     fn read_manifest(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<ManifestV1, anyhow::Error>> + Send + '_>>;
@@ -24,10 +24,10 @@ pub(super) trait ArtifactSource: Send {
         &self,
         manifest: &ManifestV1,
         staging_dir: &Path,
-    ) -> Result<Box<dyn Read>, anyhow::Error>;
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error>;
 }
 
-pub(super) enum RunArtifactSource {
+pub enum RunArtifactSource {
     Local(LocalDirSource),
     Webdav(Box<WebdavSource>),
 }
@@ -56,7 +56,7 @@ impl ArtifactSource for RunArtifactSource {
         &self,
         manifest: &ManifestV1,
         staging_dir: &Path,
-    ) -> Result<Box<dyn Read>, anyhow::Error> {
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         match self {
             Self::Local(s) => s.open_payload_reader(manifest, staging_dir),
             Self::Webdav(s) => s.open_payload_reader(manifest, staging_dir),
@@ -64,12 +64,12 @@ impl ArtifactSource for RunArtifactSource {
     }
 }
 
-pub(super) struct LocalDirSource {
+pub struct LocalDirSource {
     run_dir: PathBuf,
 }
 
 impl LocalDirSource {
-    pub(super) fn new(run_dir: PathBuf) -> Self {
+    pub fn new(run_dir: PathBuf) -> Self {
         Self { run_dir }
     }
 }
@@ -95,7 +95,7 @@ impl ArtifactSource for LocalDirSource {
         &self,
         manifest: &ManifestV1,
         _staging_dir: &Path,
-    ) -> Result<Box<dyn Read>, anyhow::Error> {
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         Ok(Box::new(VerifiedPartsReader::new_local(
             manifest
                 .artifacts
@@ -114,14 +114,14 @@ impl ArtifactSource for LocalDirSource {
     }
 }
 
-pub(super) struct WebdavSource {
+pub struct WebdavSource {
     handle: Handle,
     client: WebdavClient,
     run_url: Url,
 }
 
 impl WebdavSource {
-    pub(super) fn new(handle: Handle, client: WebdavClient, run_url: Url) -> Self {
+    pub fn new(handle: Handle, client: WebdavClient, run_url: Url) -> Self {
         Self {
             handle,
             client,
@@ -168,7 +168,7 @@ impl ArtifactSource for WebdavSource {
         &self,
         manifest: &ManifestV1,
         staging_dir: &Path,
-    ) -> Result<Box<dyn Read>, anyhow::Error> {
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         std::fs::create_dir_all(staging_dir)?;
 
         Ok(Box::new(VerifiedPartsReader::new_webdav(
