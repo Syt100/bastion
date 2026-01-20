@@ -4,7 +4,7 @@ use crate::db;
 
 use super::{
     OperationKind, OperationStatus, append_event, complete_operation, create_operation,
-    get_operation, list_events, list_operations_by_subject,
+    get_operation, list_events, list_operations_by_subject, set_operation_progress,
 };
 
 #[tokio::test]
@@ -68,4 +68,34 @@ async fn list_operations_by_subject_filters_by_kind_and_id() {
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&op1.id.as_str()));
     assert!(ids.contains(&op2.id.as_str()));
+}
+
+#[tokio::test]
+async fn operation_progress_round_trips_and_can_be_cleared() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let op = create_operation(&pool, OperationKind::Restore, None)
+        .await
+        .expect("create");
+
+    let progress = serde_json::json!({"v":1,"kind":"restore","stage":"restore","done":{"files":1,"dirs":0,"bytes":123}});
+    set_operation_progress(&pool, &op.id, Some(progress.clone()))
+        .await
+        .expect("set progress");
+
+    let fetched = get_operation(&pool, &op.id)
+        .await
+        .expect("get")
+        .expect("present");
+    assert_eq!(fetched.progress, Some(progress));
+
+    set_operation_progress(&pool, &op.id, None)
+        .await
+        .expect("clear progress");
+    let fetched = get_operation(&pool, &op.id)
+        .await
+        .expect("get2")
+        .expect("present");
+    assert!(fetched.progress.is_none());
 }

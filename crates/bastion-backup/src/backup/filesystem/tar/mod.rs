@@ -19,6 +19,7 @@ pub(super) fn write_tar_zstd_parts(
     entries_count: &mut u64,
     part_size_bytes: u64,
     issues: &mut FilesystemBuildIssues,
+    progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<Vec<LocalArtifact>, anyhow::Error> {
     let payload_prefix: &'static str = "payload.part";
     let mut part_writer =
@@ -33,7 +34,14 @@ pub(super) fn write_tar_zstd_parts(
             encoder.multithread(threads as u32)?;
 
             let mut tar = ::tar::Builder::new(encoder);
-            walk::write_tar_entries(&mut tar, source, entries_writer, entries_count, issues)?;
+            walk::write_tar_entries(
+                &mut tar,
+                source,
+                entries_writer,
+                entries_count,
+                issues,
+                progress,
+            )?;
 
             tar.finish()?;
             let encoder = tar.into_inner()?;
@@ -53,7 +61,14 @@ pub(super) fn write_tar_zstd_parts(
             encoder.multithread(threads as u32)?;
 
             let mut tar = ::tar::Builder::new(encoder);
-            walk::write_tar_entries(&mut tar, source, entries_writer, entries_count, issues)?;
+            walk::write_tar_entries(
+                &mut tar,
+                source,
+                entries_writer,
+                entries_count,
+                issues,
+                progress,
+            )?;
 
             tar.finish()?;
             let encoder = tar.into_inner()?;

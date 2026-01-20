@@ -144,6 +144,7 @@ fn restore_raw_tree_to_local_fs_copies_files() {
     let run_id = Uuid::new_v4().to_string();
 
     let source = FilesystemSource {
+        pre_scan: true,
         paths: Vec::new(),
         root: src_root.to_string_lossy().to_string(),
         include: Vec::new(),
@@ -164,6 +165,7 @@ fn restore_raw_tree_to_local_fs_copies_files() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -171,9 +173,14 @@ fn restore_raw_tree_to_local_fs_copies_files() {
 
     let target_base = tmp.path().join("target");
     std::fs::create_dir_all(&target_base).unwrap();
-    let run_dir =
-        bastion_targets::local_dir::store_run(&target_base, &job_id, &run_id, &build.artifacts)
-            .unwrap();
+    let run_dir = bastion_targets::local_dir::store_run(
+        &target_base,
+        &job_id,
+        &run_id,
+        &build.artifacts,
+        None,
+    )
+    .unwrap();
 
     let entries_index_path = run_dir.join(bastion_core::backup_format::ENTRIES_INDEX_NAME);
     let staging_dir = tmp.path().join("staging");
@@ -187,6 +194,7 @@ fn restore_raw_tree_to_local_fs_copies_files() {
         &staging_dir,
         &dest_dir,
         ConflictPolicy::Overwrite,
+        None,
         None,
     )
     .unwrap();
@@ -285,6 +293,7 @@ fn restore_from_parts_extracts_tar_zstd_age() {
     let job_id = Uuid::new_v4().to_string();
     let run_id = Uuid::new_v4().to_string();
     let source = FilesystemSource {
+        pre_scan: true,
         paths: Vec::new(),
         root: src_root.to_string_lossy().to_string(),
         include: Vec::new(),
@@ -305,6 +314,7 @@ fn restore_from_parts_extracts_tar_zstd_age() {
             encryption: &encryption,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);

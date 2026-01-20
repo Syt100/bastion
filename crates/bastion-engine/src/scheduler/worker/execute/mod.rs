@@ -8,6 +8,7 @@ use bastion_storage::secrets::SecretsCrypto;
 use crate::run_events_bus::RunEventsBus;
 
 mod filesystem;
+mod progress;
 mod sqlite;
 mod vaultwarden;
 

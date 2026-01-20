@@ -48,6 +48,7 @@ export type JobEditorForm = {
   fsPaths: string[]
   fsInclude: string
   fsExclude: string
+  fsPreScan: boolean
   fsSymlinkPolicy: FsSymlinkPolicy
   fsHardlinkPolicy: FsHardlinkPolicy
   fsErrorPolicy: FsErrorPolicy

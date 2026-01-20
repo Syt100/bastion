@@ -200,7 +200,7 @@ pub(super) async fn start_restore(
         operations_repo::OperationKind::Restore,
         Some(("run", run_id.as_str())),
     )
-        .await?;
+    .await?;
     let _ = operations_repo::append_event(
         &state.db,
         &op.id,
@@ -479,7 +479,7 @@ pub(super) async fn start_verify(
         operations_repo::OperationKind::Verify,
         Some(("run", run_id.as_str())),
     )
-        .await?;
+    .await?;
     let _ = operations_repo::append_event(
         &state.db,
         &op.id,
@@ -511,6 +511,8 @@ pub(super) struct OperationResponse {
     created_at: i64,
     started_at: i64,
     ended_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    progress: Option<serde_json::Value>,
     summary: Option<serde_json::Value>,
     error: Option<String>,
 }
@@ -531,6 +533,7 @@ pub(super) async fn get_operation(
         created_at: op.created_at,
         started_at: op.started_at,
         ended_at: op.ended_at,
+        progress: op.progress,
         summary: op.summary,
         error: op.error,
     }))
@@ -568,6 +571,7 @@ pub(super) async fn list_run_operations(
                 created_at: op.created_at,
                 started_at: op.started_at,
                 ended_at: op.ended_at,
+                progress: op.progress,
                 summary: op.summary,
                 error: op.error,
             })

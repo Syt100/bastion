@@ -311,6 +311,8 @@ const messages = {
       sourcePathsHelp: '可选择多个文件与目录；将尽量保留原路径结构',
       sourcePathsEmpty: '尚未选择任何路径',
       sourcePathsPlaceholder: '一行一个路径，支持多行粘贴',
+      fsPreScan: '预扫描文件系统',
+      fsPreScanHelp: '先扫描所选路径以估算总量/ETA（推荐；可能增加耗时）',
       fsInclude: '包含规则（Glob）',
       fsIncludePlaceholder: '**/*.txt',
       fsIncludeHelp: '一行一个 Glob；留空表示包含全部（再受排除规则影响）',

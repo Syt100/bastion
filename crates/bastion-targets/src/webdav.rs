@@ -8,6 +8,7 @@ use bastion_core::backup_format::{
 };
 use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
+use crate::StoreRunProgress;
 use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
 
 pub async fn store_run(
@@ -16,6 +17,7 @@ pub async fn store_run(
     job_id: &str,
     run_id: &str,
     artifacts: &LocalRunArtifacts,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
 ) -> Result<Url, anyhow::Error> {
     let manifest_bytes = std::fs::read(&artifacts.manifest_path)?;
     let manifest: ManifestV1 = serde_json::from_slice(&manifest_bytes)?;
@@ -23,6 +25,25 @@ pub async fn store_run(
 
     let parts_count = artifacts.parts.len();
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+
+    // Raw-tree includes many additional payload files under stage_dir/data; those are discovered
+    // during upload and added to the running total as we traverse the directory.
+    let mut bytes_total: u64 = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size);
+    let mut bytes_done: u64 = 0;
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done,
+            bytes_total: Some(bytes_total),
+        });
+    }
+
     let mut base_url = Url::parse(base_url)?;
     if !base_url.path().ends_with('/') {
         base_url.set_path(&format!("{}/", base_url.path()));
@@ -44,7 +65,16 @@ pub async fn store_run(
     let run_url = job_url.join(&format!("{run_id}/"))?;
     client.ensure_collection(&run_url).await?;
 
-    upload_artifacts(&client, &run_url, artifacts, artifact_format).await?;
+    upload_artifacts(
+        &client,
+        &run_url,
+        artifacts,
+        artifact_format,
+        &mut bytes_done,
+        &mut bytes_total,
+        on_progress,
+    )
+    .await?;
 
     info!(
         job_id = %job_id,
@@ -60,6 +90,9 @@ async fn upload_artifacts(
     run_url: &Url,
     artifacts: &LocalRunArtifacts,
     artifact_format: ArtifactFormatV1,
+    bytes_done: &mut u64,
+    bytes_total: &mut u64,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
 ) -> Result<(), anyhow::Error> {
     for part in &artifacts.parts {
         let url = run_url.join(&part.name)?;
@@ -67,12 +100,26 @@ async fn upload_artifacts(
             && existing == part.size
         {
             debug!(url = %redact_url(&url), size = part.size, "skipping existing webdav part");
+            *bytes_done = bytes_done.saturating_add(part.size);
+            if let Some(cb) = on_progress {
+                cb(StoreRunProgress {
+                    bytes_done: *bytes_done,
+                    bytes_total: Some(*bytes_total),
+                });
+            }
             continue;
         }
         debug!(url = %redact_url(&url), size = part.size, "uploading webdav part");
         client
             .put_file_with_retries(&url, &part.path, part.size, 3)
             .await?;
+        *bytes_done = bytes_done.saturating_add(part.size);
+        if let Some(cb) = on_progress {
+            cb(StoreRunProgress {
+                bytes_done: *bytes_done,
+                bytes_total: Some(*bytes_total),
+            });
+        }
     }
 
     upload_named_file(
@@ -81,6 +128,9 @@ async fn upload_artifacts(
         &artifacts.entries_index_path,
         ENTRIES_INDEX_NAME,
         true,
+        bytes_done,
+        bytes_total,
+        on_progress,
     )
     .await?;
 
@@ -90,11 +140,22 @@ async fn upload_artifacts(
         &artifacts.manifest_path,
         MANIFEST_NAME,
         false,
+        bytes_done,
+        bytes_total,
+        on_progress,
     )
     .await?;
 
     if artifact_format == ArtifactFormatV1::RawTreeV1 {
-        upload_raw_tree_data_dir(client, run_url, artifacts).await?;
+        upload_raw_tree_data_dir(
+            client,
+            run_url,
+            artifacts,
+            bytes_done,
+            bytes_total,
+            on_progress,
+        )
+        .await?;
     }
 
     // Completion marker must be written last.
@@ -104,6 +165,9 @@ async fn upload_artifacts(
         &artifacts.complete_path,
         COMPLETE_NAME,
         false,
+        bytes_done,
+        bytes_total,
+        on_progress,
     )
     .await?;
 
@@ -114,6 +178,9 @@ async fn upload_raw_tree_data_dir(
     client: &WebdavClient,
     run_url: &Url,
     artifacts: &LocalRunArtifacts,
+    bytes_done: &mut u64,
+    bytes_total: &mut u64,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
 ) -> Result<(), anyhow::Error> {
     let stage_dir = artifacts
         .manifest_path
@@ -181,6 +248,13 @@ async fn upload_raw_tree_data_dir(
 
             if ty.is_file() {
                 let size = tokio::fs::metadata(&path).await?.len();
+                *bytes_total = bytes_total.saturating_add(size);
+                if let Some(cb) = on_progress {
+                    cb(StoreRunProgress {
+                        bytes_done: *bytes_done,
+                        bytes_total: Some(*bytes_total),
+                    });
+                }
                 let mut url = next.dir_url.clone();
                 {
                     let mut segs = url
@@ -193,11 +267,25 @@ async fn upload_raw_tree_data_dir(
                     && existing == size
                 {
                     debug!(url = %redact_url(&url), size, "skipping existing webdav file");
+                    *bytes_done = bytes_done.saturating_add(size);
+                    if let Some(cb) = on_progress {
+                        cb(StoreRunProgress {
+                            bytes_done: *bytes_done,
+                            bytes_total: Some(*bytes_total),
+                        });
+                    }
                     continue;
                 }
 
                 debug!(url = %redact_url(&url), size, "uploading webdav file");
                 client.put_file_with_retries(&url, &path, size, 3).await?;
+                *bytes_done = bytes_done.saturating_add(size);
+                if let Some(cb) = on_progress {
+                    cb(StoreRunProgress {
+                        bytes_done: *bytes_done,
+                        bytes_total: Some(*bytes_total),
+                    });
+                }
                 continue;
             }
         }
@@ -212,6 +300,9 @@ async fn upload_named_file(
     path: &Path,
     name: &str,
     allow_resume: bool,
+    bytes_done: &mut u64,
+    bytes_total: &mut u64,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
 ) -> Result<(), anyhow::Error> {
     let size = tokio::fs::metadata(path).await?.len();
     let url = run_url.join(name)?;
@@ -221,11 +312,25 @@ async fn upload_named_file(
         && existing == size
     {
         debug!(url = %redact_url(&url), size, "skipping existing webdav file");
+        *bytes_done = bytes_done.saturating_add(size);
+        if let Some(cb) = on_progress {
+            cb(StoreRunProgress {
+                bytes_done: *bytes_done,
+                bytes_total: Some(*bytes_total),
+            });
+        }
         return Ok(());
     }
 
     debug!(url = %redact_url(&url), size, "uploading webdav file");
     client.put_file_with_retries(&url, path, size, 3).await?;
+    *bytes_done = bytes_done.saturating_add(size);
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done: *bytes_done,
+            bytes_total: Some(*bytes_total),
+        });
+    }
     Ok(())
 }
 
@@ -365,12 +470,12 @@ mod tests {
         };
 
         // First store: uploads all artifacts.
-        let _ = super::store_run(&base_url, creds.clone(), "job1", "run1", &artifacts)
+        let _ = super::store_run(&base_url, creds.clone(), "job1", "run1", &artifacts, None)
             .await
             .unwrap();
 
         // Second store: should skip payload parts and entries index, but re-upload manifest and complete.
-        let _ = super::store_run(&base_url, creds, "job1", "run1", &artifacts)
+        let _ = super::store_run(&base_url, creds, "job1", "run1", &artifacts, None)
             .await
             .unwrap();
 

@@ -33,6 +33,7 @@ pub(super) fn write_file_entry<W: Write>(
     issues: &mut FilesystemBuildIssues,
     hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (file): {archive_path}"));
@@ -82,6 +83,7 @@ pub(super) fn write_file_entry<W: Write>(
                     symlink_target: None,
                     hardlink_group: None,
                 },
+                progress,
             )?;
             return Ok(());
         }
@@ -133,6 +135,7 @@ pub(super) fn write_file_entry<W: Write>(
                 symlink_target: None,
                 hardlink_group: None,
             },
+            progress,
         )?;
         return Ok(());
     }
@@ -176,6 +179,7 @@ pub(super) fn write_file_entry<W: Write>(
             symlink_target: None,
             hardlink_group: None,
         },
+        progress,
     )?;
     Ok(())
 }
@@ -190,6 +194,7 @@ pub(super) fn write_dir_entry<W: Write>(
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (dir): {archive_path}"));
@@ -223,6 +228,7 @@ pub(super) fn write_dir_entry<W: Write>(
             symlink_target: None,
             hardlink_group: None,
         },
+        progress,
     )?;
     Ok(())
 }
@@ -237,6 +243,7 @@ pub(super) fn write_symlink_entry<W: Write>(
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (symlink): {archive_path}"));
@@ -270,6 +277,7 @@ pub(super) fn write_symlink_entry<W: Write>(
             symlink_target: None,
             hardlink_group: None,
         },
+        progress,
     )?;
     Ok(())
 }

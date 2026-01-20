@@ -12,6 +12,7 @@ use bastion_backup as backup;
 use bastion_core::agent_protocol::{
     AgentToHubMessageV1, BackupRunTaskV1, EncryptionResolvedV1, JobSpecResolvedV1, PROTOCOL_VERSION,
 };
+use bastion_core::progress::{PROGRESS_SNAPSHOT_EVENT_KIND_V1, ProgressSnapshotV1};
 
 use super::managed::save_task_result;
 
@@ -113,4 +114,22 @@ async fn send_run_event(
     tx.send(Message::Text(serde_json::to_string(&msg)?.into()))
         .await?;
     Ok(())
+}
+
+async fn send_run_progress_snapshot(
+    tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
+    run_id: &str,
+    snapshot: ProgressSnapshotV1,
+) -> Result<(), anyhow::Error> {
+    let stage = snapshot.stage.clone();
+    let fields = serde_json::to_value(snapshot)?;
+    send_run_event(
+        tx,
+        run_id,
+        "info",
+        PROGRESS_SNAPSHOT_EVENT_KIND_V1,
+        &stage,
+        Some(fields),
+    )
+    .await
 }

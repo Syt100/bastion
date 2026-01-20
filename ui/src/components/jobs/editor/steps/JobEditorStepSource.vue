@@ -71,6 +71,13 @@ const {
       </n-form-item>
     </div>
 
+    <n-form-item :label="t('jobs.fields.fsPreScan')">
+      <div class="space-y-1">
+        <n-switch v-model:value="form.fsPreScan" />
+        <div class="text-xs opacity-70">{{ t('jobs.fields.fsPreScanHelp') }}</div>
+      </div>
+    </n-form-item>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
       <n-form-item :label="t('jobs.fields.fsSymlinkPolicy')">
         <n-select v-model:value="form.fsSymlinkPolicy" :options="fsSymlinkPolicyOptions" />

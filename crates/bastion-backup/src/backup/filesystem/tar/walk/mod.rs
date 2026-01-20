@@ -21,6 +21,7 @@ pub(super) fn write_tar_entries<W: Write>(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    mut progress: Option<&mut super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     tar.follow_symlinks(source.symlink_policy == FsSymlinkPolicy::Follow);
 
@@ -82,6 +83,7 @@ pub(super) fn write_tar_entries<W: Write>(
                 issues,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         }
 
@@ -113,6 +115,7 @@ pub(super) fn write_tar_entries<W: Write>(
             issues,
             &mut hardlink_index,
             &mut seen_archive_paths,
+            progress.as_deref_mut(),
         )?;
     }
 

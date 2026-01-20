@@ -34,10 +34,14 @@ pub(super) fn write_entry_record(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     record: EntryRecord,
+    progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     let line = serde_json::to_vec(&record)?;
     entries_writer.write_all(&line)?;
     entries_writer.write_all(b"\n")?;
     *entries_count += 1;
+    if let Some(p) = progress {
+        p.record_entry(&record.kind, record.size);
+    }
     Ok(())
 }

@@ -4,6 +4,7 @@ use tracing::info;
 
 use sqlx::SqlitePool;
 
+use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
 use bastion_storage::operations_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -13,6 +14,7 @@ use super::super::raw_tree;
 use super::super::sinks::{LocalFsSink, WebdavSink};
 use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
 use super::super::{ConflictPolicy, RestoreDestination, RestoreSelection, access};
+use super::progress::{OperationProgressUpdate, spawn_operation_progress_writer};
 use bastion_core::HUB_NODE_ID;
 use bastion_core::manifest::ArtifactFormatV1;
 use bastion_targets::{WebdavClient, WebdavCredentials};
@@ -47,6 +49,8 @@ pub(super) async fn restore_operation(
         "restore operation started"
     );
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
+    let progress_tx =
+        spawn_operation_progress_writer(db.clone(), op_id.to_string(), ProgressKindV1::Restore);
 
     let access::ResolvedRunAccess { access, .. } =
         access::resolve_success_run_access(db, secrets, run_id).await?;
@@ -163,7 +167,15 @@ pub(super) async fn restore_operation(
         None
     };
     let selection = selection.clone();
+    let progress_tx_restore = progress_tx.clone();
     let summary = tokio::task::spawn_blocking(move || {
+        let on_progress = |done: ProgressUnitsV1| {
+            let _ = progress_tx_restore.send(Some(OperationProgressUpdate {
+                stage: "restore",
+                done,
+                total: None,
+            }));
+        };
         match artifact_format {
             ArtifactFormatV1::ArchiveV1 => {
                 let payload = source.open_payload_reader(&manifest, &staging_dir)?;
@@ -171,7 +183,7 @@ pub(super) async fn restore_operation(
                     ResolvedDestination::LocalFs { directory } => {
                         let mut sink = LocalFsSink::new(directory.clone(), conflict);
                         let mut engine =
-                            RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
+                            RestoreEngine::new(&mut sink, decryption, selection.as_ref(), Some(&on_progress))?;
                         engine.restore(payload)?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
@@ -193,7 +205,7 @@ pub(super) async fn restore_operation(
                             staging_dir.join("webdav_sink"),
                         )?;
                         let mut engine =
-                            RestoreEngine::new(&mut sink, decryption, selection.as_ref())?;
+                            RestoreEngine::new(&mut sink, decryption, selection.as_ref(), Some(&on_progress))?;
                         engine.restore(payload)?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
@@ -215,6 +227,7 @@ pub(super) async fn restore_operation(
                             &directory,
                             conflict,
                             selection.as_ref(),
+                            Some(&on_progress),
                         )?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
@@ -241,6 +254,7 @@ pub(super) async fn restore_operation(
                             &staging_dir,
                             &mut sink,
                             selection.as_ref(),
+                            Some(&on_progress),
                         )?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },

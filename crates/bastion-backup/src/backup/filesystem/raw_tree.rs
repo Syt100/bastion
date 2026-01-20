@@ -25,6 +25,7 @@ pub(super) fn write_raw_tree(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<RawTreeBuildStats, anyhow::Error> {
     let data_dir = stage_dir.join("data");
     std::fs::create_dir_all(&data_dir)?;
@@ -89,6 +90,7 @@ pub(super) fn write_raw_tree(
                 &mut stats,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         }
 
@@ -121,6 +123,7 @@ pub(super) fn write_raw_tree(
             &mut stats,
             &mut hardlink_index,
             &mut seen_archive_paths,
+            progress.as_deref_mut(),
         )?;
     }
 
@@ -142,6 +145,7 @@ fn write_legacy_root(
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
+    mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if root.as_os_str().is_empty() {
         anyhow::bail!("filesystem.source.root is required");
@@ -198,6 +202,7 @@ fn write_legacy_root(
                 stats,
                 hardlink_index,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         } else {
             write_symlink_entry(
@@ -209,6 +214,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         }
 
@@ -314,6 +320,7 @@ fn write_legacy_root(
                 stats,
                 hardlink_index,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }
@@ -328,6 +335,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }
@@ -342,6 +350,7 @@ fn write_legacy_root(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }
@@ -371,6 +380,7 @@ fn write_source_entry(
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
+    mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     let prefix = match archive_prefix_for_path(path) {
         Ok(v) => v,
@@ -410,6 +420,7 @@ fn write_source_entry(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         }
 
@@ -504,6 +515,7 @@ fn write_source_entry(
                     stats,
                     hardlink_index,
                     seen_archive_paths,
+                    progress.as_deref_mut(),
                 )?;
                 continue;
             }
@@ -518,6 +530,7 @@ fn write_source_entry(
                     entries_count,
                     issues,
                     seen_archive_paths,
+                    progress.as_deref_mut(),
                 )?;
                 continue;
             }
@@ -532,6 +545,7 @@ fn write_source_entry(
                     entries_count,
                     issues,
                     seen_archive_paths,
+                    progress.as_deref_mut(),
                 )?;
                 continue;
             }
@@ -591,6 +605,7 @@ fn write_source_entry(
             stats,
             hardlink_index,
             seen_archive_paths,
+            progress.as_deref_mut(),
         )?;
         return Ok(());
     }
@@ -605,6 +620,7 @@ fn write_source_entry(
             entries_count,
             issues,
             seen_archive_paths,
+            progress.as_deref_mut(),
         )?;
         return Ok(());
     }
@@ -631,6 +647,7 @@ fn write_file_entry(
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (file): {archive_path}"));
@@ -730,6 +747,7 @@ fn write_file_entry(
             symlink_target: None,
             hardlink_group,
         },
+        progress,
     )?;
     Ok(())
 }
@@ -744,6 +762,7 @@ fn write_dir_entry(
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (dir): {archive_path}"));
@@ -793,6 +812,7 @@ fn write_dir_entry(
             symlink_target: None,
             hardlink_group: None,
         },
+        progress,
     )?;
     Ok(())
 }
@@ -807,6 +827,7 @@ fn write_symlink_entry(
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
     seen_archive_paths: &mut HashSet<String>,
+    progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if seen_archive_paths.contains(archive_path) {
         issues.record_warning(format!("duplicate archive path (symlink): {archive_path}"));
@@ -849,6 +870,7 @@ fn write_symlink_entry(
             symlink_target: Some(target),
             hardlink_group: None,
         },
+        progress,
     )?;
     Ok(())
 }

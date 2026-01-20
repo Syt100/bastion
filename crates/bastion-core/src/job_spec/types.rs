@@ -6,6 +6,10 @@ fn default_part_size_bytes() -> u64 {
     256 * 1024 * 1024
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EncryptionV1 {
@@ -70,6 +74,8 @@ pub enum FsErrorPolicy {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilesystemSource {
+    #[serde(default = "default_true")]
+    pub pre_scan: bool,
     #[serde(default)]
     pub paths: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]

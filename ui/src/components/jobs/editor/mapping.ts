@@ -64,6 +64,7 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
           const legacyRoot = typeof source?.root === 'string' ? source.root : ''
           return legacyRoot.trim() ? [legacyRoot] : []
         })()
+  const fsPreScan = typeof source?.pre_scan === 'boolean' ? source.pre_scan : true
 
   const notif = spec.notifications as Record<string, unknown> | undefined
   const notifyMode = typeof notif?.mode === 'string' && notif.mode === 'custom' ? 'custom' : 'inherit'
@@ -93,6 +94,7 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     fsPaths,
     fsInclude: parseStringArray(source?.include).join('\n'),
     fsExclude: parseStringArray(source?.exclude).join('\n'),
+    fsPreScan,
     fsSymlinkPolicy: normalizeSymlinkPolicy(source?.symlink_policy),
     fsHardlinkPolicy: normalizeHardlinkPolicy(source?.hardlink_policy),
     fsErrorPolicy: normalizeErrorPolicy(source?.error_policy),
@@ -136,6 +138,7 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
   const source =
     form.jobType === 'filesystem'
       ? {
+          pre_scan: form.fsPreScan,
           paths: form.fsPaths.map((p) => p.trim()).filter((p) => p.length > 0),
           include: parseLines(form.fsInclude),
           exclude: parseLines(form.fsExclude),

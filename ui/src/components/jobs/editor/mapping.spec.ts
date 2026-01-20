@@ -33,6 +33,29 @@ describe('jobDetailToEditorForm', () => {
     expect(form.jobType).toBe('filesystem')
     expect(form.artifactFormat).toBe('archive_v1')
     expect(form.fsPaths).toEqual(['/data'])
+    expect(form.fsPreScan).toBe(true)
+  })
+
+  it('parses filesystem pre_scan and defaults to true when absent', () => {
+    const job1 = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: { encryption: { type: 'none' } },
+      notifications: { mode: 'inherit' },
+      source: { paths: ['/tmp'], pre_scan: false },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    expect(jobDetailToEditorForm(job1).fsPreScan).toBe(false)
+
+    const job2 = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: { encryption: { type: 'none' } },
+      notifications: { mode: 'inherit' },
+      source: { paths: ['/tmp'] },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    expect(jobDetailToEditorForm(job2).fsPreScan).toBe(true)
   })
 
   it('parses age encryption settings from pipeline', () => {
@@ -116,5 +139,20 @@ describe('editorFormToRequest', () => {
     const pipeline = spec['pipeline'] as Record<string, unknown>
     expect(pipeline['format']).toBe('raw_tree_v1')
     expect(pipeline['encryption']).toEqual({ type: 'none' })
+  })
+
+  it('includes filesystem pre_scan in request spec', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'filesystem'
+    form.fsPaths = ['/tmp']
+    form.fsPreScan = false
+    form.targetType = 'local_dir'
+    form.localBaseDir = '/tmp/backups'
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const source = spec['source'] as Record<string, unknown>
+    expect(source['pre_scan']).toBe(false)
   })
 })

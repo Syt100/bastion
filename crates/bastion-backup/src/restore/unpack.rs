@@ -24,7 +24,7 @@ pub(super) fn restore_from_parts(
     let reader: Box<dyn Read + Send> = Box::new(ConcatReader { files, index: 0 });
 
     let mut sink = LocalFsSink::new(destination_dir.to_path_buf(), conflict);
-    let mut engine = RestoreEngine::new(&mut sink, decryption, selection)?;
+    let mut engine = RestoreEngine::new(&mut sink, decryption, selection, None)?;
     engine.restore(reader)?;
     Ok(())
 }

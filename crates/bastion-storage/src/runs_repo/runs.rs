@@ -41,6 +41,7 @@ pub async fn create_run(
         status,
         started_at,
         ended_at,
+        progress: None,
         summary,
         error: error.map(|s| s.to_string()),
     })
@@ -52,7 +53,7 @@ pub async fn list_runs_for_job(
     limit: u32,
 ) -> Result<Vec<Run>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, job_id, status, started_at, ended_at, summary_json, error FROM runs WHERE job_id = ? ORDER BY started_at DESC LIMIT ?",
+        "SELECT id, job_id, status, started_at, ended_at, progress_json, summary_json, error FROM runs WHERE job_id = ? ORDER BY started_at DESC LIMIT ?",
     )
     .bind(job_id)
     .bind(limit as i64)
@@ -62,6 +63,11 @@ pub async fn list_runs_for_job(
     let mut runs = Vec::with_capacity(rows.len());
     for row in rows {
         let status = row.get::<String, _>("status").parse::<RunStatus>()?;
+        let progress_json = row.get::<Option<String>, _>("progress_json");
+        let progress = match progress_json {
+            Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+            None => None,
+        };
         let summary_json = row.get::<Option<String>, _>("summary_json");
         let summary = match summary_json {
             Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
@@ -74,6 +80,7 @@ pub async fn list_runs_for_job(
             status,
             started_at: row.get::<i64, _>("started_at"),
             ended_at: row.get::<Option<i64>, _>("ended_at"),
+            progress,
             summary,
             error: row.get::<Option<String>, _>("error"),
         });
@@ -84,7 +91,7 @@ pub async fn list_runs_for_job(
 
 pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyhow::Error> {
     let row = sqlx::query(
-        "SELECT id, job_id, status, started_at, ended_at, summary_json, error FROM runs WHERE id = ? LIMIT 1",
+        "SELECT id, job_id, status, started_at, ended_at, progress_json, summary_json, error FROM runs WHERE id = ? LIMIT 1",
     )
     .bind(run_id)
     .fetch_optional(db)
@@ -95,6 +102,11 @@ pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyho
     };
 
     let status = row.get::<String, _>("status").parse::<RunStatus>()?;
+    let progress_json = row.get::<Option<String>, _>("progress_json");
+    let progress = match progress_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
     let summary_json = row.get::<Option<String>, _>("summary_json");
     let summary = match summary_json {
         Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
@@ -107,6 +119,7 @@ pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyho
         status,
         started_at: row.get::<i64, _>("started_at"),
         ended_at: row.get::<Option<i64>, _>("ended_at"),
+        progress,
         summary,
         error: row.get::<Option<String>, _>("error"),
     }))
@@ -130,6 +143,45 @@ pub async fn get_run_target_snapshot(
         .map(|s| serde_json::from_str::<serde_json::Value>(&s))
         .transpose()?;
     Ok(snapshot)
+}
+
+pub async fn get_run_progress(
+    db: &SqlitePool,
+    run_id: &str,
+) -> Result<Option<serde_json::Value>, anyhow::Error> {
+    let row = sqlx::query("SELECT progress_json FROM runs WHERE id = ? LIMIT 1")
+        .bind(run_id)
+        .fetch_optional(db)
+        .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let progress_json = row.get::<Option<String>, _>("progress_json");
+    let progress = progress_json
+        .map(|s| serde_json::from_str::<serde_json::Value>(&s))
+        .transpose()?;
+    Ok(progress)
+}
+
+pub async fn set_run_progress(
+    db: &SqlitePool,
+    run_id: &str,
+    progress: Option<serde_json::Value>,
+) -> Result<bool, anyhow::Error> {
+    let progress_json = match progress {
+        Some(v) => Some(serde_json::to_string(&v)?),
+        None => None,
+    };
+
+    let result = sqlx::query("UPDATE runs SET progress_json = ? WHERE id = ?")
+        .bind(progress_json)
+        .bind(run_id)
+        .execute(db)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 pub async fn set_run_target_snapshot(
@@ -182,6 +234,7 @@ pub async fn claim_next_queued_run(db: &SqlitePool) -> Result<Option<Run>, anyho
         status: RunStatus::Running,
         started_at: now,
         ended_at: None,
+        progress: None,
         summary: None,
         error: None,
     }))
@@ -218,7 +271,7 @@ pub async fn requeue_run(db: &SqlitePool, run_id: &str) -> Result<(), anyhow::Er
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
     sqlx::query(
-        "UPDATE runs SET status = 'queued', started_at = ?, ended_at = NULL, summary_json = NULL, error = NULL WHERE id = ?",
+        "UPDATE runs SET status = 'queued', started_at = ?, ended_at = NULL, progress_json = NULL, summary_json = NULL, error = NULL WHERE id = ?",
     )
     .bind(now)
     .bind(run_id)

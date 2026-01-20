@@ -7,11 +7,14 @@ use bastion_core::backup_format::{
 };
 use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
+use crate::StoreRunProgress;
+
 pub fn store_run(
     base_dir: &Path,
     job_id: &str,
     run_id: &str,
     artifacts: &LocalRunArtifacts,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
 ) -> Result<PathBuf, anyhow::Error> {
     let manifest_bytes = std::fs::read(&artifacts.manifest_path)?;
     let manifest: ManifestV1 = serde_json::from_slice(&manifest_bytes)?;
@@ -19,6 +22,25 @@ pub fn store_run(
 
     let parts_count = artifacts.parts.len();
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+
+    // Raw-tree includes many additional payload files under stage_dir/data; those are discovered
+    // during copy and added to the running total as we traverse the directory.
+    let mut bytes_total: u64 = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size);
+    let mut bytes_done: u64 = 0;
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done,
+            bytes_total: Some(bytes_total),
+        });
+    }
+
     info!(
         job_id = %job_id,
         run_id = %run_id,
@@ -35,21 +57,40 @@ pub fn store_run(
     for part in &artifacts.parts {
         let dst = run_dir.join(&part.name);
         copy_if_needed(&part.path, &dst, part.size)?;
+        bytes_done = bytes_done.saturating_add(part.size);
+        if let Some(cb) = on_progress {
+            cb(StoreRunProgress {
+                bytes_done,
+                bytes_total: Some(bytes_total),
+            });
+        }
     }
 
-    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
     copy_if_needed(
         &artifacts.entries_index_path,
         &run_dir.join(ENTRIES_INDEX_NAME),
         entries_size,
     )?;
+    bytes_done = bytes_done.saturating_add(entries_size);
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done,
+            bytes_total: Some(bytes_total),
+        });
+    }
 
-    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
     copy_if_needed(
         &artifacts.manifest_path,
         &run_dir.join(MANIFEST_NAME),
         manifest_size,
     )?;
+    bytes_done = bytes_done.saturating_add(manifest_size);
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done,
+            bytes_total: Some(bytes_total),
+        });
+    }
 
     if artifact_format == ArtifactFormatV1::RawTreeV1 {
         let stage_dir = artifacts
@@ -58,16 +99,22 @@ pub fn store_run(
             .ok_or_else(|| anyhow::anyhow!("invalid manifest path"))?;
         let src = stage_dir.join("data");
         let dst = run_dir.join("data");
-        copy_dir_recursive_if_needed(&src, &dst)?;
+        copy_dir_recursive_if_needed(&src, &dst, &mut bytes_done, &mut bytes_total, on_progress)?;
     }
 
     // Completion marker must be written last.
-    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
     copy_if_needed(
         &artifacts.complete_path,
         &run_dir.join(COMPLETE_NAME),
         complete_size,
     )?;
+    bytes_done = bytes_done.saturating_add(complete_size);
+    if let Some(cb) = on_progress {
+        cb(StoreRunProgress {
+            bytes_done,
+            bytes_total: Some(bytes_total),
+        });
+    }
 
     info!(
         job_id = %job_id,
@@ -120,7 +167,13 @@ fn copy_if_needed(src: &Path, dst: &Path, expected_size: u64) -> Result<(), anyh
     Ok(())
 }
 
-fn copy_dir_recursive_if_needed(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+fn copy_dir_recursive_if_needed(
+    src: &Path,
+    dst: &Path,
+    bytes_done: &mut u64,
+    bytes_total: &mut u64,
+    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
+) -> Result<(), anyhow::Error> {
     let meta = match std::fs::metadata(src) {
         Ok(m) => m,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -139,13 +192,34 @@ fn copy_dir_recursive_if_needed(src: &Path, dst: &Path) -> Result<(), anyhow::Er
         let dst_path = dst.join(entry.file_name());
 
         if ty.is_dir() {
-            copy_dir_recursive_if_needed(&src_path, &dst_path)?;
+            copy_dir_recursive_if_needed(
+                &src_path,
+                &dst_path,
+                bytes_done,
+                bytes_total,
+                on_progress,
+            )?;
             continue;
         }
 
         if ty.is_file() {
             let size = std::fs::metadata(&src_path)?.len();
+            *bytes_total = bytes_total.saturating_add(size);
+            if let Some(cb) = on_progress {
+                cb(StoreRunProgress {
+                    bytes_done: *bytes_done,
+                    bytes_total: Some(*bytes_total),
+                });
+            }
+
             copy_if_needed(&src_path, &dst_path, size)?;
+            *bytes_done = bytes_done.saturating_add(size);
+            if let Some(cb) = on_progress {
+                cb(StoreRunProgress {
+                    bytes_done: *bytes_done,
+                    bytes_total: Some(*bytes_total),
+                });
+            }
             continue;
         }
     }
@@ -216,7 +290,7 @@ mod tests {
         };
 
         let dest_base = tmp.path().join("dest");
-        let run_dir = store_run(&dest_base, "job1", "run1", &artifacts).unwrap();
+        let run_dir = store_run(&dest_base, "job1", "run1", &artifacts, None).unwrap();
 
         assert_eq!(run_dir, dest_base.join("job1").join("run1"));
         assert!(run_dir.join("payload.part000001").exists());
@@ -225,6 +299,6 @@ mod tests {
         assert!(run_dir.join("complete.json").exists());
 
         // Re-run should skip already-present files (no error).
-        store_run(&dest_base, "job1", "run1", &artifacts).unwrap();
+        store_run(&dest_base, "job1", "run1", &artifacts, None).unwrap();
     }
 }

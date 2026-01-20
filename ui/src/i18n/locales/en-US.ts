@@ -311,6 +311,8 @@ const messages = {
       sourcePathsHelp: 'Select multiple files and directories; path structure is preserved where possible',
       sourcePathsEmpty: 'No paths selected',
       sourcePathsPlaceholder: 'One path per line (multi-line paste supported)',
+      fsPreScan: 'Pre-scan filesystem',
+      fsPreScanHelp: 'Scans selected paths first to estimate totals/ETA (recommended; may take longer)',
       fsInclude: 'Include patterns (Glob)',
       fsIncludePlaceholder: '**/*.txt',
       fsIncludeHelp: 'One glob per line. Empty means include everything (then apply exclude)',

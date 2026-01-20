@@ -82,6 +82,7 @@ pub fn build_sqlite_run(
     };
 
     let fs_source = FilesystemSource {
+        pre_scan: true,
         paths: Vec::new(),
         root: source_dir.to_string_lossy().to_string(),
         include: Vec::new(),
@@ -101,6 +102,7 @@ pub fn build_sqlite_run(
             encryption,
             part_size_bytes,
         },
+        None,
     )?;
     if build.issues.errors_total > 0 {
         anyhow::bail!(

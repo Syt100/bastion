@@ -67,6 +67,7 @@ pub struct Operation {
     pub created_at: i64,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    pub progress: Option<serde_json::Value>,
     pub summary: Option<serde_json::Value>,
     pub error: Option<String>,
 }

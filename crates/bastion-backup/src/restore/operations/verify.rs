@@ -3,6 +3,7 @@ use std::path::Path;
 use sqlx::SqlitePool;
 use tracing::info;
 
+use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
 use bastion_storage::operations_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
@@ -10,6 +11,7 @@ use super::super::engine::RestoreEngine;
 use super::super::sinks::LocalFsSink;
 use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
 use super::super::{ConflictPolicy, access, verify};
+use super::progress::{OperationProgressUpdate, spawn_operation_progress_writer};
 
 pub(super) async fn verify_operation(
     db: &SqlitePool,
@@ -20,6 +22,8 @@ pub(super) async fn verify_operation(
 ) -> Result<(), anyhow::Error> {
     info!(op_id = %op_id, run_id = %run_id, "verify operation started");
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
+    let progress_tx =
+        spawn_operation_progress_writer(db.clone(), op_id.to_string(), ProgressKindV1::Verify);
 
     let access::ResolvedRunAccess { run, access } =
         access::resolve_success_run_access(db, secrets, run_id).await?;
@@ -71,14 +75,36 @@ pub(super) async fn verify_operation(
     let entries_path = source.fetch_entries_index(&staging_dir).await?;
     let source = source;
     let manifest = manifest.clone();
+    let progress_tx_verify = progress_tx.clone();
 
     let result = tokio::task::spawn_blocking(move || {
+        let on_restore_progress = |done: ProgressUnitsV1| {
+            let _ = progress_tx_verify.send(Some(OperationProgressUpdate {
+                stage: "restore",
+                done,
+                total: None,
+            }));
+        };
+        let on_verify_progress = |done: ProgressUnitsV1| {
+            let _ = progress_tx_verify.send(Some(OperationProgressUpdate {
+                stage: "verify",
+                done,
+                total: None,
+            }));
+        };
+
         let payload = source.open_payload_reader(&manifest, &staging_dir)?;
         let mut sink = LocalFsSink::new(temp_restore_dir.clone(), ConflictPolicy::Overwrite);
-        let mut engine = RestoreEngine::new(&mut sink, decryption, None)?;
+        let mut engine =
+            RestoreEngine::new(&mut sink, decryption, None, Some(&on_restore_progress))?;
         engine.restore(payload)?;
 
-        let verify = verify::verify_restored(&entries_path, &temp_restore_dir, record_count)?;
+        let verify = verify::verify_restored(
+            &entries_path,
+            &temp_restore_dir,
+            record_count,
+            Some(&on_verify_progress),
+        )?;
 
         let sqlite_results = verify::verify_sqlite_files(&temp_restore_dir, &sqlite_paths)?;
         Ok::<_, anyhow::Error>((verify, sqlite_results))

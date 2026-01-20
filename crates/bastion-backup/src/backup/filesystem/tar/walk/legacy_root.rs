@@ -24,6 +24,7 @@ pub(super) fn write_legacy_root<W: Write>(
     issues: &mut FilesystemBuildIssues,
     hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
     seen_archive_paths: &mut HashSet<String>,
+    mut progress: Option<&mut super::super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     if root.as_os_str().is_empty() {
         anyhow::bail!("filesystem.source.root is required");
@@ -79,6 +80,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 issues,
                 hardlink_index,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         } else {
             write_symlink_entry(
@@ -90,6 +92,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
         }
 
@@ -194,6 +197,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 issues,
                 hardlink_index,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }
@@ -208,6 +212,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }
@@ -222,6 +227,7 @@ pub(super) fn write_legacy_root<W: Write>(
                 entries_count,
                 issues,
                 seen_archive_paths,
+                progress.as_deref_mut(),
             )?;
             continue;
         }

@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use futures_util::Sink;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -5,8 +7,68 @@ use bastion_backup as backup;
 use bastion_core::agent_protocol::PipelineResolvedV1;
 use bastion_core::agent_protocol::TargetResolvedV1;
 use bastion_core::job_spec::SqliteSource;
+use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+
+struct UploadProgressBuilder {
+    last_ts: Option<i64>,
+    last_done_bytes: u64,
+}
+
+impl UploadProgressBuilder {
+    fn new() -> Self {
+        Self {
+            last_ts: None,
+            last_done_bytes: 0,
+        }
+    }
+
+    fn snapshot(&mut self, done_bytes: u64, total_bytes: Option<u64>) -> ProgressSnapshotV1 {
+        let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
+
+        let dt = self
+            .last_ts
+            .map(|ts| now_ts.saturating_sub(ts))
+            .unwrap_or(0);
+        let delta = done_bytes.saturating_sub(self.last_done_bytes);
+        let rate = if dt > 0 && delta > 0 {
+            Some(delta.saturating_div(dt as u64).max(1))
+        } else {
+            None
+        };
+
+        let eta = match (rate, total_bytes) {
+            (Some(rate), Some(total)) if rate > 0 && total > done_bytes => {
+                Some(total.saturating_sub(done_bytes).saturating_div(rate))
+            }
+            _ => None,
+        };
+
+        self.last_ts = Some(now_ts);
+        self.last_done_bytes = done_bytes;
+
+        ProgressSnapshotV1 {
+            v: 1,
+            kind: ProgressKindV1::Backup,
+            stage: "upload".to_string(),
+            ts: now_ts,
+            done: ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: done_bytes,
+            },
+            total: total_bytes.map(|bytes| ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes,
+            }),
+            rate_bps: rate,
+            eta_seconds: eta,
+            detail: None,
+        }
+    }
+}
 
 pub(super) async fn run_sqlite_backup(
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
@@ -63,9 +125,72 @@ pub(super) async fn run_sqlite_backup(
     }
 
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
-    let target_summary =
-        store_artifacts_to_resolved_target(ctx.job_id, ctx.run_id, &target, &build.artifacts)
-            .await?;
+
+    struct UploadThrottle {
+        last_emit: Instant,
+        last_done: u64,
+        last_total: Option<u64>,
+    }
+    const UPLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
+    let upload_throttle = std::sync::Arc::new(std::sync::Mutex::new(UploadThrottle {
+        last_emit: Instant::now()
+            .checked_sub(UPLOAD_PROGRESS_MIN_INTERVAL)
+            .unwrap_or_else(Instant::now),
+        last_done: 0,
+        last_total: None,
+    }));
+
+    let (progress_tx, mut progress_rx) =
+        tokio::sync::mpsc::channel::<bastion_targets::StoreRunProgress>(8);
+    let upload_cb: std::sync::Arc<dyn Fn(bastion_targets::StoreRunProgress) + Send + Sync> = {
+        let upload_throttle = upload_throttle.clone();
+        std::sync::Arc::new(move |p: bastion_targets::StoreRunProgress| {
+            let now = Instant::now();
+            let mut guard = match upload_throttle.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+
+            let total_bytes = p.bytes_total;
+            let done_bytes = p.bytes_done;
+            let finished = total_bytes.is_some_and(|t| done_bytes >= t);
+            let should_emit =
+                finished || now.duration_since(guard.last_emit) >= UPLOAD_PROGRESS_MIN_INTERVAL;
+            if !should_emit {
+                return;
+            }
+            if done_bytes == guard.last_done && total_bytes == guard.last_total {
+                return;
+            }
+
+            guard.last_emit = now;
+            guard.last_done = done_bytes;
+            guard.last_total = total_bytes;
+
+            let _ = progress_tx.try_send(p);
+        })
+    };
+
+    let mut upload_fut = std::pin::pin!(store_artifacts_to_resolved_target(
+        ctx.job_id,
+        ctx.run_id,
+        &target,
+        &build.artifacts,
+        Some(upload_cb),
+    ));
+
+    let mut progress = UploadProgressBuilder::new();
+    let target_summary = loop {
+        tokio::select! {
+            res = &mut upload_fut => break res?,
+            maybe_update = progress_rx.recv() => {
+                if let Some(p) = maybe_update {
+                    super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(p.bytes_done, p.bytes_total)).await?;
+                }
+            }
+        }
+    };
     let _ = tokio::fs::remove_dir_all(&build.artifacts.run_dir).await;
 
     Ok(serde_json::json!({

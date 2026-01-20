@@ -22,6 +22,7 @@ export function createInitialJobEditorForm(): JobEditorForm {
     fsPaths: [],
     fsInclude: '',
     fsExclude: '',
+    fsPreScan: true,
     fsSymlinkPolicy: 'keep',
     fsHardlinkPolicy: 'copy',
     fsErrorPolicy: 'fail_fast',

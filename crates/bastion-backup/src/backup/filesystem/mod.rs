@@ -1,8 +1,10 @@
 use std::fs::OpenOptions;
 use std::io::BufWriter;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use bastion_core::manifest::{ArtifactFormatV1, EntryIndexRef, ManifestV1, PipelineSettings};
+use bastion_core::progress::ProgressUnitsV1;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::info;
@@ -20,6 +22,62 @@ mod tar;
 mod util;
 
 const MAX_FS_ISSUE_SAMPLES: usize = 50;
+const FS_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Clone)]
+pub struct FilesystemBuildProgressUpdate {
+    pub stage: &'static str,
+    pub done: ProgressUnitsV1,
+    pub total: Option<ProgressUnitsV1>,
+}
+
+struct FilesystemBuildProgressCtx<'a> {
+    stage: &'static str,
+    done: ProgressUnitsV1,
+    total: Option<ProgressUnitsV1>,
+    last_emit: Instant,
+    on_progress: &'a dyn Fn(FilesystemBuildProgressUpdate),
+}
+
+impl<'a> FilesystemBuildProgressCtx<'a> {
+    fn new(
+        stage: &'static str,
+        total: Option<ProgressUnitsV1>,
+        on_progress: &'a dyn Fn(FilesystemBuildProgressUpdate),
+    ) -> Self {
+        Self {
+            stage,
+            done: ProgressUnitsV1::default(),
+            total,
+            last_emit: Instant::now(),
+            on_progress,
+        }
+    }
+
+    fn maybe_emit(&mut self, force: bool) {
+        if !force && self.last_emit.elapsed() < FS_PROGRESS_MIN_INTERVAL {
+            return;
+        }
+        self.last_emit = Instant::now();
+        (self.on_progress)(FilesystemBuildProgressUpdate {
+            stage: self.stage,
+            done: self.done,
+            total: self.total,
+        });
+    }
+
+    fn record_entry(&mut self, kind: &str, size: u64) {
+        if kind == "dir" {
+            self.done.dirs = self.done.dirs.saturating_add(1);
+            self.maybe_emit(false);
+            return;
+        }
+
+        self.done.files = self.done.files.saturating_add(1);
+        self.done.bytes = self.done.bytes.saturating_add(size);
+        self.maybe_emit(false);
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct FilesystemBuildIssues {
@@ -58,6 +116,7 @@ pub fn build_filesystem_run(
     started_at: OffsetDateTime,
     source: &FilesystemSource,
     pipeline: BuildPipelineOptions<'_>,
+    on_progress: Option<&dyn Fn(FilesystemBuildProgressUpdate)>,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
@@ -96,6 +155,30 @@ pub fn build_filesystem_run(
     let mut entries_count = 0u64;
     let mut issues = FilesystemBuildIssues::default();
 
+    let pre_scan_totals = if source.pre_scan {
+        // Pre-scan only affects user-facing totals/ETA; packaging still enforces correctness.
+        match on_progress {
+            Some(cb) => {
+                let mut ctx = FilesystemBuildProgressCtx::new("scan", None, cb);
+                ctx.maybe_emit(true);
+                let totals = scan::scan_filesystem_source(source, &mut issues, Some(&mut ctx))?;
+                ctx.done = totals;
+                ctx.total = Some(totals);
+                ctx.maybe_emit(true);
+                Some(totals)
+            }
+            None => Some(scan::scan_filesystem_source(source, &mut issues, None)?),
+        }
+    } else {
+        None
+    };
+
+    let mut packaging_progress =
+        on_progress.map(|cb| FilesystemBuildProgressCtx::new("packaging", pre_scan_totals, cb));
+    if let Some(ctx) = packaging_progress.as_mut() {
+        ctx.maybe_emit(true);
+    }
+
     let (artifact_format, parts, raw_tree_stats, tar_kind, compression_kind, split_bytes) =
         match artifact_format {
             ArtifactFormatV1::ArchiveV1 => (
@@ -108,6 +191,7 @@ pub fn build_filesystem_run(
                     &mut entries_count,
                     part_size_bytes,
                     &mut issues,
+                    packaging_progress.as_mut(),
                 )?,
                 None,
                 "pax",
@@ -124,6 +208,7 @@ pub fn build_filesystem_run(
                     &mut entries_writer,
                     &mut entries_count,
                     &mut issues,
+                    packaging_progress.as_mut(),
                 )?;
                 (
                     ArtifactFormatV1::RawTreeV1,
@@ -136,6 +221,9 @@ pub fn build_filesystem_run(
             }
         };
     entries_writer.finish()?;
+    if let Some(ctx) = packaging_progress.as_mut() {
+        ctx.maybe_emit(true);
+    }
 
     let ended_at = OffsetDateTime::now_utc();
 
@@ -213,3 +301,5 @@ pub fn build_filesystem_run(
 
 #[cfg(test)]
 mod tests;
+
+mod scan;

@@ -6,9 +6,12 @@ use super::types::{Operation, OperationEvent, OperationKind, OperationStatus};
 
 fn parse_operation_row(row: &sqlx::sqlite::SqliteRow) -> Result<Operation, anyhow::Error> {
     let kind = row.get::<String, _>("kind").parse::<OperationKind>()?;
-    let status = row
-        .get::<String, _>("status")
-        .parse::<OperationStatus>()?;
+    let status = row.get::<String, _>("status").parse::<OperationStatus>()?;
+    let progress_json = row.get::<Option<String>, _>("progress_json");
+    let progress = match progress_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
     let summary_json = row.get::<Option<String>, _>("summary_json");
     let summary = match summary_json {
         Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
@@ -22,6 +25,7 @@ fn parse_operation_row(row: &sqlx::sqlite::SqliteRow) -> Result<Operation, anyho
         created_at: row.get::<i64, _>("created_at"),
         started_at: row.get::<i64, _>("started_at"),
         ended_at: row.get::<Option<i64>, _>("ended_at"),
+        progress,
         summary,
         error: row.get::<Option<String>, _>("error"),
     })
@@ -68,6 +72,7 @@ pub async fn create_operation(
         created_at: now,
         started_at: now,
         ended_at: None,
+        progress: None,
         summary: None,
         error: None,
     })
@@ -78,7 +83,7 @@ pub async fn get_operation(
     op_id: &str,
 ) -> Result<Option<Operation>, anyhow::Error> {
     let row = sqlx::query(
-        "SELECT id, kind, status, created_at, started_at, ended_at, summary_json, error FROM operations WHERE id = ? LIMIT 1",
+        "SELECT id, kind, status, created_at, started_at, ended_at, progress_json, summary_json, error FROM operations WHERE id = ? LIMIT 1",
     )
     .bind(op_id)
     .fetch_optional(db)
@@ -98,7 +103,7 @@ pub async fn list_operations_by_subject(
     limit: u32,
 ) -> Result<Vec<Operation>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, kind, status, created_at, started_at, ended_at, summary_json, error FROM operations WHERE subject_kind = ? AND subject_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
+        "SELECT id, kind, status, created_at, started_at, ended_at, progress_json, summary_json, error FROM operations WHERE subject_kind = ? AND subject_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
     )
     .bind(subject_kind)
     .bind(subject_id)
@@ -111,6 +116,25 @@ pub async fn list_operations_by_subject(
         ops.push(parse_operation_row(&row)?);
     }
     Ok(ops)
+}
+
+pub async fn set_operation_progress(
+    db: &SqlitePool,
+    op_id: &str,
+    progress: Option<serde_json::Value>,
+) -> Result<(), anyhow::Error> {
+    let progress_json = match progress {
+        Some(v) => Some(serde_json::to_string(&v)?),
+        None => None,
+    };
+
+    sqlx::query("UPDATE operations SET progress_json = ? WHERE id = ?")
+        .bind(progress_json)
+        .bind(op_id)
+        .execute(db)
+        .await?;
+
+    Ok(())
 }
 
 pub async fn append_event(

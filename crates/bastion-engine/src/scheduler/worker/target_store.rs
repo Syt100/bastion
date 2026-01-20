@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sqlx::SqlitePool;
 
 use bastion_core::HUB_NODE_ID;
@@ -16,6 +18,7 @@ pub(super) async fn store_run_artifacts_to_target(
     run_id: &str,
     target: &job_spec::TargetV1,
     artifacts: &backup::LocalRunArtifacts,
+    on_progress: Option<Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
 ) -> Result<serde_json::Value, anyhow::Error> {
     match target {
         job_spec::TargetV1::Webdav {
@@ -29,9 +32,15 @@ pub(super) async fn store_run_artifacts_to_target(
                     .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
 
-            let run_url =
-                targets::webdav::store_run(base_url, credentials, job_id, run_id, artifacts)
-                    .await?;
+            let run_url = targets::webdav::store_run(
+                base_url,
+                credentials,
+                job_id,
+                run_id,
+                artifacts,
+                on_progress.as_deref(),
+            )
+            .await?;
             Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
         }
         job_spec::TargetV1::LocalDir { base_dir, .. } => {
@@ -45,6 +54,7 @@ pub(super) async fn store_run_artifacts_to_target(
                     &job_id,
                     &run_id,
                     &artifacts,
+                    on_progress.as_deref(),
                 )
             })
             .await??;

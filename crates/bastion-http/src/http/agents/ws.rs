@@ -219,6 +219,11 @@ async fn handle_agent_socket(
                         message,
                         fields,
                     }) if v == PROTOCOL_VERSION => {
+                        if kind.trim() == bastion_core::progress::PROGRESS_SNAPSHOT_EVENT_KIND_V1 {
+                            let _ = runs_repo::set_run_progress(&db, &run_id, fields).await;
+                            continue;
+                        }
+
                         let _ = run_events::append_and_broadcast(
                             &db,
                             &run_events_bus,
@@ -346,13 +351,22 @@ async fn handle_agent_socket(
                     Ok(AgentToHubMessageV1::OperationEvent { v, event })
                         if v == PROTOCOL_VERSION =>
                     {
+                        let bastion_core::agent_protocol::OperationEventV1 {
+                            op_id,
+                            level,
+                            kind,
+                            message,
+                            fields,
+                        } = event;
+
+                        if kind.trim() == bastion_core::progress::PROGRESS_SNAPSHOT_EVENT_KIND_V1 {
+                            let _ =
+                                operations_repo::set_operation_progress(&db, &op_id, fields).await;
+                            continue;
+                        }
+
                         let _ = operations_repo::append_event(
-                            &db,
-                            &event.op_id,
-                            &event.level,
-                            &event.kind,
-                            &event.message,
-                            event.fields.clone(),
+                            &db, &op_id, &level, &kind, &message, fields,
                         )
                         .await;
                     }

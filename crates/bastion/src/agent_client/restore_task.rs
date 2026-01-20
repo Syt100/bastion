@@ -14,6 +14,9 @@ use bastion_core::agent_protocol::{
 };
 use bastion_core::backup_format::MANIFEST_NAME;
 use bastion_core::manifest::ManifestV1;
+use bastion_core::progress::{
+    PROGRESS_SNAPSHOT_EVENT_KIND_V1, ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1,
+};
 
 use super::hub_stream::{HubStreamManager, HubStreamReader};
 use super::managed::save_task_result;
@@ -21,6 +24,54 @@ use super::managed::save_task_result;
 const HUB_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 const HUB_STREAM_PULL_TIMEOUT: Duration = Duration::from_secs(30);
 const HUB_STREAM_MAX_BYTES: u32 = 1024 * 1024;
+
+struct OpProgressBuilder {
+    last_ts: Option<i64>,
+    last_done_bytes: u64,
+}
+
+impl OpProgressBuilder {
+    fn new() -> Self {
+        Self {
+            last_ts: None,
+            last_done_bytes: 0,
+        }
+    }
+
+    fn snapshot(&mut self, done: ProgressUnitsV1) -> ProgressSnapshotV1 {
+        let stage: &'static str = "restore";
+        let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
+
+        let (rate_bps, eta_seconds) = match self.last_ts {
+            None => (None, None),
+            Some(prev_ts) => {
+                let dt = now_ts.saturating_sub(prev_ts);
+                let delta = done.bytes.saturating_sub(self.last_done_bytes);
+                let rate = if dt > 0 && delta > 0 {
+                    Some(delta.saturating_div(dt as u64).max(1))
+                } else {
+                    None
+                };
+                (rate, None)
+            }
+        };
+
+        self.last_ts = Some(now_ts);
+        self.last_done_bytes = done.bytes;
+
+        ProgressSnapshotV1 {
+            v: 1,
+            kind: ProgressKindV1::Restore,
+            stage: stage.to_string(),
+            ts: now_ts,
+            done,
+            total: None,
+            rate_bps,
+            eta_seconds,
+            detail: None,
+        }
+    }
+}
 
 pub(super) async fn handle_restore_task(
     data_dir: &Path,
@@ -145,67 +196,89 @@ pub(super) async fn handle_restore_task(
     let restore_staging_dir = restore_staging_root.join("webdav_sink");
     let restore_staging_root_cleanup = restore_staging_root.clone();
     let op_id_for_restore = op_id.clone();
-    let summary = tokio::task::spawn_blocking(move || match destination {
-        RestoreDestinationV1::LocalFs { directory } => {
-            let directory = directory.trim().to_string();
-            if directory.is_empty() {
-                anyhow::bail!("restore task destination.directory is required");
-            }
-            let dest = PathBuf::from(&directory);
-            restore::restore_to_local_fs(
-                Box::new(reader),
-                dest.clone(),
-                conflict,
-                decryption,
-                selection.as_ref(),
-            )?;
-            Ok::<_, anyhow::Error>(serde_json::json!({
-                "destination": { "type": "local_fs", "directory": dest.to_string_lossy().to_string() },
-                "conflict_policy": conflict.as_str(),
-            }))
-        }
-        RestoreDestinationV1::Webdav {
-            base_url,
-            secret_name,
-            prefix,
-        } => {
-            let base_url = base_url.trim().to_string();
-            let secret_name = secret_name.trim().to_string();
-            let prefix = prefix.trim().to_string();
-            if base_url.is_empty() {
-                anyhow::bail!("restore task destination.base_url is required");
-            }
-            if secret_name.is_empty() {
-                anyhow::bail!("restore task destination.secret_name is required");
-            }
-            if prefix.is_empty() {
-                anyhow::bail!("restore task destination.prefix is required");
-            }
+    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<ProgressUnitsV1>(8);
+    let mut progress = OpProgressBuilder::new();
 
-            let credentials =
-                super::managed::load_managed_webdav_credentials(&data_dir_owned, &secret_name)?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", secret_name))?;
+    let mut restore_handle = tokio::task::spawn_blocking(move || {
+        let on_progress = |done: ProgressUnitsV1| {
+            // RestoreEngine progress is already throttled; blocking send is OK here.
+            let _ = progress_tx.blocking_send(done);
+        };
 
-            restore::restore_to_webdav(
-                Box::new(reader),
-                restore::WebdavRestoreTarget {
-                    base_url: &base_url,
-                    credentials,
-                    prefix: &prefix,
-                },
-                &op_id_for_restore,
-                conflict,
-                decryption,
-                selection.as_ref(),
-                restore_staging_dir,
-            )?;
-            Ok::<_, anyhow::Error>(serde_json::json!({
-                "destination": { "type": "webdav", "base_url": base_url, "prefix": prefix },
-                "conflict_policy": conflict.as_str(),
-            }))
+        match destination {
+            RestoreDestinationV1::LocalFs { directory } => {
+                let directory = directory.trim().to_string();
+                if directory.is_empty() {
+                    anyhow::bail!("restore task destination.directory is required");
+                }
+                let dest = PathBuf::from(&directory);
+                restore::restore_to_local_fs(
+                    Box::new(reader),
+                    dest.clone(),
+                    conflict,
+                    decryption,
+                    selection.as_ref(),
+                    Some(&on_progress),
+                )?;
+                Ok::<_, anyhow::Error>(serde_json::json!({
+                    "destination": { "type": "local_fs", "directory": dest.to_string_lossy().to_string() },
+                    "conflict_policy": conflict.as_str(),
+                }))
+            }
+            RestoreDestinationV1::Webdav {
+                base_url,
+                secret_name,
+                prefix,
+            } => {
+                let base_url = base_url.trim().to_string();
+                let secret_name = secret_name.trim().to_string();
+                let prefix = prefix.trim().to_string();
+                if base_url.is_empty() {
+                    anyhow::bail!("restore task destination.base_url is required");
+                }
+                if secret_name.is_empty() {
+                    anyhow::bail!("restore task destination.secret_name is required");
+                }
+                if prefix.is_empty() {
+                    anyhow::bail!("restore task destination.prefix is required");
+                }
+
+                let credentials =
+                    super::managed::load_managed_webdav_credentials(&data_dir_owned, &secret_name)?
+                        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {}", secret_name))?;
+
+                restore::restore_to_webdav(
+                    Box::new(reader),
+                    restore::WebdavRestoreTarget {
+                        base_url: &base_url,
+                        credentials,
+                        prefix: &prefix,
+                    },
+                    &op_id_for_restore,
+                    conflict,
+                    decryption,
+                    selection.as_ref(),
+                    restore_staging_dir,
+                    Some(&on_progress),
+                )?;
+                Ok::<_, anyhow::Error>(serde_json::json!({
+                    "destination": { "type": "webdav", "base_url": base_url, "prefix": prefix },
+                    "conflict_policy": conflict.as_str(),
+                }))
+            }
         }
-    })
-    .await??;
+    });
+
+    let summary = loop {
+        tokio::select! {
+            res = &mut restore_handle => break res??,
+            maybe_done = progress_rx.recv() => {
+                if let Some(done) = maybe_done {
+                    send_op_progress_snapshot(tx, &op_id, progress.snapshot(done)).await?;
+                }
+            }
+        }
+    };
 
     // Best-effort cleanup for any staging created by the restore.
     let _ = tokio::fs::remove_dir_all(restore_staging_root_cleanup).await;
@@ -251,4 +324,22 @@ async fn send_op_event(
     tx.send(Message::Text(serde_json::to_string(&msg)?.into()))
         .await?;
     Ok(())
+}
+
+async fn send_op_progress_snapshot(
+    tx: &mut (impl Sink<Message, Error = tungstenite::Error> + Unpin),
+    op_id: &str,
+    snapshot: ProgressSnapshotV1,
+) -> Result<(), anyhow::Error> {
+    let stage = snapshot.stage.clone();
+    let fields = serde_json::to_value(snapshot)?;
+    send_op_event(
+        tx,
+        op_id,
+        "info",
+        PROGRESS_SNAPSHOT_EVENT_KIND_V1,
+        &stage,
+        Some(fields),
+    )
+    .await
 }

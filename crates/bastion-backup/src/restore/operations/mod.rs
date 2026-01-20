@@ -8,6 +8,7 @@ use bastion_storage::secrets::SecretsCrypto;
 
 use super::{ConflictPolicy, RestoreDestination, RestoreSelection};
 
+mod progress;
 mod restore;
 mod util;
 mod verify;

@@ -1,12 +1,82 @@
+use std::time::{Duration, Instant};
+
 use futures_util::Sink;
 use tokio_tungstenite::tungstenite::Message;
 
 use bastion_backup as backup;
 use bastion_core::agent_protocol::{PipelineResolvedV1, TargetResolvedV1};
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy};
+use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
 use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+
+struct BackupProgressBuilder {
+    last_stage: Option<&'static str>,
+    last_ts: Option<i64>,
+    last_done_bytes: u64,
+}
+
+impl BackupProgressBuilder {
+    fn new() -> Self {
+        Self {
+            last_stage: None,
+            last_ts: None,
+            last_done_bytes: 0,
+        }
+    }
+
+    fn snapshot(
+        &mut self,
+        update: backup::filesystem::FilesystemBuildProgressUpdate,
+    ) -> ProgressSnapshotV1 {
+        let stage = update.stage;
+        let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
+
+        let stage_changed = self.last_stage != Some(stage);
+        let (rate_bps, eta_seconds) = if stage_changed {
+            (None, None)
+        } else {
+            let dt = self
+                .last_ts
+                .map(|ts| now_ts.saturating_sub(ts))
+                .unwrap_or(0);
+            let delta = update.done.bytes.saturating_sub(self.last_done_bytes);
+            let rate = if dt > 0 && delta > 0 {
+                Some(delta.saturating_div(dt as u64).max(1))
+            } else {
+                None
+            };
+
+            let eta = match (rate, update.total.as_ref()) {
+                (Some(rate), Some(total)) if rate > 0 && total.bytes > update.done.bytes => Some(
+                    total
+                        .bytes
+                        .saturating_sub(update.done.bytes)
+                        .saturating_div(rate),
+                ),
+                _ => None,
+            };
+            (rate, eta)
+        };
+
+        self.last_stage = Some(stage);
+        self.last_ts = Some(now_ts);
+        self.last_done_bytes = update.done.bytes;
+
+        ProgressSnapshotV1 {
+            v: 1,
+            kind: ProgressKindV1::Backup,
+            stage: stage.to_string(),
+            ts: now_ts,
+            done: update.done,
+            total: update.total,
+            rate_bps,
+            eta_seconds,
+            detail: None,
+        }
+    }
+}
 
 pub(super) async fn run_filesystem_backup(
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
@@ -22,10 +92,19 @@ pub(super) async fn run_filesystem_backup(
     let artifact_format = pipeline.format;
     let started_at = ctx.started_at;
 
+    let (progress_tx, mut progress_rx) =
+        tokio::sync::mpsc::channel::<backup::filesystem::FilesystemBuildProgressUpdate>(8);
+    let mut progress = BackupProgressBuilder::new();
+
     let data_dir_buf = ctx.data_dir.to_path_buf();
     let job_id_clone = ctx.job_id.to_string();
     let run_id_clone = ctx.run_id.to_string();
-    let build = tokio::task::spawn_blocking(move || {
+    let progress_tx_build = progress_tx.clone();
+    let mut build_handle = tokio::task::spawn_blocking(move || {
+        let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
+            // Pre-scan/packaging is already throttled; blocking send is OK here.
+            let _ = progress_tx_build.blocking_send(update);
+        };
         backup::filesystem::build_filesystem_run(
             &data_dir_buf,
             &job_id_clone,
@@ -37,9 +116,20 @@ pub(super) async fn run_filesystem_backup(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
+            Some(&on_progress),
         )
-    })
-    .await??;
+    });
+
+    let build = loop {
+        tokio::select! {
+            res = &mut build_handle => break res??,
+            maybe_update = progress_rx.recv() => {
+                if let Some(update) = maybe_update {
+                    super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(update)).await?;
+                }
+            }
+        }
+    };
 
     if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
         let level = if build.issues.errors_total > 0 {
@@ -68,8 +158,80 @@ pub(super) async fn run_filesystem_backup(
     let artifacts = build.artifacts;
 
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
-    let target_summary =
-        store_artifacts_to_resolved_target(ctx.job_id, ctx.run_id, &target, &artifacts).await?;
+    struct UploadThrottle {
+        last_emit: Instant,
+        last_done: u64,
+        last_total: Option<u64>,
+    }
+    const UPLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
+    let upload_throttle = std::sync::Arc::new(std::sync::Mutex::new(UploadThrottle {
+        last_emit: Instant::now()
+            .checked_sub(UPLOAD_PROGRESS_MIN_INTERVAL)
+            .unwrap_or_else(Instant::now),
+        last_done: 0,
+        last_total: None,
+    }));
+    let progress_tx_upload = progress_tx.clone();
+    let upload_cb: std::sync::Arc<dyn Fn(bastion_targets::StoreRunProgress) + Send + Sync> = {
+        let upload_throttle = upload_throttle.clone();
+        std::sync::Arc::new(move |p: bastion_targets::StoreRunProgress| {
+            let now = Instant::now();
+            let mut guard = match upload_throttle.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+
+            let total_bytes = p.bytes_total;
+            let done_bytes = p.bytes_done;
+            let finished = total_bytes.is_some_and(|t| done_bytes >= t);
+            let should_emit =
+                finished || now.duration_since(guard.last_emit) >= UPLOAD_PROGRESS_MIN_INTERVAL;
+            if !should_emit {
+                return;
+            }
+            if done_bytes == guard.last_done && total_bytes == guard.last_total {
+                return;
+            }
+
+            guard.last_emit = now;
+            guard.last_done = done_bytes;
+            guard.last_total = total_bytes;
+
+            let update = backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "upload",
+                done: ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes: done_bytes,
+                },
+                total: total_bytes.map(|bytes| ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes,
+                }),
+            };
+            let _ = progress_tx_upload.try_send(update);
+        })
+    };
+
+    let mut upload_fut = std::pin::pin!(store_artifacts_to_resolved_target(
+        ctx.job_id,
+        ctx.run_id,
+        &target,
+        &artifacts,
+        Some(upload_cb),
+    ));
+    let target_summary = loop {
+        tokio::select! {
+            res = &mut upload_fut => break res?,
+            maybe_update = progress_rx.recv() => {
+                if let Some(update) = maybe_update {
+                    super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(update)).await?;
+                }
+            }
+        }
+    };
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 

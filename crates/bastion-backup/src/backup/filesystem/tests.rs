@@ -56,6 +56,7 @@ fn filesystem_paths_can_backup_single_file() {
     let expected = archive_prefix_for_path(&src).unwrap();
 
     let source = FilesystemSource {
+        pre_scan: true,
         paths: vec![src.to_string_lossy().to_string()],
         root: String::new(),
         include: Vec::new(),
@@ -76,6 +77,7 @@ fn filesystem_paths_can_backup_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -106,6 +108,7 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
     let expected = archive_prefix_for_path(&src).unwrap();
 
     let source = FilesystemSource {
+        pre_scan: true,
         paths: vec![src.to_string_lossy().to_string()],
         root: String::new(),
         include: Vec::new(),
@@ -126,6 +129,7 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -166,6 +170,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
     let expected = format!("{}/a.txt", archive_prefix_for_path(&dir).unwrap());
 
     let source = FilesystemSource {
+        pre_scan: true,
         paths: vec![
             dir.to_string_lossy().to_string(),
             file.to_string_lossy().to_string(),
@@ -189,6 +194,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -218,6 +224,7 @@ fn legacy_root_can_backup_single_file() {
     std::fs::write(&src, b"hi").unwrap();
 
     let source = FilesystemSource {
+        pre_scan: true,
         paths: Vec::new(),
         root: src.to_string_lossy().to_string(),
         include: Vec::new(),
@@ -238,6 +245,7 @@ fn legacy_root_can_backup_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);

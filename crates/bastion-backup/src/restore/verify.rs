@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use bastion_core::manifest::HashAlgorithm;
+use bastion_core::progress::ProgressUnitsV1;
 use bastion_storage::runs_repo;
 
 use super::{entries_index, parts, unpack};
@@ -18,7 +20,10 @@ pub(super) fn verify_restored(
     entries_path: &Path,
     restore_dir: &Path,
     expected_count: u64,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
 ) -> Result<VerifyResult, anyhow::Error> {
+    const VERIFY_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
     let raw = std::fs::read(entries_path)?;
     let decoded = zstd::decode_all(std::io::Cursor::new(raw))?;
     let mut errors = Vec::<String>::new();
@@ -26,6 +31,12 @@ pub(super) fn verify_restored(
     let mut files_ok = 0u64;
     let mut files_failed = 0u64;
     let mut seen = 0u64;
+
+    let mut progress_done = ProgressUnitsV1::default();
+    let mut progress_last_emit = Instant::now();
+    if let Some(cb) = on_progress {
+        cb(progress_done);
+    }
 
     for line in decoded.split(|b| *b == b'\n') {
         if line.is_empty() {
@@ -37,6 +48,14 @@ pub(super) fn verify_restored(
             continue;
         }
         files_total += 1;
+        progress_done.files = progress_done.files.saturating_add(1);
+        progress_done.bytes = progress_done.bytes.saturating_add(rec.size);
+        if let Some(cb) = on_progress
+            && progress_last_emit.elapsed() >= VERIFY_PROGRESS_MIN_INTERVAL
+        {
+            progress_last_emit = Instant::now();
+            cb(progress_done);
+        }
         let rel = PathBuf::from(rec.path.replace('\\', "/"));
         let path = unpack::safe_join(restore_dir, &rel)
             .ok_or_else(|| anyhow::anyhow!("invalid restored path: {}", rec.path))?;
@@ -77,6 +96,10 @@ pub(super) fn verify_restored(
                 }
             }
         }
+    }
+
+    if let Some(cb) = on_progress {
+        cb(progress_done);
     }
 
     if seen != expected_count && errors.len() < 10 {

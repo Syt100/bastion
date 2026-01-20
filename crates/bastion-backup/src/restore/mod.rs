@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use bastion_core::progress::ProgressUnitsV1;
 use bastion_targets::{WebdavClient, WebdavCredentials};
 use url::Url;
 
@@ -93,9 +94,10 @@ pub fn restore_to_local_fs(
     conflict: ConflictPolicy,
     decryption: PayloadDecryption,
     selection: Option<&RestoreSelection>,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
 ) -> Result<(), anyhow::Error> {
     let mut sink = sinks::LocalFsSink::new(destination_dir, conflict);
-    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection)?;
+    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection, on_progress)?;
     engine.restore(payload)?;
     Ok(())
 }
@@ -108,6 +110,7 @@ pub fn restore_to_webdav(
     decryption: PayloadDecryption,
     selection: Option<&RestoreSelection>,
     staging_dir: PathBuf,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
 ) -> Result<(), anyhow::Error> {
     let WebdavRestoreTarget {
         base_url,
@@ -148,7 +151,7 @@ pub fn restore_to_webdav(
         op_id.trim().to_string(),
         staging_dir,
     )?;
-    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection)?;
+    let mut engine = engine::RestoreEngine::new(&mut sink, decryption, selection, on_progress)?;
     engine.restore(payload)?;
     Ok(())
 }

@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
+use bastion_core::progress::ProgressUnitsV1;
 
 use super::ConflictPolicy;
 use super::RestoreSelection;
@@ -19,6 +21,7 @@ pub(super) fn restore_raw_tree_to_local_fs(
     destination_dir: &Path,
     conflict: ConflictPolicy,
     selection: Option<&RestoreSelection>,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(destination_dir)?;
 
@@ -31,6 +34,13 @@ pub(super) fn restore_raw_tree_to_local_fs(
 
     // hardlink_group -> first restored destination path (absolute).
     let mut hardlink_first = HashMap::<String, PathBuf>::new();
+
+    const RAW_TREE_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+    let mut progress_done = ProgressUnitsV1::default();
+    let mut progress_last_emit = Instant::now();
+    if let Some(cb) = on_progress {
+        cb(progress_done);
+    }
 
     for_each_entry(entries_index_path, |rec| {
         let archive_path = rec.path.clone();
@@ -51,33 +61,37 @@ pub(super) fn restore_raw_tree_to_local_fs(
         let rel = path::safe_join(Path::new(""), &rel_raw)
             .ok_or_else(|| anyhow::anyhow!("invalid entry path: {}", archive_path))?;
 
-        match rec.kind.as_str() {
+        let progress = match rec.kind.as_str() {
             "dir" => {
                 let dest_path = destination_dir.join(&rel);
                 if dest_path.exists() {
                     let meta = std::fs::symlink_metadata(&dest_path)?;
                     if meta.is_dir() {
                         apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::Dir);
-                        return Ok(());
-                    }
+                        Some((true, 0))
+                    } else {
+                        match conflict {
+                            ConflictPolicy::Overwrite => {
+                                remove_existing_path(&dest_path)?;
+                            }
+                            ConflictPolicy::Skip => {
+                                blocked_prefixes.push(archive_path);
+                                return Ok(());
+                            }
+                            ConflictPolicy::Fail => {
+                                anyhow::bail!("restore conflict: {} exists", dest_path.display());
+                            }
+                        }
 
-                    match conflict {
-                        ConflictPolicy::Overwrite => {
-                            remove_existing_path(&dest_path)?;
-                        }
-                        ConflictPolicy::Skip => {
-                            blocked_prefixes.push(archive_path);
-                            return Ok(());
-                        }
-                        ConflictPolicy::Fail => {
-                            anyhow::bail!("restore conflict: {} exists", dest_path.display());
-                        }
+                        std::fs::create_dir_all(&dest_path)?;
+                        apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::Dir);
+                        Some((true, 0))
                     }
+                } else {
+                    std::fs::create_dir_all(&dest_path)?;
+                    apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::Dir);
+                    Some((true, 0))
                 }
-
-                std::fs::create_dir_all(&dest_path)?;
-                apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::Dir);
-                Ok(())
             }
             "file" => {
                 if ensure_parent_dirs(
@@ -109,18 +123,18 @@ pub(super) fn restore_raw_tree_to_local_fs(
                     && try_hard_link(first, &dest_path).is_ok()
                 {
                     apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
-                    return Ok(());
-                }
+                    Some((false, rec.size))
+                } else {
+                    let mut reader =
+                        source.open_raw_tree_file_reader(&archive_path, rec.size, staging_dir)?;
+                    write_file_atomic(&dest_path, &mut reader, rec.size)?;
+                    apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
 
-                let mut reader =
-                    source.open_raw_tree_file_reader(&archive_path, rec.size, staging_dir)?;
-                write_file_atomic(&dest_path, &mut reader, rec.size)?;
-                apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::File);
-
-                if let Some(group) = rec.hardlink_group.as_deref() {
-                    hardlink_first.entry(group.to_string()).or_insert(dest_path);
+                    if let Some(group) = rec.hardlink_group.as_deref() {
+                        hardlink_first.entry(group.to_string()).or_insert(dest_path);
+                    }
+                    Some((false, rec.size))
                 }
-                Ok(())
             }
             "symlink" => {
                 let Some(target) = rec.symlink_target.as_deref() else {
@@ -151,15 +165,39 @@ pub(super) fn restore_raw_tree_to_local_fs(
 
                 create_symlink(target, &dest_path)?;
                 apply_fs_metadata_best_effort(&dest_path, &rec, FsEntryKind::Symlink);
-                Ok(())
+                Some((false, 0))
             }
             other => {
                 // Skip unusual kinds for now (best-effort restore).
                 tracing::debug!(kind = %other, path = %archive_path, "skipping raw-tree entry");
-                Ok(())
+                None
+            }
+        };
+
+        if let Some((is_dir, size)) = progress {
+            if is_dir {
+                progress_done.dirs = progress_done.dirs.saturating_add(1);
+            } else {
+                progress_done.files = progress_done.files.saturating_add(1);
+                progress_done.bytes = progress_done.bytes.saturating_add(size);
+            }
+
+            if let Some(cb) = on_progress
+                && progress_last_emit.elapsed() >= RAW_TREE_PROGRESS_MIN_INTERVAL
+            {
+                progress_last_emit = Instant::now();
+                cb(progress_done);
             }
         }
-    })
+
+        Ok(())
+    })?;
+
+    if let Some(cb) = on_progress {
+        cb(progress_done);
+    }
+
+    Ok(())
 }
 
 pub(super) fn restore_raw_tree_to_webdav(
@@ -168,12 +206,20 @@ pub(super) fn restore_raw_tree_to_webdav(
     staging_dir: &Path,
     sink: &mut WebdavSink,
     selection: Option<&RestoreSelection>,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
 ) -> Result<(), anyhow::Error> {
     sink.prepare()?;
 
     let selection = selection
         .map(selection::normalize_restore_selection)
         .transpose()?;
+
+    const RAW_TREE_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
+    let mut progress_done = ProgressUnitsV1::default();
+    let mut progress_last_emit = Instant::now();
+    if let Some(cb) = on_progress {
+        cb(progress_done);
+    }
 
     for_each_entry(entries_index_path, |rec| {
         let archive_path = rec.path.clone();
@@ -188,20 +234,49 @@ pub(super) fn restore_raw_tree_to_webdav(
         let rel = path::safe_join(Path::new(""), &rel_raw)
             .ok_or_else(|| anyhow::anyhow!("invalid entry path: {}", archive_path))?;
 
-        match rec.kind.as_str() {
-            "dir" => sink.apply_raw_tree_dir(&rel, &rec),
+        let progress = match rec.kind.as_str() {
+            "dir" => {
+                sink.apply_raw_tree_dir(&rel, &rec)?;
+                Some((true, 0))
+            }
             "file" => {
                 let reader =
                     source.open_raw_tree_file_reader(&archive_path, rec.size, staging_dir)?;
-                sink.apply_raw_tree_file(&rel, &rec, reader)
+                sink.apply_raw_tree_file(&rel, &rec, reader)?;
+                Some((false, rec.size))
             }
             "symlink" => {
                 let target = rec.symlink_target.as_deref().unwrap_or("<unknown>");
-                sink.apply_raw_tree_symlink(&rel, &rec, target)
+                sink.apply_raw_tree_symlink(&rel, &rec, target)?;
+                Some((false, 0))
             }
-            _ => Ok(()),
+            _ => None,
+        };
+
+        if let Some((is_dir, size)) = progress {
+            if is_dir {
+                progress_done.dirs = progress_done.dirs.saturating_add(1);
+            } else {
+                progress_done.files = progress_done.files.saturating_add(1);
+                progress_done.bytes = progress_done.bytes.saturating_add(size);
+            }
+
+            if let Some(cb) = on_progress
+                && progress_last_emit.elapsed() >= RAW_TREE_PROGRESS_MIN_INTERVAL
+            {
+                progress_last_emit = Instant::now();
+                cb(progress_done);
+            }
         }
-    })
+
+        Ok(())
+    })?;
+
+    if let Some(cb) = on_progress {
+        cb(progress_done);
+    }
+
+    Ok(())
 }
 
 fn for_each_entry(
