@@ -10,7 +10,7 @@
 - [x] 2.4 Add/update unit tests
 
 ## 3. Validation
-- [ ] 3.1 Run `cargo test --workspace`
+- [x] 3.1 Run `cargo test --workspace`
 
 ## 4. Commits
 - [x] 4.1 Commit backend changes (detailed message with Modules/Tests)
