@@ -35,6 +35,7 @@ pub(super) async fn execute_vaultwarden_run(
         stage: "packaging",
         done: ProgressUnitsV1::default(),
         total: None,
+        detail: None,
     }));
 
     run_events::append_and_broadcast(
@@ -124,6 +125,7 @@ pub(super) async fn execute_vaultwarden_run(
                     dirs: 0,
                     bytes,
                 }),
+                detail: None,
             }));
         })
     };

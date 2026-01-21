@@ -31,6 +31,12 @@ pub struct FilesystemBuildProgressUpdate {
     pub total: Option<ProgressUnitsV1>,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RawTreeBuildStats {
+    pub data_files: u64,
+    pub data_bytes: u64,
+}
+
 struct FilesystemBuildProgressCtx<'a> {
     stage: &'static str,
     done: ProgressUnitsV1,
@@ -113,6 +119,8 @@ impl FilesystemBuildIssues {
 pub struct FilesystemRunBuild {
     pub artifacts: LocalRunArtifacts,
     pub issues: FilesystemBuildIssues,
+    pub source_total: Option<ProgressUnitsV1>,
+    pub raw_tree_stats: Option<RawTreeBuildStats>,
 }
 
 pub fn build_filesystem_run(
@@ -302,6 +310,8 @@ pub fn build_filesystem_run(
             complete_path,
         },
         issues,
+        source_total: pre_scan_totals,
+        raw_tree_stats,
     })
 }
 

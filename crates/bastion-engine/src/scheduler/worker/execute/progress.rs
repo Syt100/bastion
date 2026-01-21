@@ -8,11 +8,12 @@ use bastion_storage::runs_repo;
 
 pub(super) const RUN_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) struct RunProgressUpdate {
     pub(super) stage: &'static str,
     pub(super) done: ProgressUnitsV1,
     pub(super) total: Option<ProgressUnitsV1>,
+    pub(super) detail: Option<serde_json::Value>,
 }
 
 pub(super) fn spawn_run_progress_writer(
@@ -31,7 +32,7 @@ pub(super) fn spawn_run_progress_writer(
         let mut last_done_bytes: u64 = 0;
 
         while rx.changed().await.is_ok() {
-            let Some(update) = *rx.borrow() else {
+            let Some(update) = rx.borrow().clone() else {
                 continue;
             };
 
@@ -81,7 +82,7 @@ pub(super) fn spawn_run_progress_writer(
                 total: update.total,
                 rate_bps,
                 eta_seconds,
-                detail: None,
+                detail: update.detail,
             };
 
             let Ok(payload) = serde_json::to_value(snapshot) else {

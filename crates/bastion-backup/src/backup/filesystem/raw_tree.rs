@@ -10,14 +10,9 @@ use bastion_core::manifest::HashAlgorithm;
 use walkdir::WalkDir;
 
 use super::FilesystemBuildIssues;
+use super::RawTreeBuildStats;
 use super::entries_index::{EntriesIndexWriter, EntryRecord, write_entry_record};
 use super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
-
-#[derive(Debug, Default, Clone, Copy)]
-pub(super) struct RawTreeBuildStats {
-    pub(super) data_files: u64,
-    pub(super) data_bytes: u64,
-}
 
 pub(super) fn write_raw_tree(
     stage_dir: &Path,

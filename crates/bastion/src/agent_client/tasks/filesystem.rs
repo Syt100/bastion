@@ -15,6 +15,7 @@ struct BackupProgressBuilder {
     last_stage: Option<&'static str>,
     last_ts: Option<i64>,
     last_done_bytes: u64,
+    source_total: Option<ProgressUnitsV1>,
 }
 
 impl BackupProgressBuilder {
@@ -23,6 +24,7 @@ impl BackupProgressBuilder {
             last_stage: None,
             last_ts: None,
             last_done_bytes: 0,
+            source_total: None,
         }
     }
 
@@ -32,6 +34,12 @@ impl BackupProgressBuilder {
     ) -> ProgressSnapshotV1 {
         let stage = update.stage;
         let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
+
+        if stage != "upload"
+            && let Some(total) = update.total
+        {
+            self.source_total = Some(total);
+        }
 
         let stage_changed = self.last_stage != Some(stage);
         let (rate_bps, eta_seconds) = if stage_changed {
@@ -64,6 +72,37 @@ impl BackupProgressBuilder {
         self.last_ts = Some(now_ts);
         self.last_done_bytes = update.done.bytes;
 
+        let detail = match stage {
+            "upload" => {
+                let mut backup = serde_json::Map::new();
+                if let Some(total) = self.source_total {
+                    backup.insert("source_total".to_string(), serde_json::json!(total));
+                }
+                backup.insert(
+                    "transfer_done_bytes".to_string(),
+                    serde_json::json!(update.done.bytes),
+                );
+                if let Some(total) = update.total {
+                    backup.insert(
+                        "transfer_total_bytes".to_string(),
+                        serde_json::json!(total.bytes),
+                    );
+                }
+
+                let mut root = serde_json::Map::new();
+                root.insert("backup".to_string(), serde_json::Value::Object(backup));
+                Some(serde_json::Value::Object(root))
+            }
+            "scan" | "packaging" => self.source_total.map(|t| {
+                serde_json::json!({
+                    "backup": {
+                        "source_total": t,
+                    }
+                })
+            }),
+            _ => None,
+        };
+
         ProgressSnapshotV1 {
             v: 1,
             kind: ProgressKindV1::Backup,
@@ -73,7 +112,7 @@ impl BackupProgressBuilder {
             total: update.total,
             rate_bps,
             eta_seconds,
-            detail: None,
+            detail,
         }
     }
 }
@@ -156,6 +195,17 @@ pub(super) async fn run_filesystem_backup(
 
     let issues = build.issues;
     let artifacts = build.artifacts;
+    let raw_tree_data_bytes = build.raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
+
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size)
+        .saturating_add(raw_tree_data_bytes);
 
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
     struct UploadThrottle {
@@ -182,7 +232,7 @@ pub(super) async fn run_filesystem_backup(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -263,4 +313,70 @@ pub(super) async fn run_filesystem_backup(
     }
 
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BackupProgressBuilder;
+    use bastion_backup as backup;
+    use bastion_core::progress::ProgressUnitsV1;
+
+    #[test]
+    fn upload_snapshot_includes_source_and_transfer_detail() {
+        let mut builder = BackupProgressBuilder::new();
+
+        let source_total = ProgressUnitsV1 {
+            files: 10,
+            dirs: 2,
+            bytes: 123,
+        };
+        let packaging = builder.snapshot(backup::filesystem::FilesystemBuildProgressUpdate {
+            stage: "packaging",
+            done: ProgressUnitsV1::default(),
+            total: Some(source_total),
+        });
+        let packaging_detail = packaging.detail.expect("packaging detail");
+        assert_eq!(
+            packaging_detail["backup"]["source_total"]["bytes"]
+                .as_u64()
+                .unwrap_or_default(),
+            source_total.bytes
+        );
+
+        let transfer_total_bytes = 999u64;
+        let transfer_done_bytes = 111u64;
+        let upload = builder.snapshot(backup::filesystem::FilesystemBuildProgressUpdate {
+            stage: "upload",
+            done: ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: transfer_done_bytes,
+            },
+            total: Some(ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: transfer_total_bytes,
+            }),
+        });
+        let upload_detail = upload.detail.expect("upload detail");
+
+        assert_eq!(
+            upload_detail["backup"]["source_total"]["files"]
+                .as_u64()
+                .unwrap_or_default(),
+            source_total.files
+        );
+        assert_eq!(
+            upload_detail["backup"]["transfer_total_bytes"]
+                .as_u64()
+                .unwrap_or_default(),
+            transfer_total_bytes
+        );
+        assert_eq!(
+            upload_detail["backup"]["transfer_done_bytes"]
+                .as_u64()
+                .unwrap_or_default(),
+            transfer_done_bytes
+        );
+    }
 }

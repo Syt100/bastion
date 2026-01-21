@@ -35,6 +35,7 @@ pub(super) async fn execute_sqlite_run(
         stage: "snapshot",
         done: ProgressUnitsV1::default(),
         total: None,
+        detail: None,
     }));
 
     run_events::append_and_broadcast(
@@ -147,6 +148,7 @@ pub(super) async fn execute_sqlite_run(
                     dirs: 0,
                     bytes,
                 }),
+                detail: None,
             }));
         })
     };

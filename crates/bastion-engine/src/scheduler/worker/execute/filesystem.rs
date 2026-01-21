@@ -52,12 +52,15 @@ pub(super) async fn execute_filesystem_run(
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
     let progress_tx_build = progress_tx.clone();
-    let artifacts = tokio::task::spawn_blocking(move || {
+    let build = tokio::task::spawn_blocking(move || {
         let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
             let _ = progress_tx_build.send(Some(RunProgressUpdate {
                 stage: update.stage,
                 done: update.done,
                 total: update.total,
+                detail: update
+                    .total
+                    .map(|t| serde_json::json!({ "backup": { "source_total": t } })),
             }));
         };
         backup::filesystem::build_filesystem_run(
@@ -76,17 +79,17 @@ pub(super) async fn execute_filesystem_run(
     })
     .await??;
 
-    if artifacts.issues.warnings_total > 0 || artifacts.issues.errors_total > 0 {
-        let level = if artifacts.issues.errors_total > 0 {
+    if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
+        let level = if build.issues.errors_total > 0 {
             "error"
         } else {
             "warn"
         };
         let fields = serde_json::json!({
-            "warnings_total": artifacts.issues.warnings_total,
-            "errors_total": artifacts.issues.errors_total,
-            "sample_warnings": &artifacts.issues.sample_warnings,
-            "sample_errors": &artifacts.issues.sample_errors,
+            "warnings_total": build.issues.warnings_total,
+            "errors_total": build.issues.errors_total,
+            "sample_warnings": &build.issues.sample_warnings,
+            "sample_errors": &build.issues.sample_errors,
         });
         let _ = run_events::append_and_broadcast(
             db,
@@ -100,8 +103,21 @@ pub(super) async fn execute_filesystem_run(
         .await;
     }
 
-    let issues = artifacts.issues;
-    let artifacts = artifacts.artifacts;
+    let source_total = build.source_total;
+    let raw_tree_stats = build.raw_tree_stats;
+    let issues = build.issues;
+    let artifacts = build.artifacts;
+
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+    let raw_tree_data_bytes = raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size)
+        .saturating_add(raw_tree_data_bytes);
 
     run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
         .await?;
@@ -121,6 +137,7 @@ pub(super) async fn execute_filesystem_run(
     let progress_tx_upload = progress_tx.clone();
     let upload_cb: std::sync::Arc<dyn Fn(bastion_targets::StoreRunProgress) + Send + Sync> = {
         let upload_throttle = upload_throttle.clone();
+        let source_total_for_detail = source_total;
         std::sync::Arc::new(move |p: bastion_targets::StoreRunProgress| {
             let now = Instant::now();
             let mut guard = match upload_throttle.lock() {
@@ -128,7 +145,7 @@ pub(super) async fn execute_filesystem_run(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -144,6 +161,25 @@ pub(super) async fn execute_filesystem_run(
             guard.last_done = done_bytes;
             guard.last_total = total_bytes;
 
+            let detail = {
+                let mut backup = serde_json::Map::new();
+                if let Some(t) = source_total_for_detail {
+                    backup.insert("source_total".to_string(), serde_json::json!(t));
+                }
+                backup.insert(
+                    "transfer_total_bytes".to_string(),
+                    serde_json::json!(transfer_total_bytes),
+                );
+                backup.insert(
+                    "transfer_done_bytes".to_string(),
+                    serde_json::json!(done_bytes),
+                );
+
+                let mut root = serde_json::Map::new();
+                root.insert("backup".to_string(), serde_json::Value::Object(backup));
+                serde_json::Value::Object(root)
+            };
+
             let _ = progress_tx_upload.send(Some(RunProgressUpdate {
                 stage: "upload",
                 done: ProgressUnitsV1 {
@@ -156,6 +192,7 @@ pub(super) async fn execute_filesystem_run(
                     dirs: 0,
                     bytes,
                 }),
+                detail: Some(detail),
             }));
         })
     };
