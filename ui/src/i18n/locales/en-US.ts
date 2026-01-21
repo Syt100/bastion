@@ -790,6 +790,41 @@ const messages = {
     badges: {
       offline: 'Offline',
     },
+    progress: {
+      title: 'Progress',
+      overall: 'Overall',
+      updatedAt: 'Updated',
+      details: 'More details',
+      stages: {
+        title: 'Stages',
+        scan: 'Scan',
+        packaging: 'Packaging',
+        upload: 'Upload',
+        complete: 'Complete',
+      },
+      help: {
+        scanTitle: 'Scan',
+        scanBody: 'Scan the source to compute totals (files/dirs/bytes) for progress and ETA (optional).',
+        packagingTitle: 'Packaging',
+        packagingBody:
+          'Build backup artifacts.\n- archive: pack/compress (optional encryption) and generate index\n- raw_tree: copy files into staging and compute hashes + generate index',
+        uploadTitle: 'Upload',
+        uploadBody: 'Write the artifacts to the target storage (e.g. WebDAV, local directory).',
+      },
+      source: {
+        title: 'Source',
+        files: 'Files',
+        dirs: 'Dirs',
+        bytes: 'Bytes',
+      },
+      transfer: {
+        title: 'Transfer',
+        done: 'Done',
+        total: 'Total',
+        rate: 'Rate',
+        eta: 'ETA',
+      },
+    },
     columns: {
       status: 'Status',
       startedAt: 'Started',

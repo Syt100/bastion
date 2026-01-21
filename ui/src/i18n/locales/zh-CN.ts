@@ -789,6 +789,41 @@ const messages = {
     badges: {
       offline: '离线',
     },
+    progress: {
+      title: '进度',
+      overall: '总进度',
+      updatedAt: '更新',
+      details: '更多信息',
+      stages: {
+        title: '阶段',
+        scan: '扫描',
+        packaging: '构建',
+        upload: '上传',
+        complete: '完成',
+      },
+      help: {
+        scanTitle: '扫描',
+        scanBody: '扫描数据源以计算总文件数、目录数与总大小，用于进度与 ETA（可选）。',
+        packagingTitle: '构建',
+        packagingBody:
+          '构建备份产物。\n- archive 模式：打包/压缩（可选加密）并生成索引\n- raw_tree 模式：复制文件到 staging 并计算 hash + 生成索引',
+        uploadTitle: '上传',
+        uploadBody: '将备份产物写入目标存储（例如 WebDAV、本地目录等）。',
+      },
+      source: {
+        title: '源数据',
+        files: '文件',
+        dirs: '目录',
+        bytes: '数据量',
+      },
+      transfer: {
+        title: '传输',
+        done: '已传输',
+        total: '总量',
+        rate: '速度',
+        eta: '预计剩余',
+      },
+    },
     columns: {
       status: '状态',
       startedAt: '开始时间',

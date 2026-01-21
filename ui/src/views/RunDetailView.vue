@@ -21,11 +21,11 @@ import { useJobsStore, type RunDetail, type RunEvent } from '@/stores/jobs'
 import { useOperationsStore, type Operation } from '@/stores/operations'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
-import { formatBytes } from '@/lib/format'
 
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
 import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
+import RunProgressPanel from '@/components/runs/RunProgressPanel.vue'
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
@@ -39,6 +39,7 @@ type ProgressSnapshot = {
   total?: ProgressUnits | null
   rate_bps?: number | null
   eta_seconds?: number | null
+  detail?: unknown | null
 }
 
 const { t } = useI18n()
@@ -230,58 +231,6 @@ function opKindLabel(kind: Operation['kind']): string {
   return kind
 }
 
-function formatEta(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
-  const s = Math.floor(seconds)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${sec}s`
-  return `${sec}s`
-}
-
-const progress = computed<ProgressSnapshot | null>(() => {
-  const p = run.value?.progress
-  if (!p || typeof p !== 'object') return null
-  const obj = p as ProgressSnapshot
-  if (typeof obj.stage !== 'string') return null
-  return obj
-})
-
-function formatProgressLine(p: ProgressSnapshot | null): string {
-  if (!p) return '-'
-
-  const done = p.done
-  const total = p.total
-
-  const parts: string[] = []
-  parts.push(p.stage)
-
-  if (done && typeof done === 'object') {
-    const doneFiles = Number.isFinite(done.files) ? done.files : 0
-    const doneDirs = Number.isFinite(done.dirs) ? done.dirs : 0
-    const doneBytes = Number.isFinite(done.bytes) ? done.bytes : 0
-
-    const totalFiles = total && Number.isFinite(total.files) ? total.files : null
-    const totalDirs = total && Number.isFinite(total.dirs) ? total.dirs : null
-    const totalBytes = total && Number.isFinite(total.bytes) ? total.bytes : null
-
-    parts.push(totalFiles != null ? `${doneFiles}/${totalFiles} files` : `${doneFiles} files`)
-    parts.push(totalDirs != null ? `${doneDirs}/${totalDirs} dirs` : `${doneDirs} dirs`)
-    parts.push(totalBytes != null ? `${formatBytes(doneBytes)}/${formatBytes(totalBytes)}` : formatBytes(doneBytes))
-  }
-
-  if (typeof p.rate_bps === 'number' && Number.isFinite(p.rate_bps) && p.rate_bps > 0) {
-    parts.push(`${formatBytes(p.rate_bps)}/s`)
-  }
-  if (typeof p.eta_seconds === 'number') {
-    parts.push(`ETA ${formatEta(p.eta_seconds)}`)
-  }
-
-  return parts.join(' · ')
-}
-
 function openRestore(): void {
   const id = runId.value
   if (!id) return
@@ -397,8 +346,8 @@ onBeforeUnmount(() => {
 
     <n-alert v-if="run?.error" type="error" :title="t('operations.errorTitle')">{{ run.error }}</n-alert>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <n-card class="lg:col-span-1" :title="t('runs.title')">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <n-card :title="t('runs.title')">
         <div v-if="run" class="space-y-2">
           <div class="flex items-center gap-2">
             <n-tag :type="statusTagType(run.status)">{{ run.status }}</n-tag>
@@ -406,15 +355,16 @@ onBeforeUnmount(() => {
           </div>
           <div class="text-sm opacity-70">{{ t('runs.columns.startedAt') }}: {{ formatUnixSeconds(run.started_at) }}</div>
           <div class="text-sm opacity-70">{{ t('runs.columns.endedAt') }}: {{ formatUnixSeconds(run.ended_at) }}</div>
-          <div class="text-sm opacity-70">{{ t('bulk.columns.progress') }}: {{ formatProgressLine(progress) }}</div>
         </div>
         <div v-else class="text-sm opacity-70">-</div>
       </n-card>
 
-      <n-card class="lg:col-span-2" :title="t('operations.title')">
-        <n-data-table :columns="opColumns" :data="ops" :bordered="false" />
-      </n-card>
+      <run-progress-panel :progress="run?.progress" />
     </div>
+
+    <n-card :title="t('operations.title')">
+      <n-data-table :columns="opColumns" :data="ops" :bordered="false" />
+    </n-card>
 
     <n-card :title="t('runEvents.title')">
       <div class="flex items-center gap-2 mb-3">
