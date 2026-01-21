@@ -6,20 +6,20 @@
 - [x] 1.5 Commit the spec proposal (detailed message)
 
 ## 2. Backend: Progress Semantics
-- [ ] 2.1 Propagate filesystem build stats (raw-tree data bytes/files) and stable source totals from packaging
-- [ ] 2.2 Publish stable transfer totals during upload (raw_tree_v1 and archive_v1) and store in progress snapshot detail
-- [ ] 2.3 Keep source totals visible across stage transitions via snapshot detail
-- [ ] 2.4 Add/update unit tests for snapshot detail behavior (where applicable)
+- [x] 2.1 Propagate filesystem build stats (raw-tree data bytes/files) and stable source totals from packaging
+- [x] 2.2 Publish stable transfer totals during upload (raw_tree_v1 and archive_v1) and store in progress snapshot detail
+- [x] 2.3 Keep source totals visible across stage transitions via snapshot detail
+- [x] 2.4 Add/update unit tests for snapshot detail behavior (where applicable)
 
 ## 3. Web UI: Progress Panel
-- [ ] 3.1 Add a Progress panel component for Run Detail (overall bar + stage stepper + key stats)
-- [ ] 3.2 Add per-stage help ("?") tooltips explaining scan/packaging/upload (raw_tree_v1 specifics included)
-- [ ] 3.3 Mobile layout: stacked + collapsible sections; preserve readability on small screens
-- [ ] 3.4 Add unit tests for progress rendering (percent/indeterminate + stage breakdown)
+- [x] 3.1 Add a Progress panel component for Run Detail (overall bar + stage stepper + key stats)
+- [x] 3.2 Add per-stage help ("?") tooltips explaining scan/packaging/upload (raw_tree_v1 specifics included)
+- [x] 3.3 Mobile layout: stacked + collapsible sections; preserve readability on small screens
+- [x] 3.4 Add unit tests for progress rendering (percent/indeterminate + stage breakdown)
 
 ## 4. Validation
-- [ ] 4.1 Run `./scripts/ci.sh`
+- [x] 4.1 Run `./scripts/ci.sh`
 
 ## 5. Commits
-- [ ] 5.1 Commit backend changes (detailed message with Modules/Tests)
-- [ ] 5.2 Commit web-ui changes (detailed message with Components/Tests)
+- [x] 5.1 Commit backend changes (detailed message with Modules/Tests)
+- [x] 5.2 Commit web-ui changes (detailed message with Components/Tests)
