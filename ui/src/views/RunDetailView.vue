@@ -33,6 +33,7 @@ import { copyText } from '@/lib/clipboard'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
+import { runStatusLabel, runTargetTypeLabel } from '@/lib/runs'
 
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
@@ -359,6 +360,8 @@ const targetSummary = computed(() => {
   return { type, location: runDir ?? runUrl }
 })
 
+const targetTypeLabel = computed(() => runTargetTypeLabel(t, targetSummary.value.type))
+
 const entriesCount = computed(() => asNumber(summary.value?.entries_count ?? null))
 const partsCount = computed(() => asNumber(summary.value?.parts ?? null))
 
@@ -440,7 +443,7 @@ onBeforeUnmount(() => {
   <div class="space-y-4" data-testid="run-detail">
     <page-header :title="t('runs.title')">
       <template #prefix>
-        <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)">{{ run.status }}</n-tag>
+        <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)">{{ runStatusLabel(t, run.status) }}</n-tag>
       </template>
 
       <template #subtitle>
@@ -519,7 +522,7 @@ onBeforeUnmount(() => {
             <dt class="opacity-70">{{ t('runs.detail.target') }}</dt>
             <dd class="min-w-0">
               <div class="flex items-center gap-2 min-w-0">
-                <span class="shrink-0">{{ targetSummary.type ?? '-' }}</span>
+                <n-tag size="small" :bordered="false" class="shrink-0">{{ targetTypeLabel }}</n-tag>
                 <span class="font-mono tabular-nums truncate">{{ targetSummary.location ?? '-' }}</span>
               </div>
             </dd>
@@ -614,7 +617,7 @@ onBeforeUnmount(() => {
                 <div class="text-xs opacity-70 space-y-1">
                   <div v-if="targetSummary.type || targetSummary.location">
                     {{ t('runs.detail.target') }}:
-                    <span class="font-mono tabular-nums">{{ targetSummary.type ?? '-' }}</span>
+                    <span class="font-mono tabular-nums">{{ targetTypeLabel }}</span>
                     <span v-if="targetSummary.location" class="font-mono tabular-nums"> · {{ targetSummary.location }}</span>
                   </div>
                   <div v-if="entriesCount != null">{{ t('runs.detail.entries', { count: entriesCount }) }}</div>

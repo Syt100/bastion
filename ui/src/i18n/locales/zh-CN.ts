@@ -786,6 +786,13 @@ const messages = {
   },
   runs: {
     title: '运行记录',
+    statuses: {
+      queued: '排队中',
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+      rejected: '已拒绝',
+    },
     badges: {
       offline: '离线',
     },

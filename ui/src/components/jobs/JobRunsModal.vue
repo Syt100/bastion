@@ -8,6 +8,7 @@ import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { runStatusLabel } from '@/lib/runs'
 
 export type JobRunsModalExpose = {
   open: (jobId: string) => Promise<void>
@@ -50,7 +51,7 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
         { size: 8, align: 'center', wrapItem: false },
         {
           default: () => [
-            h(NTag, { type: statusTagType(row.status) }, { default: () => row.status }),
+            h(NTag, { type: statusTagType(row.status) }, { default: () => runStatusLabel(t, row.status) }),
             row.executed_offline
               ? h(NTag, { size: 'small', type: 'info' }, { default: () => t('runs.badges.offline') })
               : null,

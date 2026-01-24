@@ -787,6 +787,13 @@ const messages = {
   },
   runs: {
     title: 'Runs',
+    statuses: {
+      queued: 'Queued',
+      running: 'Running',
+      success: 'Success',
+      failed: 'Failed',
+      rejected: 'Rejected',
+    },
     badges: {
       offline: 'Offline',
     },
