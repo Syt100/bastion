@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use tempfile::tempdir;
 use time::OffsetDateTime;
@@ -257,4 +259,92 @@ fn legacy_root_can_backup_single_file() {
     let part = build.artifacts.parts[0].path.as_path();
     let tar_paths = list_tar_paths(part);
     assert!(tar_paths.contains(&"hello.txt".to_string()));
+}
+
+#[test]
+fn archive_parts_can_be_deleted_during_packaging() {
+    let tmp = tempdir().expect("tempdir");
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    // Use pseudo-random bytes so tar+zstd output stays large enough to rotate parts.
+    let src = tmp.path().join("blob.bin");
+    let mut buf = vec![0_u8; 256 * 1024];
+    let mut x: u32 = 0x1234_5678;
+    for b in buf.iter_mut() {
+        // xorshift32
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        *b = (x & 0xff) as u8;
+    }
+    std::fs::write(&src, &buf).unwrap();
+
+    let source = FilesystemSource {
+        pre_scan: true,
+        paths: vec![src.to_string_lossy().to_string()],
+        root: String::new(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let parts_seen = Arc::new(AtomicUsize::new(0));
+    let parts_seen_cb = parts_seen.clone();
+    let on_part_finished = Box::new(move |part: crate::backup::LocalArtifact| -> std::io::Result<()> {
+        parts_seen_cb.fetch_add(1, Ordering::SeqCst);
+
+        let stage_dir = part
+            .path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("part path has no parent"))?;
+
+        // At the moment a part is finalized, we should only have that single part on disk (rolling
+        // upload deletes parts immediately).
+        let part_files = std::fs::read_dir(stage_dir)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|name| name.starts_with("payload.part"))
+            .count();
+        assert_eq!(part_files, 1);
+
+        std::fs::remove_file(&part.path)?;
+        Ok(())
+    });
+
+    let build = build_filesystem_run(
+        &data_dir,
+        &Uuid::new_v4().to_string(),
+        &Uuid::new_v4().to_string(),
+        OffsetDateTime::now_utc(),
+        &source,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &PayloadEncryption::None,
+            // Force many part rotations so the callback is exercised.
+            part_size_bytes: 64,
+        },
+        None,
+        Some(on_part_finished),
+    )
+    .unwrap();
+    assert_eq!(build.issues.errors_total, 0);
+
+    assert!(parts_seen.load(Ordering::SeqCst) > 1, "expected multiple part rotations");
+
+    // The build should succeed even though part files were deleted during packaging.
+    let stage_dir = build
+        .artifacts
+        .manifest_path
+        .parent()
+        .expect("manifest parent");
+    let remaining_parts = std::fs::read_dir(stage_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| name.starts_with("payload.part"))
+        .count();
+    assert_eq!(remaining_parts, 0);
 }
