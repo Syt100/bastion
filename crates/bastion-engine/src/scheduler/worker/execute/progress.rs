@@ -30,16 +30,22 @@ pub(super) fn spawn_run_progress_writer(
         let mut last_stage: Option<&'static str> = None;
         let mut last_ts: Option<i64> = None;
         let mut last_done_bytes: u64 = 0;
+        let mut last_update: Option<RunProgressUpdate> = None;
 
         while rx.changed().await.is_ok() {
             let Some(update) = rx.borrow().clone() else {
                 continue;
             };
+            last_update = Some(update.clone());
 
             let stage_changed = last_stage != Some(update.stage);
+            let finished = update
+                .total
+                .as_ref()
+                .is_some_and(|t| update.done.bytes >= t.bytes);
             let now_ts = OffsetDateTime::now_utc().unix_timestamp();
 
-            if !stage_changed && last_emit.elapsed() < RUN_PROGRESS_MIN_INTERVAL {
+            if !stage_changed && !finished && last_emit.elapsed() < RUN_PROGRESS_MIN_INTERVAL {
                 continue;
             }
 
@@ -91,7 +97,119 @@ pub(super) fn spawn_run_progress_writer(
 
             let _ = runs_repo::set_run_progress(&db, &run_id, Some(payload)).await;
         }
+
+        // Ensure the latest progress update is persisted even if it arrived within the throttling
+        // window right before the sender was dropped (e.g. upload hits 100% and the run ends).
+        let Some(update) = last_update.or_else(|| rx.borrow().clone()) else {
+            return;
+        };
+
+        let now_ts = OffsetDateTime::now_utc().unix_timestamp();
+
+        let snapshot = ProgressSnapshotV1 {
+            v: 1,
+            kind,
+            stage: update.stage.to_string(),
+            ts: now_ts,
+            done: update.done,
+            total: update.total,
+            rate_bps: None,
+            eta_seconds: None,
+            detail: update.detail,
+        };
+
+        if let Ok(payload) = serde_json::to_value(snapshot) {
+            // Best-effort final write. Prefer not to regress, but stage changes are already
+            // persisted immediately above, and this final write is intended to close the gap.
+            let _ = runs_repo::set_run_progress(&db, &run_id, Some(payload)).await;
+        }
     });
 
     tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+
+    use bastion_storage::db;
+    use bastion_storage::runs_repo::{RunStatus, create_run, get_run_progress};
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn flushes_last_progress_update_on_drop() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+
+        sqlx::query(
+            "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+        )
+        .bind("job1")
+        .bind("job1")
+        .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+        .bind(1000)
+        .bind(1000)
+        .execute(&pool)
+        .await
+        .expect("insert job");
+
+        let run = create_run(&pool, "job1", RunStatus::Queued, 1000, None, None, None)
+            .await
+            .expect("create run");
+
+        let tx = spawn_run_progress_writer(pool.clone(), run.id.clone(), ProgressKindV1::Backup);
+
+        let _ = tx.send(Some(RunProgressUpdate {
+            stage: "upload",
+            done: ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: 94,
+            },
+            total: Some(ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: 100,
+            }),
+            detail: None,
+        }));
+
+        // Immediately hit 100% and drop the sender. Historically this could be lost due to
+        // throttling, leaving the stored progress stuck below 100%.
+        let _ = tx.send(Some(RunProgressUpdate {
+            stage: "upload",
+            done: ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: 100,
+            },
+            total: Some(ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: 100,
+            }),
+            detail: None,
+        }));
+        drop(tx);
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(v) = get_run_progress(&pool, &run.id)
+                    .await
+                    .expect("get progress")
+                {
+                    let snap: ProgressSnapshotV1 = serde_json::from_value(v).expect("deserialize");
+                    if snap.stage == "upload" && snap.total.is_some_and(|t| t.bytes == 100) {
+                        assert_eq!(snap.done.bytes, 100);
+                        break;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timeout waiting for final progress");
+    }
 }
