@@ -71,7 +71,7 @@ describe('RunProgressPanel', () => {
     })
 
     // Overall = scan(5%) + packaging(45% * 0.5) = 27.5% -> rounded to 28.
-    const progress = wrapper.findAll('[data-stub=\"NProgress\"]')[0]
+    const progress = wrapper.findAll('[data-stub=\"NProgress\"]')[0]!
     expect(progress.attributes('data-percentage')).toBe('28')
 
     // Shows source totals (from total in non-upload stages).
@@ -98,7 +98,7 @@ describe('RunProgressPanel', () => {
     })
 
     // Overall = scan(5%) + packaging(45%) + upload(50% * 0.4) = 70%
-    const progress = wrapper.findAll('[data-stub=\"NProgress\"]')[0]
+    const progress = wrapper.findAll('[data-stub=\"NProgress\"]')[0]!
     expect(progress.attributes('data-percentage')).toBe('70')
 
     // Shows transfer totals.
