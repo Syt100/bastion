@@ -204,7 +204,7 @@ function progressNumber(pct: number | null): number {
 </script>
 
 <template>
-  <n-card :title="t('runs.progress.title')" size="small">
+  <n-card class="app-card" :bordered="false" :title="t('runs.progress.title')" size="small">
     <div v-if="!snapshot" class="text-sm opacity-70">-</div>
     <div v-else class="space-y-4">
       <div class="flex items-start justify-between gap-3">

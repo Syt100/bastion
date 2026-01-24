@@ -56,6 +56,8 @@ vi.mock('naive-ui', async () => {
     NModal: stub('NModal', { respectShow: true }),
     NSpin: stub('NSpin'),
     NSpace: stub('NSpace'),
+    NTabs: stub('NTabs'),
+    NTabPane: stub('NTabPane'),
     NTag: stub('NTag'),
     useMessage: () => messageApi,
   }
@@ -206,7 +208,7 @@ describe('RunDetailView visual polish', () => {
     await flush()
 
     expect(wrapper.text()).toContain('hello')
-    await wrapper.find('[data-testid="run-detail-events-list"] > div').trigger('click')
+    await wrapper.find('[data-testid="run-detail-events-list"] > button').trigger('click')
     await flush()
 
     // Modal content is only rendered when show=true in our stub.
@@ -232,7 +234,7 @@ describe('RunDetailView visual polish', () => {
     expect(wrapper.findComponent({ name: 'NDrawer' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'NModal' }).exists()).toBe(false)
 
-    await wrapper.find('[data-testid="run-detail-events-list"] > div').trigger('click')
+    await wrapper.find('[data-testid="run-detail-events-list"] > button').trigger('click')
     await flush()
 
     expect(wrapper.findComponent({ name: 'NDrawer' }).text()).toContain('hello')

@@ -14,6 +14,8 @@ import {
   NModal,
   NSpin,
   NSpace,
+  NTabs,
+  NTabPane,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -82,6 +84,7 @@ const verifyModal = ref<VerifyWizardModalExpose | null>(null)
 const opModal = ref<OperationModalExpose | null>(null)
 
 const isDesktop = useMediaQuery(MQ.mdUp)
+const detailTab = ref<'events' | 'operations' | 'summary'>('events')
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -388,14 +391,6 @@ function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 
   return 'default'
 }
 
-function runEventAccentBorderClass(level: string): string {
-  if (level === 'error') return 'border-red-500/80'
-  if (level === 'warn' || level === 'warning') return 'border-amber-400/80'
-  if (level === 'info') return 'border-emerald-400/80'
-  if (level === 'debug') return 'border-slate-400/70'
-  return 'border-zinc-400/60'
-}
-
 function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'live') return 'success'
   if (status === 'error') return 'error'
@@ -442,7 +437,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6" data-testid="run-detail">
+  <div class="space-y-4" data-testid="run-detail">
     <page-header :title="t('runs.title')">
       <template #prefix>
         <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)">{{ run.status }}</n-tag>
@@ -483,7 +478,13 @@ onBeforeUnmount(() => {
     <n-spin v-if="loading" size="small" />
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <n-card :title="t('runs.detail.overviewTitle')" size="small" class="lg:col-span-7" data-testid="run-detail-overview">
+      <n-card
+        :title="t('runs.detail.overviewTitle')"
+        size="small"
+        class="app-card lg:col-span-7"
+        :bordered="false"
+        data-testid="run-detail-overview"
+      >
         <div v-if="!run" class="text-sm opacity-70">-</div>
         <div v-else class="space-y-3">
           <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
@@ -531,119 +532,125 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <n-card :title="t('operations.title')" size="small" data-testid="run-detail-operations">
-      <div v-if="ops.length === 0" class="text-sm opacity-70 py-2">
-        {{ t('runs.detail.noOperations') }}
-      </div>
-      <n-data-table v-else :columns="opColumns" :data="ops" size="small" :bordered="false" />
-    </n-card>
-
-    <n-card :title="t('runEvents.title')" size="small" data-testid="run-detail-events">
-      <div class="text-sm opacity-70 flex flex-wrap items-center gap-2 justify-between">
-        <div class="flex items-center gap-2 min-w-0">
-          <n-tag size="small" :type="wsStatusTagType(wsStatus)">
-            {{ t(`runEvents.ws.${wsStatus}`) }}
-          </n-tag>
-          <span class="text-xs opacity-70">{{ events.length }} events</span>
-        </div>
-      </div>
-
-      <div v-if="events.length === 0" class="mt-3 text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
-
-      <div
-        v-else
-        data-testid="run-detail-events-list"
-        class="mt-3 max-h-[60vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-black/5 dark:ring-white/10"
-      >
-        <div
-          v-for="item in events"
-          :key="item.seq"
-          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs opacity-90 cursor-pointer transition-colors bg-black/2 hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10"
-          :class="runEventAccentBorderClass(item.level)"
-          @click="openEventDetails(item)"
-        >
-          <template v-if="isDesktop">
-            <div class="flex items-center gap-1.5">
-              <span class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4" :title="formatUnixSeconds(item.ts)">
-                {{ formatUnixSeconds(item.ts) }}
-              </span>
-              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
-                <span class="block w-full truncate text-center">{{ item.level }}</span>
-              </n-tag>
-              <span class="opacity-70 shrink-0 w-28 truncate">{{ item.kind }}</span>
-              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
-              <n-button v-if="item.fields" size="tiny" secondary @click.stop="openEventDetails(item)">
-                {{ t('runEvents.actions.details') }}
-              </n-button>
+    <n-card class="app-card" size="small" :bordered="false" data-testid="run-detail-details">
+      <n-tabs v-model:value="detailTab" type="line" size="small" animated>
+        <n-tab-pane name="events">
+          <template #tab>
+            <div class="flex items-center gap-2">
+              <span>{{ t('runEvents.title') }}</span>
+              <n-tag size="tiny" :bordered="false">{{ events.length }}</n-tag>
             </div>
           </template>
-          <template v-else>
-            <div class="flex items-center gap-1.5">
-              <span class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4" :title="formatUnixSeconds(item.ts)">
+
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <n-tag size="small" :type="wsStatusTagType(wsStatus)" :bordered="false">
+                {{ t(`runEvents.ws.${wsStatus}`) }}
+              </n-tag>
+              <span class="text-xs opacity-70">{{ events.length }} events</span>
+            </div>
+          </div>
+
+          <div v-if="events.length === 0" class="mt-3 text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
+
+          <div
+            v-else
+            data-testid="run-detail-events-list"
+            class="mt-3 max-h-[60vh] overflow-auto rounded-md app-border-subtle divide-y divide-black/5 dark:divide-white/10"
+          >
+            <button
+              v-for="item in events"
+              :key="item.seq"
+              type="button"
+              class="w-full text-left px-3 py-2 flex items-center gap-2 transition hover:bg-black/5 dark:hover:bg-white/5"
+              @click="openEventDetails(item)"
+            >
+              <span class="shrink-0 font-mono tabular-nums text-xs opacity-70 whitespace-nowrap" :title="formatUnixSeconds(item.ts)">
                 {{ formatUnixSeconds(item.ts) }}
               </span>
-              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)" :bordered="false">
                 <span class="block w-full truncate text-center">{{ item.level }}</span>
               </n-tag>
-              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
-              <n-button v-if="item.fields" size="tiny" secondary @click.stop="openEventDetails(item)">
+              <span class="min-w-0 flex-1 truncate text-sm">{{ item.message }}</span>
+              <span v-if="item.kind && item.kind !== item.message" class="shrink-0 max-w-[12rem] truncate text-xs opacity-70 font-mono">
+                {{ item.kind }}
+              </span>
+              <n-button v-if="item.fields" size="tiny" quaternary @click.stop="openEventDetails(item)">
                 {{ t('runEvents.actions.details') }}
               </n-button>
-            </div>
-            <div class="mt-0.5 flex items-center gap-2 min-w-0">
-              <span class="opacity-70 truncate max-w-[60%]">{{ item.kind }}</span>
+            </button>
+          </div>
+        </n-tab-pane>
+
+        <n-tab-pane name="operations">
+          <template #tab>
+            <div class="flex items-center gap-2">
+              <span>{{ t('operations.title') }}</span>
+              <n-tag size="tiny" :bordered="false">{{ ops.length }}</n-tag>
             </div>
           </template>
-        </div>
-      </div>
-    </n-card>
 
-    <n-card v-if="run?.summary" :title="t('runs.detail.summaryTitle')" size="small" data-testid="run-detail-summary">
-      <div class="flex items-center justify-between gap-3 mb-3">
-        <div class="text-sm opacity-70">{{ t('runs.detail.summaryHelp') }}</div>
-        <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div class="rounded border border-black/5 dark:border-white/10 p-3">
-          <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
-          <div class="text-xs opacity-70 space-y-1">
-            <div v-if="targetSummary.type || targetSummary.location">
-              {{ t('runs.detail.target') }}:
-              <span class="font-mono tabular-nums">{{ targetSummary.type ?? '-' }}</span>
-              <span v-if="targetSummary.location" class="font-mono tabular-nums"> · {{ targetSummary.location }}</span>
-            </div>
-            <div v-if="entriesCount != null">{{ t('runs.detail.entries', { count: entriesCount }) }}</div>
-            <div v-if="partsCount != null">{{ t('runs.detail.parts', { count: partsCount }) }}</div>
-            <div v-if="errorsTotal != null && errorsTotal > 0">{{ t('runs.detail.errors', { count: errorsTotal }) }}</div>
-            <div v-if="warningsTotal != null && warningsTotal > 0">{{ t('runs.detail.warnings', { count: warningsTotal }) }}</div>
+          <div v-if="ops.length === 0" class="text-sm opacity-70 py-2" data-testid="run-detail-operations-empty">
+            {{ t('runs.detail.noOperations') }}
           </div>
-        </div>
+          <n-data-table v-else :columns="opColumns" :data="ops" size="small" :bordered="false" data-testid="run-detail-operations-table" />
+        </n-tab-pane>
 
-        <div class="rounded border border-black/5 dark:border-white/10 p-3">
-          <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
-          <div class="text-xs opacity-70 space-y-1">
-            <div v-if="summary?.sqlite?.path">
-              sqlite: <span class="font-mono tabular-nums">{{ summary.sqlite.path }}</span>
+        <n-tab-pane name="summary" :disabled="!run?.summary">
+          <template #tab>
+            <span>{{ t('runs.detail.summaryTitle') }}</span>
+          </template>
+
+          <div v-if="!run?.summary" class="text-sm opacity-70 py-2">{{ t('common.noData') }}</div>
+          <div v-else data-testid="run-detail-summary">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <div class="text-sm opacity-70">{{ t('runs.detail.summaryHelp') }}</div>
+              <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
             </div>
-            <div v-if="summary?.sqlite?.snapshot_name">
-              snapshot: <span class="font-mono tabular-nums">{{ summary.sqlite.snapshot_name }}</span>
+
+            <div class="grid grid-cols-1 gap-3" :class="summary?.sqlite?.path || summary?.sqlite?.snapshot_name || summary?.vaultwarden?.data_dir ? 'md:grid-cols-2' : 'md:grid-cols-1'">
+              <div class="rounded border border-black/5 dark:border-white/10 p-3">
+                <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
+                <div class="text-xs opacity-70 space-y-1">
+                  <div v-if="targetSummary.type || targetSummary.location">
+                    {{ t('runs.detail.target') }}:
+                    <span class="font-mono tabular-nums">{{ targetSummary.type ?? '-' }}</span>
+                    <span v-if="targetSummary.location" class="font-mono tabular-nums"> · {{ targetSummary.location }}</span>
+                  </div>
+                  <div v-if="entriesCount != null">{{ t('runs.detail.entries', { count: entriesCount }) }}</div>
+                  <div v-if="partsCount != null">{{ t('runs.detail.parts', { count: partsCount }) }}</div>
+                  <div v-if="errorsTotal != null && errorsTotal > 0">{{ t('runs.detail.errors', { count: errorsTotal }) }}</div>
+                  <div v-if="warningsTotal != null && warningsTotal > 0">{{ t('runs.detail.warnings', { count: warningsTotal }) }}</div>
+                </div>
+              </div>
+
+              <div v-if="summary?.sqlite?.path || summary?.sqlite?.snapshot_name || summary?.vaultwarden?.data_dir" class="rounded border border-black/5 dark:border-white/10 p-3">
+                <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
+                <div class="text-xs opacity-70 space-y-1">
+                  <div v-if="summary?.sqlite?.path">
+                    sqlite: <span class="font-mono tabular-nums">{{ summary.sqlite.path }}</span>
+                  </div>
+                  <div v-if="summary?.sqlite?.snapshot_name">
+                    snapshot: <span class="font-mono tabular-nums">{{ summary.sqlite.snapshot_name }}</span>
+                  </div>
+                  <div v-if="summary?.vaultwarden?.data_dir">
+                    vaultwarden: <span class="font-mono tabular-nums">{{ summary.vaultwarden.data_dir }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div v-if="summary?.vaultwarden?.data_dir">
-              vaultwarden: <span class="font-mono tabular-nums">{{ summary.vaultwarden.data_dir }}</span>
-            </div>
+
+            <details class="mt-3 rounded border border-black/5 dark:border-white/10 p-3">
+              <summary class="cursor-pointer select-none text-sm font-medium">
+                {{ t('runs.detail.rawJson') }}
+              </summary>
+              <div class="mt-3">
+                <n-code :code="formatJson(run.summary)" language="json" />
+              </div>
+            </details>
           </div>
-        </div>
-      </div>
-
-      <details class="mt-3 rounded border border-black/5 dark:border-white/10 p-3">
-        <summary class="cursor-pointer select-none text-sm font-medium">
-          {{ t('runs.detail.rawJson') }}
-        </summary>
-        <div class="mt-3">
-          <n-code :code="formatJson(run.summary)" language="json" />
-        </div>
-      </details>
+        </n-tab-pane>
+      </n-tabs>
     </n-card>
 
     <n-modal v-if="isDesktop" v-model:show="eventDetailShow" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('runEvents.details.title')">
