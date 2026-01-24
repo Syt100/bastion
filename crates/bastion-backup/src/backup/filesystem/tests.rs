@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tempfile::tempdir;
 use time::OffsetDateTime;
@@ -293,26 +293,28 @@ fn archive_parts_can_be_deleted_during_packaging() {
 
     let parts_seen = Arc::new(AtomicUsize::new(0));
     let parts_seen_cb = parts_seen.clone();
-    let on_part_finished = Box::new(move |part: crate::backup::LocalArtifact| -> std::io::Result<()> {
-        parts_seen_cb.fetch_add(1, Ordering::SeqCst);
+    let on_part_finished = Box::new(
+        move |part: crate::backup::LocalArtifact| -> std::io::Result<()> {
+            parts_seen_cb.fetch_add(1, Ordering::SeqCst);
 
-        let stage_dir = part
-            .path
-            .parent()
-            .ok_or_else(|| std::io::Error::other("part path has no parent"))?;
+            let stage_dir = part
+                .path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("part path has no parent"))?;
 
-        // At the moment a part is finalized, we should only have that single part on disk (rolling
-        // upload deletes parts immediately).
-        let part_files = std::fs::read_dir(stage_dir)?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|name| name.starts_with("payload.part"))
-            .count();
-        assert_eq!(part_files, 1);
+            // At the moment a part is finalized, we should only have that single part on disk (rolling
+            // upload deletes parts immediately).
+            let part_files = std::fs::read_dir(stage_dir)?
+                .filter_map(|e| e.ok())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|name| name.starts_with("payload.part"))
+                .count();
+            assert_eq!(part_files, 1);
 
-        std::fs::remove_file(&part.path)?;
-        Ok(())
-    });
+            std::fs::remove_file(&part.path)?;
+            Ok(())
+        },
+    );
 
     let build = build_filesystem_run(
         &data_dir,
@@ -332,7 +334,10 @@ fn archive_parts_can_be_deleted_during_packaging() {
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
 
-    assert!(parts_seen.load(Ordering::SeqCst) > 1, "expected multiple part rotations");
+    assert!(
+        parts_seen.load(Ordering::SeqCst) > 1,
+        "expected multiple part rotations"
+    );
 
     // The build should succeed even though part files were deleted during packaging.
     let stage_dir = build

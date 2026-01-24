@@ -411,8 +411,8 @@ mod tests {
     use tempfile::TempDir;
     use tokio::net::TcpListener;
 
-    use bastion_core::backup_format::{LocalArtifact, LocalRunArtifacts};
     use crate::WebdavCredentials;
+    use bastion_core::backup_format::{LocalArtifact, LocalRunArtifacts};
 
     #[derive(Clone, Default)]
     struct DavState {

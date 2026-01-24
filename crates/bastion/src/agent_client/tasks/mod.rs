@@ -23,6 +23,13 @@ struct TaskContext<'a> {
     started_at: time::OffsetDateTime,
 }
 
+type ArchivePartFinishedHook = Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send>;
+type ArchivePartUploadHandle = tokio::task::JoinHandle<Result<(), anyhow::Error>>;
+type ArchivePartUploader = (
+    Option<ArchivePartFinishedHook>,
+    Option<ArchivePartUploadHandle>,
+);
+
 pub(super) async fn handle_backup_task(
     data_dir: &Path,
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
@@ -100,17 +107,14 @@ fn prepare_archive_part_uploader(
     job_id: &str,
     run_id: &str,
     artifact_format: bastion_core::manifest::ArtifactFormatV1,
-) -> (
-    Option<Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send>>,
-    Option<tokio::task::JoinHandle<Result<(), anyhow::Error>>>,
-) {
+) -> ArchivePartUploader {
     if artifact_format != bastion_core::manifest::ArtifactFormatV1::ArchiveV1 {
         return (None, None);
     }
 
     let (tx, rx) = tokio::sync::mpsc::channel::<backup::LocalArtifact>(1);
 
-    let handle: tokio::task::JoinHandle<Result<(), anyhow::Error>> = match target {
+    let handle: ArchivePartUploadHandle = match target {
         bastion_core::agent_protocol::TargetResolvedV1::Webdav {
             base_url,
             username,
@@ -152,12 +156,11 @@ fn prepare_archive_part_uploader(
         }
     };
 
-    let on_part_finished: Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send> =
-        Box::new(move |part| {
-            tx.blocking_send(part)
-                .map_err(|_| std::io::Error::other("rolling uploader dropped"))?;
-            Ok(())
-        });
+    let on_part_finished: ArchivePartFinishedHook = Box::new(move |part| {
+        tx.blocking_send(part)
+            .map_err(|_| std::io::Error::other("rolling uploader dropped"))?;
+        Ok(())
+    });
 
     (Some(on_part_finished), Some(handle))
 }

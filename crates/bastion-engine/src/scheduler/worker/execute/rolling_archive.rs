@@ -43,9 +43,10 @@ pub(super) async fn prepare_archive_part_uploader(
             secret_name,
             ..
         } => {
-            let cred_bytes = secrets_repo::get_secret(db, secrets, HUB_NODE_ID, "webdav", secret_name)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let cred_bytes =
+                secrets_repo::get_secret(db, secrets, HUB_NODE_ID, "webdav", secret_name)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
 
             let base_url = base_url.to_string();
@@ -53,9 +54,15 @@ pub(super) async fn prepare_archive_part_uploader(
             let run_id = run_id.to_string();
 
             tokio::spawn(async move {
-                targets::webdav::store_run_parts_rolling(&base_url, credentials, &job_id, &run_id, rx)
-                    .await
-                    .map(|_| ())
+                targets::webdav::store_run_parts_rolling(
+                    &base_url,
+                    credentials,
+                    &job_id,
+                    &run_id,
+                    rx,
+                )
+                .await
+                .map(|_| ())
             })
         }
         job_spec::TargetV1::LocalDir { base_dir, .. } => {
@@ -84,4 +91,3 @@ pub(super) async fn prepare_archive_part_uploader(
 
     Ok((Some(on_part_finished), Some(handle)))
 }
-

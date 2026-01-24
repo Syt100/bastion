@@ -17,6 +17,7 @@ struct EntryRecord {
     hash: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_tar_zstd_parts(
     stage_dir: &Path,
     root: &Path,

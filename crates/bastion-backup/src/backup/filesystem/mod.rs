@@ -123,6 +123,7 @@ pub struct FilesystemRunBuild {
     pub raw_tree_stats: Option<RawTreeBuildStats>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_filesystem_run(
     data_dir: &Path,
     job_id: &str,
