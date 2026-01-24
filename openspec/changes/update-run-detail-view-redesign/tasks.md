@@ -1,7 +1,7 @@
 ## 1. Spec
-- [ ] 1.1 Add `web-ui` spec delta for the redesigned Run Detail layout (hero first screen + details tabs)
-- [ ] 1.2 Run `openspec validate ${change_id} --strict`
-- [ ] 1.3 Commit the spec proposal (detailed message)
+- [x] 1.1 Add `web-ui` spec delta for the redesigned Run Detail layout (hero first screen + details tabs)
+- [x] 1.2 Run `openspec validate update-run-detail-view-redesign --strict`
+- [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Implementation
 - [ ] 2.1 Rework Run Detail layout: denser overview + progress first screen (desktop 2-col / mobile 1-col)
