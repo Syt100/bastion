@@ -166,6 +166,7 @@ fn restore_raw_tree_to_local_fs_copies_files() {
             part_size_bytes: 4 * 1024 * 1024,
         },
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -314,6 +315,7 @@ fn restore_from_parts_extracts_tar_zstd_age() {
             encryption: &encryption,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
     )
     .unwrap();

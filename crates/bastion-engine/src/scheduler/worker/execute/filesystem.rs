@@ -75,6 +75,7 @@ pub(super) async fn execute_filesystem_run(
                 part_size_bytes: part_size,
             },
             Some(&on_progress),
+            None,
         )
     })
     .await??;

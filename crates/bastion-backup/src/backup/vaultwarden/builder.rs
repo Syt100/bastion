@@ -10,8 +10,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::backup::{
-    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
-    PayloadEncryption, stage_dir,
+    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
+    MANIFEST_NAME, PayloadEncryption, stage_dir,
 };
 
 pub fn build_vaultwarden_run(
@@ -21,6 +21,7 @@ pub fn build_vaultwarden_run(
     started_at: OffsetDateTime,
     source: &VaultwardenSource,
     pipeline: BuildPipelineOptions<'_>,
+    on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<LocalRunArtifacts, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
@@ -78,6 +79,7 @@ pub fn build_vaultwarden_run(
         &mut entries_writer,
         &mut entries_count,
         part_size_bytes,
+        on_part_finished,
     )?;
     entries_writer.finish()?;
 

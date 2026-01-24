@@ -36,7 +36,6 @@ pub fn stage_dir(data_dir: &Path, run_id: &str) -> PathBuf {
     run_dir(data_dir, run_id).join("staging")
 }
 
-#[derive(Debug)]
 pub struct PartWriter {
     dir: PathBuf,
     part_size: u64,
@@ -44,6 +43,7 @@ pub struct PartWriter {
     next_index: u32,
     current: Option<PartState>,
     parts: Vec<ArtifactPart>,
+    on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> io::Result<()> + Send>>,
 }
 
 #[derive(Debug)]
@@ -63,7 +63,15 @@ impl PartWriter {
             next_index: 1,
             current: None,
             parts: Vec::new(),
+            on_part_finished: None,
         })
+    }
+
+    pub fn set_on_part_finished(
+        &mut self,
+        cb: Box<dyn Fn(LocalArtifact) -> io::Result<()> + Send>,
+    ) {
+        self.on_part_finished = Some(cb);
     }
 
     pub fn finish(mut self) -> Result<Vec<ArtifactPart>, io::Error> {
@@ -99,11 +107,31 @@ impl PartWriter {
             return Ok(());
         }
 
+        // Close the part before notifying external consumers so they can safely read it.
+        // We also flush to ensure the final size and contents are visible.
+        let mut file = state.file;
+        file.flush()?;
+        drop(file);
+
         let hash = state.hasher.finalize().to_hex().to_string();
+        let name = state.name;
+        let size = state.size;
+        let hash_alg = HashAlgorithm::Blake3;
+
+        if let Some(cb) = self.on_part_finished.as_ref() {
+            cb(LocalArtifact {
+                name: name.clone(),
+                path: self.dir.join(&name),
+                size,
+                hash_alg: hash_alg.clone(),
+                hash: hash.clone(),
+            })?;
+        }
+
         self.parts.push(ArtifactPart {
-            name: state.name,
-            size: state.size,
-            hash_alg: HashAlgorithm::Blake3,
+            name,
+            size,
+            hash_alg,
             hash,
         });
         Ok(())

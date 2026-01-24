@@ -54,6 +54,7 @@ fn vaultwarden_run_includes_snapshot_and_files() {
             encryption: &encryption,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
     )
     .unwrap();
 

@@ -68,6 +68,7 @@ pub(super) async fn execute_sqlite_run(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
+            None,
         )
     })
     .await??;

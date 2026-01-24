@@ -25,10 +25,14 @@ pub(super) fn write_tar_zstd_parts(
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
     part_size_bytes: u64,
+    on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<Vec<LocalArtifact>, anyhow::Error> {
     let payload_prefix: &'static str = "payload.part";
     let mut part_writer =
         PartWriter::new(stage_dir.to_path_buf(), part_size_bytes, payload_prefix)?;
+    if let Some(cb) = on_part_finished {
+        part_writer.set_on_part_finished(cb);
+    }
 
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())

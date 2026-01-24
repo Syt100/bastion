@@ -99,6 +99,7 @@ pub(super) async fn run_sqlite_backup(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
+            None,
         )
     })
     .await??;

@@ -78,6 +78,7 @@ fn filesystem_paths_can_backup_single_file() {
             part_size_bytes: 4 * 1024 * 1024,
         },
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -129,6 +130,7 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
     )
     .unwrap();
@@ -195,6 +197,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
             part_size_bytes: 4 * 1024 * 1024,
         },
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -245,6 +248,7 @@ fn legacy_root_can_backup_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
     )
     .unwrap();

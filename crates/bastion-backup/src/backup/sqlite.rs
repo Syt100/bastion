@@ -5,7 +5,7 @@ use rusqlite::{Connection, OpenFlags};
 use time::OffsetDateTime;
 use tracing::{info, warn};
 
-use crate::backup::{BuildPipelineOptions, LocalRunArtifacts};
+use crate::backup::{BuildPipelineOptions, LocalArtifact, LocalRunArtifacts};
 use bastion_core::job_spec::{
     FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, SqliteSource,
 };
@@ -37,6 +37,7 @@ pub fn build_sqlite_run(
     started_at: OffsetDateTime,
     source: &SqliteSource,
     pipeline: BuildPipelineOptions<'_>,
+    on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<SqliteRunArtifacts, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
@@ -103,6 +104,7 @@ pub fn build_sqlite_run(
             part_size_bytes,
         },
         None,
+        on_part_finished,
     )?;
     if build.issues.errors_total > 0 {
         anyhow::bail!(
@@ -239,6 +241,7 @@ mod tests {
                 encryption: &encryption,
                 part_size_bytes: 4 * 1024 * 1024,
             },
+            None,
         )
         .unwrap();
 

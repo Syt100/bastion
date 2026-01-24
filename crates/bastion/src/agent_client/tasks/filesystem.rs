@@ -156,6 +156,7 @@ pub(super) async fn run_filesystem_backup(
                 part_size_bytes: part_size,
             },
             Some(&on_progress),
+            None,
         )
     });
 

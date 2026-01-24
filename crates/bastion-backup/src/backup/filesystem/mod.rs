@@ -11,8 +11,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::backup::{
-    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
-    PayloadEncryption, stage_dir,
+    BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
+    MANIFEST_NAME, PayloadEncryption, stage_dir,
 };
 use bastion_core::job_spec::FilesystemSource;
 
@@ -131,6 +131,7 @@ pub fn build_filesystem_run(
     source: &FilesystemSource,
     pipeline: BuildPipelineOptions<'_>,
     on_progress: Option<&dyn Fn(FilesystemBuildProgressUpdate)>,
+    on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
@@ -206,6 +207,7 @@ pub fn build_filesystem_run(
                     part_size_bytes,
                     &mut issues,
                     packaging_progress.as_mut(),
+                    on_part_finished,
                 )?,
                 None,
                 "pax",
@@ -213,6 +215,7 @@ pub fn build_filesystem_run(
                 part_size_bytes,
             ),
             ArtifactFormatV1::RawTreeV1 => {
+                let _ = on_part_finished;
                 if !matches!(encryption, PayloadEncryption::None) {
                     anyhow::bail!("raw_tree_v1 does not support payload encryption");
                 }
