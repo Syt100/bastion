@@ -442,10 +442,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-4" data-testid="run-detail">
     <page-header :title="t('runs.title')">
-      <template #prefix>
-        <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)">{{ runStatusLabel(t, run.status) }}</n-tag>
-      </template>
-
       <template #subtitle>
         <div v-if="runId" class="flex items-center gap-2 text-sm opacity-70 min-w-0">
           <span class="font-mono tabular-nums truncate">{{ runId }}</span>
@@ -453,6 +449,9 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
+      <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)" class="mr-2">
+        {{ runStatusLabel(t, run.status) }}
+      </n-tag>
       <n-button size="small" @click="backToJobs">{{ t('common.back') }}</n-button>
       <n-button size="small" :loading="loading" @click="loadAll">{{ t('common.refresh') }}</n-button>
       <n-button size="small" type="primary" :disabled="run?.status !== 'success'" @click="openRestore">
@@ -489,7 +488,7 @@ onBeforeUnmount(() => {
         data-testid="run-detail-overview"
       >
         <div v-if="!run" class="text-sm opacity-70">-</div>
-        <div v-else class="space-y-3">
+        <div v-else class="space-y-2">
           <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
             {{ run.error }}
           </n-alert>
@@ -509,21 +508,21 @@ onBeforeUnmount(() => {
             </n-tag>
           </div>
 
-          <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 text-sm">
+          <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-sm">
             <dt class="opacity-70">{{ t('runs.columns.startedAt') }}</dt>
-            <dd class="font-mono tabular-nums truncate">{{ formatUnixSeconds(run.started_at) }}</dd>
+            <dd class="font-mono tabular-nums">{{ formatUnixSeconds(run.started_at) }}</dd>
 
             <dt class="opacity-70">{{ t('runs.columns.endedAt') }}</dt>
-            <dd class="font-mono tabular-nums truncate">{{ formatUnixSeconds(run.ended_at) }}</dd>
+            <dd class="font-mono tabular-nums">{{ formatUnixSeconds(run.ended_at) }}</dd>
 
             <dt class="opacity-70">{{ t('runs.detail.duration') }}</dt>
-            <dd class="font-mono tabular-nums truncate">{{ formatDuration(durationSeconds) }}</dd>
+            <dd class="font-mono tabular-nums">{{ formatDuration(durationSeconds) }}</dd>
 
             <dt class="opacity-70">{{ t('runs.detail.target') }}</dt>
             <dd class="min-w-0">
-              <div class="flex items-center gap-2 min-w-0">
+              <div class="flex items-start gap-2 min-w-0">
                 <n-tag size="small" :bordered="false" class="shrink-0">{{ targetTypeLabel }}</n-tag>
-                <span class="font-mono tabular-nums truncate">{{ targetSummary.location ?? '-' }}</span>
+                <span class="flex-1 min-w-0 font-mono tabular-nums break-all whitespace-normal">{{ targetSummary.location ?? '-' }}</span>
               </div>
             </dd>
           </dl>

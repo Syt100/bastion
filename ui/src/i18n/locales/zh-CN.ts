@@ -11,6 +11,7 @@ const messages = {
     language: '语言',
     openMenu: '打开菜单',
     more: '更多',
+    help: '帮助',
     refresh: '刷新',
     loading: '加载中',
     loadMore: '加载更多',

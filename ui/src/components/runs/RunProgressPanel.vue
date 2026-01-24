@@ -151,22 +151,31 @@ const uploadPct = computed<number | null>(() => {
   return null
 })
 
-const stepsCurrent = computed<number>(() => {
+const displayStage = computed<KnownStage | null>(() => {
   const s = knownStage.value
+  if (!s) return null
+  if (s === 'upload' && uploadPct.value != null && uploadPct.value >= 100) return 'complete'
+  return s
+})
+
+const stageForLabel = computed<string | null>(() => displayStage.value ?? stage.value)
+
+const stepsCurrent = computed<number>(() => {
+  const s = displayStage.value
   if (s === 'scan') return 1
   if (s === 'packaging') return 2
   return 3
 })
 
 const stepsStatus = computed<'process' | 'finish' | 'error' | 'wait'>(() => {
-  const s = knownStage.value
+  const s = displayStage.value
   if (!s) return 'wait'
   if (s === 'complete') return 'finish'
   return 'process'
 })
 
 const currentStagePct = computed<number | null>(() => {
-  const s = knownStage.value
+  const s = displayStage.value
   if (s === 'scan') return scanPct.value
   if (s === 'packaging') return packagingPct.value
   if (s === 'upload') return uploadPct.value
@@ -175,7 +184,7 @@ const currentStagePct = computed<number | null>(() => {
 })
 
 const overallPct = computed<number | null>(() => {
-  const s = stage.value
+  const s = stageForLabel.value
   if (!s) return null
 
   const wScan = 0.05
@@ -226,10 +235,16 @@ function stageHelp(stage: 'scan' | 'packaging' | 'upload'): { title: string; bod
 }
 
 const currentStageHelp = computed<{ title: string; body: string } | null>(() => {
-  const s = knownStage.value
+  const s = displayStage.value
   if (s === 'scan' || s === 'packaging' || s === 'upload') return stageHelp(s)
   return null
 })
+
+const stagesHelp = computed(() => ({
+  scan: stageHelp('scan'),
+  packaging: stageHelp('packaging'),
+  upload: stageHelp('upload'),
+}))
 
 function formatEta(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
@@ -250,11 +265,11 @@ function progressNumber(pct: number | null): number {
 <template>
   <n-card class="app-card" :bordered="false" :title="t('runs.progress.title')" size="small">
     <div v-if="!snapshot" class="text-sm opacity-70">-</div>
-    <div v-else class="space-y-4">
+    <div v-else class="space-y-3">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <n-tag size="small" :bordered="false">{{ stageLabel(stage) }}</n-tag>
+            <n-tag size="small" :bordered="false">{{ stageLabel(stageForLabel) }}</n-tag>
             <div class="text-xs opacity-70 truncate">
               {{ t('runs.progress.updatedAt') }}: {{ formatUnixSeconds(snapshot.ts) }}
             </div>
@@ -276,9 +291,34 @@ function progressNumber(pct: number | null): number {
         />
       </div>
 
-      <div v-if="showStages" class="space-y-3">
+      <div v-if="showStages" class="space-y-2">
         <div class="flex items-center justify-between gap-3">
-          <div class="font-medium">{{ t('runs.progress.stages.title') }}</div>
+          <div class="flex items-center gap-1.5 font-medium">
+            <span>{{ t('runs.progress.stages.title') }}</span>
+            <n-popover trigger="click" placement="top-start" :show-arrow="false">
+              <template #trigger>
+                <n-button size="tiny" circle quaternary :aria-label="t('common.help')">
+                  <template #icon>
+                    <n-icon :component="HelpCircleOutline" :size="14" />
+                  </template>
+                </n-button>
+              </template>
+              <div class="max-w-[420px] space-y-3 whitespace-pre-wrap break-words text-sm">
+                <div>
+                  <div class="font-medium mb-1">{{ stagesHelp.scan.title }}</div>
+                  <div>{{ stagesHelp.scan.body }}</div>
+                </div>
+                <div>
+                  <div class="font-medium mb-1">{{ stagesHelp.packaging.title }}</div>
+                  <div>{{ stagesHelp.packaging.body }}</div>
+                </div>
+                <div>
+                  <div class="font-medium mb-1">{{ stagesHelp.upload.title }}</div>
+                  <div>{{ stagesHelp.upload.body }}</div>
+                </div>
+              </div>
+            </n-popover>
+          </div>
         </div>
 
         <n-steps
@@ -293,15 +333,15 @@ function progressNumber(pct: number | null): number {
           <n-step :title="t('runs.progress.stages.upload')" />
         </n-steps>
 
-        <div v-if="currentStageHelp && knownStage !== 'complete'" class="space-y-1">
+        <div v-if="currentStageHelp" class="space-y-1">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-1.5 min-w-0">
-              <div class="text-sm font-medium truncate">{{ stageLabel(stage) }}</div>
+              <div class="text-sm font-medium truncate">{{ stageLabel(stageForLabel) }}</div>
               <n-popover trigger="click" placement="top-start" :show-arrow="false">
                 <template #trigger>
                   <n-button size="tiny" circle quaternary>
                     <template #icon>
-                      <n-icon :component="HelpCircleOutline" :size="16" />
+                      <n-icon :component="HelpCircleOutline" :size="14" />
                     </template>
                   </n-button>
                 </template>
@@ -324,7 +364,7 @@ function progressNumber(pct: number | null): number {
           />
         </div>
       </div>
-      <div v-else class="text-sm opacity-70">{{ stageLabel(stage) }}</div>
+      <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div class="rounded border border-black/5 dark:border-white/10 p-3">

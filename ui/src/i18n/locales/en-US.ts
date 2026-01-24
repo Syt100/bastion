@@ -11,6 +11,7 @@ const messages = {
     language: 'Language',
     openMenu: 'Open menu',
     more: 'More',
+    help: 'Help',
     refresh: 'Refresh',
     loading: 'Loading',
     loadMore: 'Load more',

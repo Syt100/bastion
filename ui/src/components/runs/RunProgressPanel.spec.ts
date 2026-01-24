@@ -108,4 +108,52 @@ describe('RunProgressPanel', () => {
     expect(wrapper.text()).toContain('40 B')
     expect(wrapper.text()).toContain('100 B')
   })
+
+  it('keeps scan help accessible even when current stage is upload', () => {
+    const wrapper = mount(RunProgressPanel, {
+      props: {
+        progress: {
+          stage: 'upload',
+          ts: 1,
+          done: { files: 0, dirs: 0, bytes: 0 },
+          total: { files: 0, dirs: 0, bytes: 1 },
+          detail: {
+            backup: {
+              source_total: { files: 1, dirs: 1, bytes: 1 },
+              transfer_total_bytes: 1,
+              transfer_done_bytes: 0,
+            },
+          },
+        },
+      },
+    })
+
+    // Help content should still include scan even when stage is upload.
+    expect(wrapper.text()).toContain('runs.progress.help.scanTitle')
+    expect(wrapper.text()).toContain('runs.progress.help.packagingTitle')
+  })
+
+  it('renders upload at 100% as finished (no current-stage progress bar)', () => {
+    const wrapper = mount(RunProgressPanel, {
+      props: {
+        progress: {
+          stage: 'upload',
+          ts: 1,
+          done: { files: 0, dirs: 0, bytes: 10 },
+          total: { files: 0, dirs: 0, bytes: 10 },
+          detail: {
+            backup: {
+              source_total: { files: 1, dirs: 1, bytes: 10 },
+              transfer_total_bytes: 10,
+              transfer_done_bytes: 10,
+            },
+          },
+        },
+      },
+    })
+
+    // Only the overall progress bar should remain.
+    expect(wrapper.findAll('[data-stub="NProgress"]')).toHaveLength(1)
+    expect(wrapper.find('[data-stub="NProgress"]').attributes('data-percentage')).toBe('100')
+  })
 })
