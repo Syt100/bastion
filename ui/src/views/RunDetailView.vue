@@ -7,12 +7,18 @@ import {
   NCard,
   NCode,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
+  NDropdown,
+  NIcon,
+  NModal,
   NSpin,
   NSpace,
   NTag,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
+import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -21,6 +27,10 @@ import { useJobsStore, type RunDetail, type RunEvent } from '@/stores/jobs'
 import { useOperationsStore, type Operation } from '@/stores/operations'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { copyText } from '@/lib/clipboard'
+import { MODAL_WIDTH } from '@/lib/modal'
+import { MQ } from '@/lib/breakpoints'
+import { useMediaQuery } from '@/lib/media'
 
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
@@ -70,6 +80,8 @@ let pollTimer: number | null = null
 const restoreModal = ref<RestoreWizardModalExpose | null>(null)
 const verifyModal = ref<VerifyWizardModalExpose | null>(null)
 const opModal = ref<OperationModalExpose | null>(null)
+
+const isDesktop = useMediaQuery(MQ.mdUp)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -243,6 +255,14 @@ function openVerify(): void {
   verifyModal.value?.open(id)
 }
 
+async function copyRunId(): Promise<void> {
+  const id = runId.value
+  if (!id) return
+  const ok = await copyText(id)
+  if (ok) message.success(t('messages.copied'))
+  else message.error(t('errors.copyFailed'))
+}
+
 async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
@@ -300,12 +320,104 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
   },
 ])
 
-const eventColumns = computed<DataTableColumns<RunEvent>>(() => [
-  { title: t('runs.columns.startedAt'), key: 'ts', render: (row) => formatUnixSeconds(row.ts) },
-  { title: t('runs.columns.status'), key: 'level', render: (row) => row.level },
-  { title: 'kind', key: 'kind', render: (row) => row.kind },
-  { title: 'message', key: 'message', render: (row) => row.message },
-])
+type RunSummary = {
+  target?: { type?: string; run_dir?: string; run_url?: string } | null
+  entries_count?: number | null
+  parts?: number | null
+  filesystem?: { warnings_total?: number | null; errors_total?: number | null } | null
+  sqlite?: { path?: string | null; snapshot_name?: string | null } | null
+  vaultwarden?: { data_dir?: string | null; db?: string | null } | null
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+const summary = computed<RunSummary | null>(() => {
+  const obj = asRecord(run.value?.summary)
+  if (!obj) return null
+  return obj as RunSummary
+})
+
+const targetSummary = computed(() => {
+  const target = asRecord(summary.value?.target ?? null)
+  const type = asString(target?.type)
+  const runDir = asString(target?.run_dir)
+  const runUrl = asString(target?.run_url)
+  return { type, location: runDir ?? runUrl }
+})
+
+const entriesCount = computed(() => asNumber(summary.value?.entries_count ?? null))
+const partsCount = computed(() => asNumber(summary.value?.parts ?? null))
+
+const fsIssues = computed(() => asRecord(summary.value?.filesystem ?? null))
+const warningsTotal = computed(() => asNumber(fsIssues.value?.warnings_total))
+const errorsTotal = computed(() => asNumber(fsIssues.value?.errors_total))
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
+  const s = Math.floor(seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}h ${m}m ${sec}s`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
+const durationSeconds = computed<number | null>(() => {
+  const r = run.value
+  if (!r) return null
+  if (!r.started_at || !r.ended_at) return null
+  return Math.max(0, r.ended_at - r.started_at)
+})
+
+function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 'default' {
+  if (level === 'error') return 'error'
+  if (level === 'warn' || level === 'warning') return 'warning'
+  if (level === 'info') return 'success'
+  return 'default'
+}
+
+function runEventAccentBorderClass(level: string): string {
+  if (level === 'error') return 'border-red-500/80'
+  if (level === 'warn' || level === 'warning') return 'border-amber-400/80'
+  if (level === 'info') return 'border-emerald-400/80'
+  if (level === 'debug') return 'border-slate-400/70'
+  return 'border-zinc-400/60'
+}
+
+function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'live') return 'success'
+  if (status === 'error') return 'error'
+  if (status === 'reconnecting') return 'warning'
+  return 'default'
+}
+
+const eventDetailShow = ref<boolean>(false)
+const eventDetail = ref<RunEvent | null>(null)
+
+function openEventDetails(e: RunEvent): void {
+  eventDetail.value = e
+  eventDetailShow.value = true
+}
+
+async function copySummaryJson(): Promise<void> {
+  const value = run.value?.summary
+  if (value == null) return
+  const ok = await copyText(formatJson(value))
+  if (ok) message.success(t('messages.copied'))
+  else message.error(t('errors.copyFailed'))
+}
 
 function backToJobs(): void {
   void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs`)
@@ -330,55 +442,238 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <page-header :title="t('runs.title')" :subtitle="runId || undefined">
+  <div class="space-y-6" data-testid="run-detail">
+    <page-header :title="t('runs.title')">
+      <template #prefix>
+        <n-tag v-if="run" size="small" :bordered="false" :type="statusTagType(run.status)">{{ run.status }}</n-tag>
+      </template>
+
+      <template #subtitle>
+        <div v-if="runId" class="flex items-center gap-2 text-sm opacity-70 min-w-0">
+          <span class="font-mono tabular-nums truncate">{{ runId }}</span>
+          <n-button size="tiny" quaternary @click="copyRunId">{{ t('common.copy') }}</n-button>
+        </div>
+      </template>
+
       <n-button size="small" @click="backToJobs">{{ t('common.back') }}</n-button>
       <n-button size="small" :loading="loading" @click="loadAll">{{ t('common.refresh') }}</n-button>
       <n-button size="small" type="primary" :disabled="run?.status !== 'success'" @click="openRestore">
         {{ t('runs.actions.restore') }}
       </n-button>
-      <n-button size="small" :disabled="run?.status !== 'success'" @click="openVerify">
-        {{ t('runs.actions.verify') }}
-      </n-button>
+      <n-dropdown
+        trigger="click"
+        :options="[
+          {
+            label: t('runs.actions.verify'),
+            key: 'verify',
+            disabled: run?.status !== 'success',
+          },
+        ]"
+        @select="(key) => (key === 'verify' ? openVerify() : null)"
+      >
+        <n-button size="small" quaternary>
+          <template #icon>
+            <n-icon :component="EllipsisHorizontal" />
+          </template>
+          {{ t('common.more') }}
+        </n-button>
+      </n-dropdown>
     </page-header>
 
     <n-spin v-if="loading" size="small" />
 
-    <n-alert v-if="run?.error" type="error" :title="t('operations.errorTitle')">{{ run.error }}</n-alert>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <n-card :title="t('runs.detail.overviewTitle')" size="small" class="lg:col-span-7" data-testid="run-detail-overview">
+        <div v-if="!run" class="text-sm opacity-70">-</div>
+        <div v-else class="space-y-3">
+          <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
+            {{ run.error }}
+          </n-alert>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <n-card :title="t('runs.title')">
-        <div v-if="run" class="space-y-2">
-          <div class="flex items-center gap-2">
-            <n-tag :type="statusTagType(run.status)">{{ run.status }}</n-tag>
-            <span class="text-sm opacity-70">{{ run.id }}</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <n-tag v-if="errorsTotal != null && errorsTotal > 0" size="small" type="error" :bordered="false">
+              {{ t('runs.detail.errors', { count: errorsTotal }) }}
+            </n-tag>
+            <n-tag v-if="warningsTotal != null && warningsTotal > 0" size="small" type="warning" :bordered="false">
+              {{ t('runs.detail.warnings', { count: warningsTotal }) }}
+            </n-tag>
+            <n-tag v-if="entriesCount != null" size="small" :bordered="false">
+              {{ t('runs.detail.entries', { count: entriesCount }) }}
+            </n-tag>
+            <n-tag v-if="partsCount != null" size="small" :bordered="false">
+              {{ t('runs.detail.parts', { count: partsCount }) }}
+            </n-tag>
           </div>
-          <div class="text-sm opacity-70">{{ t('runs.columns.startedAt') }}: {{ formatUnixSeconds(run.started_at) }}</div>
-          <div class="text-sm opacity-70">{{ t('runs.columns.endedAt') }}: {{ formatUnixSeconds(run.ended_at) }}</div>
+
+          <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 text-sm">
+            <dt class="opacity-70">{{ t('runs.columns.startedAt') }}</dt>
+            <dd class="font-mono tabular-nums truncate">{{ formatUnixSeconds(run.started_at) }}</dd>
+
+            <dt class="opacity-70">{{ t('runs.columns.endedAt') }}</dt>
+            <dd class="font-mono tabular-nums truncate">{{ formatUnixSeconds(run.ended_at) }}</dd>
+
+            <dt class="opacity-70">{{ t('runs.detail.duration') }}</dt>
+            <dd class="font-mono tabular-nums truncate">{{ formatDuration(durationSeconds) }}</dd>
+
+            <dt class="opacity-70">{{ t('runs.detail.target') }}</dt>
+            <dd class="min-w-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="shrink-0">{{ targetSummary.type ?? '-' }}</span>
+                <span class="font-mono tabular-nums truncate">{{ targetSummary.location ?? '-' }}</span>
+              </div>
+            </dd>
+          </dl>
         </div>
-        <div v-else class="text-sm opacity-70">-</div>
       </n-card>
 
-      <run-progress-panel :progress="run?.progress" />
+      <div class="lg:col-span-5" data-testid="run-detail-progress">
+        <run-progress-panel :progress="run?.progress" />
+      </div>
     </div>
 
-    <n-card :title="t('operations.title')">
-      <n-data-table :columns="opColumns" :data="ops" :bordered="false" />
-    </n-card>
-
-    <n-card :title="t('runEvents.title')">
-      <div class="flex items-center gap-2 mb-3">
-        <n-tag size="small" :type="wsStatus === 'live' ? 'success' : wsStatus === 'error' ? 'error' : wsStatus === 'reconnecting' ? 'warning' : 'default'">
-          {{ wsStatus }}
-        </n-tag>
-        <div class="text-xs opacity-70">{{ events.length }} events</div>
+    <n-card :title="t('operations.title')" size="small" data-testid="run-detail-operations">
+      <div v-if="ops.length === 0" class="text-sm opacity-70 py-2">
+        {{ t('runs.detail.noOperations') }}
       </div>
-      <n-data-table :columns="eventColumns" :data="events" :bordered="false" />
+      <n-data-table v-else :columns="opColumns" :data="ops" size="small" :bordered="false" />
     </n-card>
 
-    <n-card v-if="run?.summary" :title="t('operations.summary')">
-      <n-code :code="formatJson(run.summary)" language="json" show-line-numbers />
+    <n-card :title="t('runEvents.title')" size="small" data-testid="run-detail-events">
+      <div class="text-sm opacity-70 flex flex-wrap items-center gap-2 justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          <n-tag size="small" :type="wsStatusTagType(wsStatus)">
+            {{ t(`runEvents.ws.${wsStatus}`) }}
+          </n-tag>
+          <span class="text-xs opacity-70">{{ events.length }} events</span>
+        </div>
+      </div>
+
+      <div v-if="events.length === 0" class="mt-3 text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
+
+      <div
+        v-else
+        data-testid="run-detail-events-list"
+        class="mt-3 max-h-[60vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-black/5 dark:ring-white/10"
+      >
+        <div
+          v-for="item in events"
+          :key="item.seq"
+          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs opacity-90 cursor-pointer transition-colors bg-black/2 hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10"
+          :class="runEventAccentBorderClass(item.level)"
+          @click="openEventDetails(item)"
+        >
+          <template v-if="isDesktop">
+            <div class="flex items-center gap-1.5">
+              <span class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4" :title="formatUnixSeconds(item.ts)">
+                {{ formatUnixSeconds(item.ts) }}
+              </span>
+              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+                <span class="block w-full truncate text-center">{{ item.level }}</span>
+              </n-tag>
+              <span class="opacity-70 shrink-0 w-28 truncate">{{ item.kind }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <n-button v-if="item.fields" size="tiny" secondary @click.stop="openEventDetails(item)">
+                {{ t('runEvents.actions.details') }}
+              </n-button>
+            </div>
+          </template>
+          <template v-else>
+            <div class="flex items-center gap-1.5">
+              <span class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4" :title="formatUnixSeconds(item.ts)">
+                {{ formatUnixSeconds(item.ts) }}
+              </span>
+              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+                <span class="block w-full truncate text-center">{{ item.level }}</span>
+              </n-tag>
+              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <n-button v-if="item.fields" size="tiny" secondary @click.stop="openEventDetails(item)">
+                {{ t('runEvents.actions.details') }}
+              </n-button>
+            </div>
+            <div class="mt-0.5 flex items-center gap-2 min-w-0">
+              <span class="opacity-70 truncate max-w-[60%]">{{ item.kind }}</span>
+            </div>
+          </template>
+        </div>
+      </div>
     </n-card>
+
+    <n-card v-if="run?.summary" :title="t('runs.detail.summaryTitle')" size="small" data-testid="run-detail-summary">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="text-sm opacity-70">{{ t('runs.detail.summaryHelp') }}</div>
+        <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="rounded border border-black/5 dark:border-white/10 p-3">
+          <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
+          <div class="text-xs opacity-70 space-y-1">
+            <div v-if="targetSummary.type || targetSummary.location">
+              {{ t('runs.detail.target') }}:
+              <span class="font-mono tabular-nums">{{ targetSummary.type ?? '-' }}</span>
+              <span v-if="targetSummary.location" class="font-mono tabular-nums"> · {{ targetSummary.location }}</span>
+            </div>
+            <div v-if="entriesCount != null">{{ t('runs.detail.entries', { count: entriesCount }) }}</div>
+            <div v-if="partsCount != null">{{ t('runs.detail.parts', { count: partsCount }) }}</div>
+            <div v-if="errorsTotal != null && errorsTotal > 0">{{ t('runs.detail.errors', { count: errorsTotal }) }}</div>
+            <div v-if="warningsTotal != null && warningsTotal > 0">{{ t('runs.detail.warnings', { count: warningsTotal }) }}</div>
+          </div>
+        </div>
+
+        <div class="rounded border border-black/5 dark:border-white/10 p-3">
+          <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
+          <div class="text-xs opacity-70 space-y-1">
+            <div v-if="summary?.sqlite?.path">
+              sqlite: <span class="font-mono tabular-nums">{{ summary.sqlite.path }}</span>
+            </div>
+            <div v-if="summary?.sqlite?.snapshot_name">
+              snapshot: <span class="font-mono tabular-nums">{{ summary.sqlite.snapshot_name }}</span>
+            </div>
+            <div v-if="summary?.vaultwarden?.data_dir">
+              vaultwarden: <span class="font-mono tabular-nums">{{ summary.vaultwarden.data_dir }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <details class="mt-3 rounded border border-black/5 dark:border-white/10 p-3">
+        <summary class="cursor-pointer select-none text-sm font-medium">
+          {{ t('runs.detail.rawJson') }}
+        </summary>
+        <div class="mt-3">
+          <n-code :code="formatJson(run.summary)" language="json" />
+        </div>
+      </details>
+    </n-card>
+
+    <n-modal v-if="isDesktop" v-model:show="eventDetailShow" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('runEvents.details.title')">
+      <div v-if="eventDetail" class="space-y-3">
+        <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+          <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
+          <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
+          <span class="opacity-70">{{ eventDetail.kind }}</span>
+        </div>
+        <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
+        <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
+        <n-space justify="end">
+          <n-button @click="eventDetailShow = false">{{ t('common.close') }}</n-button>
+        </n-space>
+      </div>
+    </n-modal>
+
+    <n-drawer v-else v-model:show="eventDetailShow" placement="bottom" height="70vh">
+      <n-drawer-content :title="t('runEvents.details.title')" closable>
+        <div v-if="eventDetail" class="space-y-3">
+          <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+            <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
+            <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
+            <span class="opacity-70">{{ eventDetail.kind }}</span>
+          </div>
+          <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
+          <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
+        </div>
+      </n-drawer-content>
+    </n-drawer>
 
     <restore-wizard-modal ref="restoreModal" @started="(id) => openOperation(id)" />
     <verify-wizard-modal ref="verifyModal" @started="(id) => openOperation(id)" />

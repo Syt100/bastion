@@ -13,7 +13,10 @@ defineProps<{
       </div>
       <div class="space-y-1 min-w-0">
         <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
-        <p v-if="subtitle" class="text-sm opacity-70">{{ subtitle }}</p>
+        <div v-if="$slots.subtitle" class="min-w-0">
+          <slot name="subtitle" />
+        </div>
+        <p v-else-if="subtitle" class="text-sm opacity-70">{{ subtitle }}</p>
       </div>
     </div>
     <div class="flex items-center gap-2">

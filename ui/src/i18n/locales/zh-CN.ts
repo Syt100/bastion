@@ -789,6 +789,21 @@ const messages = {
     badges: {
       offline: '离线',
     },
+    detail: {
+      overviewTitle: '概览',
+      duration: '耗时',
+      target: '目标',
+      entries: '条目 {count}',
+      parts: '分片 {count}',
+      warnings: '警告 {count}',
+      errors: '错误 {count}',
+      noOperations: '暂无关联操作',
+      summaryTitle: '摘要',
+      summaryHelp: '结构化摘要（可展开查看原始 JSON）',
+      summaryHighlights: '摘要要点',
+      summaryDetails: '更多信息',
+      rawJson: '原始 JSON',
+    },
     progress: {
       title: '进度',
       overall: '总进度',

@@ -790,6 +790,21 @@ const messages = {
     badges: {
       offline: 'Offline',
     },
+    detail: {
+      overviewTitle: 'Overview',
+      duration: 'Duration',
+      target: 'Target',
+      entries: 'Entries {count}',
+      parts: 'Parts {count}',
+      warnings: 'Warnings {count}',
+      errors: 'Errors {count}',
+      noOperations: 'No linked operations',
+      summaryTitle: 'Summary',
+      summaryHelp: 'Highlights (expand to view raw JSON)',
+      summaryHighlights: 'Highlights',
+      summaryDetails: 'More',
+      rawJson: 'Raw JSON',
+    },
     progress: {
       title: 'Progress',
       overall: 'Overall',
