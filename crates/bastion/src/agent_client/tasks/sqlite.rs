@@ -84,6 +84,13 @@ pub(super) async fn run_sqlite_backup(
     let artifact_format = pipeline.format;
     let started_at = ctx.started_at;
 
+    let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
+        &target,
+        ctx.job_id,
+        ctx.run_id,
+        artifact_format.clone(),
+    );
+
     let data_dir_buf = ctx.data_dir.to_path_buf();
     let job_id_clone = ctx.job_id.to_string();
     let run_id_clone = ctx.run_id.to_string();
@@ -99,10 +106,14 @@ pub(super) async fn run_sqlite_backup(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
-            None,
+            on_part_finished,
         )
     })
     .await??;
+
+    if let Some(handle) = parts_uploader {
+        handle.await??;
+    }
 
     if let Some(check) = build.integrity_check.as_ref() {
         let data = serde_json::json!({

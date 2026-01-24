@@ -9,6 +9,7 @@ use crate::run_events_bus::RunEventsBus;
 
 mod filesystem;
 mod progress;
+mod rolling_archive;
 mod sqlite;
 mod vaultwarden;
 

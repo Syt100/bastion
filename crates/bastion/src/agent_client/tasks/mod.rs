@@ -95,6 +95,73 @@ fn payload_encryption(encryption: EncryptionResolvedV1) -> backup::PayloadEncryp
     }
 }
 
+fn prepare_archive_part_uploader(
+    target: &bastion_core::agent_protocol::TargetResolvedV1,
+    job_id: &str,
+    run_id: &str,
+    artifact_format: bastion_core::manifest::ArtifactFormatV1,
+) -> (
+    Option<Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send>>,
+    Option<tokio::task::JoinHandle<Result<(), anyhow::Error>>>,
+) {
+    if artifact_format != bastion_core::manifest::ArtifactFormatV1::ArchiveV1 {
+        return (None, None);
+    }
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<backup::LocalArtifact>(1);
+
+    let handle: tokio::task::JoinHandle<Result<(), anyhow::Error>> = match target {
+        bastion_core::agent_protocol::TargetResolvedV1::Webdav {
+            base_url,
+            username,
+            password,
+            ..
+        } => {
+            let credentials = bastion_targets::WebdavCredentials {
+                username: username.clone(),
+                password: password.clone(),
+            };
+            let base_url = base_url.to_string();
+            let job_id = job_id.to_string();
+            let run_id = run_id.to_string();
+            tokio::spawn(async move {
+                bastion_targets::webdav::store_run_parts_rolling(
+                    &base_url,
+                    credentials,
+                    &job_id,
+                    &run_id,
+                    rx,
+                )
+                .await
+                .map(|_| ())
+            })
+        }
+        bastion_core::agent_protocol::TargetResolvedV1::LocalDir { base_dir, .. } => {
+            let base_dir = base_dir.to_string();
+            let job_id = job_id.to_string();
+            let run_id = run_id.to_string();
+            tokio::task::spawn_blocking(move || {
+                bastion_targets::local_dir::store_run_parts_rolling(
+                    std::path::Path::new(&base_dir),
+                    &job_id,
+                    &run_id,
+                    rx,
+                )
+                .map(|_| ())
+            })
+        }
+    };
+
+    let on_part_finished: Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send> =
+        Box::new(move |part| {
+            tx.blocking_send(part)
+                .map_err(|_| std::io::Error::other("rolling uploader dropped"))?;
+            Ok(())
+        });
+
+    (Some(on_part_finished), Some(handle))
+}
+
 async fn send_run_event(
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
     run_id: &str,

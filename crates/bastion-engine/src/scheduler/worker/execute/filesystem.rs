@@ -16,6 +16,7 @@ use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
+use super::rolling_archive;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_filesystem_run(
@@ -51,6 +52,17 @@ pub(super) async fn execute_filesystem_run(
     let error_policy = source.error_policy;
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
+
+    let (on_part_finished, parts_uploader) = rolling_archive::prepare_archive_part_uploader(
+        db,
+        secrets,
+        &target,
+        &job.id,
+        run_id,
+        artifact_format.clone(),
+    )
+    .await?;
+
     let progress_tx_build = progress_tx.clone();
     let build = tokio::task::spawn_blocking(move || {
         let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
@@ -75,10 +87,14 @@ pub(super) async fn execute_filesystem_run(
                 part_size_bytes: part_size,
             },
             Some(&on_progress),
-            None,
+            on_part_finished,
         )
     })
     .await??;
+
+    if let Some(handle) = parts_uploader {
+        handle.await??;
+    }
 
     if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
         let level = if build.issues.errors_total > 0 {

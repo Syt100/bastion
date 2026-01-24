@@ -131,6 +131,13 @@ pub(super) async fn run_filesystem_backup(
     let artifact_format = pipeline.format;
     let started_at = ctx.started_at;
 
+    let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
+        &target,
+        ctx.job_id,
+        ctx.run_id,
+        artifact_format.clone(),
+    );
+
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::channel::<backup::filesystem::FilesystemBuildProgressUpdate>(8);
     let mut progress = BackupProgressBuilder::new();
@@ -156,7 +163,7 @@ pub(super) async fn run_filesystem_backup(
                 part_size_bytes: part_size,
             },
             Some(&on_progress),
-            None,
+            on_part_finished,
         )
     });
 
@@ -170,6 +177,10 @@ pub(super) async fn run_filesystem_backup(
             }
         }
     };
+
+    if let Some(handle) = parts_uploader {
+        handle.await??;
+    }
 
     if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
         let level = if build.issues.errors_total > 0 {

@@ -15,6 +15,7 @@ use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
+use super::rolling_archive;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_vaultwarden_run(
@@ -56,6 +57,17 @@ pub(super) async fn execute_vaultwarden_run(
     let part_size = target.part_size_bytes();
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
+
+    let (on_part_finished, parts_uploader) = rolling_archive::prepare_archive_part_uploader(
+        db,
+        secrets,
+        &target,
+        &job.id,
+        run_id,
+        artifact_format.clone(),
+    )
+    .await?;
+
     let artifacts = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
             &data_dir,
@@ -68,10 +80,14 @@ pub(super) async fn execute_vaultwarden_run(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
-            None,
+            on_part_finished,
         )
     })
     .await??;
+
+    if let Some(handle) = parts_uploader {
+        handle.await??;
+    }
 
     run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
         .await?;
