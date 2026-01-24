@@ -1,7 +1,7 @@
 ## 1. Spec
-- [ ] 1.1 Add web-ui spec delta for header/status placement, stage help access, and compact layout tweaks
-- [ ] 1.2 Run `openspec validate fix-run-detail-header-progress-compactness --strict`
-- [ ] 1.3 Commit the spec proposal (detailed message)
+- [x] 1.1 Add web-ui spec delta for header/status placement, stage help access, and compact layout tweaks
+- [x] 1.2 Run `openspec validate fix-run-detail-header-progress-compactness --strict`
+- [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Implementation
 - [ ] 2.1 Run Detail header: move status badge to the right side
