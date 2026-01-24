@@ -4,18 +4,18 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Implementation
-- [ ] 2.1 Localize run status labels (Run Detail header + runs list)
-- [ ] 2.2 Productize target type labels in Run Detail (overview + summary)
-- [ ] 2.3 Progress panel: help icon + stage stepper layout (less rigid)
-- [ ] 2.4 Adjust i18n strings (zh-CN/en-US) as needed
+- [x] 2.1 Localize run status labels (Run Detail header + runs list)
+- [x] 2.2 Productize target type labels in Run Detail (overview + summary)
+- [x] 2.3 Progress panel: help icon + stage stepper layout (less rigid)
+- [x] 2.4 Adjust i18n strings (zh-CN/en-US) as needed
 
 ## 3. Tests
-- [ ] 3.1 Update/add unit tests for Run Detail + RunProgressPanel after layout changes
+- [x] 3.1 Update/add unit tests for Run Detail + RunProgressPanel after layout changes
 
 ## 4. Validation
-- [ ] 4.1 Run `npm test --prefix ui`
-- [ ] 4.2 Run `npm --prefix ui run build`
-- [ ] 4.3 Run `cargo test -p bastion-http`
+- [x] 4.1 Run `npm test --prefix ui`
+- [x] 4.2 Run `npm --prefix ui run build`
+- [x] 4.3 Run `cargo test -p bastion-http`
 
 ## 5. Commits
-- [ ] 5.1 Commit implementation changes (detailed message with Modules/Tests)
+- [x] 5.1 Commit implementation changes (detailed message with Modules/Tests)
