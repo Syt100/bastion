@@ -30,6 +30,7 @@ pub(super) fn spawn_run_progress_writer(
         let mut last_stage: Option<&'static str> = None;
         let mut last_ts: Option<i64> = None;
         let mut last_done_bytes: u64 = 0;
+        let mut last_total_bytes: Option<u64> = None;
         let mut last_update: Option<RunProgressUpdate> = None;
 
         while rx.changed().await.is_ok() {
@@ -78,6 +79,7 @@ pub(super) fn spawn_run_progress_writer(
             last_stage = Some(update.stage);
             last_ts = Some(now_ts);
             last_done_bytes = update.done.bytes;
+            last_total_bytes = update.total.as_ref().map(|t| t.bytes);
 
             let snapshot = ProgressSnapshotV1 {
                 v: 1,
@@ -104,7 +106,39 @@ pub(super) fn spawn_run_progress_writer(
             return;
         };
 
+        let total_bytes = update.total.as_ref().map(|t| t.bytes);
+        if last_stage == Some(update.stage)
+            && last_done_bytes == update.done.bytes
+            && last_total_bytes == total_bytes
+        {
+            return;
+        }
+
         let now_ts = OffsetDateTime::now_utc().unix_timestamp();
+
+        let stage_changed = last_stage != Some(update.stage);
+        let (rate_bps, eta_seconds) = if stage_changed {
+            (None, None)
+        } else {
+            let dt = last_ts.map(|ts| now_ts.saturating_sub(ts)).unwrap_or(0);
+            let delta = update.done.bytes.saturating_sub(last_done_bytes);
+            let rate = if dt > 0 && delta > 0 {
+                Some(delta.saturating_div(dt as u64).max(1))
+            } else {
+                None
+            };
+
+            let eta = match (rate, update.total.as_ref()) {
+                (Some(rate), Some(total)) if rate > 0 && total.bytes > update.done.bytes => Some(
+                    total
+                        .bytes
+                        .saturating_sub(update.done.bytes)
+                        .saturating_div(rate),
+                ),
+                _ => None,
+            };
+            (rate, eta)
+        };
 
         let snapshot = ProgressSnapshotV1 {
             v: 1,
@@ -113,8 +147,8 @@ pub(super) fn spawn_run_progress_writer(
             ts: now_ts,
             done: update.done,
             total: update.total,
-            rate_bps: None,
-            eta_seconds: None,
+            rate_bps,
+            eta_seconds,
             detail: update.detail,
         };
 
