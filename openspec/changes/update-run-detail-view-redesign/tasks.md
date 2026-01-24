@@ -18,4 +18,4 @@
 - [x] 4.3 Run `cargo test -p bastion-http`
 
 ## 5. Commits
-- [ ] 5.1 Commit implementation changes (detailed message with Modules/Tests)
+- [x] 5.1 Commit implementation changes (detailed message with Modules/Tests)
