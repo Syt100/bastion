@@ -41,8 +41,11 @@ vi.mock('naive-ui', async () => {
   return {
     NButton: stub('NButton'),
     NCard: stub('NCard'),
+    NIcon: stub('NIcon'),
     NPopover: stub('NPopover'),
     NProgress: stub('NProgress'),
+    NSteps: stub('NSteps'),
+    NStep: stub('NStep'),
     NTag: stub('NTag'),
   }
 })

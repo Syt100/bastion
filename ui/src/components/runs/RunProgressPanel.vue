@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NButton, NCard, NPopover, NProgress, NTag } from 'naive-ui'
+import { NButton, NCard, NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
+import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { MQ } from '@/lib/breakpoints'
@@ -81,6 +82,13 @@ const showStages = computed(() => {
   return s === 'scan' || s === 'packaging' || s === 'upload' || s === 'complete'
 })
 
+type KnownStage = 'scan' | 'packaging' | 'upload' | 'complete'
+const knownStage = computed<KnownStage | null>(() => {
+  const s = stage.value
+  if (s === 'scan' || s === 'packaging' || s === 'upload' || s === 'complete') return s
+  return null
+})
+
 const sourceTotal = computed<ProgressUnits | null>(() => {
   const fromDetail = asUnits(backupDetail.value?.source_total ?? null)
   if (fromDetail) return fromDetail
@@ -120,6 +128,13 @@ function percent(done: number | null, total: number | null): number | null {
   return Math.max(0, Math.min(100, (done / total) * 100))
 }
 
+const scanPct = computed<number | null>(() => {
+  if (!snapshot.value) return null
+  if (knownStage.value !== 'scan') return null
+  const total = snapshot.value.total?.bytes ?? null
+  return percent(snapshot.value.done.bytes, total)
+})
+
 const packagingPct = computed<number | null>(() => {
   if (!snapshot.value) return null
   const totalBytes = snapshot.value.total?.bytes ?? null
@@ -133,6 +148,29 @@ const packagingPct = computed<number | null>(() => {
 const uploadPct = computed<number | null>(() => {
   if (stage.value === 'upload') return percent(transferDoneBytes.value, transferTotalBytes.value)
   if (stage.value === 'complete') return 100
+  return null
+})
+
+const stepsCurrent = computed<number>(() => {
+  const s = knownStage.value
+  if (s === 'scan') return 1
+  if (s === 'packaging') return 2
+  return 3
+})
+
+const stepsStatus = computed<'process' | 'finish' | 'error' | 'wait'>(() => {
+  const s = knownStage.value
+  if (!s) return 'wait'
+  if (s === 'complete') return 'finish'
+  return 'process'
+})
+
+const currentStagePct = computed<number | null>(() => {
+  const s = knownStage.value
+  if (s === 'scan') return scanPct.value
+  if (s === 'packaging') return packagingPct.value
+  if (s === 'upload') return uploadPct.value
+  if (s === 'complete') return 100
   return null
 })
 
@@ -187,6 +225,12 @@ function stageHelp(stage: 'scan' | 'packaging' | 'upload'): { title: string; bod
   return { title: t('runs.progress.help.uploadTitle'), body: t('runs.progress.help.uploadBody') }
 }
 
+const currentStageHelp = computed<{ title: string; body: string } | null>(() => {
+  const s = knownStage.value
+  if (s === 'scan' || s === 'packaging' || s === 'upload') return stageHelp(s)
+  return null
+})
+
 function formatEta(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
   const s = Math.floor(seconds)
@@ -216,7 +260,6 @@ function progressNumber(pct: number | null): number {
             </div>
           </div>
         </div>
-        <div v-if="overallPct != null" class="text-xs opacity-70">{{ Math.round(overallPct) }}%</div>
       </div>
 
       <div class="space-y-1">
@@ -233,173 +276,54 @@ function progressNumber(pct: number | null): number {
         />
       </div>
 
-      <div v-if="isDesktop && showStages" class="space-y-2">
-        <div class="flex items-center gap-2">
+      <div v-if="showStages" class="space-y-3">
+        <div class="flex items-center justify-between gap-3">
           <div class="font-medium">{{ t('runs.progress.stages.title') }}</div>
         </div>
 
-        <div class="space-y-3">
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="text-sm truncate">{{ t('runs.progress.stages.scan') }}</div>
-                <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                  <template #trigger>
-                    <n-button size="small" circle>?</n-button>
-                  </template>
-                  <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                    <div class="font-medium mb-1">{{ stageHelp('scan').title }}</div>
-                    <div>{{ stageHelp('scan').body }}</div>
-                  </div>
-                </n-popover>
-              </div>
-              <div class="text-xs opacity-70">{{ stage === 'scan' ? '-' : t('common.done') }}</div>
-            </div>
-            <n-progress type="line" :percentage="stage === 'scan' ? 0 : 100" :processing="stage === 'scan'" :show-indicator="stage !== 'scan'" />
-          </div>
+        <n-steps
+          :current="stepsCurrent"
+          :status="stepsStatus"
+          size="small"
+          :vertical="!isDesktop"
+          :content-placement="isDesktop ? 'bottom' : 'right'"
+        >
+          <n-step :title="t('runs.progress.stages.scan')" />
+          <n-step :title="t('runs.progress.stages.packaging')" />
+          <n-step :title="t('runs.progress.stages.upload')" />
+        </n-steps>
 
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="text-sm truncate">{{ t('runs.progress.stages.packaging') }}</div>
-                <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                  <template #trigger>
-                    <n-button size="small" circle>?</n-button>
-                  </template>
-                  <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                    <div class="font-medium mb-1">{{ stageHelp('packaging').title }}</div>
-                    <div>{{ stageHelp('packaging').body }}</div>
-                  </div>
-                </n-popover>
-              </div>
-              <div class="text-xs opacity-70">
-                <span v-if="packagingPct != null">{{ Math.round(packagingPct) }}%</span>
-                <span v-else>-</span>
-              </div>
+        <div v-if="currentStageHelp && knownStage !== 'complete'" class="space-y-1">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <div class="text-sm font-medium truncate">{{ stageLabel(stage) }}</div>
+              <n-popover trigger="click" placement="top-start" :show-arrow="false">
+                <template #trigger>
+                  <n-button size="tiny" circle quaternary>
+                    <template #icon>
+                      <n-icon :component="HelpCircleOutline" :size="16" />
+                    </template>
+                  </n-button>
+                </template>
+                <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
+                  <div class="font-medium mb-1">{{ currentStageHelp.title }}</div>
+                  <div>{{ currentStageHelp.body }}</div>
+                </div>
+              </n-popover>
             </div>
-            <n-progress
-              type="line"
-              :percentage="progressNumber(packagingPct)"
-              :processing="stage === 'packaging' && packagingPct == null"
-              :show-indicator="packagingPct != null"
-            />
-          </div>
-
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="text-sm truncate">{{ t('runs.progress.stages.upload') }}</div>
-                <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                  <template #trigger>
-                    <n-button size="small" circle>?</n-button>
-                  </template>
-                  <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                    <div class="font-medium mb-1">{{ stageHelp('upload').title }}</div>
-                    <div>{{ stageHelp('upload').body }}</div>
-                  </div>
-                </n-popover>
-              </div>
-              <div class="text-xs opacity-70">
-                <span v-if="uploadPct != null">{{ Math.round(uploadPct) }}%</span>
-                <span v-else>-</span>
-              </div>
+            <div class="text-xs opacity-70">
+              <span v-if="currentStagePct != null">{{ Math.round(currentStagePct) }}%</span>
+              <span v-else>-</span>
             </div>
-            <n-progress
-              type="line"
-              :percentage="progressNumber(uploadPct)"
-              :processing="stage === 'upload' && uploadPct == null"
-              :show-indicator="uploadPct != null"
-            />
           </div>
+          <n-progress
+            type="line"
+            :percentage="progressNumber(currentStagePct)"
+            :processing="currentStagePct == null"
+            :show-indicator="false"
+          />
         </div>
       </div>
-
-      <details v-else-if="showStages" class="rounded border border-black/5 dark:border-white/10 p-3">
-        <summary class="cursor-pointer select-none text-sm font-medium">
-          {{ t('runs.progress.details') }}
-        </summary>
-        <div class="mt-3 space-y-3">
-          <div class="space-y-3">
-            <div class="space-y-1">
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="text-sm truncate">{{ t('runs.progress.stages.scan') }}</div>
-                  <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                    <template #trigger>
-                      <n-button size="small" circle>?</n-button>
-                    </template>
-                    <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                      <div class="font-medium mb-1">{{ stageHelp('scan').title }}</div>
-                      <div>{{ stageHelp('scan').body }}</div>
-                    </div>
-                  </n-popover>
-                </div>
-                <div class="text-xs opacity-70">{{ stage === 'scan' ? '-' : t('common.done') }}</div>
-              </div>
-              <n-progress
-                type="line"
-                :percentage="stage === 'scan' ? 0 : 100"
-                :processing="stage === 'scan'"
-                :show-indicator="stage !== 'scan'"
-              />
-            </div>
-
-            <div class="space-y-1">
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="text-sm truncate">{{ t('runs.progress.stages.packaging') }}</div>
-                  <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                    <template #trigger>
-                      <n-button size="small" circle>?</n-button>
-                    </template>
-                    <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                      <div class="font-medium mb-1">{{ stageHelp('packaging').title }}</div>
-                      <div>{{ stageHelp('packaging').body }}</div>
-                    </div>
-                  </n-popover>
-                </div>
-                <div class="text-xs opacity-70">
-                  <span v-if="packagingPct != null">{{ Math.round(packagingPct) }}%</span>
-                  <span v-else>-</span>
-                </div>
-              </div>
-              <n-progress
-                type="line"
-                :percentage="progressNumber(packagingPct)"
-                :processing="stage === 'packaging' && packagingPct == null"
-                :show-indicator="packagingPct != null"
-              />
-            </div>
-
-            <div class="space-y-1">
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="text-sm truncate">{{ t('runs.progress.stages.upload') }}</div>
-                  <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                    <template #trigger>
-                      <n-button size="small" circle>?</n-button>
-                    </template>
-                    <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                      <div class="font-medium mb-1">{{ stageHelp('upload').title }}</div>
-                      <div>{{ stageHelp('upload').body }}</div>
-                    </div>
-                  </n-popover>
-                </div>
-                <div class="text-xs opacity-70">
-                  <span v-if="uploadPct != null">{{ Math.round(uploadPct) }}%</span>
-                  <span v-else>-</span>
-                </div>
-              </div>
-              <n-progress
-                type="line"
-                :percentage="progressNumber(uploadPct)"
-                :processing="stage === 'upload' && uploadPct == null"
-                :show-indicator="uploadPct != null"
-              />
-            </div>
-          </div>
-        </div>
-      </details>
       <div v-else class="text-sm opacity-70">{{ stageLabel(stage) }}</div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
