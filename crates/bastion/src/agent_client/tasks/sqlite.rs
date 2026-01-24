@@ -7,6 +7,7 @@ use bastion_backup as backup;
 use bastion_core::agent_protocol::PipelineResolvedV1;
 use bastion_core::agent_protocol::TargetResolvedV1;
 use bastion_core::job_spec::SqliteSource;
+use bastion_core::manifest::ArtifactFormatV1;
 use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
@@ -82,6 +83,7 @@ pub(super) async fn run_sqlite_backup(
     let part_size = target_part_size_bytes(&target);
     let encryption = super::payload_encryption(pipeline.encryption);
     let artifact_format = pipeline.format;
+    let artifact_format_for_totals = artifact_format.clone();
     let started_at = ctx.started_at;
 
     let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
@@ -136,6 +138,22 @@ pub(super) async fn run_sqlite_backup(
         }
     }
 
+    let parts_bytes: u64 = build.artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&build.artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&build.artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&build.artifacts.complete_path)?.len();
+    let raw_tree_data_bytes = if artifact_format_for_totals == ArtifactFormatV1::RawTreeV1 {
+        build.snapshot_size
+    } else {
+        0
+    };
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size)
+        .saturating_add(raw_tree_data_bytes);
+    let mut last_upload_done_bytes: u64 = 0;
+
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
 
     struct UploadThrottle {
@@ -164,7 +182,7 @@ pub(super) async fn run_sqlite_backup(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -198,11 +216,26 @@ pub(super) async fn run_sqlite_backup(
             res = &mut upload_fut => break res?,
             maybe_update = progress_rx.recv() => {
                 if let Some(p) = maybe_update {
-                    super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(p.bytes_done, p.bytes_total)).await?;
+                    last_upload_done_bytes = p.bytes_done;
+                    super::send_run_progress_snapshot(
+                        tx,
+                        ctx.run_id,
+                        progress.snapshot(p.bytes_done, Some(transfer_total_bytes)),
+                    )
+                    .await?;
                 }
             }
         }
     };
+
+    if transfer_total_bytes > 0 && last_upload_done_bytes < transfer_total_bytes {
+        super::send_run_progress_snapshot(
+            tx,
+            ctx.run_id,
+            progress.snapshot(transfer_total_bytes, Some(transfer_total_bytes)),
+        )
+        .await?;
+    }
     let _ = tokio::fs::remove_dir_all(&build.artifacts.run_dir).await;
 
     Ok(serde_json::json!({

@@ -218,6 +218,7 @@ pub(super) async fn run_filesystem_backup(
         .saturating_add(manifest_size)
         .saturating_add(complete_size)
         .saturating_add(raw_tree_data_bytes);
+    let mut last_upload_done_bytes: u64 = 0;
 
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
     struct UploadThrottle {
@@ -289,11 +290,31 @@ pub(super) async fn run_filesystem_backup(
             res = &mut upload_fut => break res?,
             maybe_update = progress_rx.recv() => {
                 if let Some(update) = maybe_update {
+                    if update.stage == "upload" {
+                        last_upload_done_bytes = update.done.bytes;
+                    }
                     super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(update)).await?;
                 }
             }
         }
     };
+
+    if transfer_total_bytes > 0 && last_upload_done_bytes < transfer_total_bytes {
+        let final_update = backup::filesystem::FilesystemBuildProgressUpdate {
+            stage: "upload",
+            done: ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: transfer_total_bytes,
+            },
+            total: Some(ProgressUnitsV1 {
+                files: 0,
+                dirs: 0,
+                bytes: transfer_total_bytes,
+            }),
+        };
+        super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(final_update)).await?;
+    }
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 

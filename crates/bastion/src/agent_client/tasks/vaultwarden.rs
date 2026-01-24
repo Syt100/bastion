@@ -115,6 +115,16 @@ pub(super) async fn run_vaultwarden_backup(
         handle.await??;
     }
 
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size);
+    let mut last_upload_done_bytes: u64 = 0;
+
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
 
     struct UploadThrottle {
@@ -143,7 +153,7 @@ pub(super) async fn run_vaultwarden_backup(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -177,11 +187,26 @@ pub(super) async fn run_vaultwarden_backup(
             res = &mut upload_fut => break res?,
             maybe_update = progress_rx.recv() => {
                 if let Some(p) = maybe_update {
-                    super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(p.bytes_done, p.bytes_total)).await?;
+                    last_upload_done_bytes = p.bytes_done;
+                    super::send_run_progress_snapshot(
+                        tx,
+                        ctx.run_id,
+                        progress.snapshot(p.bytes_done, Some(transfer_total_bytes)),
+                    )
+                    .await?;
                 }
             }
         }
     };
+
+    if transfer_total_bytes > 0 && last_upload_done_bytes < transfer_total_bytes {
+        super::send_run_progress_snapshot(
+            tx,
+            ctx.run_id,
+            progress.snapshot(transfer_total_bytes, Some(transfer_total_bytes)),
+        )
+        .await?;
+    }
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
     Ok(serde_json::json!({
