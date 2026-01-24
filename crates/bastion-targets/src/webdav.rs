@@ -4,12 +4,72 @@ use tracing::{debug, info};
 use url::Url;
 
 use bastion_core::backup_format::{
-    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
+    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts, MANIFEST_NAME,
 };
 use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
 use crate::StoreRunProgress;
 use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
+
+/// Upload `payload.part*` files as they are finalized, deleting the local part file after it has
+/// been successfully uploaded (or skipped via resumability-by-size).
+///
+/// This is intended to be used with archive builders that emit part-finalized events so large runs
+/// don't require staging all parts locally at once.
+pub async fn store_run_parts_rolling(
+    base_url: &str,
+    credentials: WebdavCredentials,
+    job_id: &str,
+    run_id: &str,
+    mut parts_rx: tokio::sync::mpsc::Receiver<LocalArtifact>,
+) -> Result<Url, anyhow::Error> {
+    let mut base_url = Url::parse(base_url)?;
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+
+    info!(
+        job_id = %job_id,
+        run_id = %run_id,
+        base_url = %redact_url(&base_url),
+        "starting rolling part upload to webdav"
+    );
+
+    let client = WebdavClient::new(base_url.clone(), credentials)?;
+    let job_url = base_url.join(&format!("{job_id}/"))?;
+    client.ensure_collection(&job_url).await?;
+
+    let run_url = job_url.join(&format!("{run_id}/"))?;
+    client.ensure_collection(&run_url).await?;
+
+    while let Some(part) = parts_rx.recv().await {
+        let url = run_url.join(&part.name)?;
+        if let Some(existing) = client.head_size(&url).await?
+            && existing == part.size
+        {
+            debug!(
+                url = %redact_url(&url),
+                size = part.size,
+                "skipping existing webdav part (rolling upload)"
+            );
+        } else {
+            debug!(
+                url = %redact_url(&url),
+                size = part.size,
+                "uploading webdav part (rolling upload)"
+            );
+            client
+                .put_file_with_retries(&url, &part.path, part.size, 3)
+                .await?;
+        }
+
+        // Best-effort cleanup; failure here should not fail the run, because the target already has
+        // the data (or we intentionally skipped due to resumability-by-size).
+        let _ = tokio::fs::remove_file(&part.path).await;
+    }
+
+    Ok(run_url)
+}
 
 pub async fn store_run(
     base_url: &str,
@@ -352,6 +412,7 @@ mod tests {
     use tokio::net::TcpListener;
 
     use bastion_core::backup_format::{LocalArtifact, LocalRunArtifacts};
+    use crate::WebdavCredentials;
 
     #[derive(Clone, Default)]
     struct DavState {
@@ -490,5 +551,99 @@ mod tests {
         assert_eq!(counts.get(&entries).copied().unwrap_or(0), 1);
         assert_eq!(counts.get(&manifest).copied().unwrap_or(0), 2);
         assert_eq!(counts.get(&complete).copied().unwrap_or(0), 2);
+    }
+
+    #[tokio::test]
+    async fn store_run_parts_rolling_uploads_and_deletes_local_parts() {
+        let (base_url, state) = start_dav().await;
+
+        let temp = TempDir::new().expect("tempdir");
+        let stage = temp.path().join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let part_path = stage.join("payload.part000001");
+        std::fs::write(&part_path, b"hello").unwrap();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<LocalArtifact>(1);
+        tx.send(LocalArtifact {
+            name: "payload.part000001".to_string(),
+            path: part_path.clone(),
+            size: 5,
+            hash_alg: HashAlgorithm::Blake3,
+            hash: "deadbeef".to_string(),
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        super::store_run_parts_rolling(
+            &base_url,
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            "job1",
+            "run1",
+            rx,
+        )
+        .await
+        .unwrap();
+
+        assert!(!part_path.exists());
+
+        let expected_path = "/backup/job1/run1/payload.part000001".to_string();
+        let files = state.files.lock().unwrap();
+        assert_eq!(files.get(&expected_path).map(|b| b.len()).unwrap_or(0), 5);
+
+        let counts = state.put_counts.lock().unwrap();
+        assert_eq!(*counts.get(&expected_path).unwrap_or(&0), 1);
+    }
+
+    #[tokio::test]
+    async fn store_run_parts_rolling_skips_existing_by_size_and_deletes_local_parts() {
+        let (base_url, state) = start_dav().await;
+
+        let existing_path = "/backup/job1/run1/payload.part000001".to_string();
+        {
+            let mut files = state.files.lock().unwrap();
+            files.insert(existing_path.clone(), b"hello".to_vec());
+        }
+
+        let temp = TempDir::new().expect("tempdir");
+        let stage = temp.path().join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let part_path = stage.join("payload.part000001");
+        std::fs::write(&part_path, b"hello").unwrap();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<LocalArtifact>(1);
+        tx.send(LocalArtifact {
+            name: "payload.part000001".to_string(),
+            path: part_path.clone(),
+            size: 5,
+            hash_alg: HashAlgorithm::Blake3,
+            hash: "deadbeef".to_string(),
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        super::store_run_parts_rolling(
+            &base_url,
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            "job1",
+            "run1",
+            rx,
+        )
+        .await
+        .unwrap();
+
+        assert!(!part_path.exists());
+
+        let counts = state.put_counts.lock().unwrap();
+        assert_eq!(*counts.get(&existing_path).unwrap_or(&0), 0);
     }
 }

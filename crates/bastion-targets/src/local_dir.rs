@@ -3,11 +3,37 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 use bastion_core::backup_format::{
-    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalRunArtifacts, MANIFEST_NAME,
+    COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts, MANIFEST_NAME,
 };
 use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
 use crate::StoreRunProgress;
+
+/// Store `payload.part*` files as they are finalized, deleting the local part file after it has been
+/// successfully written (or skipped via resumability-by-size).
+///
+/// This is intended to be used with archive builders that emit part-finalized events so large runs
+/// don't require staging all parts locally at once.
+pub fn store_run_parts_rolling(
+    base_dir: &Path,
+    job_id: &str,
+    run_id: &str,
+    mut parts_rx: tokio::sync::mpsc::Receiver<LocalArtifact>,
+) -> Result<PathBuf, anyhow::Error> {
+    let run_dir = base_dir.join(job_id).join(run_id);
+    std::fs::create_dir_all(&run_dir)?;
+
+    while let Some(part) = parts_rx.blocking_recv() {
+        let dst = run_dir.join(&part.name);
+        copy_if_needed(&part.path, &dst, part.size)?;
+
+        // Best-effort cleanup; failure here should not fail the run, because the target already has
+        // the data (or we intentionally skipped due to resumability-by-size).
+        let _ = std::fs::remove_file(&part.path);
+    }
+
+    Ok(run_dir)
+}
 
 pub fn store_run(
     base_dir: &Path,
@@ -234,7 +260,7 @@ mod tests {
 
     use bastion_core::backup_format::{LocalArtifact, LocalRunArtifacts};
 
-    use super::store_run;
+    use super::{store_run, store_run_parts_rolling};
 
     #[test]
     fn store_run_copies_files_and_is_resumable() {
@@ -300,5 +326,64 @@ mod tests {
 
         // Re-run should skip already-present files (no error).
         store_run(&dest_base, "job1", "run1", &artifacts, None).unwrap();
+    }
+
+    #[test]
+    fn store_run_parts_rolling_copies_and_deletes_local_parts() {
+        let tmp = tempdir().unwrap();
+        let stage = tmp.path().join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let part_path = stage.join("payload.part000001");
+        std::fs::write(&part_path, b"hello").unwrap();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<LocalArtifact>(1);
+        tx.blocking_send(LocalArtifact {
+            name: "payload.part000001".to_string(),
+            path: part_path.clone(),
+            size: 5,
+            hash_alg: HashAlgorithm::Blake3,
+            hash: "deadbeef".to_string(),
+        })
+        .unwrap();
+        drop(tx);
+
+        let dest_base = tmp.path().join("dest");
+        let run_dir = store_run_parts_rolling(&dest_base, "job1", "run1", rx).unwrap();
+
+        assert_eq!(run_dir, dest_base.join("job1").join("run1"));
+        assert!(run_dir.join("payload.part000001").exists());
+        assert!(!part_path.exists());
+    }
+
+    #[test]
+    fn store_run_parts_rolling_skips_existing_by_size_and_deletes_local_parts() {
+        let tmp = tempdir().unwrap();
+        let stage = tmp.path().join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let part_path = stage.join("payload.part000001");
+        std::fs::write(&part_path, b"hello").unwrap();
+
+        let dest_base = tmp.path().join("dest");
+        let existing_dir = dest_base.join("job1").join("run1");
+        std::fs::create_dir_all(&existing_dir).unwrap();
+        std::fs::write(existing_dir.join("payload.part000001"), b"hello").unwrap();
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<LocalArtifact>(1);
+        tx.blocking_send(LocalArtifact {
+            name: "payload.part000001".to_string(),
+            path: part_path.clone(),
+            size: 5,
+            hash_alg: HashAlgorithm::Blake3,
+            hash: "deadbeef".to_string(),
+        })
+        .unwrap();
+        drop(tx);
+
+        let run_dir = store_run_parts_rolling(&dest_base, "job1", "run1", rx).unwrap();
+        assert_eq!(run_dir, existing_dir);
+        assert!(run_dir.join("payload.part000001").exists());
+        assert!(!part_path.exists());
     }
 }
