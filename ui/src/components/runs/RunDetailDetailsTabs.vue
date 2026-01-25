@@ -242,12 +242,12 @@ async function copyEventJson(e: RunEvent): Promise<void> {
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
-          <div class="flex items-center gap-2 flex-nowrap shrink-0">
+          <div class="flex items-center gap-2 flex-wrap shrink-0 md:flex-nowrap">
             <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
               { label: 'error', value: 'error' },
               { label: 'warn', value: 'warn' },
               { label: 'info', value: 'info' },
-            ]" class="w-[10rem]" />
+            ]" class="w-[10rem] min-w-[10rem] max-w-[10rem] flex-none" />
             <n-select
               v-model:value="kindFilter"
               size="small"
@@ -256,7 +256,7 @@ async function copyEventJson(e: RunEvent): Promise<void> {
               :placeholder="t('runEvents.filters.kind')"
               :options="kindOptions"
               :consistent-menu-width="false"
-              class="w-[14rem]"
+              class="w-[16rem] min-w-[16rem] max-w-[16rem] flex-none"
             />
           </div>
           <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
