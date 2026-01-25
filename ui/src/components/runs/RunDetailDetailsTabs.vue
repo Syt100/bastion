@@ -240,37 +240,42 @@ async function copyEventJson(e: RunEvent): Promise<void> {
           </div>
         </div>
 
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
-          <div class="flex items-center gap-2 flex-wrap shrink-0 md:flex-nowrap">
-            <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
-              { label: 'error', value: 'error' },
-              { label: 'warn', value: 'warn' },
-              { label: 'info', value: 'info' },
-            ]" class="w-[10rem] min-w-[10rem] max-w-[10rem] flex-none" />
-            <n-select
-              v-model:value="kindFilter"
-              size="small"
-              clearable
-              filterable
-              :placeholder="t('runEvents.filters.kind')"
-              :options="kindOptions"
-              :consistent-menu-width="false"
-              class="w-[16rem] min-w-[16rem] max-w-[16rem] flex-none"
-            />
+        <div class="mt-3 flex flex-wrap items-start gap-2">
+          <div class="flex flex-1 flex-wrap items-center gap-2 min-w-0">
+            <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
+              <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
+                { label: 'error', value: 'error' },
+                { label: 'warn', value: 'warn' },
+                { label: 'info', value: 'info' },
+              ]" class="flex-[0_1_10rem] min-w-[8rem]" />
+              <n-select
+                v-model:value="kindFilter"
+                size="small"
+                clearable
+                filterable
+                :placeholder="t('runEvents.filters.kind')"
+                :options="kindOptions"
+                :consistent-menu-width="false"
+                class="flex-[0_1_10rem] min-w-[8rem]"
+              />
+            </div>
           </div>
-          <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
-            {{ t('runEvents.actions.firstError') }}
-          </n-button>
-          <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
-            {{ t('runEvents.actions.firstWarn') }}
-          </n-button>
-          <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
-            {{ t('runEvents.actions.latest') }}
-          </n-button>
-          <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
-            {{ t('runEvents.actions.export') }}
-          </n-button>
+
+          <div class="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+            <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
+              {{ t('runEvents.actions.firstError') }}
+            </n-button>
+            <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
+              {{ t('runEvents.actions.firstWarn') }}
+            </n-button>
+            <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
+              {{ t('runEvents.actions.latest') }}
+            </n-button>
+            <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
+              {{ t('runEvents.actions.export') }}
+            </n-button>
+          </div>
         </div>
 
         <div v-if="filteredEvents.length === 0" class="mt-3 text-sm opacity-70">{{ t('common.noData') }}</div>
