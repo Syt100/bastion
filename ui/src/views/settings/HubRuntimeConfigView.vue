@@ -11,6 +11,7 @@ import {
   NSelect,
   NSpace,
   NSpin,
+  NSwitch,
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -48,6 +49,11 @@ const form = reactive<{
   log_file: string
   log_rotation: string | null
   log_keep_files: number | null
+  default_backup_retention_enabled: boolean
+  default_backup_retention_keep_last: number | null
+  default_backup_retention_keep_days: number | null
+  default_backup_retention_max_delete_per_tick: number
+  default_backup_retention_max_delete_per_day: number
 }>({
   hub_timezone: '',
   run_retention_days: null,
@@ -56,6 +62,11 @@ const form = reactive<{
   log_file: '',
   log_rotation: null,
   log_keep_files: null,
+  default_backup_retention_enabled: false,
+  default_backup_retention_keep_last: null,
+  default_backup_retention_keep_days: null,
+  default_backup_retention_max_delete_per_tick: 50,
+  default_backup_retention_max_delete_per_day: 200,
 })
 
 function isOverridden(source: ConfigValueSource): boolean {
@@ -116,6 +127,23 @@ function applySavedToForm(saved: HubRuntimeConfigGetResponse['saved']): void {
   form.log_file = saved.log_file ?? ''
   form.log_rotation = saved.log_rotation ?? null
   form.log_keep_files = typeof saved.log_keep_files === 'number' ? saved.log_keep_files : null
+
+  const r = saved.default_backup_retention
+  if (r) {
+    form.default_backup_retention_enabled = !!r.enabled
+    form.default_backup_retention_keep_last = typeof r.keep_last === 'number' ? r.keep_last : null
+    form.default_backup_retention_keep_days = typeof r.keep_days === 'number' ? r.keep_days : null
+    form.default_backup_retention_max_delete_per_tick =
+      typeof r.max_delete_per_tick === 'number' && r.max_delete_per_tick > 0 ? r.max_delete_per_tick : 50
+    form.default_backup_retention_max_delete_per_day =
+      typeof r.max_delete_per_day === 'number' && r.max_delete_per_day > 0 ? r.max_delete_per_day : 200
+  } else {
+    form.default_backup_retention_enabled = false
+    form.default_backup_retention_keep_last = null
+    form.default_backup_retention_keep_days = null
+    form.default_backup_retention_max_delete_per_tick = 50
+    form.default_backup_retention_max_delete_per_day = 200
+  }
 }
 
 async function refresh(): Promise<void> {
@@ -148,6 +176,12 @@ function renderMeta(meta: HubRuntimeConfigFieldMeta, pending: boolean): string {
   return chunks.join(' · ')
 }
 
+function normalizeOptionalPositiveInt(value: number | null): number | null {
+  if (typeof value !== 'number') return null
+  const n = Math.floor(value)
+  return n > 0 ? n : null
+}
+
 async function save(): Promise<void> {
   if (!data.value) return
 
@@ -162,6 +196,13 @@ async function save(): Promise<void> {
       log_file: form.log_file.trim() ? form.log_file.trim() : null,
       log_rotation: form.log_rotation,
       log_keep_files: form.log_keep_files,
+      default_backup_retention: {
+        enabled: form.default_backup_retention_enabled,
+        keep_last: normalizeOptionalPositiveInt(form.default_backup_retention_keep_last),
+        keep_days: normalizeOptionalPositiveInt(form.default_backup_retention_keep_days),
+        max_delete_per_tick: Math.max(1, Math.floor(form.default_backup_retention_max_delete_per_tick || 1)),
+        max_delete_per_day: Math.max(1, Math.floor(form.default_backup_retention_max_delete_per_day || 1)),
+      },
     }
     await hubRuntimeConfig.save(payload)
     message.success(t('messages.hubRuntimeConfigSaved'))
@@ -337,6 +378,46 @@ onMounted(refresh)
                 </div>
               </n-form-item>
             </div>
+          </n-form>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-baseline justify-between gap-3 flex-wrap">
+            <h3 class="text-base font-semibold">{{ t('settings.hubRuntimeConfig.sections.backupRetention.title') }}</h3>
+            <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.sections.backupRetention.subtitle') }}</div>
+          </div>
+
+          <n-form label-placement="top">
+            <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionEnabled')">
+              <div class="flex items-center justify-between gap-3 w-full">
+                <div class="text-xs opacity-70">
+                  {{ t('settings.hubRuntimeConfig.fields.backupRetentionEnabledHelp') }}
+                </div>
+                <n-switch v-model:value="form.default_backup_retention_enabled" />
+              </div>
+            </n-form-item>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionKeepLast')">
+                <n-input-number v-model:value="form.default_backup_retention_keep_last" :min="0" />
+              </n-form-item>
+              <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionKeepDays')">
+                <n-input-number v-model:value="form.default_backup_retention_keep_days" :min="0" />
+              </n-form-item>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionMaxDeletePerTick')">
+                <n-input-number v-model:value="form.default_backup_retention_max_delete_per_tick" :min="1" />
+              </n-form-item>
+              <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionMaxDeletePerDay')">
+                <n-input-number v-model:value="form.default_backup_retention_max_delete_per_day" :min="1" />
+              </n-form-item>
+            </div>
+
+            <n-alert type="info" :bordered="false" class="mt-2">
+              {{ t('settings.hubRuntimeConfig.fields.backupRetentionTips') }}
+            </n-alert>
           </n-form>
         </div>
 

@@ -13,6 +13,15 @@ export type HubRuntimeConfig = {
   log_file?: string | null
   log_rotation?: string | null
   log_keep_files?: number | null
+  default_backup_retention?: BackupRetentionPolicy | null
+}
+
+export type BackupRetentionPolicy = {
+  enabled: boolean
+  keep_last?: number | null
+  keep_days?: number | null
+  max_delete_per_tick: number
+  max_delete_per_day: number
 }
 
 export type HubRuntimeConfigFieldMeta = {
@@ -84,4 +93,3 @@ export const useHubRuntimeConfigStore = defineStore('hubRuntimeConfig', () => {
 
   return { get, save }
 })
-
