@@ -1,6 +1,7 @@
 pub mod agent_labels_repo;
 pub mod agent_tasks_repo;
 pub mod agents_repo;
+pub mod artifact_delete_repo;
 pub mod auth;
 pub mod bulk_operations_repo;
 pub mod db;

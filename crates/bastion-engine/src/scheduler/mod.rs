@@ -10,6 +10,7 @@ use crate::agent_manager::AgentManager;
 use crate::run_events_bus::RunEventsBus;
 
 mod cron;
+mod artifact_delete;
 mod incomplete_cleanup;
 mod queue;
 mod retention;
@@ -26,6 +27,7 @@ pub struct SchedulerArgs {
     pub run_events_bus: Arc<RunEventsBus>,
     pub run_queue_notify: Arc<Notify>,
     pub incomplete_cleanup_notify: Arc<Notify>,
+    pub artifact_delete_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
     pub shutdown: CancellationToken,
@@ -42,6 +44,7 @@ pub fn spawn(args: SchedulerArgs) {
         run_events_bus,
         run_queue_notify,
         incomplete_cleanup_notify,
+        artifact_delete_notify,
         jobs_notify,
         notifications_notify,
         shutdown,
@@ -74,9 +77,16 @@ pub fn spawn(args: SchedulerArgs) {
         shutdown.clone(),
     ));
 
+    tokio::spawn(artifact_delete::run_artifact_delete_loop(
+        db.clone(),
+        secrets.clone(),
+        artifact_delete_notify,
+        shutdown.clone(),
+    ));
+
     if incomplete_cleanup_days > 0 {
         tokio::spawn(incomplete_cleanup::run_incomplete_cleanup_loop(
-            db,
+            db.clone(),
             secrets,
             incomplete_cleanup_days,
             incomplete_cleanup_notify,

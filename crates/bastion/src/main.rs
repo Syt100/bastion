@@ -199,6 +199,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let run_events_bus = Arc::new(RunEventsBus::new());
     let run_queue_notify = Arc::new(tokio::sync::Notify::new());
     let incomplete_cleanup_notify = Arc::new(tokio::sync::Notify::new());
+    let artifact_delete_notify = Arc::new(tokio::sync::Notify::new());
     let jobs_notify = Arc::new(tokio::sync::Notify::new());
     let notifications_notify = Arc::new(tokio::sync::Notify::new());
     let bulk_ops_notify = Arc::new(tokio::sync::Notify::new());
@@ -214,6 +215,7 @@ async fn main() -> Result<(), anyhow::Error> {
         run_events_bus: run_events_bus.clone(),
         run_queue_notify: run_queue_notify.clone(),
         incomplete_cleanup_notify: incomplete_cleanup_notify.clone(),
+        artifact_delete_notify: artifact_delete_notify.clone(),
         jobs_notify: jobs_notify.clone(),
         notifications_notify: notifications_notify.clone(),
         shutdown: shutdown.clone(),
@@ -241,6 +243,7 @@ async fn main() -> Result<(), anyhow::Error> {
         agent_manager,
         run_queue_notify,
         incomplete_cleanup_notify,
+        artifact_delete_notify,
         jobs_notify,
         notifications_notify,
         bulk_ops_notify,

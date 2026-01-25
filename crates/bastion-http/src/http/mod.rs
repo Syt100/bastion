@@ -119,6 +119,7 @@ pub struct AppState {
     pub agent_manager: AgentManager,
     pub run_queue_notify: Arc<Notify>,
     pub incomplete_cleanup_notify: Arc<Notify>,
+    pub artifact_delete_notify: Arc<Notify>,
     pub jobs_notify: Arc<Notify>,
     pub notifications_notify: Arc<Notify>,
     pub bulk_ops_notify: Arc<Notify>,
@@ -286,6 +287,30 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/jobs/{id}/snapshots/{run_id}",
             get(jobs::get_job_snapshot),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/delete",
+            post(jobs::delete_job_snapshot),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/delete",
+            post(jobs::delete_job_snapshots_bulk),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/delete-task",
+            get(jobs::get_job_snapshot_delete_task),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/delete-events",
+            get(jobs::get_job_snapshot_delete_events),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/delete/retry-now",
+            post(jobs::retry_job_snapshot_delete_now),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/delete/ignore",
+            post(jobs::ignore_job_snapshot_delete_task),
         )
         .route("/api/runs/{id}", get(runs::get_run))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))

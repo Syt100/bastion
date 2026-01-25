@@ -83,6 +83,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
         agent_manager: AgentManager::default(),
         run_queue_notify: Arc::new(tokio::sync::Notify::new()),
         incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
         jobs_notify: Arc::new(tokio::sync::Notify::new()),
         notifications_notify: Arc::new(tokio::sync::Notify::new()),
         bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),

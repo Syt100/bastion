@@ -70,6 +70,45 @@ export type RunDetail = {
 
 export type SnapshotStatus = 'present' | 'deleting' | 'deleted' | 'missing' | 'error'
 
+export type SnapshotDeleteTaskSummary = {
+  status: string
+  attempts: number
+  last_attempt_at?: number | null
+  next_attempt_at: number
+  last_error_kind?: string | null
+  last_error?: string | null
+  ignored_at?: number | null
+}
+
+export type SnapshotDeleteEvent = {
+  run_id: string
+  seq: number
+  ts: number
+  level: string
+  kind: string
+  message: string
+  fields: unknown | null
+}
+
+export type SnapshotDeleteTaskDetail = {
+  run_id: string
+  job_id: string
+  node_id: string
+  target_type: string
+  target_snapshot: unknown
+  status: string
+  attempts: number
+  created_at: number
+  updated_at: number
+  last_attempt_at?: number | null
+  next_attempt_at: number
+  last_error_kind?: string | null
+  last_error?: string | null
+  ignored_at?: number | null
+  ignored_by_user_id?: number | null
+  ignore_reason?: string | null
+}
+
 export type RunArtifact = {
   run_id: string
   job_id: string
@@ -87,6 +126,7 @@ export type RunArtifact = {
   last_error_kind?: string | null
   last_error?: string | null
   last_attempt_at?: number | null
+  delete_task?: SnapshotDeleteTaskSummary | null
 }
 
 export type ListJobSnapshotsResponse = {
@@ -197,6 +237,58 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`)
   }
 
+  async function deleteJobSnapshot(jobId: string, runId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
+      expectedStatus: 204,
+    })
+  }
+
+  async function deleteJobSnapshotsBulk(jobId: string, runIds: string[]): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ run_ids: runIds }),
+      expectedStatus: 204,
+    })
+  }
+
+  async function getJobSnapshotDeleteTask(jobId: string, runId: string): Promise<SnapshotDeleteTaskDetail> {
+    return await apiFetch<SnapshotDeleteTaskDetail>(
+      `/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete-task`,
+    )
+  }
+
+  async function getJobSnapshotDeleteEvents(jobId: string, runId: string): Promise<SnapshotDeleteEvent[]> {
+    return await apiFetch<SnapshotDeleteEvent[]>(
+      `/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete-events`,
+    )
+  }
+
+  async function retryJobSnapshotDeleteNow(jobId: string, runId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(
+      `/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete/retry-now`,
+      { method: 'POST', headers: { 'X-CSRF-Token': csrf }, expectedStatus: 204 },
+    )
+  }
+
+  async function ignoreJobSnapshotDeleteTask(jobId: string, runId: string, reason?: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(
+      `/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete/ignore`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        body: JSON.stringify({ reason }),
+        expectedStatus: 204,
+      },
+    )
+  }
+
   return {
     items,
     loading,
@@ -212,5 +304,11 @@ export const useJobsStore = defineStore('jobs', () => {
     listRunEvents,
     getRun,
     listJobSnapshots,
+    deleteJobSnapshot,
+    deleteJobSnapshotsBulk,
+    getJobSnapshotDeleteTask,
+    getJobSnapshotDeleteEvents,
+    retryJobSnapshotDeleteNow,
+    ignoreJobSnapshotDeleteTask,
   }
 })

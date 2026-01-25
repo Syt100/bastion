@@ -143,6 +143,72 @@ pub async fn list_run_artifacts_for_job(
     Ok(out)
 }
 
+pub async fn mark_run_artifact_deleting(
+    db: &SqlitePool,
+    run_id: &str,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE run_artifacts SET status = 'deleting', updated_at = ?, last_error_kind = NULL, last_error = NULL, last_attempt_at = NULL WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_run_artifact_deleted(
+    db: &SqlitePool,
+    run_id: &str,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE run_artifacts SET status = 'deleted', updated_at = ?, last_error_kind = NULL, last_error = NULL, last_attempt_at = NULL WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_run_artifact_missing(
+    db: &SqlitePool,
+    run_id: &str,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE run_artifacts SET status = 'missing', updated_at = ?, last_error_kind = NULL, last_error = NULL, last_attempt_at = NULL WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_run_artifact_error(
+    db: &SqlitePool,
+    run_id: &str,
+    last_error_kind: &str,
+    last_error: &str,
+    last_attempt_at: i64,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE run_artifacts SET status = 'error', updated_at = ?, last_error_kind = ?, last_error = ?, last_attempt_at = ? WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(last_error_kind)
+    .bind(last_error)
+    .bind(last_attempt_at)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 fn extract_metrics_from_progress(
     progress: Option<&serde_json::Value>,
 ) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
