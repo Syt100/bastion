@@ -26,6 +26,15 @@ pub struct RunArtifact {
     pub last_attempt_at: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RunArtifactRetentionItem {
+    pub run_id: String,
+    pub ended_at: i64,
+    pub pinned_at: Option<i64>,
+    pub source_bytes: Option<u64>,
+    pub transfer_bytes: Option<u64>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct RunTargetSnapshot {
     node_id: String,
@@ -145,6 +154,50 @@ pub async fn list_run_artifacts_for_job(
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         out.push(parse_row(&row)?);
+    }
+    Ok(out)
+}
+
+pub async fn list_retention_items_for_job(
+    db: &SqlitePool,
+    job_id: &str,
+    limit: u64,
+) -> Result<Vec<RunArtifactRetentionItem>, anyhow::Error> {
+    let limit = limit.clamp(1, 50_000);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          run_id,
+          ended_at,
+          pinned_at,
+          source_bytes,
+          transfer_bytes
+        FROM run_artifacts
+        WHERE job_id = ?
+          AND status = 'present'
+        ORDER BY ended_at DESC, run_id DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(job_id)
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(RunArtifactRetentionItem {
+            run_id: row.get::<String, _>("run_id"),
+            ended_at: row.get::<i64, _>("ended_at"),
+            pinned_at: row.get::<Option<i64>, _>("pinned_at"),
+            source_bytes: row
+                .get::<Option<i64>, _>("source_bytes")
+                .and_then(|v| u64::try_from(v).ok()),
+            transfer_bytes: row
+                .get::<Option<i64>, _>("transfer_bytes")
+                .and_then(|v| u64::try_from(v).ok()),
+        });
     }
     Ok(out)
 }

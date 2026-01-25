@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
+use bastion_core::job_spec::RetentionPolicyV1;
+
 use crate::settings_repo;
 
 const KEY_HUB_RUNTIME_CONFIG: &str = "hub_runtime_config_v1";
@@ -22,6 +24,9 @@ pub struct HubRuntimeConfig {
     pub log_rotation: Option<String>,
     #[serde(default)]
     pub log_keep_files: Option<usize>,
+
+    #[serde(default)]
+    pub default_backup_retention: RetentionPolicyV1,
 }
 
 pub async fn get(db: &SqlitePool) -> Result<Option<HubRuntimeConfig>, anyhow::Error> {
@@ -45,7 +50,7 @@ mod tests {
 
     use crate::db;
 
-    use super::{HubRuntimeConfig, get, upsert};
+    use super::{HubRuntimeConfig, RetentionPolicyV1, get, upsert};
 
     #[tokio::test]
     async fn hub_runtime_config_round_trip() {
@@ -62,6 +67,13 @@ mod tests {
             log_file: Some("/tmp/bastion.log".to_string()),
             log_rotation: Some("daily".to_string()),
             log_keep_files: Some(10),
+            default_backup_retention: RetentionPolicyV1 {
+                enabled: true,
+                keep_last: Some(7),
+                keep_days: Some(30),
+                max_delete_per_tick: 20,
+                max_delete_per_day: 100,
+            },
         };
         upsert(&pool, &cfg).await.expect("upsert");
 
@@ -73,5 +85,10 @@ mod tests {
         assert_eq!(loaded.log_file.as_deref(), Some("/tmp/bastion.log"));
         assert_eq!(loaded.log_rotation.as_deref(), Some("daily"));
         assert_eq!(loaded.log_keep_files, Some(10));
+        assert!(loaded.default_backup_retention.enabled);
+        assert_eq!(loaded.default_backup_retention.keep_last, Some(7));
+        assert_eq!(loaded.default_backup_retention.keep_days, Some(30));
+        assert_eq!(loaded.default_backup_retention.max_delete_per_tick, 20);
+        assert_eq!(loaded.default_backup_retention.max_delete_per_day, 100);
     }
 }

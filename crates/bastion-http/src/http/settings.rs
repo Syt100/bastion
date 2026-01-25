@@ -242,6 +242,62 @@ pub(in crate::http) async fn put_hub_runtime_config(
         ));
     }
 
+    {
+        const MAX_KEEP_LAST: u32 = 10_000;
+        const MAX_KEEP_DAYS: u32 = 3650;
+        const MAX_DELETE_PER_TICK: u32 = 10_000;
+        const MAX_DELETE_PER_DAY: u32 = 100_000;
+
+        let r = &req.default_backup_retention;
+
+        if let Some(v) = r.keep_last
+            && v > MAX_KEEP_LAST
+        {
+            return Err(AppError::bad_request(
+                "invalid_default_backup_retention",
+                format!("default_backup_retention.keep_last must be <= {MAX_KEEP_LAST}"),
+            ));
+        }
+
+        if let Some(v) = r.keep_days
+            && v > MAX_KEEP_DAYS
+        {
+            return Err(AppError::bad_request(
+                "invalid_default_backup_retention",
+                format!("default_backup_retention.keep_days must be <= {MAX_KEEP_DAYS}"),
+            ));
+        }
+
+        if r.max_delete_per_tick == 0 || r.max_delete_per_tick > MAX_DELETE_PER_TICK {
+            return Err(AppError::bad_request(
+                "invalid_default_backup_retention",
+                format!(
+                    "default_backup_retention.max_delete_per_tick must be within 1..={MAX_DELETE_PER_TICK}"
+                ),
+            ));
+        }
+
+        if r.max_delete_per_day == 0 || r.max_delete_per_day > MAX_DELETE_PER_DAY {
+            return Err(AppError::bad_request(
+                "invalid_default_backup_retention",
+                format!(
+                    "default_backup_retention.max_delete_per_day must be within 1..={MAX_DELETE_PER_DAY}"
+                ),
+            ));
+        }
+
+        if r.enabled {
+            let keep_last = r.keep_last.unwrap_or(0);
+            let keep_days = r.keep_days.unwrap_or(0);
+            if keep_last == 0 && keep_days == 0 {
+                return Err(AppError::bad_request(
+                    "invalid_default_backup_retention",
+                    "default_backup_retention.enabled is true but both keep rules are empty",
+                ));
+            }
+        }
+    }
+
     req.hub_timezone = validate_timezone(req.hub_timezone.as_deref())?;
     req.log_filter = normalize_optional_string(req.log_filter.as_deref());
     req.log_file = normalize_optional_string(req.log_file.as_deref());

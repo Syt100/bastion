@@ -6,6 +6,7 @@ use sqlx::Row;
 use tower_cookies::Cookies;
 
 use bastion_storage::jobs_repo;
+use bastion_storage::hub_runtime_config_repo;
 use bastion_storage::{artifact_delete_repo, run_artifacts_repo};
 
 use super::super::agents::send_node_config_snapshot;
@@ -161,7 +162,7 @@ pub(in crate::http) async fn create_job(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
     headers: HeaderMap,
-    Json(req): Json<CreateJobRequest>,
+    Json(mut req): Json<CreateJobRequest>,
 ) -> Result<Json<jobs_repo::Job>, AppError> {
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
@@ -178,6 +179,23 @@ pub(in crate::http) async fn create_job(
     validate_job_spec(&req.spec)?;
     validate_job_target_scope(&state.db, agent_id.as_deref(), &req.spec).await?;
     validate_schedule(schedule.as_deref())?;
+
+    // New jobs inherit the Hub default retention, unless explicitly set by the request.
+    if let Some(spec) = req.spec.as_object_mut()
+        && !spec.contains_key("retention")
+    {
+        let saved = hub_runtime_config_repo::get(&state.db)
+            .await?
+            .unwrap_or_default();
+
+        if saved.default_backup_retention.enabled {
+            spec.insert(
+                "retention".to_string(),
+                serde_json::to_value(saved.default_backup_retention)
+                    .map_err(|e| anyhow::anyhow!("invalid default retention: {e}"))?,
+            );
+        }
+    }
 
     let job = jobs_repo::create_job(
         &state.db,

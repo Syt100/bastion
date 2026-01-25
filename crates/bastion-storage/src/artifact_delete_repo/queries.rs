@@ -111,3 +111,27 @@ pub async fn list_tasks_by_run_ids(
 
     Ok(out)
 }
+
+pub async fn count_retention_enqueues_for_job_since(
+    db: &SqlitePool,
+    job_id: &str,
+    since_ts: i64,
+) -> Result<u64, anyhow::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT COUNT(*) AS cnt
+        FROM artifact_delete_events e
+        JOIN artifact_delete_tasks t ON t.run_id = e.run_id
+        WHERE t.job_id = ?
+          AND e.kind = 'retention_queued'
+          AND e.ts >= ?
+        "#,
+    )
+    .bind(job_id)
+    .bind(since_ts)
+    .fetch_one(db)
+    .await?;
+
+    let cnt = row.get::<i64, _>("cnt");
+    Ok(u64::try_from(cnt).unwrap_or(0))
+}
