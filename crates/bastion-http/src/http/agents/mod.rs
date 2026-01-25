@@ -4,6 +4,7 @@ mod enrollment;
 mod ingest;
 mod labels;
 mod snapshots;
+mod stage_events;
 mod ws;
 
 pub(super) use admin::{get_agent, list_agents, revoke_agent, rotate_agent_key, sync_config_now};

@@ -41,6 +41,7 @@ use bastion_targets::{WebdavClient, WebdavCredentials};
 use super::super::{AppError, AppState};
 use super::agent_auth::authenticate_agent;
 use super::snapshots::{send_node_config_snapshot, send_node_secrets_snapshot};
+use super::stage_events;
 
 const ARTIFACT_STREAM_MAX_BYTES: usize = 1024 * 1024;
 const ARTIFACT_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(30);
@@ -108,6 +109,9 @@ async fn handle_agent_socket(
     // Streams where *this agent* pulls bytes from the Hub (Hub acts as the stream server).
     // Keyed by stream_id (UUID).
     let mut hub_streams: HashMap<Uuid, HubArtifactStream> = HashMap::new();
+
+    // Best-effort stage tracking for progress snapshots (run_id -> last stage kind).
+    let mut run_stage_cache: HashMap<String, String> = HashMap::new();
 
     // Send any pending tasks for this agent (reconnect-safe).
     match agent_tasks_repo::list_open_tasks_for_agent(&db, &agent_id, 100).await {
@@ -221,6 +225,14 @@ async fn handle_agent_socket(
                     }) if v == PROTOCOL_VERSION => {
                         if kind.trim() == bastion_core::progress::PROGRESS_SNAPSHOT_EVENT_KIND_V1 {
                             let _ = runs_repo::set_run_progress(&db, &run_id, fields).await;
+                            stage_events::maybe_append_run_stage_event(
+                                &db,
+                                run_events_bus.as_ref(),
+                                &mut run_stage_cache,
+                                &run_id,
+                                &message,
+                            )
+                            .await;
                             continue;
                         }
 
