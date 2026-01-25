@@ -260,7 +260,7 @@ async function copyEventJson(e: RunEvent): Promise<void> {
             />
           </div>
 
-          <div class="flex flex-wrap items-center gap-2 w-full md:justify-end">
+          <div class="flex flex-wrap items-center gap-2 w-full">
             <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
               {{ t('runEvents.actions.firstError') }}
             </n-button>
