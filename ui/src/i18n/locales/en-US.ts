@@ -272,6 +272,8 @@ const messages = {
     deleteTitle: 'Delete job',
     deleteHelp: 'Archive keeps history and stops scheduling; delete permanently cascades and removes run history.',
     deletePermanentlyHelp: 'Delete permanently removes the job and cascades run history.',
+    archiveCascadeLabel: 'Cascade delete snapshots on archive',
+    archiveCascadeHelp: 'Enqueue async deletion tasks for this job’s present snapshots; pinned snapshots are excluded.',
     archived: 'Archived',
     showArchived: 'Show archived',
     fields: {

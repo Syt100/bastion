@@ -20,11 +20,60 @@ vi.mock('naive-ui', async () => {
       },
     })
 
+  const button = vue.defineComponent({
+    name: 'NButton',
+    setup(_, { slots, attrs }) {
+      return () =>
+        vue.h(
+          'button',
+          {
+            'data-stub': 'NButton',
+            onClick: (attrs as any).onClick,
+          },
+          slots.default?.(),
+        )
+    },
+  })
+
+  const checkbox = vue.defineComponent({
+    name: 'NCheckbox',
+    props: ['checked'],
+    emits: ['update:checked'],
+    setup(props, { slots, emit }) {
+      return () =>
+        vue.h('label', { 'data-stub': 'NCheckbox' }, [
+          vue.h('input', {
+            type: 'checkbox',
+            checked: !!(props as any).checked,
+            onChange: (e: Event) => emit('update:checked', (e.target as HTMLInputElement).checked),
+          }),
+          slots.default?.(),
+        ])
+    },
+  })
+
+  const card = vue.defineComponent({
+    name: 'NCard',
+    setup(_, { slots }) {
+      return () => vue.h('div', { 'data-stub': 'NCard' }, [slots.header?.(), slots.default?.(), slots.footer?.()])
+    },
+  })
+
+  const modal = vue.defineComponent({
+    name: 'NModal',
+    props: ['show'],
+    emits: ['update:show'],
+    setup(props, { slots }) {
+      return () => ((props as any).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
+    },
+  })
+
   return {
     NAlert: stub('NAlert'),
     NBadge: stub('NBadge'),
-    NButton: stub('NButton'),
-    NCard: stub('NCard'),
+    NButton: button,
+    NCard: card,
+    NCheckbox: checkbox,
     NCode: stub('NCode'),
     NDataTable: stub('NDataTable'),
     NDropdown: stub('NDropdown'),
@@ -35,7 +84,7 @@ vi.mock('naive-ui', async () => {
     NIcon: stub('NIcon'),
     NInput: stub('NInput'),
     NInputNumber: stub('NInputNumber'),
-    NModal: stub('NModal'),
+    NModal: modal,
     NPopover: stub('NPopover'),
     NPopconfirm: stub('NPopconfirm'),
     NSelect: stub('NSelect'),
@@ -77,6 +126,8 @@ const jobsApi = {
   createJob: vi.fn(),
   updateJob: vi.fn(),
   deleteJob: vi.fn(),
+  archiveJob: vi.fn().mockResolvedValue(undefined),
+  unarchiveJob: vi.fn().mockResolvedValue(undefined),
 }
 vi.mock('@/stores/jobs', () => ({
   useJobsStore: () => jobsApi,
@@ -199,5 +250,42 @@ describe('JobsView responsive lists', () => {
     const columns = dataTable.props('columns') as Array<{ key?: string }>
 
     expect(columns.some((c) => c.key === 'agent_id')).toBe(false)
+  })
+
+  it('archives with cascade when archive checkbox is checked (mobile)', async () => {
+    stubMatchMedia(false)
+    routeApi.params = {}
+
+    jobsApi.items = [
+      {
+        id: '1',
+        name: 'Job',
+        agent_id: null,
+        schedule: null,
+        overlap_policy: 'queue',
+        schedule_timezone: 'UTC',
+        updated_at: 0,
+        archived_at: null,
+      },
+    ]
+
+    const wrapper = mount(JobsView)
+
+    const deleteBtn = wrapper.findAll('button').find((b) => b.text() === 'common.delete')
+    expect(deleteBtn).toBeTruthy()
+    await deleteBtn!.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    // Toggle cascade checkbox.
+    const cb = wrapper.find('input[type=\"checkbox\"]')
+    expect(cb.exists()).toBe(true)
+    await cb.setValue(true)
+    await wrapper.vm.$nextTick()
+
+    const archiveBtn = wrapper.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
+    expect(archiveBtn).toBeTruthy()
+    await archiveBtn!.trigger('click')
+
+    expect(jobsApi.archiveJob).toHaveBeenCalledWith('1', { cascadeSnapshots: true })
   })
 })

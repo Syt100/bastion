@@ -189,9 +189,12 @@ export const useJobsStore = defineStore('jobs', () => {
     })
   }
 
-  async function archiveJob(jobId: string): Promise<void> {
+  async function archiveJob(jobId: string, opts?: { cascadeSnapshots?: boolean }): Promise<void> {
     const csrf = await ensureCsrfToken()
-    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/archive`, {
+    const q = new URLSearchParams()
+    if (opts?.cascadeSnapshots) q.set('cascade_snapshots', 'true')
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/archive${suffix}`, {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf },
       expectedStatus: 204,

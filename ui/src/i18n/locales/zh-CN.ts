@@ -272,6 +272,8 @@ const messages = {
     deleteTitle: '删除任务',
     deleteHelp: '归档会保留历史并停止调度；永久删除会级联删除并清除运行记录。',
     deletePermanentlyHelp: '永久删除会删除任务并级联清除运行记录。',
+    archiveCascadeLabel: '归档时同时删除备份数据',
+    archiveCascadeHelp: '将为该任务的可用备份数据创建删除任务（后台执行）；已固定的备份数据不会被删除。',
     archived: '已归档',
     showArchived: '显示已归档',
     fields: {

@@ -6,6 +6,7 @@ use sqlx::Row;
 use tower_cookies::Cookies;
 
 use bastion_storage::jobs_repo;
+use bastion_storage::{artifact_delete_repo, run_artifacts_repo};
 
 use super::super::agents::send_node_config_snapshot;
 use super::super::shared::{require_csrf, require_session};
@@ -324,11 +325,18 @@ pub(in crate::http) async fn delete_job(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub(in crate::http) struct ArchiveJobQuery {
+    #[serde(default)]
+    cascade_snapshots: bool,
+}
+
 pub(in crate::http) async fn archive_job(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
     headers: HeaderMap,
     Path(job_id): Path<String>,
+    Query(query): Query<ArchiveJobQuery>,
 ) -> Result<StatusCode, AppError> {
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
@@ -344,9 +352,109 @@ pub(in crate::http) async fn archive_job(
         if let Some(agent_id) = job.agent_id.as_deref() {
             try_send_agent_config_snapshot(&state, agent_id).await;
         }
+
+        if query.cascade_snapshots {
+            let now = time::OffsetDateTime::now_utc().unix_timestamp();
+            if let Err(error) =
+                cascade_enqueue_snapshot_deletes(&state, session.user_id, &job_id, now).await
+            {
+                tracing::warn!(
+                    job_id = %job_id,
+                    error = %error,
+                    "job archived but snapshot cascade enqueue failed"
+                );
+            }
+        }
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn cascade_enqueue_snapshot_deletes(
+    state: &AppState,
+    user_id: i64,
+    job_id: &str,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    const PAGE_LIMIT: u64 = 200;
+    const MAX_ENQUEUE: usize = 1000;
+
+    let mut cursor = 0_u64;
+    let mut enqueued = 0_usize;
+    let mut skipped_pinned = 0_usize;
+
+    while enqueued < MAX_ENQUEUE {
+        let items = run_artifacts_repo::list_run_artifacts_for_job(
+            &state.db,
+            job_id,
+            cursor,
+            PAGE_LIMIT,
+            Some("present"),
+        )
+        .await?;
+
+        if items.is_empty() {
+            break;
+        }
+
+        cursor = cursor.saturating_add(items.len() as u64);
+
+        for artifact in items {
+            if artifact.pinned_at.is_some() {
+                skipped_pinned = skipped_pinned.saturating_add(1);
+                continue;
+            }
+
+            let snapshot_json = serde_json::to_string(&artifact.target_snapshot)?;
+            let inserted = artifact_delete_repo::upsert_task_if_missing(
+                &state.db,
+                &artifact.run_id,
+                job_id,
+                &artifact.node_id,
+                &artifact.target_type,
+                &snapshot_json,
+                now,
+            )
+            .await?;
+
+            if inserted {
+                let _ = artifact_delete_repo::append_event(
+                    &state.db,
+                    &artifact.run_id,
+                    "info",
+                    "queued",
+                    "delete queued (job archive cascade)",
+                    Some(
+                        serde_json::json!({ "user_id": user_id, "reason": "job_archive_cascade" }),
+                    ),
+                    now,
+                )
+                .await;
+            }
+
+            let _ =
+                run_artifacts_repo::mark_run_artifact_deleting(&state.db, &artifact.run_id, now)
+                    .await;
+            enqueued = enqueued.saturating_add(1);
+            if enqueued >= MAX_ENQUEUE {
+                break;
+            }
+        }
+    }
+
+    if skipped_pinned > 0 {
+        tracing::info!(
+            job_id = %job_id,
+            skipped_pinned,
+            "job archive cascade skipped pinned snapshots"
+        );
+    }
+
+    if enqueued > 0 {
+        state.artifact_delete_notify.notify_one();
+    }
+
+    Ok(())
 }
 
 pub(in crate::http) async fn unarchive_job(

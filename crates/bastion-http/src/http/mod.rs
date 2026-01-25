@@ -425,3 +425,6 @@ mod runs_tests;
 
 #[cfg(test)]
 mod snapshots_tests;
+
+#[cfg(test)]
+mod jobs_archive_tests;

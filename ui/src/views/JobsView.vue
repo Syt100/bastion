@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type OverlapPolicy } from '@/stores/jobs'
@@ -89,9 +89,9 @@ async function removeJob(jobId: string): Promise<boolean> {
   }
 }
 
-async function archiveJob(jobId: string): Promise<boolean> {
+async function archiveJob(jobId: string, opts?: { cascadeSnapshots?: boolean }): Promise<boolean> {
   try {
-    await jobs.archiveJob(jobId)
+    await jobs.archiveJob(jobId, { cascadeSnapshots: !!opts?.cascadeSnapshots })
     message.success(t('messages.jobArchived'))
     await refresh()
     return true
@@ -169,9 +169,11 @@ async function openOperation(opId: string): Promise<void> {
 const deleteOpen = ref<boolean>(false)
 const deleteTarget = ref<JobListItem | null>(null)
 const deleteBusy = ref<'archive' | 'delete' | null>(null)
+const archiveCascadeSnapshots = ref<boolean>(false)
 
 function openDelete(job: JobListItem): void {
   deleteTarget.value = job
+  archiveCascadeSnapshots.value = false
   deleteOpen.value = true
 }
 
@@ -180,7 +182,7 @@ async function confirmArchive(): Promise<void> {
   if (!job) return
   deleteBusy.value = 'archive'
   try {
-    const ok = await archiveJob(job.id)
+    const ok = await archiveJob(job.id, { cascadeSnapshots: archiveCascadeSnapshots.value })
     if (ok) deleteOpen.value = false
   } finally {
     deleteBusy.value = null
@@ -438,6 +440,13 @@ watch(showArchived, () => {
               ? t('jobs.deletePermanentlyHelp')
               : t('jobs.deleteHelp')
           }}
+        </div>
+
+        <div v-if="deleteTarget && !deleteTarget.archived_at" class="rounded border border-slate-200/60 dark:border-slate-700/60 p-3 space-y-1">
+          <n-checkbox :checked="archiveCascadeSnapshots" @update:checked="(v) => (archiveCascadeSnapshots = v)">
+            {{ t('jobs.archiveCascadeLabel') }}
+          </n-checkbox>
+          <div class="text-xs opacity-70">{{ t('jobs.archiveCascadeHelp') }}</div>
         </div>
 
         <div class="flex items-center justify-end gap-2">
