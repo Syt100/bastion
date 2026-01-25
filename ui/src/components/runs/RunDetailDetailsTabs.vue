@@ -242,27 +242,25 @@ async function copyEventJson(e: RunEvent): Promise<void> {
 
         <div class="mt-3 flex flex-wrap items-start gap-2">
           <div class="flex flex-1 flex-wrap items-center gap-2 min-w-0">
-            <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
-            <div class="flex flex-wrap items-center gap-2 min-w-0">
-              <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
-                { label: 'error', value: 'error' },
-                { label: 'warn', value: 'warn' },
-                { label: 'info', value: 'info' },
-              ]" class="flex-[0_1_10rem] min-w-[8rem]" />
-              <n-select
-                v-model:value="kindFilter"
-                size="small"
-                clearable
-                filterable
-                :placeholder="t('runEvents.filters.kind')"
-                :options="kindOptions"
-                :consistent-menu-width="false"
-                class="flex-[0_1_10rem] min-w-[8rem]"
-              />
-            </div>
+            <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="flex-1 min-w-[12rem] w-0" />
+            <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
+              { label: 'error', value: 'error' },
+              { label: 'warn', value: 'warn' },
+              { label: 'info', value: 'info' },
+            ]" class="grow-0 shrink basis-[10rem] min-w-[8rem]" />
+            <n-select
+              v-model:value="kindFilter"
+              size="small"
+              clearable
+              filterable
+              :placeholder="t('runEvents.filters.kind')"
+              :options="kindOptions"
+              :consistent-menu-width="false"
+              class="grow-0 shrink basis-[10rem] min-w-[8rem]"
+            />
           </div>
 
-          <div class="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+          <div class="flex flex-wrap items-center gap-2 w-full md:justify-end">
             <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
               {{ t('runEvents.actions.firstError') }}
             </n-button>
