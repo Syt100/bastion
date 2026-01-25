@@ -508,7 +508,7 @@ onBeforeUnmount(() => {
             </n-tag>
           </div>
 
-          <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-sm">
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <dt class="opacity-70">{{ t('runs.columns.startedAt') }}</dt>
             <dd class="font-mono tabular-nums">{{ formatUnixSeconds(run.started_at) }}</dd>
 

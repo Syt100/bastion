@@ -280,14 +280,16 @@ function progressNumber(pct: number | null): number {
       <div class="space-y-1">
         <div class="flex items-center justify-between gap-3 text-xs opacity-70">
           <div class="truncate">{{ t('runs.progress.overall') }}</div>
-          <div v-if="overallPct != null">{{ Math.round(overallPct) }}%</div>
+          <div v-if="overallPct != null" class="shrink-0 font-mono tabular-nums whitespace-nowrap">
+            {{ Math.round(overallPct) }}%
+          </div>
           <div v-else>-</div>
         </div>
         <n-progress
           type="line"
           :percentage="progressNumber(overallPct)"
           :processing="overallPct == null"
-          :show-indicator="overallPct != null"
+          :show-indicator="false"
         />
       </div>
 
