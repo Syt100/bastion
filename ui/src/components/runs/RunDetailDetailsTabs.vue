@@ -248,7 +248,16 @@ async function copyEventJson(e: RunEvent): Promise<void> {
               { label: 'warn', value: 'warn' },
               { label: 'info', value: 'info' },
             ]" class="w-[10rem]" />
-            <n-select v-model:value="kindFilter" size="small" clearable filterable :placeholder="t('runEvents.filters.kind')" :options="kindOptions" class="w-[14rem]" />
+            <n-select
+              v-model:value="kindFilter"
+              size="small"
+              clearable
+              filterable
+              :placeholder="t('runEvents.filters.kind')"
+              :options="kindOptions"
+              :consistent-menu-width="false"
+              class="w-[14rem]"
+            />
           </div>
           <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
             {{ t('runEvents.actions.firstError') }}
