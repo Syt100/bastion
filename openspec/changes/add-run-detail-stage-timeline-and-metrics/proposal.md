@@ -11,8 +11,10 @@ Run progress is currently hard to interpret after-the-fact: users cannot easily 
   - Optionally show peak speed during the run (when available).
 - Improve failure diagnostics:
   - Indicate which stage the run failed in.
+- Persist stage boundaries so the timeline works for historical runs (not only while the page is open).
 
 ## Impact
 - Affected specs: `web-ui`
-- Affected code: `ui/src/components/runs/RunProgressPanel.vue` and run detail helpers
-- No backend changes
+- Affected code:
+  - UI: `ui/src/components/runs/RunProgressPanel.vue` and run detail helpers
+  - Backend: agent progress ingestion and run events storage
