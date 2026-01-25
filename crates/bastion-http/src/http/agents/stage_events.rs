@@ -92,7 +92,9 @@ mod tests {
         maybe_append_run_stage_event(&pool, &bus, &mut cache, &run.id, "packaging").await;
         maybe_append_run_stage_event(&pool, &bus, &mut cache, &run.id, "packaging").await;
 
-        let events = list_run_events(&pool, &run.id, 100).await.expect("list events");
+        let events = list_run_events(&pool, &run.id, 100)
+            .await
+            .expect("list events");
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].kind, "scan");
         assert_eq!(events[1].kind, "packaging");
@@ -102,9 +104,10 @@ mod tests {
         maybe_append_run_stage_event(&pool, &bus, &mut cache2, &run.id, "packaging").await;
         maybe_append_run_stage_event(&pool, &bus, &mut cache2, &run.id, "upload").await;
 
-        let events2 = list_run_events(&pool, &run.id, 100).await.expect("list events 2");
+        let events2 = list_run_events(&pool, &run.id, 100)
+            .await
+            .expect("list events 2");
         assert_eq!(events2.len(), 3);
         assert_eq!(events2[2].kind, "upload");
     }
 }
-
