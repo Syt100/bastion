@@ -4,7 +4,7 @@ use url::Url;
 use super::JOB_SPEC_VERSION;
 use super::types::{
     EncryptionV1, FilesystemSource, JobSpecV1, NotificationsModeV1, NotificationsV1, PipelineV1,
-    TargetV1, VaultwardenSource,
+    RetentionPolicyV1, TargetV1, VaultwardenSource,
 };
 use crate::manifest::ArtifactFormatV1;
 
@@ -23,12 +23,14 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             v,
             pipeline,
             notifications,
+            retention,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
             validate_notifications(notifications)?;
+            validate_retention(retention)?;
             validate_filesystem_source(source)?;
             validate_target(target)?;
         }
@@ -36,12 +38,14 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             v,
             pipeline,
             notifications,
+            retention,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
             validate_notifications(notifications)?;
+            validate_retention(retention)?;
             if source.path.trim().is_empty() {
                 anyhow::bail!("sqlite.source.path is required");
             }
@@ -51,14 +55,55 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
             v,
             pipeline,
             notifications,
+            retention,
             source,
             target,
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
             validate_notifications(notifications)?;
+            validate_retention(retention)?;
             validate_vaultwarden_source(source)?;
             validate_target(target)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_retention(retention: &RetentionPolicyV1) -> Result<(), anyhow::Error> {
+    const MAX_KEEP_LAST: u32 = 10_000;
+    const MAX_KEEP_DAYS: u32 = 3650; // 10 years
+    const MAX_DELETE_PER_TICK: u32 = 10_000;
+    const MAX_DELETE_PER_DAY: u32 = 100_000;
+
+    if let Some(v) = retention.keep_last
+        && v > MAX_KEEP_LAST
+    {
+        anyhow::bail!("retention.keep_last must be <= {MAX_KEEP_LAST}");
+    }
+
+    if let Some(v) = retention.keep_days
+        && v > MAX_KEEP_DAYS
+    {
+        anyhow::bail!("retention.keep_days must be <= {MAX_KEEP_DAYS}");
+    }
+
+    if retention.max_delete_per_tick == 0 || retention.max_delete_per_tick > MAX_DELETE_PER_TICK {
+        anyhow::bail!("retention.max_delete_per_tick must be within 1..={MAX_DELETE_PER_TICK}");
+    }
+
+    if retention.max_delete_per_day == 0 || retention.max_delete_per_day > MAX_DELETE_PER_DAY {
+        anyhow::bail!("retention.max_delete_per_day must be within 1..={MAX_DELETE_PER_DAY}");
+    }
+
+    if retention.enabled {
+        let keep_last = retention.keep_last.unwrap_or(0);
+        let keep_days = retention.keep_days.unwrap_or(0);
+        if keep_last == 0 && keep_days == 0 {
+            anyhow::bail!(
+                "retention.enabled is true but both retention.keep_last and retention.keep_days are empty"
+            );
         }
     }
 
@@ -164,4 +209,65 @@ fn validate_target(target: &TargetV1) -> Result<(), anyhow::Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_value;
+
+    #[test]
+    fn retention_disabled_allows_empty_keep_rules() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" },
+          "retention": { "enabled": false }
+        });
+        validate_value(&spec).expect("valid");
+    }
+
+    #[test]
+    fn retention_enabled_requires_keep_last_or_keep_days() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" },
+          "retention": { "enabled": true }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("retention.enabled"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn retention_enabled_accepts_keep_last() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" },
+          "retention": { "enabled": true, "keep_last": 3 }
+        });
+        validate_value(&spec).expect("valid");
+    }
+
+    #[test]
+    fn retention_rejects_zero_safety_limits() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" },
+          "retention": { "enabled": true, "keep_last": 1, "max_delete_per_tick": 0 }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("retention.max_delete_per_tick"),
+            "unexpected error: {err}"
+        );
+    }
 }

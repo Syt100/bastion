@@ -217,6 +217,7 @@ mod tests {
             v: 1,
             pipeline: Default::default(),
             notifications: Default::default(),
+            retention: Default::default(),
             source: job_spec::FilesystemSource {
                 pre_scan: true,
                 paths: vec![],

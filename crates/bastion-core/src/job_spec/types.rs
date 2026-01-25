@@ -46,6 +46,45 @@ pub struct NotificationsV1 {
     pub email: Vec<String>,
 }
 
+fn default_max_delete_per_tick() -> u32 {
+    50
+}
+
+fn default_max_delete_per_day() -> u32 {
+    200
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RetentionPolicyV1 {
+    /// When disabled, retention selection MUST be a no-op.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Keep the last N snapshots (ordered by ended_at DESC). `None`/`0` means disabled.
+    #[serde(default)]
+    pub keep_last: Option<u32>,
+    /// Keep snapshots within the last D days. `None`/`0` means disabled.
+    #[serde(default)]
+    pub keep_days: Option<u32>,
+    /// Safety valve: limit how many snapshots retention can enqueue per loop tick.
+    #[serde(default = "default_max_delete_per_tick")]
+    pub max_delete_per_tick: u32,
+    /// Safety valve: limit how many snapshots retention can enqueue per day (UTC).
+    #[serde(default = "default_max_delete_per_day")]
+    pub max_delete_per_day: u32,
+}
+
+impl Default for RetentionPolicyV1 {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            keep_last: None,
+            keep_days: None,
+            max_delete_per_tick: default_max_delete_per_tick(),
+            max_delete_per_day: default_max_delete_per_day(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FsSymlinkPolicy {
@@ -142,6 +181,8 @@ pub enum JobSpecV1 {
         pipeline: PipelineV1,
         #[serde(default)]
         notifications: NotificationsV1,
+        #[serde(default)]
+        retention: RetentionPolicyV1,
         source: FilesystemSource,
         target: TargetV1,
     },
@@ -151,6 +192,8 @@ pub enum JobSpecV1 {
         pipeline: PipelineV1,
         #[serde(default)]
         notifications: NotificationsV1,
+        #[serde(default)]
+        retention: RetentionPolicyV1,
         source: SqliteSource,
         target: TargetV1,
     },
@@ -160,6 +203,8 @@ pub enum JobSpecV1 {
         pipeline: PipelineV1,
         #[serde(default)]
         notifications: NotificationsV1,
+        #[serde(default)]
+        retention: RetentionPolicyV1,
         source: VaultwardenSource,
         target: TargetV1,
     },
@@ -171,6 +216,14 @@ impl JobSpecV1 {
             JobSpecV1::Filesystem { notifications, .. } => notifications,
             JobSpecV1::Sqlite { notifications, .. } => notifications,
             JobSpecV1::Vaultwarden { notifications, .. } => notifications,
+        }
+    }
+
+    pub fn retention(&self) -> &RetentionPolicyV1 {
+        match self {
+            JobSpecV1::Filesystem { retention, .. } => retention,
+            JobSpecV1::Sqlite { retention, .. } => retention,
+            JobSpecV1::Vaultwarden { retention, .. } => retention,
         }
     }
 }

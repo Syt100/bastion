@@ -2,6 +2,7 @@ pub mod agent;
 pub mod agent_protocol;
 pub mod agent_stream;
 pub mod backup_format;
+pub mod backup_retention;
 pub mod job_spec;
 pub mod manifest;
 pub mod progress;

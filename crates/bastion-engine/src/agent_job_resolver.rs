@@ -22,6 +22,7 @@ pub async fn resolve_job_spec_for_agent(
             notifications: _,
             source,
             target,
+            ..
         } => Ok(JobSpecResolvedV1::Filesystem {
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
@@ -34,6 +35,7 @@ pub async fn resolve_job_spec_for_agent(
             notifications: _,
             source,
             target,
+            ..
         } => Ok(JobSpecResolvedV1::Sqlite {
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
@@ -46,6 +48,7 @@ pub async fn resolve_job_spec_for_agent(
             notifications: _,
             source,
             target,
+            ..
         } => Ok(JobSpecResolvedV1::Vaultwarden {
             v,
             pipeline: resolve_pipeline_for_agent(db, secrets, &pipeline).await?,
@@ -141,6 +144,7 @@ mod tests {
             v: 1,
             pipeline: Default::default(),
             notifications: Default::default(),
+            retention: Default::default(),
             source: job_spec::FilesystemSource {
                 pre_scan: true,
                 paths: vec![],
@@ -190,6 +194,7 @@ mod tests {
             v: 1,
             pipeline: Default::default(),
             notifications: Default::default(),
+            retention: Default::default(),
             source: job_spec::FilesystemSource {
                 pre_scan: true,
                 paths: vec![],
