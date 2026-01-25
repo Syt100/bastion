@@ -6,6 +6,7 @@ This directory contains topic-focused documentation.
 
 - `agents.md` — enrollment, labels, config sync status and actions
 - `jobs.md` — jobs, schedules/timezones, deploy-to-nodes
+- `backup-snapshots.md` — backup snapshots (artifacts) management, deletion and retention (design)
 - `bulk-operations.md` — bulk operations, preview, retry/cancel, supported kinds
 - `storage.md` — WebDAV credentials and distribution to agents
 
