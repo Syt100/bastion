@@ -23,7 +23,11 @@ pub struct RetentionSelection {
     pub delete: Vec<RetentionDecision>,
 }
 
-pub fn select_retention(policy: &RetentionPolicyV1, now: i64, snapshots: &[RetentionSnapshot]) -> RetentionSelection {
+pub fn select_retention(
+    policy: &RetentionPolicyV1,
+    now: i64,
+    snapshots: &[RetentionSnapshot],
+) -> RetentionSelection {
     if !policy.enabled {
         let mut keep = snapshots
             .iter()
@@ -35,7 +39,10 @@ pub fn select_retention(policy: &RetentionPolicyV1, now: i64, snapshots: &[Reten
             })
             .collect::<Vec<_>>();
         keep.sort_by(|a, b| (b.ended_at, &b.run_id).cmp(&(a.ended_at, &a.run_id)));
-        return RetentionSelection { keep, delete: Vec::new() };
+        return RetentionSelection {
+            keep,
+            delete: Vec::new(),
+        };
     }
 
     let keep_last = policy.keep_last.unwrap_or(0);
@@ -137,32 +144,84 @@ mod tests {
     fn keep_union_of_keep_last_and_keep_days_excluding_delete() {
         let now = 1_000_000;
         let snaps = vec![
-            RetentionSnapshot { run_id: "a".to_string(), ended_at: now - 10, pinned: false },
-            RetentionSnapshot { run_id: "b".to_string(), ended_at: now - 20, pinned: false },
-            RetentionSnapshot { run_id: "c".to_string(), ended_at: now - 400_000, pinned: false },
+            RetentionSnapshot {
+                run_id: "a".to_string(),
+                ended_at: now - 10,
+                pinned: false,
+            },
+            RetentionSnapshot {
+                run_id: "b".to_string(),
+                ended_at: now - 20,
+                pinned: false,
+            },
+            RetentionSnapshot {
+                run_id: "c".to_string(),
+                ended_at: now - 400_000,
+                pinned: false,
+            },
         ];
 
-        let policy = RetentionPolicyV1 { enabled: true, keep_last: Some(1), keep_days: Some(1), max_delete_per_tick: 50, max_delete_per_day: 200 };
+        let policy = RetentionPolicyV1 {
+            enabled: true,
+            keep_last: Some(1),
+            keep_days: Some(1),
+            max_delete_per_tick: 50,
+            max_delete_per_day: 200,
+        };
         let sel = select_retention(&policy, now, &snaps);
 
         // keep_last keeps 'a'. keep_days(1) keeps 'a' and 'b' (both within ~1 day window), so union keeps a+b.
-        assert_eq!(sel.keep.iter().map(|d| d.run_id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
-        assert_eq!(sel.delete.iter().map(|d| d.run_id.as_str()).collect::<Vec<_>>(), vec!["c"]);
+        assert_eq!(
+            sel.keep
+                .iter()
+                .map(|d| d.run_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(
+            sel.delete
+                .iter()
+                .map(|d| d.run_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["c"]
+        );
     }
 
     #[test]
     fn pinned_is_never_deleted() {
         let now = 1_000_000;
         let snaps = vec![
-            RetentionSnapshot { run_id: "a".to_string(), ended_at: now - 10, pinned: false },
-            RetentionSnapshot { run_id: "b".to_string(), ended_at: now - 20, pinned: true },
-            RetentionSnapshot { run_id: "c".to_string(), ended_at: now - 30, pinned: false },
+            RetentionSnapshot {
+                run_id: "a".to_string(),
+                ended_at: now - 10,
+                pinned: false,
+            },
+            RetentionSnapshot {
+                run_id: "b".to_string(),
+                ended_at: now - 20,
+                pinned: true,
+            },
+            RetentionSnapshot {
+                run_id: "c".to_string(),
+                ended_at: now - 30,
+                pinned: false,
+            },
         ];
 
-        let policy = RetentionPolicyV1 { enabled: true, keep_last: Some(1), keep_days: None, max_delete_per_tick: 50, max_delete_per_day: 200 };
+        let policy = RetentionPolicyV1 {
+            enabled: true,
+            keep_last: Some(1),
+            keep_days: None,
+            max_delete_per_tick: 50,
+            max_delete_per_day: 200,
+        };
         let sel = select_retention(&policy, now, &snaps);
 
-        assert!(sel.keep.iter().any(|d| d.run_id == "b" && d.reasons.contains(&"pinned")));
+        assert!(
+            sel.keep
+                .iter()
+                .any(|d| d.run_id == "b" && d.reasons.contains(&"pinned"))
+        );
         assert!(!sel.delete.iter().any(|d| d.run_id == "b"));
     }
 }

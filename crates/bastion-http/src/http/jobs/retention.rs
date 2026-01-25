@@ -31,8 +31,8 @@ pub(in crate::http) async fn get_job_retention(
         .await?
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
 
-    let parsed = job_spec::parse_value(&job.spec)
-        .map_err(|e| anyhow::anyhow!("invalid job spec: {e}"))?;
+    let parsed =
+        job_spec::parse_value(&job.spec).map_err(|e| anyhow::anyhow!("invalid job spec: {e}"))?;
 
     Ok(Json(parsed.retention().clone()))
 }
@@ -129,8 +129,8 @@ async fn load_retention_job(
         .await?
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
 
-    let parsed = job_spec::parse_value(&job.spec)
-        .map_err(|e| anyhow::anyhow!("invalid job spec: {e}"))?;
+    let parsed =
+        job_spec::parse_value(&job.spec).map_err(|e| anyhow::anyhow!("invalid job spec: {e}"))?;
 
     Ok((job, parsed.retention().clone()))
 }
@@ -264,8 +264,9 @@ pub(in crate::http) async fn apply_job_retention(
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
-    let rows = run_artifacts_repo::list_retention_items_for_job(&state.db, &job_id, RETENTION_SCAN_LIMIT)
-        .await?;
+    let rows =
+        run_artifacts_repo::list_retention_items_for_job(&state.db, &job_id, RETENTION_SCAN_LIMIT)
+            .await?;
 
     let snapshots = rows
         .iter()
@@ -279,9 +280,10 @@ pub(in crate::http) async fn apply_job_retention(
     let selection = select_retention(&retention, now, &snapshots);
 
     let day_start = day_start_utc(now);
-    let already = artifact_delete_repo::count_retention_enqueues_for_job_since(&state.db, &job_id, day_start)
-        .await?
-        .min(u64::from(u32::MAX)) as u32;
+    let already =
+        artifact_delete_repo::count_retention_enqueues_for_job_since(&state.db, &job_id, day_start)
+            .await?
+            .min(u64::from(u32::MAX)) as u32;
 
     let remaining_day = retention.max_delete_per_day.saturating_sub(already);
     let allowed = std::cmp::min(retention.max_delete_per_tick, remaining_day) as usize;
@@ -302,7 +304,8 @@ pub(in crate::http) async fn apply_job_retention(
             break;
         }
 
-        let Some(artifact) = run_artifacts_repo::get_run_artifact(&state.db, &d.run_id).await? else {
+        let Some(artifact) = run_artifacts_repo::get_run_artifact(&state.db, &d.run_id).await?
+        else {
             continue;
         };
 
@@ -342,7 +345,8 @@ pub(in crate::http) async fn apply_job_retention(
             .await;
         }
 
-        let _ = run_artifacts_repo::mark_run_artifact_deleting(&state.db, &artifact.run_id, now).await;
+        let _ =
+            run_artifacts_repo::mark_run_artifact_deleting(&state.db, &artifact.run_id, now).await;
         state.artifact_delete_notify.notify_one();
         enqueued.push(artifact.run_id);
     }

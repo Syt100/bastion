@@ -186,9 +186,15 @@ async fn create_job_inherits_default_retention_when_missing() {
         .get("retention")
         .and_then(|v| v.as_object())
         .expect("retention");
-    assert_eq!(retention.get("enabled").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(
+        retention.get("enabled").and_then(|v| v.as_bool()),
+        Some(true)
+    );
     assert_eq!(retention.get("keep_last").and_then(|v| v.as_u64()), Some(7));
-    assert_eq!(retention.get("keep_days").and_then(|v| v.as_u64()), Some(30));
+    assert_eq!(
+        retention.get("keep_days").and_then(|v| v.as_u64()),
+        Some(30)
+    );
 
     server.abort();
 }
@@ -220,15 +226,39 @@ async fn retention_preview_and_apply_work_and_are_bounded() {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
     // Three snapshots: newest two should be kept by keep_days, oldest should be deleted.
-    let run_new = runs_repo::create_run(&pool, &job.id, runs_repo::RunStatus::Success, 1, None, None, None)
-        .await
-        .expect("run");
-    let run_mid = runs_repo::create_run(&pool, &job.id, runs_repo::RunStatus::Success, 1, None, None, None)
-        .await
-        .expect("run");
-    let run_old = runs_repo::create_run(&pool, &job.id, runs_repo::RunStatus::Success, 1, None, None, None)
-        .await
-        .expect("run");
+    let run_new = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("run");
+    let run_mid = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("run");
+    let run_old = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("run");
 
     // Insert run_artifacts rows directly (tests focus on retention, not indexing).
     for (run_id, ended_at, pinned_at) in [
@@ -305,8 +335,14 @@ async fn retention_preview_and_apply_work_and_are_bounded() {
         .expect("request");
     assert_eq!(preview.status(), StatusCode::OK);
     let preview_body = preview.json::<serde_json::Value>().await.expect("json");
-    assert_eq!(preview_body.get("keep_total").and_then(|v| v.as_u64()), Some(2));
-    assert_eq!(preview_body.get("delete_total").and_then(|v| v.as_u64()), Some(1));
+    assert_eq!(
+        preview_body.get("keep_total").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        preview_body.get("delete_total").and_then(|v| v.as_u64()),
+        Some(1)
+    );
 
     // Apply with a strict per-tick limit so only one delete is enqueued.
     let apply = client
@@ -326,7 +362,13 @@ async fn retention_preview_and_apply_work_and_are_bounded() {
     assert_eq!(apply.status(), StatusCode::OK);
 
     let apply_body = apply.json::<serde_json::Value>().await.expect("json");
-    assert_eq!(apply_body.get("enqueued").and_then(|v| v.as_array()).map(|a| a.len()), Some(1));
+    assert_eq!(
+        apply_body
+            .get("enqueued")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len()),
+        Some(1)
+    );
 
     // The oldest run should be marked deleting (retention selected it).
     let row = sqlx::query("SELECT status FROM run_artifacts WHERE run_id = ?")

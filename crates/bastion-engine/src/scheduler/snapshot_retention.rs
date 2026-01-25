@@ -113,9 +113,10 @@ async fn tick(db: &SqlitePool, notify: &Notify, now: i64) -> Result<TickStats, a
         }
 
         let day_start = day_start_utc(now);
-        let already = artifact_delete_repo::count_retention_enqueues_for_job_since(db, &job.id, day_start)
-            .await?
-            .min(u64::from(u32::MAX)) as u32;
+        let already =
+            artifact_delete_repo::count_retention_enqueues_for_job_since(db, &job.id, day_start)
+                .await?
+                .min(u64::from(u32::MAX)) as u32;
 
         let remaining_day = retention.max_delete_per_day.saturating_sub(already);
         let allowed = std::cmp::min(retention.max_delete_per_tick, remaining_day) as usize;
@@ -225,15 +226,18 @@ mod tests {
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
         // 3 snapshots -> keep_last=1 keeps newest, 2 are delete candidates but per_tick=1 enqueues 1.
-        let run_new = runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
-            .await
-            .unwrap();
-        let run_mid = runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
-            .await
-            .unwrap();
-        let run_old = runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
-            .await
-            .unwrap();
+        let run_new =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
+                .await
+                .unwrap();
+        let run_mid =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
+                .await
+                .unwrap();
+        let run_old =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
+                .await
+                .unwrap();
 
         for (run_id, ended_at) in [
             (&run_new.id, now - 10),
@@ -265,11 +269,12 @@ mod tests {
         let stats = tick(&pool, &notify, now).await.unwrap();
         assert_eq!(stats.enqueued, 1);
 
-        let rows = sqlx::query("SELECT COUNT(*) AS cnt FROM artifact_delete_tasks WHERE job_id = ?")
-            .bind(&job.id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let rows =
+            sqlx::query("SELECT COUNT(*) AS cnt FROM artifact_delete_tasks WHERE job_id = ?")
+                .bind(&job.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         let cnt = rows.get::<i64, _>("cnt");
         assert_eq!(cnt, 1);
     }
@@ -299,12 +304,14 @@ mod tests {
 
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
-        let run_new = runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
-            .await
-            .unwrap();
-        let run_old = runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
-            .await
-            .unwrap();
+        let run_new =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
+                .await
+                .unwrap();
+        let run_old =
+            runs_repo::create_run(&pool, &job.id, RunStatus::Success, 1, None, None, None)
+                .await
+                .unwrap();
 
         for (run_id, ended_at) in [(&run_new.id, now - 10), (&run_old.id, now - 20)] {
             sqlx::query(
@@ -366,11 +373,12 @@ mod tests {
         assert_eq!(stats.enqueued, 0);
         assert_eq!(stats.skipped_due_to_limits, 1);
 
-        let rows = sqlx::query("SELECT COUNT(*) AS cnt FROM artifact_delete_tasks WHERE job_id = ?")
-            .bind(&job.id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let rows =
+            sqlx::query("SELECT COUNT(*) AS cnt FROM artifact_delete_tasks WHERE job_id = ?")
+                .bind(&job.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         let cnt = rows.get::<i64, _>("cnt");
         assert_eq!(cnt, 1);
     }

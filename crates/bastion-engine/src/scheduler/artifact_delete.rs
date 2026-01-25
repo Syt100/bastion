@@ -102,20 +102,19 @@ async fn tick(
     agent_manager: &AgentManager,
     now: i64,
 ) -> Result<TickStats, anyhow::Error> {
-    let mut stats = TickStats::default();
-
-    stats.recovered_running = recover_stuck_running(db, now).await?;
-
+    let recovered_running = recover_stuck_running(db, now).await?;
     let (pstats, hit_limit) = process_due_tasks(db, secrets, agent_manager, now).await?;
-    stats.processed = pstats.processed;
-    stats.deleted = pstats.deleted;
-    stats.missing = pstats.missing;
-    stats.retrying = pstats.retrying;
-    stats.blocked = pstats.blocked;
-    stats.abandoned = pstats.abandoned;
-    stats.hit_process_limit = hit_limit;
 
-    Ok(stats)
+    Ok(TickStats {
+        recovered_running,
+        processed: pstats.processed,
+        deleted: pstats.deleted,
+        missing: pstats.missing,
+        retrying: pstats.retrying,
+        blocked: pstats.blocked,
+        abandoned: pstats.abandoned,
+        hit_process_limit: hit_limit,
+    })
 }
 
 async fn compute_sleep(

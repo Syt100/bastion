@@ -111,7 +111,7 @@ pub async fn get_run_artifact(
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| parse_row(&r)).transpose()?)
+    row.map(|r| parse_row(&r)).transpose()
 }
 
 pub async fn list_run_artifacts_for_job(

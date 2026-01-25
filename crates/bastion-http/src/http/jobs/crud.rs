@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tower_cookies::Cookies;
 
-use bastion_storage::jobs_repo;
 use bastion_storage::hub_runtime_config_repo;
+use bastion_storage::jobs_repo;
 use bastion_storage::{artifact_delete_repo, run_artifacts_repo};
 
 use super::super::agents::send_node_config_snapshot;

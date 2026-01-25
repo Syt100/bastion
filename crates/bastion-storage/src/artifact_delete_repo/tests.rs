@@ -76,7 +76,7 @@ async fn delete_tasks_round_trip_and_idempotent_enqueue() {
     .expect("upsert2");
     assert!(!inserted);
 
-    let summary = list_tasks_by_run_ids(&pool, &[run.id.clone()])
+    let summary = list_tasks_by_run_ids(&pool, std::slice::from_ref(&run.id))
         .await
         .expect("list by ids");
     assert_eq!(summary.len(), 1);
