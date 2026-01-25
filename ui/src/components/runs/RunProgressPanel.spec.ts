@@ -12,7 +12,7 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['title', 'percentage', 'processing', 'showIndicator'],
+      props: ['title', 'description', 'percentage', 'processing', 'showIndicator'],
       setup(props, { slots }) {
         return () =>
           vue.h(
@@ -20,6 +20,7 @@ vi.mock('naive-ui', async () => {
             {
               'data-stub': name,
               'data-title': (props as { title?: unknown }).title as string | undefined,
+              'data-description': (props as { description?: unknown }).description as string | undefined,
               'data-percentage':
                 typeof (props as { percentage?: unknown }).percentage === 'number'
                   ? String((props as { percentage?: number }).percentage)
@@ -210,9 +211,11 @@ describe('RunProgressPanel', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('10s')
-    expect(wrapper.text()).toContain('20s')
-    expect(wrapper.text()).toContain('30s')
+    const steps = wrapper.findAll('[data-stub=\"NStep\"]')
+    expect(steps).toHaveLength(3)
+    expect(steps[0]!.attributes('data-description')).toBe('10s')
+    expect(steps[1]!.attributes('data-description')).toBe('20s')
+    expect(steps[2]!.attributes('data-description')).toBe('30s')
     expect(wrapper.text()).toContain('1m 10s')
   })
 

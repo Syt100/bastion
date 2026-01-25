@@ -242,12 +242,14 @@ async function copyEventJson(e: RunEvent): Promise<void> {
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
-          <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
-            { label: 'error', value: 'error' },
-            { label: 'warn', value: 'warn' },
-            { label: 'info', value: 'info' },
-          ]" class="w-[10rem]" />
-          <n-select v-model:value="kindFilter" size="small" clearable filterable :placeholder="t('runEvents.filters.kind')" :options="kindOptions" class="w-[14rem]" />
+          <div class="flex items-center gap-2 flex-nowrap shrink-0">
+            <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
+              { label: 'error', value: 'error' },
+              { label: 'warn', value: 'warn' },
+              { label: 'info', value: 'info' },
+            ]" class="w-[10rem]" />
+            <n-select v-model:value="kindFilter" size="small" clearable filterable :placeholder="t('runEvents.filters.kind')" :options="kindOptions" class="w-[14rem]" />
+          </div>
           <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
             {{ t('runEvents.actions.firstError') }}
           </n-button>

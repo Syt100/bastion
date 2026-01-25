@@ -405,6 +405,11 @@ function formatDuration(seconds: number | null): string {
   return `${sec}s`
 }
 
+function durationLabel(seconds: number | null): string {
+  const v = formatDuration(seconds)
+  return v === '-' ? '' : v
+}
+
 function progressNumber(pct: number | null): number {
   return pct == null ? 0 : Math.round(pct)
 }
@@ -443,6 +448,30 @@ function progressNumber(pct: number | null): number {
       />
     </div>
 
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+      <div class="flex items-center justify-between gap-2">
+        <span class="opacity-70">{{ t('runs.progress.transfer.done') }}</span>
+        <span class="font-mono tabular-nums">{{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}</span>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span class="opacity-70">{{ t('runs.progress.transfer.total') }}</span>
+        <span class="font-mono tabular-nums">{{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}</span>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span class="opacity-70">{{ t('runs.progress.transfer.rate') }}</span>
+        <span
+          class="font-mono tabular-nums"
+          :title="displayPeakRateBps != null ? `${t('runs.progress.transfer.peak')}: ${formatBytes(displayPeakRateBps)}/s` : undefined"
+        >
+          {{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}
+        </span>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <span class="opacity-70">{{ t('runs.progress.transfer.eta') }}</span>
+        <span class="font-mono tabular-nums">{{ formatEta(snapshot.eta_seconds) }}</span>
+      </div>
+    </div>
+
     <div v-if="showStages" class="space-y-1.5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-1.5 font-medium">
@@ -471,6 +500,9 @@ function progressNumber(pct: number | null): number {
             </div>
           </n-popover>
         </div>
+        <div class="text-xs opacity-70 font-mono tabular-nums">
+          {{ t('runs.progress.timeline.total') }}: {{ formatDuration(totalDurationSeconds) }}
+        </div>
       </div>
 
       <div :class="isDesktop ? 'max-w-[520px]' : ''">
@@ -481,9 +513,9 @@ function progressNumber(pct: number | null): number {
           :vertical="!isDesktop"
           :content-placement="isDesktop ? 'bottom' : 'right'"
         >
-          <n-step :title="t('runs.progress.stages.scan')" />
-          <n-step :title="t('runs.progress.stages.packaging')" />
-          <n-step :title="t('runs.progress.stages.upload')" />
+          <n-step :title="t('runs.progress.stages.scan')" :description="durationLabel(scanDurationSeconds)" />
+          <n-step :title="t('runs.progress.stages.packaging')" :description="durationLabel(packagingDurationSeconds)" />
+          <n-step :title="t('runs.progress.stages.upload')" :description="durationLabel(uploadDurationSeconds)" />
         </n-steps>
       </div>
 
@@ -520,21 +552,7 @@ function progressNumber(pct: number | null): number {
     </div>
     <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-      <div class="rounded border border-black/5 dark:border-white/10 p-2.5 md:col-span-2">
-        <div class="text-sm font-medium mb-1">{{ t('runs.progress.timeline.title') }}</div>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt class="opacity-70">{{ t('runs.progress.stages.scan') }}</dt>
-          <dd class="font-mono tabular-nums">{{ formatDuration(scanDurationSeconds) }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.stages.packaging') }}</dt>
-          <dd class="font-mono tabular-nums">{{ formatDuration(packagingDurationSeconds) }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.stages.upload') }}</dt>
-          <dd class="font-mono tabular-nums">{{ formatDuration(uploadDurationSeconds) }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.timeline.total') }}</dt>
-          <dd class="font-mono tabular-nums">{{ formatDuration(totalDurationSeconds) }}</dd>
-        </dl>
-      </div>
-
+    <div class="grid grid-cols-1 gap-2">
       <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
         <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -544,24 +562,6 @@ function progressNumber(pct: number | null): number {
           <dd class="font-mono tabular-nums">{{ sourceTotal?.dirs ?? '-' }}</dd>
           <dt class="opacity-70">{{ t('runs.progress.source.bytes') }}</dt>
           <dd class="font-mono tabular-nums">{{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</dd>
-        </dl>
-      </div>
-
-      <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-        <div class="text-sm font-medium mb-1">{{ t('runs.progress.transfer.title') }}</div>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt class="opacity-70">{{ t('runs.progress.transfer.done') }}</dt>
-          <dd class="font-mono tabular-nums">{{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.transfer.total') }}</dt>
-          <dd class="font-mono tabular-nums">{{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.transfer.rate') }}</dt>
-          <dd class="font-mono tabular-nums">{{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}</dd>
-          <template v-if="displayPeakRateBps != null">
-            <dt class="opacity-70">{{ t('runs.progress.transfer.peak') }}</dt>
-            <dd class="font-mono tabular-nums">{{ `${formatBytes(displayPeakRateBps)}/s` }}</dd>
-          </template>
-          <dt class="opacity-70">{{ t('runs.progress.transfer.eta') }}</dt>
-          <dd class="font-mono tabular-nums">{{ formatEta(snapshot.eta_seconds) }}</dd>
         </dl>
       </div>
     </div>
