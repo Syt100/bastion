@@ -74,6 +74,119 @@ async fn runs_and_events_round_trip() {
 }
 
 #[tokio::test]
+async fn prune_runs_skips_runs_with_live_snapshots() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    sqlx::query(
+        "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("job1")
+    .bind("job1")
+    .bind(None::<String>)
+    .bind("queue")
+    .bind(r#"{"v":1,"type":"filesystem"}"#)
+    .bind(1000)
+    .bind(1000)
+    .execute(&pool)
+    .await
+    .expect("insert job");
+
+    // All runs are older than cutoff, but only some should be pruned.
+    let r_present = create_run(&pool, "job1", RunStatus::Success, 1, Some(10), None, None)
+        .await
+        .expect("run present");
+    let r_deleted = create_run(&pool, "job1", RunStatus::Success, 1, Some(11), None, None)
+        .await
+        .expect("run deleted");
+    let r_none = create_run(&pool, "job1", RunStatus::Success, 1, Some(12), None, None)
+        .await
+        .expect("run none");
+
+    let snapshot_json = r#"{"node_id":"hub","target":{"type":"local_dir","base_dir":"/tmp"}}"#;
+
+    // Live snapshot blocks pruning.
+    sqlx::query(
+        r#"
+        INSERT INTO run_artifacts (
+          run_id, job_id, node_id, target_type, target_snapshot_json,
+          artifact_format, status, started_at, ended_at,
+          pinned_at, pinned_by_user_id,
+          source_files, source_dirs, source_bytes, transfer_bytes,
+          last_error_kind, last_error, last_attempt_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+        "#,
+    )
+    .bind(&r_present.id)
+    .bind("job1")
+    .bind("hub")
+    .bind("local_dir")
+    .bind(snapshot_json)
+    .bind("archive_v1")
+    .bind("present")
+    .bind(1_i64)
+    .bind(10_i64)
+    .bind(1000_i64)
+    .bind(1000_i64)
+    .execute(&pool)
+    .await
+    .expect("insert run_artifacts present");
+
+    // Deleted/missing snapshots do not block pruning.
+    sqlx::query(
+        r#"
+        INSERT INTO run_artifacts (
+          run_id, job_id, node_id, target_type, target_snapshot_json,
+          artifact_format, status, started_at, ended_at,
+          pinned_at, pinned_by_user_id,
+          source_files, source_dirs, source_bytes, transfer_bytes,
+          last_error_kind, last_error, last_attempt_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+        "#,
+    )
+    .bind(&r_deleted.id)
+    .bind("job1")
+    .bind("hub")
+    .bind("local_dir")
+    .bind(snapshot_json)
+    .bind("archive_v1")
+    .bind("deleted")
+    .bind(1_i64)
+    .bind(11_i64)
+    .bind(1000_i64)
+    .bind(1000_i64)
+    .execute(&pool)
+    .await
+    .expect("insert run_artifacts deleted");
+
+    let pruned = prune_runs_ended_before(&pool, 100).await.expect("prune");
+    assert_eq!(pruned, 2);
+
+    let still_there = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM runs WHERE id = ?")
+        .bind(&r_present.id)
+        .fetch_one(&pool)
+        .await
+        .expect("count present");
+    assert_eq!(still_there, 1);
+
+    let gone = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM runs WHERE id = ?")
+        .bind(&r_deleted.id)
+        .fetch_one(&pool)
+        .await
+        .expect("count deleted");
+    assert_eq!(gone, 0);
+
+    let gone2 = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM runs WHERE id = ?")
+        .bind(&r_none.id)
+        .fetch_one(&pool)
+        .await
+        .expect("count none");
+    assert_eq!(gone2, 0);
+}
+
+#[tokio::test]
 async fn list_incomplete_cleanup_candidates_filters_and_orders() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");

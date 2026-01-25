@@ -6,10 +6,25 @@ pub async fn prune_runs_ended_before(
     db: &SqlitePool,
     cutoff_ts: i64,
 ) -> Result<u64, anyhow::Error> {
-    let result = sqlx::query("DELETE FROM runs WHERE ended_at IS NOT NULL AND ended_at < ?")
-        .bind(cutoff_ts)
-        .execute(db)
-        .await?;
+    // Snapshot-aware pruning: keep run history as long as a "live" snapshot exists.
+    //
+    // We use a correlated subquery so SQLite can use the `run_artifacts.run_id` primary key
+    // instead of scanning `run_artifacts` by status.
+    let result = sqlx::query(
+        r#"
+        DELETE FROM runs
+        WHERE ended_at IS NOT NULL
+          AND ended_at < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM run_artifacts a
+            WHERE a.run_id = runs.id
+              AND a.status IN ('present', 'deleting', 'error')
+          )
+        "#,
+    )
+    .bind(cutoff_ts)
+    .execute(db)
+    .await?;
     Ok(result.rows_affected())
 }
 
