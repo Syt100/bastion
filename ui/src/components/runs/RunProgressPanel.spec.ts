@@ -156,4 +156,28 @@ describe('RunProgressPanel', () => {
     expect(wrapper.findAll('[data-stub="NProgress"]')).toHaveLength(1)
     expect(wrapper.find('[data-stub="NProgress"]').attributes('data-percentage')).toBe('100')
   })
+
+  it('shows a final transfer speed after completion when live rate is missing', () => {
+    const wrapper = mount(RunProgressPanel, {
+      props: {
+        finalRateBps: 1,
+        progress: {
+          stage: 'upload',
+          ts: 1,
+          done: { files: 0, dirs: 0, bytes: 10 },
+          total: { files: 0, dirs: 0, bytes: 10 },
+          // No rate_bps on purpose.
+          detail: {
+            backup: {
+              source_total: { files: 1, dirs: 1, bytes: 10 },
+              transfer_total_bytes: 10,
+              transfer_done_bytes: 10,
+            },
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('1 B/s')
+  })
 })

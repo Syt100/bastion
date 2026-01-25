@@ -360,6 +360,71 @@ const targetSummary = computed(() => {
   return { type, location: runDir ?? runUrl }
 })
 
+const progressSnapshot = computed<ProgressSnapshot | null>(() => {
+  const p = run.value?.progress
+  if (!p || typeof p !== 'object') return null
+  const obj = p as Partial<ProgressSnapshot>
+  if (typeof obj.stage !== 'string') return null
+  if (typeof obj.ts !== 'number' || !Number.isFinite(obj.ts)) return null
+  if (!obj.done || typeof obj.done !== 'object') return null
+  return obj as ProgressSnapshot
+})
+
+const transferTotalBytes = computed<number | null>(() => {
+  const snap = progressSnapshot.value
+  if (!snap) return null
+
+  const detail = asRecord(snap.detail ?? null)
+  const backup = asRecord(detail?.backup ?? null)
+  const fromDetail = asNumber(backup?.transfer_total_bytes)
+  if (fromDetail != null) return fromDetail
+
+  // Fallback: upload stage total usually equals transfer total bytes.
+  if (snap.stage === 'upload') {
+    const total = snap.total as unknown
+    const totalObj = asRecord(total)
+    const totalBytes = asNumber(totalObj?.bytes)
+    if (totalBytes != null) return totalBytes
+  }
+
+  return null
+})
+
+const uploadStartedAt = computed<number | null>(() => {
+  const e = events.value.find((ev) => ev.kind === 'upload')
+  return e ? e.ts : null
+})
+
+const completedAt = computed<number | null>(() => {
+  const e = events.value.find((ev) => ev.kind === 'complete')
+  if (e) return e.ts
+  const ended = run.value?.ended_at
+  return typeof ended === 'number' && Number.isFinite(ended) ? ended : null
+})
+
+const finalTransferRateBps = computed<number | null>(() => {
+  const totalBytes = transferTotalBytes.value
+  if (totalBytes == null || totalBytes <= 0) return null
+
+  // Only compute a final value after the run has ended.
+  if (!run.value?.ended_at) return null
+
+  const start = uploadStartedAt.value
+  const end = completedAt.value
+  if (start != null && end != null && end > start) {
+    return Math.floor(totalBytes / (end - start))
+  }
+
+  // Fallback: use overall run duration.
+  const started = run.value.started_at
+  const ended = run.value.ended_at
+  if (typeof started === 'number' && typeof ended === 'number' && ended > started) {
+    return Math.floor(totalBytes / (ended - started))
+  }
+
+  return null
+})
+
 const targetTypeLabel = computed(() => runTargetTypeLabel(t, targetSummary.value.type))
 
 const entriesCount = computed(() => asNumber(summary.value?.entries_count ?? null))
@@ -440,7 +505,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-4" data-testid="run-detail">
+  <div class="space-y-3" data-testid="run-detail">
     <page-header :title="t('runs.title')">
       <template #subtitle>
         <div v-if="runId" class="flex items-center gap-2 text-sm opacity-70 min-w-0">
@@ -479,7 +544,7 @@ onBeforeUnmount(() => {
 
     <n-spin v-if="loading" size="small" />
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
       <n-card
         :title="t('runs.detail.overviewTitle')"
         size="small"
@@ -530,7 +595,7 @@ onBeforeUnmount(() => {
       </n-card>
 
       <div class="lg:col-span-5" data-testid="run-detail-progress">
-        <run-progress-panel :progress="run?.progress" />
+        <run-progress-panel :progress="run?.progress" :final-rate-bps="finalTransferRateBps" />
       </div>
     </div>
 

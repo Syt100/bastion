@@ -34,6 +34,7 @@ type ProgressSnapshot = {
 
 const props = defineProps<{
   progress: unknown | null | undefined
+  finalRateBps?: number | null | undefined
 }>()
 
 const { t } = useI18n()
@@ -246,6 +247,18 @@ const stagesHelp = computed(() => ({
   upload: stageHelp('upload'),
 }))
 
+const displayRateBps = computed<number | null>(() => {
+  const live = snapshot.value?.rate_bps
+  if (typeof live === 'number' && Number.isFinite(live) && live > 0) return live
+
+  const finalRate = props.finalRateBps
+  if (displayStage.value === 'complete' && typeof finalRate === 'number' && Number.isFinite(finalRate) && finalRate > 0) {
+    return finalRate
+  }
+
+  return null
+})
+
 function formatEta(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
   const s = Math.floor(seconds)
@@ -265,7 +278,7 @@ function progressNumber(pct: number | null): number {
 <template>
   <n-card class="app-card" :bordered="false" :title="t('runs.progress.title')" size="small">
     <div v-if="!snapshot" class="text-sm opacity-70">-</div>
-    <div v-else class="space-y-3">
+    <div v-else class="space-y-2">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
@@ -368,9 +381,9 @@ function progressNumber(pct: number | null): number {
       </div>
       <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div class="rounded border border-black/5 dark:border-white/10 p-3">
-          <div class="text-sm font-medium mb-2">{{ t('runs.progress.source.title') }}</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+          <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.source.title') }}</div>
           <div class="text-xs opacity-70 space-y-1">
             <div>{{ t('runs.progress.source.files') }}: {{ sourceTotal?.files ?? '-' }}</div>
             <div>{{ t('runs.progress.source.dirs') }}: {{ sourceTotal?.dirs ?? '-' }}</div>
@@ -378,8 +391,8 @@ function progressNumber(pct: number | null): number {
           </div>
         </div>
 
-        <div class="rounded border border-black/5 dark:border-white/10 p-3">
-          <div class="text-sm font-medium mb-2">{{ t('runs.progress.transfer.title') }}</div>
+        <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+          <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.transfer.title') }}</div>
           <div class="text-xs opacity-70 space-y-1">
             <div>
               {{ t('runs.progress.transfer.done') }}:
@@ -391,7 +404,7 @@ function progressNumber(pct: number | null): number {
             </div>
             <div>
               {{ t('runs.progress.transfer.rate') }}:
-              {{ snapshot.rate_bps && snapshot.rate_bps > 0 ? `${formatBytes(snapshot.rate_bps)}/s` : '-' }}
+              {{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}
             </div>
             <div>
               {{ t('runs.progress.transfer.eta') }}:
