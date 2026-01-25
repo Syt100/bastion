@@ -289,6 +289,14 @@ pub fn router(state: AppState) -> Router {
             get(jobs::get_job_snapshot),
         )
         .route(
+            "/api/jobs/{id}/snapshots/{run_id}/pin",
+            post(jobs::pin_job_snapshot),
+        )
+        .route(
+            "/api/jobs/{id}/snapshots/{run_id}/unpin",
+            post(jobs::unpin_job_snapshot),
+        )
+        .route(
             "/api/jobs/{id}/snapshots/{run_id}/delete",
             post(jobs::delete_job_snapshot),
         )

@@ -10,6 +10,6 @@ pub(super) use runs::{list_job_runs, list_run_events, trigger_job_run};
 pub(super) use snapshots::{
     delete_job_snapshot, delete_job_snapshots_bulk, get_job_snapshot,
     get_job_snapshot_delete_events, get_job_snapshot_delete_task, ignore_job_snapshot_delete_task,
-    list_job_snapshots, retry_job_snapshot_delete_now,
+    list_job_snapshots, pin_job_snapshot, retry_job_snapshot_delete_now, unpin_job_snapshot,
 };
 pub(super) use ws::run_events_ws;

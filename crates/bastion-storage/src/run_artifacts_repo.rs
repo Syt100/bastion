@@ -15,6 +15,8 @@ pub struct RunArtifact {
     pub status: String,
     pub started_at: i64,
     pub ended_at: i64,
+    pub pinned_at: Option<i64>,
+    pub pinned_by_user_id: Option<i64>,
     pub source_files: Option<u64>,
     pub source_dirs: Option<u64>,
     pub source_bytes: Option<u64>,
@@ -59,6 +61,8 @@ fn parse_row(row: &sqlx::sqlite::SqliteRow) -> Result<RunArtifact, anyhow::Error
         status: row.get::<String, _>("status"),
         started_at: row.get::<i64, _>("started_at"),
         ended_at: row.get::<i64, _>("ended_at"),
+        pinned_at: row.get::<Option<i64>, _>("pinned_at"),
+        pinned_by_user_id: row.get::<Option<i64>, _>("pinned_by_user_id"),
         source_files: row
             .get::<Option<i64>, _>("source_files")
             .and_then(|v| u64::try_from(v).ok()),
@@ -86,6 +90,7 @@ pub async fn get_run_artifact(
         SELECT
           run_id, job_id, node_id, target_type, target_snapshot_json,
           artifact_format, status, started_at, ended_at,
+          pinned_at, pinned_by_user_id,
           source_files, source_dirs, source_bytes, transfer_bytes,
           last_error_kind, last_error, last_attempt_at
         FROM run_artifacts
@@ -115,6 +120,7 @@ pub async fn list_run_artifacts_for_job(
         SELECT
           run_id, job_id, node_id, target_type, target_snapshot_json,
           artifact_format, status, started_at, ended_at,
+          pinned_at, pinned_by_user_id,
           source_files, source_dirs, source_bytes, transfer_bytes,
           last_error_kind, last_error, last_attempt_at
         FROM run_artifacts
@@ -228,6 +234,39 @@ pub async fn mark_run_artifact_error(
     .execute(db)
     .await?;
     Ok(())
+}
+
+pub async fn pin_run_artifact(
+    db: &SqlitePool,
+    run_id: &str,
+    user_id: i64,
+    now: i64,
+) -> Result<bool, anyhow::Error> {
+    let result = sqlx::query(
+        "UPDATE run_artifacts SET pinned_at = ?, pinned_by_user_id = ?, updated_at = ? WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(user_id)
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn unpin_run_artifact(
+    db: &SqlitePool,
+    run_id: &str,
+    now: i64,
+) -> Result<bool, anyhow::Error> {
+    let result = sqlx::query(
+        "UPDATE run_artifacts SET pinned_at = NULL, pinned_by_user_id = NULL, updated_at = ? WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 fn extract_metrics_from_progress(
@@ -364,7 +403,8 @@ mod tests {
     use crate::runs_repo;
 
     use super::{
-        get_run_artifact, list_run_artifacts_for_job, upsert_run_artifact_from_successful_run,
+        get_run_artifact, list_run_artifacts_for_job, pin_run_artifact, unpin_run_artifact,
+        upsert_run_artifact_from_successful_run,
     };
 
     #[tokio::test]
@@ -477,5 +517,96 @@ mod tests {
             .unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].run_id, run.id);
+    }
+
+    #[tokio::test]
+    async fn pin_and_unpin_round_trip() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job",
+            None,
+            None,
+            Some("UTC"),
+            OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Queued,
+            1,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        runs_repo::set_run_target_snapshot(
+            &pool,
+            &run.id,
+            serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        // Minimal progress snapshot to populate source/transfer metrics in the artifact index.
+        runs_repo::set_run_progress(
+            &pool,
+            &run.id,
+            Some(serde_json::json!({
+                "v": 1,
+                "kind": "backup",
+                "stage": "upload",
+                "ts": 2,
+                "done": { "files": 0, "dirs": 0, "bytes": 1 },
+                "total": { "files": 0, "dirs": 0, "bytes": 1 },
+                "detail": { "backup": { "source_total": { "files": 1, "dirs": 0, "bytes": 1 }, "transfer_total_bytes": 1, "transfer_done_bytes": 1 } }
+            })),
+        )
+        .await
+        .unwrap();
+
+        runs_repo::complete_run(
+            &pool,
+            &run.id,
+            runs_repo::RunStatus::Success,
+            Some(serde_json::json!({ "artifact_format": "archive_v1" })),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            upsert_run_artifact_from_successful_run(&pool, &run.id)
+                .await
+                .unwrap()
+        );
+
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        assert!(pin_run_artifact(&pool, &run.id, 123, now).await.unwrap());
+
+        let got = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert!(got.pinned_at.is_some());
+        assert_eq!(got.pinned_by_user_id, Some(123));
+
+        assert!(unpin_run_artifact(&pool, &run.id, now + 1).await.unwrap());
+        let got2 = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert!(got2.pinned_at.is_none());
+        assert!(got2.pinned_by_user_id.is_none());
     }
 }

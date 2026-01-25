@@ -37,6 +37,10 @@ pub(in crate::http) struct RunArtifactResponse {
     started_at: i64,
     ended_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pinned_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pinned_by_user_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_files: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_dirs: Option<u64>,
@@ -66,6 +70,8 @@ impl From<run_artifacts_repo::RunArtifact> for RunArtifactResponse {
             status: v.status,
             started_at: v.started_at,
             ended_at: v.ended_at,
+            pinned_at: v.pinned_at,
+            pinned_by_user_id: v.pinned_by_user_id,
             source_files: v.source_files,
             source_dirs: v.source_dirs,
             source_bytes: v.source_bytes,
@@ -193,9 +199,83 @@ pub(in crate::http) async fn get_job_snapshot(
     Ok(Json(RunArtifactResponse::from(artifact)))
 }
 
+pub(in crate::http) async fn pin_job_snapshot(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path((job_id, run_id)): Path<(String, String)>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let job_exists = jobs_repo::get_job(&state.db, &job_id).await?.is_some();
+    if !job_exists {
+        return Err(AppError::not_found("job_not_found", "Job not found"));
+    }
+
+    let artifact = run_artifacts_repo::get_run_artifact(&state.db, &run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
+    if artifact.job_id != job_id {
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
+    }
+
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let ok = run_artifacts_repo::pin_run_artifact(&state.db, &run_id, session.user_id, now).await?;
+    if !ok {
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(in crate::http) async fn unpin_job_snapshot(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path((job_id, run_id)): Path<(String, String)>,
+) -> Result<StatusCode, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let job_exists = jobs_repo::get_job(&state.db, &job_id).await?.is_some();
+    if !job_exists {
+        return Err(AppError::not_found("job_not_found", "Job not found"));
+    }
+
+    let artifact = run_artifacts_repo::get_run_artifact(&state.db, &run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
+    if artifact.job_id != job_id {
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
+    }
+
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let ok = run_artifacts_repo::unpin_run_artifact(&state.db, &run_id, now).await?;
+    if !ok {
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct BulkDeleteJobSnapshotsRequest {
     run_ids: Vec<String>,
+    #[serde(default)]
+    force: bool,
 }
 
 fn normalize_reason(reason: Option<&str>) -> Option<String> {
@@ -214,6 +294,7 @@ async fn enqueue_snapshot_delete(
     user_id: i64,
     job_id: &str,
     run_id: &str,
+    force: bool,
     now: i64,
 ) -> Result<(), AppError> {
     let artifact = run_artifacts_repo::get_run_artifact(&state.db, run_id)
@@ -229,6 +310,13 @@ async fn enqueue_snapshot_delete(
     // Already gone -> idempotent no-op.
     if artifact.status == "deleted" || artifact.status == "missing" {
         return Ok(());
+    }
+
+    if artifact.pinned_at.is_some() && !force {
+        return Err(AppError::conflict(
+            "snapshot_pinned",
+            "Snapshot is pinned; force=true required",
+        ));
     }
 
     let snapshot_json = serde_json::to_string(&artifact.target_snapshot)
@@ -268,6 +356,7 @@ pub(in crate::http) async fn delete_job_snapshot(
     cookies: Cookies,
     headers: HeaderMap,
     Path((job_id, run_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<StatusCode, AppError> {
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
@@ -278,7 +367,14 @@ pub(in crate::http) async fn delete_job_snapshot(
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
-    enqueue_snapshot_delete(&state, session.user_id, &job_id, &run_id, now).await?;
+    let force = query
+        .get("force")
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    enqueue_snapshot_delete(&state, session.user_id, &job_id, &run_id, force, now).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -318,7 +414,7 @@ pub(in crate::http) async fn delete_job_snapshots_bulk(
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     for run_id in &run_ids {
-        enqueue_snapshot_delete(&state, session.user_id, &job_id, run_id, now).await?;
+        enqueue_snapshot_delete(&state, session.user_id, &job_id, run_id, req.force, now).await?;
     }
 
     Ok(StatusCode::NO_CONTENT)

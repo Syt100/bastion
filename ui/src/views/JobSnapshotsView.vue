@@ -7,8 +7,10 @@ import {
   NCheckbox,
   NCode,
   NDataTable,
+  NIcon,
   NInput,
   NModal,
+  NPopover,
   NSpace,
   NSpin,
   NTag,
@@ -16,6 +18,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { PinOutline } from '@vicons/ionicons5'
 
 import PageHeader from '@/components/PageHeader.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
@@ -50,6 +53,7 @@ const checkedRowKeys = ref<string[]>([])
 const deleteConfirmOpen = ref(false)
 const deleteConfirmBusy = ref(false)
 const deleteConfirmRunIds = ref<string[]>([])
+const deleteConfirmForcePinned = ref(false)
 
 const deleteLogOpen = ref(false)
 const deleteLogLoading = ref(false)
@@ -160,9 +164,12 @@ const deleteConfirmRows = computed<RunArtifact[]>(() => {
   return deleteConfirmRunIds.value.map((id) => map.get(id)).filter((v): v is RunArtifact => !!v)
 })
 
+const deleteConfirmPinnedCount = computed<number>(() => deleteConfirmRows.value.filter((r) => r.pinned_at != null).length)
+
 function openDeleteConfirm(runIds: string[]): void {
   const unique = Array.from(new Set(runIds))
   deleteConfirmRunIds.value = unique
+  deleteConfirmForcePinned.value = false
   deleteConfirmOpen.value = true
 }
 
@@ -194,10 +201,11 @@ async function confirmDelete(): Promise<void> {
 
   deleteConfirmBusy.value = true
   try {
+    const force = deleteConfirmPinnedCount.value > 0 ? deleteConfirmForcePinned.value : false
     if (runIds.length === 1) {
-      await jobs.deleteJobSnapshot(id, runIds[0])
+      await jobs.deleteJobSnapshot(id, runIds[0], { force })
     } else {
-      await jobs.deleteJobSnapshotsBulk(id, runIds)
+      await jobs.deleteJobSnapshotsBulk(id, runIds, { force })
     }
     message.success(t('messages.snapshotDeleteQueued'))
     deleteConfirmOpen.value = false
@@ -207,6 +215,30 @@ async function confirmDelete(): Promise<void> {
     message.error(formatToastError(t('errors.deleteSnapshotsFailed'), error, t))
   } finally {
     deleteConfirmBusy.value = false
+  }
+}
+
+async function pinSnapshot(runId: string): Promise<void> {
+  const id = jobId.value
+  if (!id) return
+  try {
+    await jobs.pinJobSnapshot(id, runId)
+    message.success(t('messages.snapshotPinned'))
+    await refresh()
+  } catch (error) {
+    message.error(formatToastError(t('errors.pinSnapshotFailed'), error, t))
+  }
+}
+
+async function unpinSnapshot(runId: string): Promise<void> {
+  const id = jobId.value
+  if (!id) return
+  try {
+    await jobs.unpinJobSnapshot(id, runId)
+    message.success(t('messages.snapshotUnpinned'))
+    await refresh()
+  } catch (error) {
+    message.error(formatToastError(t('errors.unpinSnapshotFailed'), error, t))
   }
 }
 
@@ -278,7 +310,25 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       key: 'status',
       render: (row) => {
         const s = formatStatus(row)
-        return h(NTag, { size: 'small', bordered: false, type: s.type }, { default: () => s.label })
+        const tag = h(NTag, { size: 'small', bordered: false, type: s.type }, { default: () => s.label })
+        if (row.pinned_at == null) return tag
+
+        const tip = t('snapshots.pinnedTooltip')
+        const pin = h(
+          NPopover,
+          { trigger: 'hover', placement: 'top', showArrow: false },
+          {
+            trigger: () =>
+              h(
+                'span',
+                { class: 'inline-flex items-center cursor-default', title: tip },
+                [h(NIcon, { component: PinOutline, class: 'text-amber-500 text-[14px]' })],
+              ),
+            default: () => h('div', { class: 'max-w-[320px] text-sm' }, tip),
+          },
+        )
+
+        return h('div', { class: 'flex items-center gap-1' }, [tag, pin])
       },
     },
     {
@@ -347,6 +397,17 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
               row.status === 'present'
                 ? h(
                     NButton,
+                    {
+                      size: 'small',
+                      quaternary: true,
+                      onClick: () => (row.pinned_at != null ? unpinSnapshot(row.run_id) : pinSnapshot(row.run_id)),
+                    },
+                    { default: () => (row.pinned_at != null ? t('snapshots.actions.unpin') : t('snapshots.actions.pin')) },
+                  )
+                : null,
+              row.status === 'present'
+                ? h(
+                    NButton,
                     { size: 'small', type: 'error', onClick: () => openDeleteSingle(row.run_id) },
                     { default: () => t('snapshots.actions.delete') },
                   )
@@ -396,6 +457,14 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
                 :checked="checkedRowKeys.includes(row.run_id)"
                 @update:checked="(v) => setRowChecked(row.run_id, v)"
               />
+              <n-popover v-if="row.pinned_at != null" trigger="hover" placement="top" :show-arrow="false">
+                <template #trigger>
+                  <span class="inline-flex items-center cursor-default" :title="t('snapshots.pinnedTooltip')">
+                    <n-icon :component="PinOutline" class="text-amber-500 text-[14px]" />
+                  </span>
+                </template>
+                <div class="max-w-[320px] text-sm">{{ t('snapshots.pinnedTooltip') }}</div>
+              </n-popover>
               <n-tag size="small" :bordered="false" :type="formatStatus(row).type">{{ formatStatus(row).label }}</n-tag>
             </div>
           </div>
@@ -438,6 +507,14 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
         <template #footer>
           <div class="flex justify-end gap-2">
             <n-button size="small" @click="openRunDetail(row.run_id)">{{ t('snapshots.actions.viewRun') }}</n-button>
+            <n-button
+              v-if="row.status === 'present'"
+              size="small"
+              quaternary
+              @click="row.pinned_at != null ? unpinSnapshot(row.run_id) : pinSnapshot(row.run_id)"
+            >
+              {{ row.pinned_at != null ? t('snapshots.actions.unpin') : t('snapshots.actions.pin') }}
+            </n-button>
             <n-button v-if="row.status === 'present'" size="small" type="error" @click="openDeleteSingle(row.run_id)">
               {{ t('snapshots.actions.delete') }}
             </n-button>
@@ -468,18 +545,34 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <template #header>{{ t('snapshots.deleteConfirm.title') }}</template>
       <div class="space-y-3">
         <div class="text-sm opacity-80">{{ t('snapshots.deleteConfirm.subtitle', { count: deleteConfirmRows.length }) }}</div>
+        <div
+          v-if="deleteConfirmPinnedCount > 0"
+          class="rounded border border-amber-200/60 dark:border-amber-700/60 bg-amber-50/40 dark:bg-amber-900/10 p-3 space-y-2"
+        >
+          <div class="text-sm font-medium">{{ t('snapshots.deleteConfirm.pinnedWarningTitle') }}</div>
+          <div class="text-sm opacity-80">{{ t('snapshots.deleteConfirm.pinnedWarning', { count: deleteConfirmPinnedCount }) }}</div>
+          <n-checkbox :checked="deleteConfirmForcePinned" @update:checked="(v) => (deleteConfirmForcePinned = v)">
+            {{ t('snapshots.deleteConfirm.forcePinnedLabel') }}
+          </n-checkbox>
+        </div>
         <div class="max-h-64 overflow-y-auto rounded border border-slate-200/60 dark:border-slate-700/60">
           <div
             v-for="row in deleteConfirmRows"
             :key="row.run_id"
-            class="px-3 py-2 border-b border-slate-200/60 dark:border-slate-700/60 last:border-b-0"
+            :class="[
+              'px-3 py-2 border-b border-slate-200/60 dark:border-slate-700/60 last:border-b-0',
+              row.pinned_at != null ? 'bg-amber-50/40 dark:bg-amber-900/10' : '',
+            ]"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="font-mono text-xs tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
                 <div class="text-xs opacity-70 truncate mt-0.5">{{ formatTarget(row) }}</div>
               </div>
-              <div class="text-xs font-mono opacity-70">{{ row.run_id.slice(0, 8) }}…</div>
+              <div class="flex items-center gap-1 text-xs font-mono opacity-70">
+                <n-icon v-if="row.pinned_at != null" :component="PinOutline" class="text-amber-500 text-[14px]" />
+                <span>{{ row.run_id.slice(0, 8) }}…</span>
+              </div>
             </div>
           </div>
         </div>
@@ -487,7 +580,12 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <template #footer>
         <div class="flex justify-end gap-2">
           <n-button :disabled="deleteConfirmBusy" @click="deleteConfirmOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="error" :loading="deleteConfirmBusy" @click="confirmDelete">
+          <n-button
+            type="error"
+            :loading="deleteConfirmBusy"
+            :disabled="deleteConfirmBusy || (deleteConfirmPinnedCount > 0 && !deleteConfirmForcePinned)"
+            @click="confirmDelete"
+          >
             {{ t('snapshots.actions.confirmDelete') }}
           </n-button>
         </div>

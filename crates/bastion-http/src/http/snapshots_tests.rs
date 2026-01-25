@@ -540,3 +540,170 @@ async fn delete_job_snapshots_bulk_rejects_empty_run_ids() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn pin_and_unpin_snapshot_and_force_delete_guardrail() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Queued,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    runs_repo::set_run_target_snapshot(
+        &pool,
+        &run.id,
+        serde_json::json!({
+            "node_id": "hub",
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("set snapshot");
+
+    runs_repo::complete_run(
+        &pool,
+        &run.id,
+        runs_repo::RunStatus::Success,
+        Some(serde_json::json!({ "artifact_format": "archive_v1" })),
+        None,
+    )
+    .await
+    .expect("complete run");
+
+    run_artifacts_repo::upsert_run_artifact_from_successful_run(&pool, &run.id)
+        .await
+        .expect("index");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+
+    // Pin.
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/snapshots/{}/pin",
+            base_url(addr),
+            job.id,
+            run.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .send()
+        .await
+        .expect("pin");
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Delete should require force while pinned.
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/snapshots/{}/delete",
+            base_url(addr),
+            job.id,
+            run.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .send()
+        .await
+        .expect("delete");
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body: serde_json::Value = resp.json().await.expect("body");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "snapshot_pinned"
+    );
+
+    // Force delete.
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/snapshots/{}/delete?force=true",
+            base_url(addr),
+            job.id,
+            run.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .send()
+        .await
+        .expect("delete force");
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Unpin is idempotent and should succeed.
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/snapshots/{}/unpin",
+            base_url(addr),
+            job.id,
+            run.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .send()
+        .await
+        .expect("unpin");
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    server.abort();
+}

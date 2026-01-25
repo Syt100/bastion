@@ -119,6 +119,8 @@ export type RunArtifact = {
   status: SnapshotStatus | string
   started_at: number
   ended_at: number
+  pinned_at?: number | null
+  pinned_by_user_id?: number | null
   source_files?: number | null
   source_dirs?: number | null
   source_bytes?: number | null
@@ -237,21 +239,42 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`)
   }
 
-  async function deleteJobSnapshot(jobId: string, runId: string): Promise<void> {
+  async function deleteJobSnapshot(jobId: string, runId: string, opts?: { force?: boolean }): Promise<void> {
     const csrf = await ensureCsrfToken()
-    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete`, {
+    const q = new URLSearchParams()
+    if (opts?.force) q.set('force', 'true')
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/delete${suffix}`, {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf },
       expectedStatus: 204,
     })
   }
 
-  async function deleteJobSnapshotsBulk(jobId: string, runIds: string[]): Promise<void> {
+  async function deleteJobSnapshotsBulk(jobId: string, runIds: string[], opts?: { force?: boolean }): Promise<void> {
     const csrf = await ensureCsrfToken()
     await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ run_ids: runIds }),
+      body: JSON.stringify({ run_ids: runIds, force: !!opts?.force }),
+      expectedStatus: 204,
+    })
+  }
+
+  async function pinJobSnapshot(jobId: string, runId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/pin`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
+      expectedStatus: 204,
+    })
+  }
+
+  async function unpinJobSnapshot(jobId: string, runId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots/${encodeURIComponent(runId)}/unpin`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf },
       expectedStatus: 204,
     })
   }
@@ -306,6 +329,8 @@ export const useJobsStore = defineStore('jobs', () => {
     listJobSnapshots,
     deleteJobSnapshot,
     deleteJobSnapshotsBulk,
+    pinJobSnapshot,
+    unpinJobSnapshot,
     getJobSnapshotDeleteTask,
     getJobSnapshotDeleteEvents,
     retryJobSnapshotDeleteNow,

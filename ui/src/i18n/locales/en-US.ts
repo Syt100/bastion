@@ -812,6 +812,7 @@ const messages = {
       abandoned: 'Abandoned',
     },
     deleteTaskExecutor: 'Executor: {node}',
+    pinnedTooltip: 'Pinned: excluded from retention; deleting requires force confirmation.',
     columns: {
       endedAt: 'Time',
       status: 'Status',
@@ -824,6 +825,8 @@ const messages = {
     },
     actions: {
       viewRun: 'View run',
+      pin: 'Pin',
+      unpin: 'Unpin',
       delete: 'Delete',
       deleteSelected: 'Delete selected ({count})',
       confirmDelete: 'Confirm delete',
@@ -838,6 +841,9 @@ const messages = {
     deleteConfirm: {
       title: 'Delete snapshots',
       subtitle: 'A delete task will be created for {count} snapshots (async)',
+      pinnedWarningTitle: 'Pinned snapshots selected',
+      pinnedWarning: '{count} pinned snapshots are selected. Deleting them requires force confirmation.',
+      forcePinnedLabel: 'I understand and want to force delete pinned snapshots',
     },
     deleteLog: {
       title: 'Delete task',
@@ -1059,6 +1065,8 @@ const messages = {
     snapshotDeleteQueued: 'Delete queued',
     snapshotDeleteRetryQueued: 'Retry scheduled',
     snapshotDeleteIgnored: 'Task ignored',
+    snapshotPinned: 'Pinned',
+    snapshotUnpinned: 'Unpinned',
     bulkRetryScheduled: 'Retry scheduled',
     bulkOperationCanceled: 'Bulk operation canceled',
     bulkOperationCreated: 'Bulk operation created',
@@ -1084,6 +1092,7 @@ const messages = {
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',
     fs_list_failed: 'Failed to list files',
+    snapshot_pinned: 'Snapshot is pinned; force confirmation is required to delete',
     agent_offline: 'Agent is offline',
     not_found: 'Not found',
     invalid_timezone: 'Invalid timezone',
@@ -1121,6 +1130,8 @@ const messages = {
     fetchRunsFailed: 'Failed to fetch runs',
     fetchSnapshotsFailed: 'Failed to fetch snapshots',
     deleteSnapshotsFailed: 'Failed to delete snapshots',
+    pinSnapshotFailed: 'Failed to pin snapshot',
+    unpinSnapshotFailed: 'Failed to unpin snapshot',
     fetchSnapshotDeleteTaskFailed: 'Failed to fetch delete task',
     retrySnapshotDeleteFailed: 'Failed to retry now',
     ignoreSnapshotDeleteFailed: 'Failed to ignore',

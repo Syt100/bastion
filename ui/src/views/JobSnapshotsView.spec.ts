@@ -55,8 +55,10 @@ vi.mock('naive-ui', async () => {
     NCheckbox: stub('NCheckbox'),
     NCode: stub('NCode'),
     NDataTable: stub('NDataTable'),
+    NIcon: stub('NIcon'),
     NInput: stub('NInput'),
     NModal: modal,
+    NPopover: stub('NPopover'),
     NSpace: stub('NSpace'),
     NSpin: stub('NSpin'),
     NTag: stub('NTag'),
@@ -84,6 +86,8 @@ const jobsApi = {
   listJobSnapshots: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
   deleteJobSnapshot: vi.fn().mockResolvedValue(undefined),
   deleteJobSnapshotsBulk: vi.fn().mockResolvedValue(undefined),
+  pinJobSnapshot: vi.fn().mockResolvedValue(undefined),
+  unpinJobSnapshot: vi.fn().mockResolvedValue(undefined),
   getJobSnapshotDeleteTask: vi.fn().mockResolvedValue(null),
   getJobSnapshotDeleteEvents: vi.fn().mockResolvedValue([]),
   retryJobSnapshotDeleteNow: vi.fn().mockResolvedValue(undefined),
@@ -169,6 +173,6 @@ describe('JobSnapshotsView', () => {
     await confirmBtn!.trigger('click')
     await flushPromises()
 
-    expect(jobsApi.deleteJobSnapshot).toHaveBeenCalledWith('j1', 'r1')
+    expect(jobsApi.deleteJobSnapshot).toHaveBeenCalledWith('j1', 'r1', { force: false })
   })
 })

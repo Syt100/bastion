@@ -811,6 +811,7 @@ const messages = {
       abandoned: '已放弃',
     },
     deleteTaskExecutor: '执行节点：{node}',
+    pinnedTooltip: '已固定：不会被保留策略自动清理；删除需要强制确认。',
     columns: {
       endedAt: '时间',
       status: '状态',
@@ -823,6 +824,8 @@ const messages = {
     },
     actions: {
       viewRun: '查看运行记录',
+      pin: '固定',
+      unpin: '取消固定',
       delete: '删除',
       deleteSelected: '删除已选（{count}）',
       confirmDelete: '确认删除',
@@ -837,6 +840,9 @@ const messages = {
     deleteConfirm: {
       title: '删除备份数据',
       subtitle: '将为 {count} 个备份数据创建删除任务（后台执行）',
+      pinnedWarningTitle: '包含已固定的备份数据',
+      pinnedWarning: '已选中 {count} 个已固定的备份数据。删除需要使用“强制删除”。',
+      forcePinnedLabel: '我确认要强制删除已固定的备份数据',
     },
     deleteLog: {
       title: '删除任务',
@@ -1058,6 +1064,8 @@ const messages = {
     snapshotDeleteQueued: '已加入删除队列',
     snapshotDeleteRetryQueued: '已加入立即重试',
     snapshotDeleteIgnored: '已忽略',
+    snapshotPinned: '已固定',
+    snapshotUnpinned: '已取消固定',
     bulkRetryScheduled: '已加入立即重试',
     bulkOperationCanceled: '批量操作已取消',
     bulkOperationCreated: '批量操作已创建',
@@ -1083,6 +1091,7 @@ const messages = {
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',
     fs_list_failed: '列出文件失败',
+    snapshot_pinned: '该备份数据已固定，删除需要强制确认',
     agent_offline: '客户端离线',
     not_found: '资源不存在',
     invalid_timezone: '时区无效',
@@ -1120,6 +1129,8 @@ const messages = {
     fetchRunsFailed: '获取运行记录失败',
     fetchSnapshotsFailed: '获取备份数据失败',
     deleteSnapshotsFailed: '删除备份数据失败',
+    pinSnapshotFailed: '固定备份数据失败',
+    unpinSnapshotFailed: '取消固定失败',
     fetchSnapshotDeleteTaskFailed: '获取删除任务失败',
     retrySnapshotDeleteFailed: '立即重试失败',
     ignoreSnapshotDeleteFailed: '忽略失败',
