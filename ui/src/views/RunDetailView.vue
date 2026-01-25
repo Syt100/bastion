@@ -546,12 +546,12 @@ onBeforeUnmount(() => {
 
     <n-card :title="t('runs.detail.overviewTitle')" size="small" class="app-card" :bordered="false" data-testid="run-detail-summary">
       <div v-if="!run" class="text-sm opacity-70">-</div>
-      <div v-else class="space-y-3">
+      <div v-else class="space-y-2">
         <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
           {{ run.error }}
         </n-alert>
 
-        <div class="space-y-2" data-testid="run-detail-overview">
+        <div class="space-y-1.5" data-testid="run-detail-overview">
           <div class="flex flex-wrap items-center gap-2">
             <n-tag v-if="errorsTotal != null && errorsTotal > 0" size="small" type="error" :bordered="false">
               {{ t('runs.detail.errors', { count: errorsTotal }) }}
@@ -591,7 +591,7 @@ onBeforeUnmount(() => {
 
         <div class="border-t border-black/5 dark:border-white/10" />
 
-        <div class="space-y-2" data-testid="run-detail-progress">
+        <div class="space-y-1.5" data-testid="run-detail-progress">
           <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-medium">{{ t('runs.progress.title') }}</div>
           </div>

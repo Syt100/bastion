@@ -277,7 +277,7 @@ function progressNumber(pct: number | null): number {
 
 <template>
   <div v-if="!snapshot" class="text-sm opacity-70">-</div>
-  <div v-else class="space-y-2">
+  <div v-else class="space-y-1.5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2">
@@ -305,7 +305,7 @@ function progressNumber(pct: number | null): number {
       />
     </div>
 
-    <div v-if="showStages" class="space-y-2">
+    <div v-if="showStages" class="space-y-1.5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-1.5 font-medium">
           <span>{{ t('runs.progress.stages.title') }}</span>
@@ -384,34 +384,29 @@ function progressNumber(pct: number | null): number {
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
       <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-        <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.source.title') }}</div>
-        <div class="text-xs opacity-70 space-y-1">
-          <div>{{ t('runs.progress.source.files') }}: {{ sourceTotal?.files ?? '-' }}</div>
-          <div>{{ t('runs.progress.source.dirs') }}: {{ sourceTotal?.dirs ?? '-' }}</div>
-          <div>{{ t('runs.progress.source.bytes') }}: {{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</div>
-        </div>
+        <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          <dt class="opacity-70">{{ t('runs.progress.source.files') }}</dt>
+          <dd class="font-mono tabular-nums">{{ sourceTotal?.files ?? '-' }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.source.dirs') }}</dt>
+          <dd class="font-mono tabular-nums">{{ sourceTotal?.dirs ?? '-' }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.source.bytes') }}</dt>
+          <dd class="font-mono tabular-nums">{{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</dd>
+        </dl>
       </div>
 
       <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-        <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.transfer.title') }}</div>
-        <div class="text-xs opacity-70 space-y-1">
-          <div>
-            {{ t('runs.progress.transfer.done') }}:
-            {{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}
-          </div>
-          <div>
-            {{ t('runs.progress.transfer.total') }}:
-            {{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}
-          </div>
-          <div>
-            {{ t('runs.progress.transfer.rate') }}:
-            {{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}
-          </div>
-          <div>
-            {{ t('runs.progress.transfer.eta') }}:
-            {{ formatEta(snapshot.eta_seconds) }}
-          </div>
-        </div>
+        <div class="text-sm font-medium mb-1">{{ t('runs.progress.transfer.title') }}</div>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          <dt class="opacity-70">{{ t('runs.progress.transfer.done') }}</dt>
+          <dd class="font-mono tabular-nums">{{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.transfer.total') }}</dt>
+          <dd class="font-mono tabular-nums">{{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.transfer.rate') }}</dt>
+          <dd class="font-mono tabular-nums">{{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.transfer.eta') }}</dt>
+          <dd class="font-mono tabular-nums">{{ formatEta(snapshot.eta_seconds) }}</dd>
+        </dl>
       </div>
     </div>
   </div>
