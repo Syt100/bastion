@@ -816,8 +816,13 @@ const messages = {
     progress: {
       title: 'Progress',
       overall: 'Overall',
+      failureStage: 'Failed stage',
       updatedAt: 'Updated',
       details: 'More details',
+      timeline: {
+        title: 'Timing',
+        total: 'Total',
+      },
       stages: {
         title: 'Stages',
         scan: 'Scan',
@@ -845,6 +850,7 @@ const messages = {
         done: 'Done',
         total: 'Total',
         rate: 'Rate',
+        peak: 'Peak',
         eta: 'ETA',
       },
     },

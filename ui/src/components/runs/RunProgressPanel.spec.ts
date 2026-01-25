@@ -160,7 +160,10 @@ describe('RunProgressPanel', () => {
   it('shows a final transfer speed after completion when live rate is missing', () => {
     const wrapper = mount(RunProgressPanel, {
       props: {
-        finalRateBps: 1,
+        events: [
+          { run_id: 'r1', seq: 1, ts: 1, level: 'info', kind: 'upload', message: 'upload', fields: null },
+          { run_id: 'r1', seq: 2, ts: 2, level: 'info', kind: 'complete', message: 'complete', fields: null },
+        ],
         progress: {
           stage: 'upload',
           ts: 1,
@@ -178,6 +181,60 @@ describe('RunProgressPanel', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('1 B/s')
+    expect(wrapper.text()).toContain('10 B/s')
+  })
+
+  it('shows stage durations from stage boundary events', () => {
+    const wrapper = mount(RunProgressPanel, {
+      props: {
+        runStartedAt: 10,
+        events: [
+          { run_id: 'r1', seq: 1, ts: 20, level: 'info', kind: 'scan', message: 'scan', fields: null },
+          { run_id: 'r1', seq: 2, ts: 30, level: 'info', kind: 'packaging', message: 'packaging', fields: null },
+          { run_id: 'r1', seq: 3, ts: 50, level: 'info', kind: 'upload', message: 'upload', fields: null },
+          { run_id: 'r1', seq: 4, ts: 80, level: 'info', kind: 'complete', message: 'complete', fields: null },
+        ],
+        progress: {
+          stage: 'upload',
+          ts: 80,
+          done: { files: 0, dirs: 0, bytes: 0 },
+          total: { files: 0, dirs: 0, bytes: 1 },
+          detail: {
+            backup: {
+              source_total: { files: 1, dirs: 1, bytes: 1 },
+              transfer_total_bytes: 1,
+              transfer_done_bytes: 0,
+            },
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('10s')
+    expect(wrapper.text()).toContain('20s')
+    expect(wrapper.text()).toContain('30s')
+    expect(wrapper.text()).toContain('1m 10s')
+  })
+
+  it('indicates a failure stage when the run ends in failed', () => {
+    const wrapper = mount(RunProgressPanel, {
+      props: {
+        runStatus: 'failed',
+        events: [
+          { run_id: 'r1', seq: 1, ts: 10, level: 'info', kind: 'packaging', message: 'packaging', fields: null },
+          { run_id: 'r1', seq: 2, ts: 20, level: 'info', kind: 'upload', message: 'upload', fields: null },
+          { run_id: 'r1', seq: 3, ts: 25, level: 'error', kind: 'failed', message: 'failed', fields: null },
+        ],
+        progress: {
+          stage: 'upload',
+          ts: 25,
+          done: { files: 0, dirs: 0, bytes: 0 },
+          total: { files: 0, dirs: 0, bytes: 1 },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('runs.progress.failureStage')
+    expect(wrapper.text()).toContain('runs.progress.stages.upload')
   })
 })

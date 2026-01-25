@@ -815,8 +815,13 @@ const messages = {
     progress: {
       title: '进度',
       overall: '总进度',
+      failureStage: '失败阶段',
       updatedAt: '更新',
       details: '更多信息',
+      timeline: {
+        title: '耗时',
+        total: '总耗时',
+      },
       stages: {
         title: '阶段',
         scan: '扫描',
@@ -844,6 +849,7 @@ const messages = {
         done: '已传输',
         total: '总量',
         rate: '速度',
+        peak: '峰值',
         eta: '预计剩余',
       },
     },

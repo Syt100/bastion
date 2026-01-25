@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NButton, NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
@@ -9,6 +9,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatBytes } from '@/lib/format'
 import { useMediaQuery } from '@/lib/media'
 import { useUiStore } from '@/stores/ui'
+import type { RunEvent, RunStatus } from '@/stores/jobs'
 
 type ProgressUnits = { files: number; dirs: number; bytes: number }
 
@@ -34,7 +35,10 @@ type ProgressSnapshot = {
 
 const props = defineProps<{
   progress: unknown | null | undefined
-  finalRateBps?: number | null | undefined
+  events?: RunEvent[] | null | undefined
+  runStartedAt?: number | null | undefined
+  runEndedAt?: number | null | undefined
+  runStatus?: RunStatus | null | undefined
 }>()
 
 const { t } = useI18n()
@@ -155,6 +159,7 @@ const uploadPct = computed<number | null>(() => {
 const displayStage = computed<KnownStage | null>(() => {
   const s = knownStage.value
   if (!s) return null
+  if (props.runStatus === 'success' && props.runEndedAt != null) return 'complete'
   if (s === 'upload' && uploadPct.value != null && uploadPct.value >= 100) return 'complete'
   return s
 })
@@ -171,6 +176,7 @@ const stepsCurrent = computed<number>(() => {
 const stepsStatus = computed<'process' | 'finish' | 'error' | 'wait'>(() => {
   const s = displayStage.value
   if (!s) return 'wait'
+  if (props.runStatus === 'failed' || props.runStatus === 'rejected') return 'error'
   if (s === 'complete') return 'finish'
   return 'process'
 })
@@ -247,15 +253,133 @@ const stagesHelp = computed(() => ({
   upload: stageHelp('upload'),
 }))
 
+type StageBoundaryTs = { scan: number | null; packaging: number | null; upload: number | null; end: number | null }
+
+const stageBoundaryTs = computed<StageBoundaryTs>(() => {
+  const out: StageBoundaryTs = { scan: null, packaging: null, upload: null, end: null }
+  for (const e of props.events ?? []) {
+    if (out.scan == null && e.kind === 'scan') out.scan = e.ts
+    if (out.packaging == null && e.kind === 'packaging') out.packaging = e.ts
+    if (out.upload == null && e.kind === 'upload') out.upload = e.ts
+    if (out.end == null && (e.kind === 'complete' || e.kind === 'failed')) out.end = e.ts
+  }
+  return out
+})
+
+const runStartTs = computed<number | null>(() => {
+  const v = props.runStartedAt
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+})
+
+const runEndTs = computed<number | null>(() => {
+  const fromEvent = stageBoundaryTs.value.end
+  if (fromEvent != null) return fromEvent
+  const v = props.runEndedAt
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+})
+
+// Prefer a deterministic "now" aligned with snapshot updates for display/testing.
+const nowTs = computed<number | null>(() => snapshot.value?.ts ?? runEndTs.value ?? null)
+
+function durationSeconds(start: number | null, end: number | null): number | null {
+  if (start == null || end == null) return null
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  if (end < start) return null
+  return end - start
+}
+
+const scanDurationSeconds = computed<number | null>(() => {
+  const start = stageBoundaryTs.value.scan ?? runStartTs.value
+  const end =
+    stageBoundaryTs.value.packaging ??
+    (displayStage.value === 'scan' ? nowTs.value : null)
+  return durationSeconds(start, end)
+})
+
+const packagingDurationSeconds = computed<number | null>(() => {
+  const start = stageBoundaryTs.value.packaging
+  const end =
+    stageBoundaryTs.value.upload ??
+    (displayStage.value === 'packaging' ? nowTs.value : null)
+  return durationSeconds(start, end)
+})
+
+const uploadDurationSeconds = computed<number | null>(() => {
+  const start = stageBoundaryTs.value.upload
+  const end =
+    runEndTs.value ??
+    (displayStage.value === 'upload' ? nowTs.value : null)
+  return durationSeconds(start, end)
+})
+
+const totalDurationSeconds = computed<number | null>(() => {
+  const start = runStartTs.value
+  const end = runEndTs.value ?? (props.runStatus === 'running' ? nowTs.value : null)
+  return durationSeconds(start, end)
+})
+
+const finalAvgRateBps = computed<number | null>(() => {
+  const totalBytes = transferTotalBytes.value
+  if (totalBytes == null || !Number.isFinite(totalBytes) || totalBytes <= 0) return null
+
+  const end = runEndTs.value
+  if (end == null) return null
+
+  const uploadStart = stageBoundaryTs.value.upload
+  if (uploadStart != null && end > uploadStart) {
+    return Math.floor(totalBytes / (end - uploadStart))
+  }
+
+  const start = runStartTs.value
+  if (start != null && end > start) {
+    return Math.floor(totalBytes / (end - start))
+  }
+
+  return null
+})
+
+const peakRateBps = ref<number | null>(null)
+watch(
+  () => snapshot.value?.rate_bps ?? null,
+  (v) => {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return
+    if (peakRateBps.value == null || v > peakRateBps.value) peakRateBps.value = v
+  },
+  { immediate: true },
+)
+
 const displayRateBps = computed<number | null>(() => {
   const live = snapshot.value?.rate_bps
   if (typeof live === 'number' && Number.isFinite(live) && live > 0) return live
 
-  const finalRate = props.finalRateBps
-  if (displayStage.value === 'complete' && typeof finalRate === 'number' && Number.isFinite(finalRate) && finalRate > 0) {
+  const finalRate = finalAvgRateBps.value
+  const isTerminal =
+    props.runStatus === 'success' || props.runStatus === 'failed' || props.runStatus === 'rejected'
+  if ((isTerminal || displayStage.value === 'complete') && typeof finalRate === 'number' && Number.isFinite(finalRate) && finalRate > 0) {
     return finalRate
   }
 
+  return null
+})
+
+const displayPeakRateBps = computed<number | null>(() => {
+  const peak = peakRateBps.value
+  if (peak == null || peak <= 0) return null
+  const base = displayRateBps.value ?? 0
+  if (peak <= base) return null
+  return peak
+})
+
+const failureStage = computed<KnownStage | null>(() => {
+  if (props.runStatus !== 'failed' && props.runStatus !== 'rejected') return null
+
+  const end = runEndTs.value ?? nowTs.value ?? Number.POSITIVE_INFINITY
+  if (stageBoundaryTs.value.upload != null && stageBoundaryTs.value.upload <= end) return 'upload'
+  if (stageBoundaryTs.value.packaging != null && stageBoundaryTs.value.packaging <= end) return 'packaging'
+  if (stageBoundaryTs.value.scan != null && stageBoundaryTs.value.scan <= end) return 'scan'
+
+  const s = knownStage.value
+  if (s === 'scan' || s === 'packaging' || s === 'upload') return s
   return null
 })
 
@@ -266,6 +390,17 @@ function formatEta(seconds: number | null | undefined): string {
   const m = Math.floor((s % 3600) / 60)
   const sec = s % 60
   if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '-'
+  const s = Math.floor(seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}h ${m}m ${sec}s`
   if (m > 0) return `${m}m ${sec}s`
   return `${sec}s`
 }
@@ -282,6 +417,9 @@ function progressNumber(pct: number | null): number {
       <div class="min-w-0">
         <div class="flex items-center gap-2">
           <n-tag size="small" :bordered="false">{{ stageLabel(stageForLabel) }}</n-tag>
+          <n-tag v-if="failureStage" size="small" type="error" :bordered="false">
+            {{ t('runs.progress.failureStage') }}: {{ stageLabel(failureStage) }}
+          </n-tag>
           <div class="text-xs opacity-70 truncate">
             {{ t('runs.progress.updatedAt') }}: {{ formatUnixSeconds(snapshot.ts) }}
           </div>
@@ -383,6 +521,20 @@ function progressNumber(pct: number | null): number {
     <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div class="rounded border border-black/5 dark:border-white/10 p-2.5 md:col-span-2">
+        <div class="text-sm font-medium mb-1">{{ t('runs.progress.timeline.title') }}</div>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          <dt class="opacity-70">{{ t('runs.progress.stages.scan') }}</dt>
+          <dd class="font-mono tabular-nums">{{ formatDuration(scanDurationSeconds) }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.stages.packaging') }}</dt>
+          <dd class="font-mono tabular-nums">{{ formatDuration(packagingDurationSeconds) }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.stages.upload') }}</dt>
+          <dd class="font-mono tabular-nums">{{ formatDuration(uploadDurationSeconds) }}</dd>
+          <dt class="opacity-70">{{ t('runs.progress.timeline.total') }}</dt>
+          <dd class="font-mono tabular-nums">{{ formatDuration(totalDurationSeconds) }}</dd>
+        </dl>
+      </div>
+
       <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
         <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -404,6 +556,10 @@ function progressNumber(pct: number | null): number {
           <dd class="font-mono tabular-nums">{{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}</dd>
           <dt class="opacity-70">{{ t('runs.progress.transfer.rate') }}</dt>
           <dd class="font-mono tabular-nums">{{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}</dd>
+          <template v-if="displayPeakRateBps != null">
+            <dt class="opacity-70">{{ t('runs.progress.transfer.peak') }}</dt>
+            <dd class="font-mono tabular-nums">{{ `${formatBytes(displayPeakRateBps)}/s` }}</dd>
+          </template>
           <dt class="opacity-70">{{ t('runs.progress.transfer.eta') }}</dt>
           <dd class="font-mono tabular-nums">{{ formatEta(snapshot.eta_seconds) }}</dd>
         </dl>

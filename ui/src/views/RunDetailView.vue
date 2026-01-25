@@ -18,19 +18,6 @@ import RunDetailDetailsTabs from '@/components/runs/RunDetailDetailsTabs.vue'
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
-type ProgressUnits = { files: number; dirs: number; bytes: number }
-type ProgressSnapshot = {
-  v: number
-  kind: string
-  stage: string
-  ts: number
-  done: ProgressUnits
-  total?: ProgressUnits | null
-  rate_bps?: number | null
-  eta_seconds?: number | null
-  detail?: unknown | null
-}
-
 const { t } = useI18n()
 const message = useMessage()
 
@@ -222,80 +209,6 @@ async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value as Record<string, unknown>
-}
-
-function asNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-const progressSnapshot = computed<ProgressSnapshot | null>(() => {
-  const p = run.value?.progress
-  if (!p || typeof p !== 'object') return null
-  const obj = p as Partial<ProgressSnapshot>
-  if (typeof obj.stage !== 'string') return null
-  if (typeof obj.ts !== 'number' || !Number.isFinite(obj.ts)) return null
-  if (!obj.done || typeof obj.done !== 'object') return null
-  return obj as ProgressSnapshot
-})
-
-const transferTotalBytes = computed<number | null>(() => {
-  const snap = progressSnapshot.value
-  if (!snap) return null
-
-  const detail = asRecord(snap.detail ?? null)
-  const backup = asRecord(detail?.backup ?? null)
-  const fromDetail = asNumber(backup?.transfer_total_bytes)
-  if (fromDetail != null) return fromDetail
-
-  // Fallback: upload stage total usually equals transfer total bytes.
-  if (snap.stage === 'upload') {
-    const total = snap.total as unknown
-    const totalObj = asRecord(total)
-    const totalBytes = asNumber(totalObj?.bytes)
-    if (totalBytes != null) return totalBytes
-  }
-
-  return null
-})
-
-const uploadStartedAt = computed<number | null>(() => {
-  const e = events.value.find((ev) => ev.kind === 'upload')
-  return e ? e.ts : null
-})
-
-const completedAt = computed<number | null>(() => {
-  const e = events.value.find((ev) => ev.kind === 'complete')
-  if (e) return e.ts
-  const ended = run.value?.ended_at
-  return typeof ended === 'number' && Number.isFinite(ended) ? ended : null
-})
-
-const finalTransferRateBps = computed<number | null>(() => {
-  const totalBytes = transferTotalBytes.value
-  if (totalBytes == null || totalBytes <= 0) return null
-
-  // Only compute a final value after the run has ended.
-  if (!run.value?.ended_at) return null
-
-  const start = uploadStartedAt.value
-  const end = completedAt.value
-  if (start != null && end != null && end > start) {
-    return Math.floor(totalBytes / (end - start))
-  }
-
-  // Fallback: use overall run duration.
-  const started = run.value.started_at
-  const ended = run.value.ended_at
-  if (typeof started === 'number' && typeof ended === 'number' && ended > started) {
-    return Math.floor(totalBytes / (ended - started))
-  }
-
-  return null
-})
-
 function backToJobs(): void {
   void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs`)
 }
@@ -340,7 +253,7 @@ onBeforeUnmount(() => {
       data-testid="run-detail-layout"
     >
       <div class="md:sticky md:top-3 self-start">
-        <run-detail-summary-card :run="run" :final-transfer-rate-bps="finalTransferRateBps" />
+        <run-detail-summary-card :run="run" :events="events" />
       </div>
 
       <run-detail-details-tabs

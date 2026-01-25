@@ -4,7 +4,7 @@ import { NAlert, NCard, NTag } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useUiStore } from '@/stores/ui'
-import type { RunDetail } from '@/stores/jobs'
+import type { RunDetail, RunEvent } from '@/stores/jobs'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { runTargetTypeLabel } from '@/lib/runs'
 import { parseRunSummary } from '@/lib/run_summary'
@@ -12,7 +12,7 @@ import RunProgressPanel from '@/components/runs/RunProgressPanel.vue'
 
 const props = defineProps<{
   run: RunDetail | null
-  finalTransferRateBps?: number | null
+  events: RunEvent[]
 }>()
 
 const { t } = useI18n()
@@ -93,9 +93,14 @@ const durationSeconds = computed<number | null>(() => {
         <div class="flex items-center justify-between gap-3">
           <div class="text-sm font-medium">{{ t('runs.progress.title') }}</div>
         </div>
-        <run-progress-panel :progress="run.progress" :final-rate-bps="finalTransferRateBps" />
+        <run-progress-panel
+          :progress="run.progress"
+          :events="events"
+          :run-started-at="run.started_at"
+          :run-ended-at="run.ended_at"
+          :run-status="run.status"
+        />
       </div>
     </div>
   </n-card>
 </template>
-
