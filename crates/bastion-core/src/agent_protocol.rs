@@ -119,6 +119,13 @@ pub struct RestoreTaskV1 {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SnapshotDeleteTaskV1 {
+    pub run_id: String,
+    pub job_id: String,
+    pub base_dir: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OperationEventV1 {
     pub op_id: String,
     pub level: String,
@@ -215,6 +222,10 @@ pub enum HubToAgentMessageV1 {
         v: u32,
         task_id: String,
         task: Box<RestoreTaskV1>,
+    },
+    SnapshotDeleteTask {
+        v: u32,
+        task: SnapshotDeleteTaskV1,
     },
     FsList {
         v: u32,
@@ -349,6 +360,24 @@ pub enum AgentToHubMessageV1 {
         #[serde(default)]
         error: Option<String>,
     },
+    SnapshotDeleteEvent {
+        v: u32,
+        run_id: String,
+        level: String,
+        kind: String,
+        message: String,
+        #[serde(default)]
+        fields: Option<serde_json::Value>,
+    },
+    SnapshotDeleteResult {
+        v: u32,
+        run_id: String,
+        status: String,
+        #[serde(default)]
+        error_kind: Option<String>,
+        #[serde(default)]
+        error: Option<String>,
+    },
     OperationEvent {
         v: u32,
         event: OperationEventV1,
@@ -399,4 +428,57 @@ pub enum AgentToHubMessageV1 {
         v: u32,
         req: ArtifactStreamCloseV1,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION, SnapshotDeleteTaskV1};
+
+    #[test]
+    fn snapshot_delete_task_round_trip() {
+        let msg = HubToAgentMessageV1::SnapshotDeleteTask {
+            v: PROTOCOL_VERSION,
+            task: SnapshotDeleteTaskV1 {
+                run_id: "r1".to_string(),
+                job_id: "j1".to_string(),
+                base_dir: "/tmp".to_string(),
+            },
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let decoded = serde_json::from_str::<HubToAgentMessageV1>(&json).expect("deserialize");
+        match decoded {
+            HubToAgentMessageV1::SnapshotDeleteTask { v, task } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(task.run_id, "r1");
+                assert_eq!(task.job_id, "j1");
+                assert_eq!(task.base_dir, "/tmp");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn snapshot_delete_result_round_trip() {
+        let msg = AgentToHubMessageV1::SnapshotDeleteResult {
+            v: PROTOCOL_VERSION,
+            run_id: "r1".to_string(),
+            status: "success".to_string(),
+            error_kind: None,
+            error: None,
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let decoded = serde_json::from_str::<AgentToHubMessageV1>(&json).expect("deserialize");
+        match decoded {
+            AgentToHubMessageV1::SnapshotDeleteResult {
+                v, run_id, status, ..
+            } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(run_id, "r1");
+                assert_eq!(status, "success");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
 }

@@ -811,6 +811,7 @@ const messages = {
       ignored: 'Ignored',
       abandoned: 'Abandoned',
     },
+    deleteTaskExecutor: 'Executor: {node}',
     columns: {
       endedAt: 'Time',
       status: 'Status',

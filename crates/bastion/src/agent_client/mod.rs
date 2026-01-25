@@ -11,6 +11,7 @@ mod identity;
 mod managed;
 mod offline;
 mod restore_task;
+mod snapshot_delete;
 mod targets;
 mod tasks;
 mod util;

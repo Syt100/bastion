@@ -123,6 +123,13 @@ function formatJson(value: unknown): string {
   }
 }
 
+function formatDeleteTaskExecutor(row: RunArtifact): string | null {
+  if (!row.delete_task) return null
+  const id = String(row.node_id ?? '').trim()
+  if (!id || id === 'hub') return null
+  return t('snapshots.deleteTaskExecutor', { node: id })
+}
+
 async function refresh(): Promise<void> {
   const id = jobId.value
   if (!id) return
@@ -310,12 +317,14 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
         const task = row.delete_task
         if (!task) return '-'
         const label = `${formatDeleteTaskStatus(task.status)} (${task.attempts})`
+        const executor = formatDeleteTaskExecutor(row)
         const err = lastErrorLabel(task.last_error_kind, task.last_error)
         return h(
           'div',
           { class: 'min-w-0' },
           [
             h(NTag, { size: 'small', bordered: false, type: deleteTaskTagType(task.status) }, { default: () => label }),
+            executor ? h('div', { class: 'text-xs opacity-70 truncate mt-0.5' }, executor) : null,
             err ? h('div', { class: 'text-xs opacity-70 truncate mt-0.5' }, err) : null,
           ].filter(Boolean),
         )
@@ -416,6 +425,9 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
               <n-tag size="small" :bordered="false" :type="deleteTaskTagType(row.delete_task.status)">
                 {{ formatDeleteTaskStatus(row.delete_task.status) }} ({{ row.delete_task.attempts }})
               </n-tag>
+              <div v-if="formatDeleteTaskExecutor(row)" class="text-xs opacity-70 mt-0.5">
+                {{ formatDeleteTaskExecutor(row) }}
+              </div>
               <div v-if="row.delete_task.last_error || row.delete_task.last_error_kind" class="text-xs opacity-70 mt-0.5">
                 {{ lastErrorLabel(row.delete_task.last_error_kind, row.delete_task.last_error) }}
               </div>

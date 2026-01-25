@@ -223,9 +223,17 @@ async fn list_job_snapshots_returns_items() {
     .await
     .expect("create job");
 
-    let run = runs_repo::create_run(&pool, &job.id, runs_repo::RunStatus::Queued, 1, None, None, None)
-        .await
-        .expect("create run");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Queued,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
 
     runs_repo::set_run_target_snapshot(
         &pool,
@@ -281,11 +289,7 @@ async fn list_job_snapshots_returns_items() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!(
-            "{}/api/jobs/{}/snapshots",
-            base_url(addr),
-            job.id
-        ))
+        .get(format!("{}/api/jobs/{}/snapshots", base_url(addr), job.id))
         .header("cookie", format!("bastion_session={}", session.id))
         .send()
         .await
@@ -335,9 +339,17 @@ async fn delete_job_snapshot_enqueues_task_and_event() {
     .await
     .expect("create job");
 
-    let run = runs_repo::create_run(&pool, &job.id, runs_repo::RunStatus::Queued, 1, None, None, None)
-        .await
-        .expect("create run");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Queued,
+        1,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
 
     runs_repo::set_run_target_snapshot(
         &pool,

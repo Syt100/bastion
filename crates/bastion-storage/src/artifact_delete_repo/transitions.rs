@@ -137,4 +137,3 @@ pub async fn ignore_task(
     .await?;
     Ok(result.rows_affected() > 0)
 }
-

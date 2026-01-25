@@ -249,6 +249,25 @@ pub(super) async fn connect_and_run(
                                     }
                                 });
                             }
+                            Ok(HubToAgentMessageV1::SnapshotDeleteTask { v, task }) if v == PROTOCOL_VERSION => {
+                                let out_tx = out_tx.clone();
+                                let run_lock = run_lock.clone();
+                                let force_reconnect_tx = force_reconnect_tx.clone();
+                                tokio::spawn(async move {
+                                    let mut tx = OutboxSink { tx: out_tx };
+                                    let flow = handlers::handle_snapshot_delete_task(&mut tx, run_lock, task).await;
+                                    match flow {
+                                        Ok(handlers::HandlerFlow::Continue) => {}
+                                        Ok(handlers::HandlerFlow::Reconnect) => {
+                                            let _ = force_reconnect_tx.send(());
+                                        }
+                                        Err(error) => {
+                                            warn!(error = %error, "snapshot delete handler failed");
+                                            let _ = force_reconnect_tx.send(());
+                                        }
+                                    }
+                                });
+                            }
                             Ok(HubToAgentMessageV1::FsList {
                                 v,
                                 request_id,

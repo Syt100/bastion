@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 
 use bastion_core::agent_protocol::{
     AgentToHubMessageV1, BackupAgeIdentitySecretV1, BackupRunTaskV1, JobConfigV1,
-    OperationResultV1, PROTOCOL_VERSION, RestoreTaskV1, WebdavSecretV1,
+    OperationResultV1, PROTOCOL_VERSION, RestoreTaskV1, SnapshotDeleteTaskV1, WebdavSecretV1,
 };
 use bastion_core::run_failure::RunFailedWithSummary;
 
@@ -286,6 +286,114 @@ where
     }
 
     Ok(HandlerFlow::Continue)
+}
+
+pub(super) async fn handle_snapshot_delete_task<S>(
+    tx: &mut S,
+    run_lock: Arc<tokio::sync::Mutex<()>>,
+    task: SnapshotDeleteTaskV1,
+) -> Result<HandlerFlow, anyhow::Error>
+where
+    S: Sink<Message, Error = tungstenite::Error> + Unpin,
+{
+    let run_id = task.run_id.clone();
+    debug!(
+        run_id = %run_id,
+        job_id = %task.job_id,
+        base_dir = %task.base_dir,
+        "received snapshot delete task"
+    );
+
+    let _guard = run_lock.lock().await;
+
+    let base_dir = task.base_dir.clone();
+    let job_id = task.job_id.clone();
+    let run_id_clone = task.run_id.clone();
+    let started = std::time::Instant::now();
+
+    let result = match tokio::task::spawn_blocking(move || {
+        super::super::snapshot_delete::delete_local_snapshot_dir(&base_dir, &job_id, &run_id_clone)
+    })
+    .await
+    {
+        Ok(v) => v,
+        Err(error) => super::super::snapshot_delete::SnapshotDeleteResult::Failed {
+            kind: "unknown",
+            error: anyhow::anyhow!("join error: {error}"),
+        },
+    };
+
+    let duration_ms = started.elapsed().as_millis() as i64;
+
+    match result {
+        super::super::snapshot_delete::SnapshotDeleteResult::NotFound => {
+            let evt = AgentToHubMessageV1::SnapshotDeleteEvent {
+                v: PROTOCOL_VERSION,
+                run_id: run_id.clone(),
+                level: "info".to_string(),
+                kind: "not_found".to_string(),
+                message: "local snapshot dir missing; nothing to delete".to_string(),
+                fields: Some(serde_json::json!({ "duration_ms": duration_ms })),
+            };
+            if send_json(tx, &evt).await? == HandlerFlow::Reconnect {
+                return Ok(HandlerFlow::Reconnect);
+            }
+
+            let msg = AgentToHubMessageV1::SnapshotDeleteResult {
+                v: PROTOCOL_VERSION,
+                run_id,
+                status: "not_found".to_string(),
+                error_kind: None,
+                error: None,
+            };
+            send_json(tx, &msg).await
+        }
+        super::super::snapshot_delete::SnapshotDeleteResult::Deleted => {
+            let evt = AgentToHubMessageV1::SnapshotDeleteEvent {
+                v: PROTOCOL_VERSION,
+                run_id: run_id.clone(),
+                level: "info".to_string(),
+                kind: "deleted".to_string(),
+                message: "deleted local snapshot dir".to_string(),
+                fields: Some(serde_json::json!({ "duration_ms": duration_ms })),
+            };
+            if send_json(tx, &evt).await? == HandlerFlow::Reconnect {
+                return Ok(HandlerFlow::Reconnect);
+            }
+
+            let msg = AgentToHubMessageV1::SnapshotDeleteResult {
+                v: PROTOCOL_VERSION,
+                run_id,
+                status: "success".to_string(),
+                error_kind: None,
+                error: None,
+            };
+            send_json(tx, &msg).await
+        }
+        super::super::snapshot_delete::SnapshotDeleteResult::Failed { kind, error } => {
+            let err = format!("{error:#}");
+            let evt = AgentToHubMessageV1::SnapshotDeleteEvent {
+                v: PROTOCOL_VERSION,
+                run_id: run_id.clone(),
+                level: "warn".to_string(),
+                kind: "failed".to_string(),
+                message: format!("failed: {err}"),
+                fields: Some(serde_json::json!({ "duration_ms": duration_ms, "error_kind": kind })),
+            };
+            if send_json(tx, &evt).await? == HandlerFlow::Reconnect {
+                return Ok(HandlerFlow::Reconnect);
+            }
+
+            let msg = AgentToHubMessageV1::SnapshotDeleteResult {
+                v: PROTOCOL_VERSION,
+                run_id,
+                status: "failed".to_string(),
+                error_kind: Some(kind.to_string()),
+                error: Some(err),
+            };
+            send_json(tx, &msg).await
+        }
+    }
 }
 
 pub(super) struct FsListRequest {

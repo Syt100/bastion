@@ -56,4 +56,3 @@ pub async fn next_due_at(db: &SqlitePool) -> Result<Option<i64>, anyhow::Error> 
 
     Ok(row.map(|r| r.get::<i64, _>("next_attempt_at")))
 }
-

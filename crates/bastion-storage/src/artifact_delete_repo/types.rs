@@ -80,4 +80,3 @@ pub struct ArtifactDeleteEvent {
     pub message: String,
     pub fields: Option<serde_json::Value>,
 }
-

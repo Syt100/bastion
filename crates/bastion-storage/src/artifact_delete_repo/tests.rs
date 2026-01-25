@@ -117,4 +117,3 @@ async fn delete_tasks_round_trip_and_idempotent_enqueue() {
     let events = list_events(&pool, &run.id, 100).await.expect("events");
     assert_eq!(events.len(), 0);
 }
-

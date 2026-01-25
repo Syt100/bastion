@@ -86,4 +86,3 @@ pub async fn list_events(
 
     Ok(events)
 }
-

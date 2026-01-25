@@ -810,6 +810,7 @@ const messages = {
       ignored: '已忽略',
       abandoned: '已放弃',
     },
+    deleteTaskExecutor: '执行节点：{node}',
     columns: {
       endedAt: '时间',
       status: '状态',

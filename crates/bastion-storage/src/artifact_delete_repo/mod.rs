@@ -12,8 +12,8 @@ pub use transitions::{
     upsert_task_if_missing,
 };
 pub use types::{
-    ArtifactDeleteEvent, ArtifactDeleteTaskDetail, ArtifactDeleteTaskRow, ArtifactDeleteTaskSummary,
-    DeleteTargetType,
+    ArtifactDeleteEvent, ArtifactDeleteTaskDetail, ArtifactDeleteTaskRow,
+    ArtifactDeleteTaskSummary, DeleteTargetType,
 };
 
 #[cfg(test)]

@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
-use bastion_core::HUB_NODE_ID;
 use bastion_storage::artifact_delete_repo;
 use bastion_storage::jobs_repo;
 use bastion_storage::run_artifacts_repo;
@@ -127,16 +126,15 @@ pub(in crate::http) async fn list_job_snapshots(
 
     let cursor = query.cursor.unwrap_or(0);
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
-    let status = query.status.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let status = query
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
 
-    let artifacts = run_artifacts_repo::list_run_artifacts_for_job(
-        &state.db,
-        &job_id,
-        cursor,
-        limit,
-        status,
-    )
-    .await?;
+    let artifacts =
+        run_artifacts_repo::list_run_artifacts_for_job(&state.db, &job_id, cursor, limit, status)
+            .await?;
 
     let run_ids = artifacts
         .iter()
@@ -186,7 +184,10 @@ pub(in crate::http) async fn get_job_snapshot(
         .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
 
     if artifact.job_id != job_id {
-        return Err(AppError::not_found("snapshot_not_found", "Snapshot not found"));
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
     }
 
     Ok(Json(RunArtifactResponse::from(artifact)))
@@ -219,7 +220,10 @@ async fn enqueue_snapshot_delete(
         .await?
         .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
     if artifact.job_id != job_id {
-        return Err(AppError::not_found("snapshot_not_found", "Snapshot not found"));
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
     }
 
     // Already gone -> idempotent no-op.
@@ -227,17 +231,8 @@ async fn enqueue_snapshot_delete(
         return Ok(());
     }
 
-    if artifact.target_type == "local_dir" && artifact.node_id != HUB_NODE_ID {
-        return Err(AppError::bad_request(
-            "snapshot_delete_not_supported",
-            "Deleting agent-local snapshots is not supported yet",
-        ));
-    }
-
-    let snapshot_json =
-        serde_json::to_string(&artifact.target_snapshot).map_err(|_| {
-            AppError::bad_request("invalid_snapshot", "Invalid target snapshot")
-        })?;
+    let snapshot_json = serde_json::to_string(&artifact.target_snapshot)
+        .map_err(|_| AppError::bad_request("invalid_snapshot", "Invalid target snapshot"))?;
 
     let inserted = artifact_delete_repo::upsert_task_if_missing(
         &state.db,
@@ -345,7 +340,10 @@ pub(in crate::http) async fn get_job_snapshot_delete_task(
         .await?
         .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
     if artifact.job_id != job_id {
-        return Err(AppError::not_found("snapshot_not_found", "Snapshot not found"));
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
     }
 
     let task = artifact_delete_repo::get_task(&state.db, &run_id)
@@ -370,7 +368,10 @@ pub(in crate::http) async fn get_job_snapshot_delete_events(
         .await?
         .ok_or_else(|| AppError::not_found("snapshot_not_found", "Snapshot not found"))?;
     if artifact.job_id != job_id {
-        return Err(AppError::not_found("snapshot_not_found", "Snapshot not found"));
+        return Err(AppError::not_found(
+            "snapshot_not_found",
+            "Snapshot not found",
+        ));
     }
 
     let events = artifact_delete_repo::list_events(&state.db, &run_id, 200).await?;
@@ -410,10 +411,7 @@ pub(in crate::http) async fn retry_job_snapshot_delete_now(
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let ok = artifact_delete_repo::retry_now(&state.db, &run_id, now).await?;
     if !ok {
-        return Err(AppError::conflict(
-            "not_retryable",
-            "Task is not retryable",
-        ));
+        return Err(AppError::conflict("not_retryable", "Task is not retryable"));
     }
 
     let _ = artifact_delete_repo::append_event(

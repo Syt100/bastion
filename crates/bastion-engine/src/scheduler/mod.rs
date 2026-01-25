@@ -9,8 +9,8 @@ use bastion_storage::secrets::SecretsCrypto;
 use crate::agent_manager::AgentManager;
 use crate::run_events_bus::RunEventsBus;
 
-mod cron;
 mod artifact_delete;
+mod cron;
 mod incomplete_cleanup;
 mod queue;
 mod retention;
@@ -51,6 +51,7 @@ pub fn spawn(args: SchedulerArgs) {
     } = args;
 
     let agent_manager_cron = agent_manager.clone();
+    let agent_manager_worker = agent_manager.clone();
     tokio::spawn(cron::run_cron_loop(
         db.clone(),
         run_events_bus.clone(),
@@ -64,7 +65,7 @@ pub fn spawn(args: SchedulerArgs) {
         db: db.clone(),
         data_dir,
         secrets: secrets.clone(),
-        agent_manager,
+        agent_manager: agent_manager_worker,
         run_events_bus: run_events_bus.clone(),
         run_queue_notify: run_queue_notify.clone(),
         notifications_notify: notifications_notify.clone(),
@@ -80,6 +81,7 @@ pub fn spawn(args: SchedulerArgs) {
     tokio::spawn(artifact_delete::run_artifact_delete_loop(
         db.clone(),
         secrets.clone(),
+        agent_manager,
         artifact_delete_notify,
         shutdown.clone(),
     ));

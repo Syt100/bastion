@@ -173,6 +173,27 @@ pub async fn mark_run_artifact_deleted(
     Ok(())
 }
 
+pub async fn mark_run_artifact_deleting_with_error(
+    db: &SqlitePool,
+    run_id: &str,
+    last_error_kind: &str,
+    last_error: &str,
+    last_attempt_at: i64,
+    now: i64,
+) -> Result<(), anyhow::Error> {
+    sqlx::query(
+        "UPDATE run_artifacts SET status = 'deleting', updated_at = ?, last_error_kind = ?, last_error = ?, last_attempt_at = ? WHERE run_id = ?",
+    )
+    .bind(now)
+    .bind(last_error_kind)
+    .bind(last_error)
+    .bind(last_attempt_at)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 pub async fn mark_run_artifact_missing(
     db: &SqlitePool,
     run_id: &str,
@@ -241,7 +262,12 @@ fn extract_metrics_from_progress(
     let source_dirs = source_total.map(|t| t.dirs);
     let source_bytes = source_total.map(|t| t.bytes);
 
-    (source_files, source_dirs, source_bytes, transfer_total_bytes)
+    (
+        source_files,
+        source_dirs,
+        source_bytes,
+        transfer_total_bytes,
+    )
 }
 
 pub async fn upsert_run_artifact_from_successful_run(
@@ -337,7 +363,9 @@ mod tests {
     use crate::jobs_repo::{self, OverlapPolicy};
     use crate::runs_repo;
 
-    use super::{get_run_artifact, list_run_artifacts_for_job, upsert_run_artifact_from_successful_run};
+    use super::{
+        get_run_artifact, list_run_artifacts_for_job, upsert_run_artifact_from_successful_run,
+    };
 
     #[tokio::test]
     async fn upsert_from_successful_run_records_snapshot_and_metrics() {
@@ -409,9 +437,13 @@ mod tests {
                 }
             })),
         };
-        runs_repo::set_run_progress(&pool, &run.id, Some(serde_json::to_value(progress).unwrap()))
-            .await
-            .unwrap();
+        runs_repo::set_run_progress(
+            &pool,
+            &run.id,
+            Some(serde_json::to_value(progress).unwrap()),
+        )
+        .await
+        .unwrap();
 
         runs_repo::complete_run(
             &pool,
@@ -423,9 +455,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(upsert_run_artifact_from_successful_run(&pool, &run.id)
-            .await
-            .unwrap());
+        assert!(
+            upsert_run_artifact_from_successful_run(&pool, &run.id)
+                .await
+                .unwrap()
+        );
 
         let got = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
         assert_eq!(got.job_id, job.id);

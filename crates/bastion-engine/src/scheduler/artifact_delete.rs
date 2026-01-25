@@ -8,12 +8,15 @@ use tracing::{info, warn};
 use url::Url;
 
 use bastion_core::HUB_NODE_ID;
+use bastion_core::agent_protocol::{HubToAgentMessageV1, PROTOCOL_VERSION, SnapshotDeleteTaskV1};
 use bastion_storage::artifact_delete_repo;
 use bastion_storage::run_artifacts_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
 use bastion_targets::WebdavClient;
 use bastion_targets::WebdavCredentials;
+
+use crate::agent_manager::AgentManager;
 
 const PROCESS_BATCH_LIMIT: u32 = 20;
 
@@ -27,6 +30,7 @@ const MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60;
 pub(super) async fn run_artifact_delete_loop(
     db: SqlitePool,
     secrets: Arc<SecretsCrypto>,
+    agent_manager: AgentManager,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
@@ -37,7 +41,7 @@ pub(super) async fn run_artifact_delete_loop(
 
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
-        let stats = match tick(&db, &secrets, now).await {
+        let stats = match tick(&db, &secrets, &agent_manager, now).await {
             Ok(v) => v,
             Err(error) => {
                 warn!(error = %error, "artifact delete tick failed");
@@ -95,13 +99,14 @@ impl TickStats {
 async fn tick(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
     now: i64,
 ) -> Result<TickStats, anyhow::Error> {
     let mut stats = TickStats::default();
 
     stats.recovered_running = recover_stuck_running(db, now).await?;
 
-    let (pstats, hit_limit) = process_due_tasks(db, secrets, now).await?;
+    let (pstats, hit_limit) = process_due_tasks(db, secrets, agent_manager, now).await?;
     stats.processed = pstats.processed;
     stats.deleted = pstats.deleted;
     stats.missing = pstats.missing;
@@ -173,7 +178,7 @@ async fn recover_stuck_running(db: &SqlitePool, now: i64) -> Result<u64, anyhow:
             now,
         )
         .await;
-        let _ = run_artifacts_repo::mark_run_artifact_error(
+        let _ = run_artifacts_repo::mark_run_artifact_deleting_with_error(
             db,
             &run_id,
             ErrorKind::Unknown.as_str(),
@@ -200,6 +205,7 @@ struct ProcessStats {
 async fn process_due_tasks(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
     now: i64,
 ) -> Result<(ProcessStats, bool), anyhow::Error> {
     let mut stats = ProcessStats::default();
@@ -210,7 +216,7 @@ async fn process_due_tasks(
         };
 
         stats.processed = stats.processed.saturating_add(1);
-        if let Err(error) = process_task(db, secrets, &task, now, &mut stats).await {
+        if let Err(error) = process_task(db, secrets, agent_manager, &task, now, &mut stats).await {
             warn!(run_id = %task.run_id, error = %error, "artifact delete task processing failed");
         }
     }
@@ -228,13 +234,19 @@ struct RunTargetSnapshot {
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum RunTarget {
-    Webdav { base_url: String, secret_name: String },
-    LocalDir { base_dir: String },
+    Webdav {
+        base_url: String,
+        secret_name: String,
+    },
+    LocalDir {
+        base_dir: String,
+    },
 }
 
 async fn process_task(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
+    agent_manager: &AgentManager,
     task: &artifact_delete_repo::ArtifactDeleteTaskRow,
     now: i64,
     stats: &mut ProcessStats,
@@ -256,15 +268,7 @@ async fn process_task(
     let result = match parsed {
         Ok(parsed) => match parsed.target {
             RunTarget::LocalDir { base_dir } => {
-                if parsed.node_id != HUB_NODE_ID {
-                    DeleteResult::Failed {
-                        kind: ErrorKind::Config,
-                        error: anyhow::anyhow!(
-                            "local_dir snapshot delete is not supported on non-hub node: {}",
-                            parsed.node_id
-                        ),
-                    }
-                } else {
+                if parsed.node_id == HUB_NODE_ID {
                     let base_dir = base_dir.clone();
                     let job_id = task.job_id.clone();
                     let run_id = task.run_id.clone();
@@ -279,13 +283,31 @@ async fn process_task(
                             error: anyhow::anyhow!("join error: {error}"),
                         },
                     }
+                } else {
+                    let msg = HubToAgentMessageV1::SnapshotDeleteTask {
+                        v: PROTOCOL_VERSION,
+                        task: SnapshotDeleteTaskV1 {
+                            run_id: task.run_id.clone(),
+                            job_id: task.job_id.clone(),
+                            base_dir: base_dir.clone(),
+                        },
+                    };
+                    match agent_manager.send_json(&parsed.node_id, &msg).await {
+                        Ok(()) => DeleteResult::Dispatched,
+                        Err(error) => DeleteResult::Failed {
+                            kind: ErrorKind::Network,
+                            error,
+                        },
+                    }
                 }
             }
             RunTarget::Webdav {
                 base_url,
                 secret_name,
-            } => delete_webdav_snapshot(db, secrets, &parsed.node_id, &base_url, &secret_name, task)
-                .await,
+            } => {
+                delete_webdav_snapshot(db, secrets, &parsed.node_id, &base_url, &secret_name, task)
+                    .await
+            }
         },
         Err(error) => DeleteResult::Failed {
             kind: ErrorKind::Config,
@@ -296,6 +318,18 @@ async fn process_task(
     let duration_ms = attempt_started.elapsed().as_millis() as i64;
 
     match result {
+        DeleteResult::Dispatched => {
+            let _ = artifact_delete_repo::append_event(
+                db,
+                &task.run_id,
+                "info",
+                "dispatched",
+                "dispatched to agent",
+                Some(serde_json::json!({ "duration_ms": duration_ms, "agent_id": task.node_id })),
+                now,
+            )
+            .await;
+        }
         DeleteResult::NotFound { message } => {
             artifact_delete_repo::mark_done(db, &task.run_id, now).await?;
             let _ = artifact_delete_repo::append_event(
@@ -330,16 +364,6 @@ async fn process_task(
             let last_error = sanitize_error_string(&error.to_string());
             let last_error_kind = kind.as_str();
 
-            let _ = run_artifacts_repo::mark_run_artifact_error(
-                db,
-                &task.run_id,
-                last_error_kind,
-                &last_error,
-                now,
-                now,
-            )
-            .await;
-
             if should_abandon(task, now) {
                 artifact_delete_repo::mark_abandoned(
                     db,
@@ -359,6 +383,15 @@ async fn process_task(
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
                     })),
+                    now,
+                )
+                .await;
+                let _ = run_artifacts_repo::mark_run_artifact_error(
+                    db,
+                    &task.run_id,
+                    last_error_kind,
+                    &last_error,
+                    now,
                     now,
                 )
                 .await;
@@ -392,6 +425,15 @@ async fn process_task(
                     now,
                 )
                 .await;
+                let _ = run_artifacts_repo::mark_run_artifact_error(
+                    db,
+                    &task.run_id,
+                    last_error_kind,
+                    &last_error,
+                    now,
+                    now,
+                )
+                .await;
                 stats.blocked = stats.blocked.saturating_add(1);
             } else {
                 artifact_delete_repo::mark_retrying(
@@ -414,6 +456,15 @@ async fn process_task(
                         "error_kind": last_error_kind,
                         "next_attempt_at": next_attempt_at,
                     })),
+                    now,
+                )
+                .await;
+                let _ = run_artifacts_repo::mark_run_artifact_deleting_with_error(
+                    db,
+                    &task.run_id,
+                    last_error_kind,
+                    &last_error,
+                    now,
                     now,
                 )
                 .await;
@@ -498,9 +549,15 @@ impl ErrorKind {
 
 #[derive(Debug)]
 enum DeleteResult {
+    Dispatched,
     Deleted,
-    NotFound { message: &'static str },
-    Failed { kind: ErrorKind, error: anyhow::Error },
+    NotFound {
+        message: &'static str,
+    },
+    Failed {
+        kind: ErrorKind,
+        error: anyhow::Error,
+    },
 }
 
 fn delete_local_dir_snapshot(base_dir: &str, job_id: &str, run_id: &str) -> DeleteResult {
@@ -630,7 +687,7 @@ fn classify_error(error: &anyhow::Error) -> ErrorKind {
 mod tests {
     use tempfile::TempDir;
 
-    use super::{backoff_seconds, delete_local_dir_snapshot, sanitize_error_string, ErrorKind};
+    use super::{ErrorKind, backoff_seconds, delete_local_dir_snapshot, sanitize_error_string};
 
     #[test]
     fn sanitize_error_string_trims_and_single_lines() {

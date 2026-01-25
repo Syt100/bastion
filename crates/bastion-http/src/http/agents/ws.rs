@@ -10,6 +10,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use sqlx::SqlitePool;
+use tokio::sync::Notify;
 use url::Url;
 use uuid::Uuid;
 
@@ -31,6 +32,7 @@ use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::agents_repo;
+use bastion_storage::artifact_delete_repo;
 use bastion_storage::jobs_repo;
 use bastion_storage::operations_repo;
 use bastion_storage::run_artifacts_repo;
@@ -66,6 +68,7 @@ pub(in crate::http) async fn agent_ws(
     let secrets = state.secrets.clone();
     let agent_manager = state.agent_manager.clone();
     let run_events_bus = state.run_events_bus.clone();
+    let artifact_delete_notify = state.artifact_delete_notify.clone();
     Ok(ws.on_upgrade(move |socket| {
         handle_agent_socket(
             data_dir,
@@ -75,6 +78,7 @@ pub(in crate::http) async fn agent_ws(
             secrets,
             agent_manager,
             run_events_bus,
+            artifact_delete_notify,
             socket,
         )
     }))
@@ -89,6 +93,7 @@ async fn handle_agent_socket(
     secrets: Arc<SecretsCrypto>,
     agent_manager: AgentManager,
     run_events_bus: Arc<RunEventsBus>,
+    artifact_delete_notify: Arc<Notify>,
     socket: WebSocket,
 ) {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
@@ -281,11 +286,11 @@ async fn handle_agent_socket(
                             )
                             .await;
                             if run_status == runs_repo::RunStatus::Success {
-                                let _ = run_artifacts_repo::upsert_run_artifact_from_successful_run(
-                                    &db,
-                                    &run_id,
-                                )
-                                .await;
+                                let _ =
+                                    run_artifacts_repo::upsert_run_artifact_from_successful_run(
+                                        &db, &run_id,
+                                    )
+                                    .await;
                             }
                             let _ = run_events::append_and_broadcast(
                                 &db,
@@ -318,6 +323,172 @@ async fn handle_agent_socket(
                             error.as_deref(),
                         )
                         .await;
+                    }
+                    Ok(AgentToHubMessageV1::SnapshotDeleteEvent {
+                        v,
+                        run_id,
+                        level,
+                        kind,
+                        message,
+                        fields,
+                    }) if v == PROTOCOL_VERSION => {
+                        let _ = artifact_delete_repo::append_event(
+                            &db, &run_id, &level, &kind, &message, fields, now,
+                        )
+                        .await;
+                    }
+                    Ok(AgentToHubMessageV1::SnapshotDeleteResult {
+                        v,
+                        run_id,
+                        status,
+                        error_kind,
+                        error,
+                    }) if v == PROTOCOL_VERSION => {
+                        // Ensure this agent is the intended executor.
+                        let task = artifact_delete_repo::get_task(&db, &run_id)
+                            .await
+                            .ok()
+                            .flatten();
+                        let Some(task) = task else {
+                            continue;
+                        };
+                        if task.node_id != agent_id {
+                            continue;
+                        }
+
+                        match status.as_str() {
+                            "success" => {
+                                let _ = artifact_delete_repo::mark_done(&db, &run_id, now).await;
+                                let _ = run_artifacts_repo::mark_run_artifact_deleted(
+                                    &db, &run_id, now,
+                                )
+                                .await;
+                                let _ = artifact_delete_repo::append_event(
+                                    &db,
+                                    &run_id,
+                                    "info",
+                                    "done",
+                                    "agent delete completed",
+                                    Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                                    now,
+                                )
+                                .await;
+                                artifact_delete_notify.notify_one();
+                            }
+                            "not_found" => {
+                                let _ = artifact_delete_repo::mark_done(&db, &run_id, now).await;
+                                let _ = run_artifacts_repo::mark_run_artifact_missing(
+                                    &db, &run_id, now,
+                                )
+                                .await;
+                                let _ = artifact_delete_repo::append_event(
+                                    &db,
+                                    &run_id,
+                                    "info",
+                                    "done",
+                                    "agent delete completed (not found)",
+                                    Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                                    now,
+                                )
+                                .await;
+                                artifact_delete_notify.notify_one();
+                            }
+                            "failed" => {
+                                let kind = normalize_delete_error_kind(error_kind.as_deref());
+                                let msg = error.as_deref().unwrap_or("failed");
+                                let last_error = sanitize_delete_error_string(msg);
+
+                                if should_abandon_delete_task(task.attempts, task.created_at, now) {
+                                    let _ = artifact_delete_repo::mark_abandoned(
+                                        &db,
+                                        &run_id,
+                                        kind,
+                                        &last_error,
+                                        now,
+                                    )
+                                    .await;
+                                    let _ = run_artifacts_repo::mark_run_artifact_error(
+                                        &db,
+                                        &run_id,
+                                        kind,
+                                        &last_error,
+                                        now,
+                                        now,
+                                    )
+                                    .await;
+                                    let _ = artifact_delete_repo::append_event(
+                                        &db,
+                                        &run_id,
+                                        "error",
+                                        "abandoned",
+                                        &format!("abandoned: {last_error}"),
+                                        Some(serde_json::json!({ "agent_id": agent_id.clone(), "error_kind": kind })),
+                                        now,
+                                    )
+                                    .await;
+                                    continue;
+                                }
+
+                                let next_attempt_at = now.saturating_add(delete_backoff_seconds(
+                                    &run_id,
+                                    task.attempts,
+                                    kind,
+                                ));
+                                if kind == "config" || kind == "auth" {
+                                    let _ = artifact_delete_repo::mark_blocked(
+                                        &db,
+                                        &run_id,
+                                        next_attempt_at,
+                                        kind,
+                                        &last_error,
+                                        now,
+                                    )
+                                    .await;
+                                    let _ = run_artifacts_repo::mark_run_artifact_error(
+                                        &db,
+                                        &run_id,
+                                        kind,
+                                        &last_error,
+                                        now,
+                                        now,
+                                    )
+                                    .await;
+                                } else {
+                                    let _ = artifact_delete_repo::mark_retrying(
+                                        &db,
+                                        &run_id,
+                                        next_attempt_at,
+                                        kind,
+                                        &last_error,
+                                        now,
+                                    )
+                                    .await;
+                                    let _ =
+                                        run_artifacts_repo::mark_run_artifact_deleting_with_error(
+                                            &db,
+                                            &run_id,
+                                            kind,
+                                            &last_error,
+                                            now,
+                                            now,
+                                        )
+                                        .await;
+                                }
+
+                                let _ = artifact_delete_repo::append_event(
+                                    &db,
+                                    &run_id,
+                                    "warn",
+                                    "failed",
+                                    &format!("failed: {last_error}"),
+                                    Some(serde_json::json!({ "agent_id": agent_id.clone(), "error_kind": kind, "next_attempt_at": next_attempt_at })),
+                                    now,
+                                )
+                                .await;
+                                artifact_delete_notify.notify_one();
+                            }
+                            _ => {}
+                        }
                     }
                     Ok(AgentToHubMessageV1::FsListResult {
                         v,
@@ -1155,4 +1326,68 @@ impl Read for RemoteAgentPartsReader {
             return Ok(n);
         }
     }
+}
+
+fn normalize_delete_error_kind(kind: Option<&str>) -> &'static str {
+    match kind.unwrap_or("").trim() {
+        "config" => "config",
+        "auth" => "auth",
+        "network" => "network",
+        "http" => "http",
+        _ => "unknown",
+    }
+}
+
+fn sanitize_delete_error_string(s: &str) -> String {
+    const MAX_LEN: usize = 500;
+
+    let s = s.replace(['\n', '\r'], " ");
+    let s = s.trim();
+    if s.len() <= MAX_LEN {
+        return s.to_string();
+    }
+
+    let mut out = s[..MAX_LEN].to_string();
+    out.push('…');
+    out
+}
+
+fn should_abandon_delete_task(attempts: i64, created_at: i64, now: i64) -> bool {
+    const MAX_ATTEMPTS: i64 = 20;
+    const MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60;
+
+    if attempts >= MAX_ATTEMPTS {
+        return true;
+    }
+
+    let age = now.saturating_sub(created_at);
+    age >= MAX_AGE_SECS
+}
+
+fn delete_backoff_seconds(run_id: &str, attempts: i64, kind: &str) -> i64 {
+    let attempts = attempts.max(1);
+
+    let (base, cap, max_jitter) = match kind {
+        "network" | "http" => (60_i64, 6 * 60 * 60, 30_i64),
+        "unknown" => (5 * 60, 6 * 60 * 60, 60_i64),
+        "auth" | "config" => (6 * 60 * 60, 24 * 60 * 60, 10 * 60_i64),
+        _ => (5 * 60, 6 * 60 * 60, 60_i64),
+    };
+
+    let exp = 1_i64 << (attempts.saturating_sub(1).min(30) as u32);
+    let delay = base.saturating_mul(exp).min(cap);
+    delay.saturating_add(delete_jitter_seconds(run_id, attempts, max_jitter))
+}
+
+fn delete_jitter_seconds(run_id: &str, attempts: i64, max_jitter: i64) -> i64 {
+    if max_jitter <= 0 {
+        return 0;
+    }
+
+    let mut hash = 0_u64;
+    for byte in run_id.as_bytes() {
+        hash = hash.wrapping_mul(131).wrapping_add(*byte as u64);
+    }
+    hash = hash.wrapping_add(attempts as u64 * 97);
+    (hash % max_jitter as u64) as i64
 }
