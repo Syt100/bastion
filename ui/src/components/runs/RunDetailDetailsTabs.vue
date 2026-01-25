@@ -240,14 +240,15 @@ async function copyEventJson(e: RunEvent): Promise<void> {
           </div>
         </div>
 
-        <div class="mt-3 grid grid-cols-1 gap-2">
-          <div class="flex flex-wrap items-center gap-2 min-w-0">
-            <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="flex-1 min-w-[12rem] w-0" />
+        <div class="mt-3 flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+          <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="w-full md:flex-1 md:min-w-[8rem] md:w-0" />
+
+          <div class="grid grid-cols-2 gap-2 w-full md:flex md:items-center md:gap-2 md:w-auto">
             <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
               { label: 'error', value: 'error' },
               { label: 'warn', value: 'warn' },
               { label: 'info', value: 'info' },
-            ]" class="grow-0 shrink basis-[10rem] min-w-[8rem]" />
+            ]" class="w-full md:w-auto md:grow-0 md:shrink md:basis-[9rem] md:min-w-[7rem]" />
             <n-select
               v-model:value="kindFilter"
               size="small"
@@ -256,21 +257,21 @@ async function copyEventJson(e: RunEvent): Promise<void> {
               :placeholder="t('runEvents.filters.kind')"
               :options="kindOptions"
               :consistent-menu-width="false"
-              class="grow-0 shrink basis-[10rem] min-w-[8rem]"
+              class="w-full md:w-auto md:grow-0 md:shrink md:basis-[9rem] md:min-w-[7rem]"
             />
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
+          <div class="grid grid-cols-4 gap-2 w-full md:flex md:flex-nowrap md:items-center md:gap-2 md:w-auto">
+            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
               {{ t('runEvents.actions.firstError') }}
             </n-button>
-            <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
+            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
               {{ t('runEvents.actions.firstWarn') }}
             </n-button>
-            <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
+            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
               {{ t('runEvents.actions.latest') }}
             </n-button>
-            <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
+            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
               {{ t('runEvents.actions.export') }}
             </n-button>
           </div>
