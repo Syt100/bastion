@@ -941,6 +941,9 @@ const messages = {
     kind: '类型',
     startedAt: '开始时间',
     endedAt: '结束时间',
+    restore: {
+      bytesDone: '已恢复',
+    },
     summary: '摘要',
     events: '事件',
     noEvents: '暂无事件',

@@ -942,6 +942,9 @@ const messages = {
     kind: 'Kind',
     startedAt: 'Started',
     endedAt: 'Ended',
+    restore: {
+      bytesDone: 'Restored',
+    },
     summary: 'Summary',
     events: 'Events',
     noEvents: 'No events yet',

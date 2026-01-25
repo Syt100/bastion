@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NButton, NCard, NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
+import { NButton, NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
@@ -276,66 +276,66 @@ function progressNumber(pct: number | null): number {
 </script>
 
 <template>
-  <n-card class="app-card" :bordered="false" :title="t('runs.progress.title')" size="small">
-    <div v-if="!snapshot" class="text-sm opacity-70">-</div>
-    <div v-else class="space-y-2">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <n-tag size="small" :bordered="false">{{ stageLabel(stageForLabel) }}</n-tag>
-            <div class="text-xs opacity-70 truncate">
-              {{ t('runs.progress.updatedAt') }}: {{ formatUnixSeconds(snapshot.ts) }}
-            </div>
+  <div v-if="!snapshot" class="text-sm opacity-70">-</div>
+  <div v-else class="space-y-2">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <n-tag size="small" :bordered="false">{{ stageLabel(stageForLabel) }}</n-tag>
+          <div class="text-xs opacity-70 truncate">
+            {{ t('runs.progress.updatedAt') }}: {{ formatUnixSeconds(snapshot.ts) }}
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="space-y-1">
-        <div class="flex items-center justify-between gap-3 text-xs opacity-70">
-          <div class="truncate">{{ t('runs.progress.overall') }}</div>
-          <div v-if="overallPct != null" class="shrink-0 font-mono tabular-nums whitespace-nowrap">
-            {{ Math.round(overallPct) }}%
-          </div>
-          <div v-else>-</div>
+    <div class="space-y-1">
+      <div class="flex items-center justify-between gap-3 text-xs opacity-70">
+        <div class="truncate">{{ t('runs.progress.overall') }}</div>
+        <div v-if="overallPct != null" class="shrink-0 font-mono tabular-nums whitespace-nowrap">
+          {{ Math.round(overallPct) }}%
         </div>
-        <n-progress
-          type="line"
-          :percentage="progressNumber(overallPct)"
-          :processing="overallPct == null"
-          :show-indicator="false"
-        />
+        <div v-else>-</div>
       </div>
+      <n-progress
+        type="line"
+        :percentage="progressNumber(overallPct)"
+        :processing="overallPct == null"
+        :show-indicator="false"
+      />
+    </div>
 
-      <div v-if="showStages" class="space-y-2">
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-1.5 font-medium">
-            <span>{{ t('runs.progress.stages.title') }}</span>
-            <n-popover trigger="click" placement="top-start" :show-arrow="false">
-              <template #trigger>
-                <n-button size="tiny" circle quaternary :aria-label="t('common.help')">
-                  <template #icon>
-                    <n-icon :component="HelpCircleOutline" :size="14" />
-                  </template>
-                </n-button>
-              </template>
-              <div class="max-w-[420px] space-y-3 whitespace-pre-wrap break-words text-sm">
-                <div>
-                  <div class="font-medium mb-1">{{ stagesHelp.scan.title }}</div>
-                  <div>{{ stagesHelp.scan.body }}</div>
-                </div>
-                <div>
-                  <div class="font-medium mb-1">{{ stagesHelp.packaging.title }}</div>
-                  <div>{{ stagesHelp.packaging.body }}</div>
-                </div>
-                <div>
-                  <div class="font-medium mb-1">{{ stagesHelp.upload.title }}</div>
-                  <div>{{ stagesHelp.upload.body }}</div>
-                </div>
+    <div v-if="showStages" class="space-y-2">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-1.5 font-medium">
+          <span>{{ t('runs.progress.stages.title') }}</span>
+          <n-popover trigger="click" placement="top-start" :show-arrow="false">
+            <template #trigger>
+              <n-button size="tiny" circle quaternary :aria-label="t('common.help')">
+                <template #icon>
+                  <n-icon :component="HelpCircleOutline" :size="14" />
+                </template>
+              </n-button>
+            </template>
+            <div class="max-w-[420px] space-y-3 whitespace-pre-wrap break-words text-sm">
+              <div>
+                <div class="font-medium mb-1">{{ stagesHelp.scan.title }}</div>
+                <div>{{ stagesHelp.scan.body }}</div>
               </div>
-            </n-popover>
-          </div>
+              <div>
+                <div class="font-medium mb-1">{{ stagesHelp.packaging.title }}</div>
+                <div>{{ stagesHelp.packaging.body }}</div>
+              </div>
+              <div>
+                <div class="font-medium mb-1">{{ stagesHelp.upload.title }}</div>
+                <div>{{ stagesHelp.upload.body }}</div>
+              </div>
+            </div>
+          </n-popover>
         </div>
+      </div>
 
+      <div :class="isDesktop ? 'max-w-[520px]' : ''">
         <n-steps
           :current="stepsCurrent"
           :status="stepsStatus"
@@ -347,72 +347,72 @@ function progressNumber(pct: number | null): number {
           <n-step :title="t('runs.progress.stages.packaging')" />
           <n-step :title="t('runs.progress.stages.upload')" />
         </n-steps>
+      </div>
 
-        <div v-if="currentStageHelp" class="space-y-1">
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-1.5 min-w-0">
-              <div class="text-sm font-medium truncate">{{ stageLabel(stageForLabel) }}</div>
-              <n-popover trigger="click" placement="top-start" :show-arrow="false">
-                <template #trigger>
-                  <n-button size="tiny" circle quaternary>
-                    <template #icon>
-                      <n-icon :component="HelpCircleOutline" :size="14" />
-                    </template>
-                  </n-button>
-                </template>
-                <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
-                  <div class="font-medium mb-1">{{ currentStageHelp.title }}</div>
-                  <div>{{ currentStageHelp.body }}</div>
-                </div>
-              </n-popover>
-            </div>
-            <div class="text-xs opacity-70">
-              <span v-if="currentStagePct != null">{{ Math.round(currentStagePct) }}%</span>
-              <span v-else>-</span>
-            </div>
+      <div v-if="currentStageHelp" class="space-y-1">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <div class="text-sm font-medium truncate">{{ stageLabel(stageForLabel) }}</div>
+            <n-popover trigger="click" placement="top-start" :show-arrow="false">
+              <template #trigger>
+                <n-button size="tiny" circle quaternary>
+                  <template #icon>
+                    <n-icon :component="HelpCircleOutline" :size="14" />
+                  </template>
+                </n-button>
+              </template>
+              <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
+                <div class="font-medium mb-1">{{ currentStageHelp.title }}</div>
+                <div>{{ currentStageHelp.body }}</div>
+              </div>
+            </n-popover>
           </div>
-          <n-progress
-            type="line"
-            :percentage="progressNumber(currentStagePct)"
-            :processing="currentStagePct == null"
-            :show-indicator="false"
-          />
+          <div class="text-xs opacity-70">
+            <span v-if="currentStagePct != null">{{ Math.round(currentStagePct) }}%</span>
+            <span v-else>-</span>
+          </div>
+        </div>
+        <n-progress
+          type="line"
+          :percentage="progressNumber(currentStagePct)"
+          :processing="currentStagePct == null"
+          :show-indicator="false"
+        />
+      </div>
+    </div>
+    <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+        <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.source.title') }}</div>
+        <div class="text-xs opacity-70 space-y-1">
+          <div>{{ t('runs.progress.source.files') }}: {{ sourceTotal?.files ?? '-' }}</div>
+          <div>{{ t('runs.progress.source.dirs') }}: {{ sourceTotal?.dirs ?? '-' }}</div>
+          <div>{{ t('runs.progress.source.bytes') }}: {{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</div>
         </div>
       </div>
-      <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-          <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.source.title') }}</div>
-          <div class="text-xs opacity-70 space-y-1">
-            <div>{{ t('runs.progress.source.files') }}: {{ sourceTotal?.files ?? '-' }}</div>
-            <div>{{ t('runs.progress.source.dirs') }}: {{ sourceTotal?.dirs ?? '-' }}</div>
-            <div>{{ t('runs.progress.source.bytes') }}: {{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</div>
+      <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+        <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.transfer.title') }}</div>
+        <div class="text-xs opacity-70 space-y-1">
+          <div>
+            {{ t('runs.progress.transfer.done') }}:
+            {{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}
           </div>
-        </div>
-
-        <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-          <div class="text-sm font-medium mb-1.5">{{ t('runs.progress.transfer.title') }}</div>
-          <div class="text-xs opacity-70 space-y-1">
-            <div>
-              {{ t('runs.progress.transfer.done') }}:
-              {{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}
-            </div>
-            <div>
-              {{ t('runs.progress.transfer.total') }}:
-              {{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}
-            </div>
-            <div>
-              {{ t('runs.progress.transfer.rate') }}:
-              {{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}
-            </div>
-            <div>
-              {{ t('runs.progress.transfer.eta') }}:
-              {{ formatEta(snapshot.eta_seconds) }}
-            </div>
+          <div>
+            {{ t('runs.progress.transfer.total') }}:
+            {{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}
+          </div>
+          <div>
+            {{ t('runs.progress.transfer.rate') }}:
+            {{ displayRateBps != null ? `${formatBytes(displayRateBps)}/s` : '-' }}
+          </div>
+          <div>
+            {{ t('runs.progress.transfer.eta') }}:
+            {{ formatEta(snapshot.eta_seconds) }}
           </div>
         </div>
       </div>
     </div>
-  </n-card>
+  </div>
 </template>

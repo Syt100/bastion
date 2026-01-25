@@ -544,20 +544,14 @@ onBeforeUnmount(() => {
 
     <n-spin v-if="loading" size="small" />
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-      <n-card
-        :title="t('runs.detail.overviewTitle')"
-        size="small"
-        class="app-card lg:col-span-7"
-        :bordered="false"
-        data-testid="run-detail-overview"
-      >
-        <div v-if="!run" class="text-sm opacity-70">-</div>
-        <div v-else class="space-y-2">
-          <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
-            {{ run.error }}
-          </n-alert>
+    <n-card :title="t('runs.detail.overviewTitle')" size="small" class="app-card" :bordered="false" data-testid="run-detail-summary">
+      <div v-if="!run" class="text-sm opacity-70">-</div>
+      <div v-else class="space-y-3">
+        <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
+          {{ run.error }}
+        </n-alert>
 
+        <div class="space-y-2" data-testid="run-detail-overview">
           <div class="flex flex-wrap items-center gap-2">
             <n-tag v-if="errorsTotal != null && errorsTotal > 0" size="small" type="error" :bordered="false">
               {{ t('runs.detail.errors', { count: errorsTotal }) }}
@@ -587,17 +581,24 @@ onBeforeUnmount(() => {
             <dd class="min-w-0">
               <div class="flex items-start gap-2 min-w-0">
                 <n-tag size="small" :bordered="false" class="shrink-0">{{ targetTypeLabel }}</n-tag>
-                <span class="flex-1 min-w-0 font-mono tabular-nums break-all whitespace-normal">{{ targetSummary.location ?? '-' }}</span>
+                <span class="flex-1 min-w-0 font-mono tabular-nums break-all whitespace-normal">
+                  {{ targetSummary.location ?? '-' }}
+                </span>
               </div>
             </dd>
           </dl>
         </div>
-      </n-card>
 
-      <div class="lg:col-span-5" data-testid="run-detail-progress">
-        <run-progress-panel :progress="run?.progress" :final-rate-bps="finalTransferRateBps" />
+        <div class="border-t border-black/5 dark:border-white/10" />
+
+        <div class="space-y-2" data-testid="run-detail-progress">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-medium">{{ t('runs.progress.title') }}</div>
+          </div>
+          <run-progress-panel :progress="run?.progress" :final-rate-bps="finalTransferRateBps" />
+        </div>
       </div>
-    </div>
+    </n-card>
 
     <n-card class="app-card" size="small" :bordered="false" data-testid="run-detail-details">
       <n-tabs v-model:value="detailTab" type="line" size="small" animated>
