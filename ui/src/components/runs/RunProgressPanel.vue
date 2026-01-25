@@ -552,17 +552,21 @@ function progressNumber(pct: number | null): number {
     </div>
     <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
 
-    <div class="grid grid-cols-1 gap-2">
-      <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
-        <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt class="opacity-70">{{ t('runs.progress.source.files') }}</dt>
-          <dd class="font-mono tabular-nums">{{ sourceTotal?.files ?? '-' }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.source.dirs') }}</dt>
-          <dd class="font-mono tabular-nums">{{ sourceTotal?.dirs ?? '-' }}</dd>
-          <dt class="opacity-70">{{ t('runs.progress.source.bytes') }}</dt>
-          <dd class="font-mono tabular-nums">{{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</dd>
-        </dl>
+    <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+      <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-xs">
+        <div class="flex items-center justify-between gap-2">
+          <span class="opacity-70">{{ t('runs.progress.source.files') }}</span>
+          <span class="font-mono tabular-nums">{{ sourceTotal?.files ?? '-' }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="opacity-70">{{ t('runs.progress.source.dirs') }}</span>
+          <span class="font-mono tabular-nums">{{ sourceTotal?.dirs ?? '-' }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 sm:col-span-2 md:col-span-1">
+          <span class="opacity-70">{{ t('runs.progress.source.bytes') }}</span>
+          <span class="font-mono tabular-nums">{{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</span>
+        </div>
       </div>
     </div>
   </div>
