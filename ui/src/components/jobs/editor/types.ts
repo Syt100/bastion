@@ -18,6 +18,10 @@ export type JobEditorField =
   | 'name'
   | 'scheduleTimezone'
   | 'schedule'
+  | 'retentionKeepLast'
+  | 'retentionKeepDays'
+  | 'retentionMaxDeletePerTick'
+  | 'retentionMaxDeletePerDay'
   | 'fsPaths'
   | 'sqlitePath'
   | 'vaultwardenDataDir'
@@ -63,6 +67,12 @@ export type JobEditorForm = {
   notifyMode: NotifyMode
   notifyWecomBots: string[]
   notifyEmails: string[]
+
+  retentionEnabled: boolean
+  retentionKeepLast: number | null
+  retentionKeepDays: number | null
+  retentionMaxDeletePerTick: number
+  retentionMaxDeletePerDay: number
 }
 
 export const JOB_EDITOR_STEPS_TOTAL = 6

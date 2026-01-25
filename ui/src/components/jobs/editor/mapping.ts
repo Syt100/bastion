@@ -37,6 +37,12 @@ function normalizeArtifactFormat(value: unknown): ArtifactFormat {
   return 'archive_v1'
 }
 
+function normalizeOptionalPositiveInt(value: number | null): number | null {
+  if (typeof value !== 'number') return null
+  const n = Math.floor(value)
+  return n > 0 ? n : null
+}
+
 export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
   const spec = job.spec as Record<string, unknown>
 
@@ -68,6 +74,15 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
 
   const notif = spec.notifications as Record<string, unknown> | undefined
   const notifyMode = typeof notif?.mode === 'string' && notif.mode === 'custom' ? 'custom' : 'inherit'
+
+  const retention = spec.retention as Record<string, unknown> | undefined
+  const retentionEnabled = typeof retention?.enabled === 'boolean' ? retention.enabled : false
+  const retentionKeepLast = typeof retention?.keep_last === 'number' ? retention.keep_last : null
+  const retentionKeepDays = typeof retention?.keep_days === 'number' ? retention.keep_days : null
+  const retentionMaxDeletePerTick =
+    typeof retention?.max_delete_per_tick === 'number' && retention.max_delete_per_tick > 0 ? retention.max_delete_per_tick : 50
+  const retentionMaxDeletePerDay =
+    typeof retention?.max_delete_per_day === 'number' && retention.max_delete_per_day > 0 ? retention.max_delete_per_day : 200
 
   const schedule = job.schedule ?? ''
   const scheduleTimezone = job.schedule_timezone || 'UTC'
@@ -109,6 +124,12 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     notifyMode,
     notifyWecomBots: parseStringArray(notif?.['wecom_bot']),
     notifyEmails: parseStringArray(notif?.['email']),
+
+    retentionEnabled,
+    retentionKeepLast,
+    retentionKeepDays,
+    retentionMaxDeletePerTick,
+    retentionMaxDeletePerDay,
   }
 }
 
@@ -164,6 +185,25 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
           part_size_bytes: partSizeBytes,
         } as const)
 
+  const retentionKeepLast = normalizeOptionalPositiveInt(form.retentionKeepLast)
+  const retentionKeepDays = normalizeOptionalPositiveInt(form.retentionKeepDays)
+  const retentionMaxDeletePerTick = Math.max(1, Math.floor(form.retentionMaxDeletePerTick || 1))
+  const retentionMaxDeletePerDay = Math.max(1, Math.floor(form.retentionMaxDeletePerDay || 1))
+  const retention = {
+    enabled: form.retentionEnabled,
+    keep_last: retentionKeepLast,
+    keep_days: retentionKeepDays,
+    max_delete_per_tick: retentionMaxDeletePerTick,
+    max_delete_per_day: retentionMaxDeletePerDay,
+  }
+
+  const includeRetention =
+    retention.enabled ||
+    retentionKeepLast !== null ||
+    retentionKeepDays !== null ||
+    retentionMaxDeletePerTick !== 50 ||
+    retentionMaxDeletePerDay !== 200
+
   return {
     name: form.name.trim(),
     agent_id: form.node === 'hub' ? null : form.node,
@@ -177,6 +217,7 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
       notifications,
       source,
       target,
+      ...(includeRetention ? { retention } : {}),
     },
   }
 }

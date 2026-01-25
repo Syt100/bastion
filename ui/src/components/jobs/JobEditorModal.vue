@@ -15,6 +15,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSystemStore } from '@/stores/system'
+import { useHubRuntimeConfigStore } from '@/stores/hubRuntimeConfig'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -50,6 +51,7 @@ const agents = useAgentsStore()
 const secrets = useSecretsStore()
 const notifications = useNotificationsStore()
 const system = useSystemStore()
+const hubRuntimeConfig = useHubRuntimeConfigStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
@@ -148,6 +150,21 @@ function openCreateWithContext(ctx?: { nodeId?: 'hub' | string }): void {
       // ignore
     }
     form.scheduleTimezone = system.hubTimezone || 'UTC'
+    try {
+      const cfg = await hubRuntimeConfig.get()
+      const r = cfg.saved.default_backup_retention
+      if (r) {
+        form.retentionEnabled = !!r.enabled
+        form.retentionKeepLast = typeof r.keep_last === 'number' ? r.keep_last : null
+        form.retentionKeepDays = typeof r.keep_days === 'number' ? r.keep_days : null
+        form.retentionMaxDeletePerTick =
+          typeof r.max_delete_per_tick === 'number' && r.max_delete_per_tick > 0 ? r.max_delete_per_tick : 50
+        form.retentionMaxDeletePerDay =
+          typeof r.max_delete_per_day === 'number' && r.max_delete_per_day > 0 ? r.max_delete_per_day : 200
+      }
+    } catch {
+      // ignore
+    }
     void notifications.refreshDestinations()
     show.value = true
   })()

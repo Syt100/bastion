@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { NButton, NDropdown, NFormItem, NInput, NInputNumber, NSelect, type DropdownOption } from 'naive-ui'
-import { computed, watch } from 'vue'
+import { NAlert, NButton, NDropdown, NFormItem, NInput, NInputNumber, NSelect, NSpin, NSwitch, useMessage, type DropdownOption } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+import { useJobsStore, type RetentionPreviewResponse } from '@/stores/jobs'
+import { useUiStore } from '@/stores/ui'
+import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { formatToastError } from '@/lib/errors'
 
 import { useJobEditorContext } from '../context'
 import { simpleScheduleToCron } from '../schedule'
@@ -15,8 +20,87 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
+const message = useMessage()
+const jobs = useJobsStore()
+const ui = useUiStore()
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const { form, fieldErrors, lockedNodeId, clearFieldError, onJobTypeChanged } = useJobEditorContext()
+
+const retentionPreview = ref<RetentionPreviewResponse | null>(null)
+const retentionLoading = ref<boolean>(false)
+const retentionApplying = ref<boolean>(false)
+const retentionError = ref<string | null>(null)
+
+function normalizeOptionalPositiveInt(value: number | null): number | null {
+  if (typeof value !== 'number') return null
+  const n = Math.floor(value)
+  return n > 0 ? n : null
+}
+
+function buildRetentionPayload() {
+  return {
+    enabled: !!form.retentionEnabled,
+    keep_last: normalizeOptionalPositiveInt(form.retentionKeepLast),
+    keep_days: normalizeOptionalPositiveInt(form.retentionKeepDays),
+    max_delete_per_tick: Math.max(1, Math.floor(form.retentionMaxDeletePerTick || 1)),
+    max_delete_per_day: Math.max(1, Math.floor(form.retentionMaxDeletePerDay || 1)),
+  }
+}
+
+async function previewRetention(): Promise<void> {
+  if (!form.id) {
+    message.info(t('jobs.retention.saveFirst'))
+    return
+  }
+  retentionLoading.value = true
+  retentionError.value = null
+  try {
+    retentionPreview.value = await jobs.previewJobRetention(form.id, buildRetentionPayload())
+  } catch (error) {
+    retentionError.value = String(error)
+    message.error(formatToastError(t('errors.previewRetentionFailed'), error, t))
+  } finally {
+    retentionLoading.value = false
+  }
+}
+
+async function applyRetention(): Promise<void> {
+  if (!form.id) {
+    message.info(t('jobs.retention.saveFirst'))
+    return
+  }
+  if (!form.retentionEnabled) {
+    message.warning(t('jobs.retention.enableFirst'))
+    return
+  }
+  retentionApplying.value = true
+  retentionError.value = null
+  try {
+    const resp = await jobs.applyJobRetention(form.id, buildRetentionPayload())
+    message.success(t('jobs.retention.applyOk', { n: resp.enqueued.length, skipped: resp.skipped_due_to_limits }))
+    await previewRetention()
+  } catch (error) {
+    retentionError.value = String(error)
+    message.error(formatToastError(t('errors.applyRetentionFailed'), error, t))
+  } finally {
+    retentionApplying.value = false
+  }
+}
+
+watch(
+  () => [
+    form.retentionEnabled,
+    form.retentionKeepLast,
+    form.retentionKeepDays,
+    form.retentionMaxDeletePerTick,
+    form.retentionMaxDeletePerDay,
+  ],
+  () => {
+    retentionPreview.value = null
+    retentionError.value = null
+  },
+)
 
 function listTimezones(): string[] {
   const api = Intl as unknown as { supportedValuesOf?: (kind: string) => unknown }
@@ -255,6 +339,129 @@ watch(
           </n-form-item>
         </div>
       </template>
+    </div>
+
+    <div class="space-y-3 app-border-subtle rounded-lg p-3 app-glass-soft">
+      <div class="flex items-center justify-between gap-3">
+        <div class="text-sm font-medium">{{ t('jobs.retention.title') }}</div>
+        <n-switch v-model:value="form.retentionEnabled" />
+      </div>
+
+      <div class="text-xs opacity-70">
+        {{ t('jobs.retention.help') }}
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+        <div data-field="retentionKeepLast">
+          <n-form-item
+            :label="t('jobs.retention.keepLast')"
+            :validation-status="fieldErrors.retentionKeepLast ? 'error' : undefined"
+            :feedback="fieldErrors.retentionKeepLast || undefined"
+          >
+            <n-input-number
+              v-model:value="form.retentionKeepLast"
+              :min="0"
+              class="w-full"
+              @update:value="clearFieldError('retentionKeepLast')"
+            />
+          </n-form-item>
+        </div>
+        <div data-field="retentionKeepDays">
+          <n-form-item
+            :label="t('jobs.retention.keepDays')"
+            :validation-status="fieldErrors.retentionKeepDays ? 'error' : undefined"
+            :feedback="fieldErrors.retentionKeepDays || undefined"
+          >
+            <n-input-number
+              v-model:value="form.retentionKeepDays"
+              :min="0"
+              class="w-full"
+              @update:value="clearFieldError('retentionKeepDays')"
+            />
+          </n-form-item>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+        <div data-field="retentionMaxDeletePerTick">
+          <n-form-item
+            :label="t('jobs.retention.maxDeletePerTick')"
+            :validation-status="fieldErrors.retentionMaxDeletePerTick ? 'error' : undefined"
+            :feedback="fieldErrors.retentionMaxDeletePerTick || undefined"
+          >
+            <n-input-number
+              v-model:value="form.retentionMaxDeletePerTick"
+              :min="1"
+              class="w-full"
+              @update:value="clearFieldError('retentionMaxDeletePerTick')"
+            />
+          </n-form-item>
+        </div>
+        <div data-field="retentionMaxDeletePerDay">
+          <n-form-item
+            :label="t('jobs.retention.maxDeletePerDay')"
+            :validation-status="fieldErrors.retentionMaxDeletePerDay ? 'error' : undefined"
+            :feedback="fieldErrors.retentionMaxDeletePerDay || undefined"
+          >
+            <n-input-number
+              v-model:value="form.retentionMaxDeletePerDay"
+              :min="1"
+              class="w-full"
+              @update:value="clearFieldError('retentionMaxDeletePerDay')"
+            />
+          </n-form-item>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <n-button size="small" secondary :loading="retentionLoading" :disabled="!form.id" @click="previewRetention">
+          {{ t('jobs.retention.preview') }}
+        </n-button>
+        <n-button
+          size="small"
+          type="primary"
+          :loading="retentionApplying"
+          :disabled="!form.id || !form.retentionEnabled"
+          @click="applyRetention"
+        >
+          {{ t('jobs.retention.applyNow') }}
+        </n-button>
+        <div v-if="!form.id" class="text-xs opacity-70">{{ t('jobs.retention.previewDisabledUntilSaved') }}</div>
+      </div>
+
+      <n-alert v-if="retentionError" type="error" :bordered="false">
+        {{ retentionError }}
+      </n-alert>
+
+      <div v-if="retentionLoading" class="flex justify-center py-2">
+        <n-spin size="small" />
+      </div>
+
+      <div v-else-if="retentionPreview" class="space-y-2">
+        <div class="text-sm">
+          {{ t('jobs.retention.previewSummary', { keep: retentionPreview.keep_total, del: retentionPreview.delete_total }) }}
+          <span v-if="retentionPreview.result_truncated" class="text-xs opacity-70 ml-2">
+            {{ t('jobs.retention.previewTruncated') }}
+          </span>
+        </div>
+
+        <div v-if="retentionPreview.delete_total === 0" class="text-xs opacity-70">
+          {{ t('jobs.retention.previewNoDeletes') }}
+        </div>
+        <div v-else class="app-border-subtle rounded-md p-2">
+          <div class="text-xs opacity-70 mb-1">{{ t('jobs.retention.deleteList') }}</div>
+          <div class="space-y-1">
+            <div
+              v-for="it in retentionPreview.delete.slice(0, 8)"
+              :key="it.run_id"
+              class="text-xs flex items-start justify-between gap-2"
+            >
+              <div class="break-all">{{ it.run_id }}</div>
+              <div class="opacity-70 shrink-0">{{ formatUnixSeconds(it.ended_at) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

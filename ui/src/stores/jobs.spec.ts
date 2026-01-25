@@ -107,4 +107,53 @@ describe('useJobsStore', () => {
       expect.objectContaining({ credentials: 'include' }),
     )
   })
+
+  it('previews retention without CSRF', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          retention: { enabled: true, keep_last: 1 },
+          keep_total: 1,
+          delete_total: 0,
+          keep: [],
+          delete: [],
+          scan_truncated: false,
+          result_truncated: false,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = useJobsStore()
+    await jobs.previewJobRetention('j1', { enabled: true, keep_last: 1 })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual(expect.objectContaining({ 'Content-Type': 'application/json' }))
+    expect(init.body).toBe(JSON.stringify({ retention: { enabled: true, keep_last: 1 } }))
+  })
+
+  it('applies retention with CSRF header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ enqueued: ['r1'], skipped_due_to_limits: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-123'
+
+    const jobs = useJobsStore()
+    await jobs.applyJobRetention('j1', { enabled: true, keep_last: 1 })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(init.method).toBe('POST')
+    expect(headers['X-CSRF-Token']).toBe('csrf-123')
+    expect(headers['Content-Type']).toBe('application/json')
+  })
 })

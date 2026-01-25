@@ -20,6 +20,10 @@ export function stepForJobEditorField(field: JobEditorField): number {
     case 'name':
     case 'scheduleTimezone':
     case 'schedule':
+    case 'retentionKeepLast':
+    case 'retentionKeepDays':
+    case 'retentionMaxDeletePerTick':
+    case 'retentionMaxDeletePerDay':
       return 1
     case 'fsPaths':
     case 'sqlitePath':
@@ -51,6 +55,21 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
     if (!cronLooksValid(form.schedule)) {
       issues.push({ field: 'schedule', message: t('errors.invalidCron') })
     }
+
+    if (form.retentionEnabled) {
+      const keepLast = typeof form.retentionKeepLast === 'number' ? Math.floor(form.retentionKeepLast) : 0
+      const keepDays = typeof form.retentionKeepDays === 'number' ? Math.floor(form.retentionKeepDays) : 0
+      if (keepLast <= 0 && keepDays <= 0) {
+        issues.push({ field: 'retentionKeepLast', message: t('errors.retentionRuleRequired') })
+      }
+      if (!Number.isFinite(form.retentionMaxDeletePerTick) || form.retentionMaxDeletePerTick <= 0) {
+        issues.push({ field: 'retentionMaxDeletePerTick', message: t('errors.retentionLimitInvalid') })
+      }
+      if (!Number.isFinite(form.retentionMaxDeletePerDay) || form.retentionMaxDeletePerDay <= 0) {
+        issues.push({ field: 'retentionMaxDeletePerDay', message: t('errors.retentionLimitInvalid') })
+      }
+    }
+
     return issues
   }
 

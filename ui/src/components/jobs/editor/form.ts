@@ -37,6 +37,11 @@ export function createInitialJobEditorForm(): JobEditorForm {
     notifyMode: 'inherit',
     notifyWecomBots: [],
     notifyEmails: [],
+    retentionEnabled: false,
+    retentionKeepLast: null,
+    retentionKeepDays: null,
+    retentionMaxDeletePerTick: 50,
+    retentionMaxDeletePerDay: 200,
   }
 }
 
@@ -49,6 +54,10 @@ export function createInitialJobEditorFieldErrors(): Record<JobEditorField, stri
     name: null,
     scheduleTimezone: null,
     schedule: null,
+    retentionKeepLast: null,
+    retentionKeepDays: null,
+    retentionMaxDeletePerTick: null,
+    retentionMaxDeletePerDay: null,
     fsPaths: null,
     sqlitePath: null,
     vaultwardenDataDir: null,

@@ -136,6 +136,38 @@ export type ListJobSnapshotsResponse = {
   next_cursor?: number | null
 }
 
+export type RetentionPolicy = {
+  enabled: boolean
+  keep_last?: number | null
+  keep_days?: number | null
+  max_delete_per_tick?: number
+  max_delete_per_day?: number
+}
+
+export type RetentionPreviewItem = {
+  run_id: string
+  ended_at: number
+  pinned: boolean
+  source_bytes?: number | null
+  transfer_bytes?: number | null
+  reasons: string[]
+}
+
+export type RetentionPreviewResponse = {
+  retention: RetentionPolicy
+  keep_total: number
+  delete_total: number
+  keep: RetentionPreviewItem[]
+  delete: RetentionPreviewItem[]
+  scan_truncated: boolean
+  result_truncated: boolean
+}
+
+export type RetentionApplyResponse = {
+  enqueued: string[]
+  skipped_due_to_limits: number
+}
+
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
@@ -242,6 +274,43 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`)
   }
 
+  async function getJobRetention(jobId: string): Promise<RetentionPolicy> {
+    return await apiFetch<RetentionPolicy>(`/api/jobs/${encodeURIComponent(jobId)}/retention`)
+  }
+
+  async function putJobRetention(jobId: string, retention: RetentionPolicy): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/retention`, {
+      method: 'PUT',
+      expectedStatus: 204,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify(retention),
+    })
+  }
+
+  async function previewJobRetention(jobId: string, retention: RetentionPolicy): Promise<RetentionPreviewResponse> {
+    return await apiFetch<RetentionPreviewResponse>(`/api/jobs/${encodeURIComponent(jobId)}/retention/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ retention }),
+    })
+  }
+
+  async function applyJobRetention(jobId: string, retention: RetentionPolicy): Promise<RetentionApplyResponse> {
+    const csrf = await ensureCsrfToken()
+    return await apiFetch<RetentionApplyResponse>(`/api/jobs/${encodeURIComponent(jobId)}/retention/apply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      body: JSON.stringify({ retention }),
+    })
+  }
+
   async function deleteJobSnapshot(jobId: string, runId: string, opts?: { force?: boolean }): Promise<void> {
     const csrf = await ensureCsrfToken()
     const q = new URLSearchParams()
@@ -330,6 +399,10 @@ export const useJobsStore = defineStore('jobs', () => {
     listRunEvents,
     getRun,
     listJobSnapshots,
+    getJobRetention,
+    putJobRetention,
+    previewJobRetention,
+    applyJobRetention,
     deleteJobSnapshot,
     deleteJobSnapshotsBulk,
     pinJobSnapshot,

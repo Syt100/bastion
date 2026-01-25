@@ -180,6 +180,13 @@ vi.mock('@/stores/system', () => ({
   useSystemStore: () => systemApi,
 }))
 
+const hubRuntimeConfigApi = {
+  get: vi.fn().mockResolvedValue({ saved: { default_backup_retention: null } }),
+}
+vi.mock('@/stores/hubRuntimeConfig', () => ({
+  useHubRuntimeConfigStore: () => hubRuntimeConfigApi,
+}))
+
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({ locale: 'zh-CN' }),
 }))
