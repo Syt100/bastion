@@ -870,14 +870,21 @@ const messages = {
   runEvents: {
     title: '运行事件',
     noEvents: '暂无事件',
+    filters: {
+      level: '级别',
+      kind: '类型',
+    },
     badges: {
       newCount: '新消息 {count}',
     },
     actions: {
       follow: '跟随',
       latest: '最新',
+      firstError: '首个错误',
+      firstWarn: '首个警告',
       details: '详情',
       reconnect: '重新连接',
+      export: '导出 JSON',
     },
     details: {
       title: '事件详情',

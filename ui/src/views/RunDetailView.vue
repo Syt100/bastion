@@ -197,6 +197,14 @@ function openVerify(): void {
   verifyModal.value?.open(id)
 }
 
+function reconnectEventsWs(): void {
+  const id = runId.value
+  if (!id) return
+  reconnectAttempts = 0
+  allowReconnect = true
+  connectWs(id, lastSeq, true)
+}
+
 async function copyRunId(): Promise<void> {
   const id = runId.value
   if (!id) return
@@ -257,11 +265,13 @@ onBeforeUnmount(() => {
       </div>
 
       <run-detail-details-tabs
+        :run-id="runId"
         :events="events"
         :ops="ops"
         :ws-status="wsStatus"
         :summary="run?.summary ?? null"
         @open-operation="openOperation"
+        @reconnect="reconnectEventsWs"
       />
     </div>
 

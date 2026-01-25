@@ -1,6 +1,22 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
-import { NButton, NCard, NCode, NDataTable, NDrawer, NDrawerContent, NModal, NSpace, NTabs, NTabPane, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import {
+  NButton,
+  NCard,
+  NCode,
+  NDataTable,
+  NDrawer,
+  NDrawerContent,
+  NInput,
+  NModal,
+  NSelect,
+  NSpace,
+  NTabs,
+  NTabPane,
+  NTag,
+  useMessage,
+  type DataTableColumns,
+} from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { MQ } from '@/lib/breakpoints'
@@ -8,6 +24,7 @@ import { copyText } from '@/lib/clipboard'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
+import { filterRunEvents, findFirstEventSeq, uniqueRunEventKinds } from '@/lib/run_events'
 import { runTargetTypeLabel } from '@/lib/runs'
 import { parseRunSummary } from '@/lib/run_summary'
 import { useUiStore } from '@/stores/ui'
@@ -17,6 +34,7 @@ import type { Operation } from '@/stores/operations'
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
 const props = defineProps<{
+  runId?: string | null | undefined
   events: RunEvent[]
   ops: Operation[]
   wsStatus: WsStatus
@@ -25,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'open-operation', opId: string): void
+  (e: 'reconnect'): void
 }>()
 
 const { t } = useI18n()
@@ -35,6 +54,22 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const detailTab = ref<'events' | 'operations' | 'summary'>('events')
+
+const searchQuery = ref<string>('')
+const levelFilter = ref<string | null>(null)
+const kindFilter = ref<string | null>(null)
+
+const kindOptions = computed(() =>
+  uniqueRunEventKinds(props.events).map((k) => ({ label: k, value: k })),
+)
+
+const filteredEvents = computed(() =>
+  filterRunEvents(props.events, {
+    query: searchQuery.value,
+    level: levelFilter.value,
+    kind: kindFilter.value,
+  }),
+)
 
 function opStatusTagType(status: Operation['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
@@ -122,12 +157,58 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
 const parsedSummary = computed(() => parseRunSummary(props.summary))
 const targetTypeLabel = computed(() => runTargetTypeLabel(t, parsedSummary.value.targetType))
 
+const eventsListEl = ref<HTMLDivElement | null>(null)
+
+function scrollToSeq(seq: number): void {
+  const root = eventsListEl.value
+  if (!root) return
+  const el = root.querySelector<HTMLElement>(`[data-event-seq=\"${seq}\"]`)
+  if (!el) return
+  el.scrollIntoView({ block: 'nearest' })
+}
+
+function jumpToFirstError(): void {
+  const seq = findFirstEventSeq(filteredEvents.value, (e) => e.level === 'error')
+  if (seq != null) scrollToSeq(seq)
+}
+
+function jumpToFirstWarn(): void {
+  const seq = findFirstEventSeq(filteredEvents.value, (e) => e.level === 'warn' || e.level === 'warning')
+  if (seq != null) scrollToSeq(seq)
+}
+
+function jumpToLatest(): void {
+  const list = filteredEvents.value
+  const last = list.length > 0 ? list[list.length - 1] : null
+  if (last) scrollToSeq(last.seq)
+}
+
+function exportFilteredEvents(): void {
+  const runId = props.runId?.trim() || 'run'
+  const filename = `${runId}-events.json`
+  const payload = JSON.stringify(filteredEvents.value, null, 2)
+
+  const blob = new Blob([payload], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
 const eventDetailShow = ref<boolean>(false)
 const eventDetail = ref<RunEvent | null>(null)
 
 function openEventDetails(e: RunEvent): void {
   eventDetail.value = e
   eventDetailShow.value = true
+}
+
+async function copyEventJson(e: RunEvent): Promise<void> {
+  const ok = await copyText(formatJson(e))
+  if (ok) message.success(t('messages.copied'))
+  else message.error(t('errors.copyFailed'))
 }
 </script>
 
@@ -147,21 +228,53 @@ function openEventDetails(e: RunEvent): void {
             <n-tag size="small" :type="wsStatusTagType(wsStatus)" :bordered="false">
               {{ t(`runEvents.ws.${wsStatus}`) }}
             </n-tag>
-            <span class="text-xs opacity-70">{{ events.length }} events</span>
+            <span class="text-xs opacity-70">{{ filteredEvents.length }} / {{ events.length }} events</span>
+            <n-button
+              v-if="wsStatus === 'disconnected' || wsStatus === 'error'"
+              size="tiny"
+              quaternary
+              @click="emit('reconnect')"
+            >
+              {{ t('runEvents.actions.reconnect') }}
+            </n-button>
           </div>
         </div>
 
-        <div v-if="events.length === 0" class="mt-3 text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="min-w-[12rem] flex-1" />
+          <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
+            { label: 'error', value: 'error' },
+            { label: 'warn', value: 'warn' },
+            { label: 'info', value: 'info' },
+          ]" class="w-[10rem]" />
+          <n-select v-model:value="kindFilter" size="small" clearable filterable :placeholder="t('runEvents.filters.kind')" :options="kindOptions" class="w-[14rem]" />
+          <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
+            {{ t('runEvents.actions.firstError') }}
+          </n-button>
+          <n-button size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
+            {{ t('runEvents.actions.firstWarn') }}
+          </n-button>
+          <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
+            {{ t('runEvents.actions.latest') }}
+          </n-button>
+          <n-button size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
+            {{ t('runEvents.actions.export') }}
+          </n-button>
+        </div>
+
+        <div v-if="filteredEvents.length === 0" class="mt-3 text-sm opacity-70">{{ t('common.noData') }}</div>
 
         <div
           v-else
           data-testid="run-detail-events-list"
           class="mt-3 max-h-[60vh] overflow-auto rounded-md app-border-subtle divide-y divide-black/5 dark:divide-white/10"
+          ref="eventsListEl"
         >
           <button
-            v-for="item in events"
+            v-for="item in filteredEvents"
             :key="item.seq"
             type="button"
+            :data-event-seq="item.seq"
             class="w-full text-left px-3 py-2 flex items-center gap-2 transition hover:bg-black/5 dark:hover:bg-white/5"
             @click="openEventDetails(item)"
           >
@@ -171,7 +284,7 @@ function openEventDetails(e: RunEvent): void {
             <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)" :bordered="false">
               <span class="block w-full truncate text-center">{{ item.level }}</span>
             </n-tag>
-            <span class="min-w-0 flex-1 truncate text-sm">{{ item.message }}</span>
+            <span class="min-w-0 flex-1 truncate text-sm" :title="item.message">{{ item.message }}</span>
             <span v-if="item.kind && item.kind !== item.message" class="shrink-0 max-w-[12rem] truncate text-xs opacity-70 font-mono">
               {{ item.kind }}
             </span>
@@ -259,6 +372,7 @@ function openEventDetails(e: RunEvent): void {
         <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
         <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
         <span class="opacity-70">{{ eventDetail.kind }}</span>
+        <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
       </div>
       <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
       <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
@@ -275,6 +389,7 @@ function openEventDetails(e: RunEvent): void {
           <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
           <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
           <span class="opacity-70">{{ eventDetail.kind }}</span>
+          <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
         </div>
         <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
         <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
@@ -282,4 +397,3 @@ function openEventDetails(e: RunEvent): void {
     </n-drawer-content>
   </n-drawer>
 </template>
-

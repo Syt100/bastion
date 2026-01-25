@@ -871,14 +871,21 @@ const messages = {
   runEvents: {
     title: 'Run events',
     noEvents: 'No events yet',
+    filters: {
+      level: 'Level',
+      kind: 'Kind',
+    },
     badges: {
       newCount: 'New {count}',
     },
     actions: {
       follow: 'Follow',
       latest: 'Latest',
+      firstError: 'First error',
+      firstWarn: 'First warn',
       details: 'Details',
       reconnect: 'Reconnect',
+      export: 'Export JSON',
     },
     details: {
       title: 'Event details',
