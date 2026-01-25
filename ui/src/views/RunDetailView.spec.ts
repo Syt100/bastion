@@ -183,6 +183,9 @@ describe('RunDetailView visual polish', () => {
     await flush()
 
     expect(wrapper.find('[data-testid="run-detail"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="run-detail-layout"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="run-detail-summary"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="run-detail-details"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="run-detail-overview"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('success')
     expect(wrapper.text()).toContain('r1')
