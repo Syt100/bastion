@@ -283,6 +283,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/jobs/{id}/unarchive", post(jobs::unarchive_job))
         .route("/api/jobs/{id}/run", post(jobs::trigger_job_run))
         .route("/api/jobs/{id}/runs", get(jobs::list_job_runs))
+        .route(
+            "/api/jobs/{id}/retention",
+            get(jobs::get_job_retention).put(jobs::put_job_retention),
+        )
+        .route(
+            "/api/jobs/{id}/retention/preview",
+            post(jobs::preview_job_retention),
+        )
+        .route(
+            "/api/jobs/{id}/retention/apply",
+            post(jobs::apply_job_retention),
+        )
         .route("/api/jobs/{id}/snapshots", get(jobs::list_job_snapshots))
         .route(
             "/api/jobs/{id}/snapshots/{run_id}",
@@ -428,3 +440,6 @@ mod snapshots_tests;
 
 #[cfg(test)]
 mod jobs_archive_tests;
+
+#[cfg(test)]
+mod retention_tests;

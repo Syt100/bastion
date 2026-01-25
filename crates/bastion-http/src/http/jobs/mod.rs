@@ -1,4 +1,5 @@
 mod crud;
+mod retention;
 mod runs;
 mod snapshots;
 mod validation;
@@ -6,6 +7,9 @@ mod ws;
 
 pub(super) use crud::{archive_job, unarchive_job};
 pub(super) use crud::{create_job, delete_job, get_job, list_jobs, update_job};
+pub(super) use retention::{
+    apply_job_retention, get_job_retention, preview_job_retention, put_job_retention,
+};
 pub(super) use runs::{list_job_runs, list_run_events, trigger_job_run};
 pub(super) use snapshots::{
     delete_job_snapshot, delete_job_snapshots_bulk, get_job_snapshot,
