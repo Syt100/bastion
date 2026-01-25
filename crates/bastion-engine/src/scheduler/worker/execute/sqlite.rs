@@ -185,6 +185,7 @@ pub(super) async fn execute_sqlite_run(
 
     Ok(serde_json::json!({
         "target": target_summary,
+        "artifact_format": pipeline.format,
         "entries_count": build.artifacts.entries_count,
         "parts": build.artifacts.parts.len(),
         "sqlite": {

@@ -68,6 +68,32 @@ export type RunDetail = {
   error: string | null
 }
 
+export type SnapshotStatus = 'present' | 'deleting' | 'deleted' | 'missing' | 'error'
+
+export type RunArtifact = {
+  run_id: string
+  job_id: string
+  node_id: string
+  target_type: string
+  target_snapshot: unknown
+  artifact_format: string
+  status: SnapshotStatus | string
+  started_at: number
+  ended_at: number
+  source_files?: number | null
+  source_dirs?: number | null
+  source_bytes?: number | null
+  transfer_bytes?: number | null
+  last_error_kind?: string | null
+  last_error?: string | null
+  last_attempt_at?: number | null
+}
+
+export type ListJobSnapshotsResponse = {
+  items: RunArtifact[]
+  next_cursor?: number | null
+}
+
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
@@ -159,6 +185,18 @@ export const useJobsStore = defineStore('jobs', () => {
     return await apiFetch<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`)
   }
 
+  async function listJobSnapshots(
+    jobId: string,
+    params?: { cursor?: number; limit?: number; status?: string },
+  ): Promise<ListJobSnapshotsResponse> {
+    const q = new URLSearchParams()
+    if (params?.cursor !== undefined) q.set('cursor', String(params.cursor))
+    if (params?.limit !== undefined) q.set('limit', String(params.limit))
+    if (params?.status) q.set('status', params.status)
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`)
+  }
+
   return {
     items,
     loading,
@@ -173,5 +211,6 @@ export const useJobsStore = defineStore('jobs', () => {
     listRuns,
     listRunEvents,
     getRun,
+    listJobSnapshots,
   }
 })

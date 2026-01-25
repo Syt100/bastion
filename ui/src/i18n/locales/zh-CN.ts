@@ -392,6 +392,7 @@ const messages = {
       create: '创建任务',
       runNow: '立即运行',
       runs: '运行记录',
+      snapshots: '备份数据',
       deploy: '部署到节点',
       archive: '归档',
       unarchive: '取消归档',
@@ -785,6 +786,38 @@ const messages = {
       },
     },
   },
+  snapshots: {
+    title: '备份数据',
+    subtitle: '查看任务的历史备份数据',
+    subtitlePrefix: '任务',
+    targets: {
+      localDir: '本地目录',
+      webdav: 'WebDAV',
+    },
+    status: {
+      present: '可用',
+      deleting: '删除中',
+      deleted: '已删除',
+      missing: '缺失',
+      error: '错误',
+    },
+    columns: {
+      endedAt: '时间',
+      status: '状态',
+      format: '格式',
+      target: '目标',
+      source: '源数据',
+      transfer: '传输',
+      actions: '操作',
+    },
+    actions: {
+      viewRun: '查看运行记录',
+    },
+    units: {
+      files: '个文件',
+      dirs: '个目录',
+    },
+  },
   runs: {
     title: '运行记录',
     statuses: {
@@ -1053,6 +1086,7 @@ const messages = {
     unarchiveJobFailed: '取消归档失败',
     runNowFailed: '触发运行失败',
     fetchRunsFailed: '获取运行记录失败',
+    fetchSnapshotsFailed: '获取备份数据失败',
     formInvalid: '请完善必填项',
     invalidCron: 'Cron 表达式格式不正确',
     cronRequired: 'Cron 计划不能为空',

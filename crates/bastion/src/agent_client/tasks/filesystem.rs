@@ -129,6 +129,7 @@ pub(super) async fn run_filesystem_backup(
     let error_policy = source.error_policy;
     let encryption = super::payload_encryption(pipeline.encryption);
     let artifact_format = pipeline.format;
+    let artifact_format_for_summary = artifact_format.clone();
     let started_at = ctx.started_at;
 
     let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
@@ -320,6 +321,7 @@ pub(super) async fn run_filesystem_backup(
 
     let mut summary = serde_json::json!({
         "target": target_summary,
+        "artifact_format": artifact_format_for_summary,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
         "filesystem": {

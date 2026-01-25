@@ -33,6 +33,7 @@ use bastion_storage::agent_tasks_repo;
 use bastion_storage::agents_repo;
 use bastion_storage::jobs_repo;
 use bastion_storage::operations_repo;
+use bastion_storage::run_artifacts_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
@@ -279,6 +280,13 @@ async fn handle_agent_socket(
                                 err_code,
                             )
                             .await;
+                            if run_status == runs_repo::RunStatus::Success {
+                                let _ = run_artifacts_repo::upsert_run_artifact_from_successful_run(
+                                    &db,
+                                    &run_id,
+                                )
+                                .await;
+                            }
                             let _ = run_events::append_and_broadcast(
                                 &db,
                                 &run_events_bus,

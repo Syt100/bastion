@@ -240,6 +240,7 @@ pub(super) async fn run_sqlite_backup(
 
     Ok(serde_json::json!({
         "target": target_summary,
+        "artifact_format": artifact_format_for_totals,
         "entries_count": build.artifacts.entries_count,
         "parts": build.artifacts.parts.len(),
         "sqlite": {

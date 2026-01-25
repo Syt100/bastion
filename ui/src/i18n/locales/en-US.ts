@@ -392,6 +392,7 @@ const messages = {
       create: 'Create job',
       runNow: 'Run now',
       runs: 'Runs',
+      snapshots: 'Snapshots',
       deploy: 'Deploy to nodes',
       archive: 'Archive',
       unarchive: 'Unarchive',
@@ -786,6 +787,38 @@ const messages = {
       },
     },
   },
+  snapshots: {
+    title: 'Snapshots',
+    subtitle: 'Browse historical backup snapshots for this job',
+    subtitlePrefix: 'Job',
+    targets: {
+      localDir: 'Local dir',
+      webdav: 'WebDAV',
+    },
+    status: {
+      present: 'Present',
+      deleting: 'Deleting',
+      deleted: 'Deleted',
+      missing: 'Missing',
+      error: 'Error',
+    },
+    columns: {
+      endedAt: 'Time',
+      status: 'Status',
+      format: 'Format',
+      target: 'Target',
+      source: 'Source',
+      transfer: 'Transfer',
+      actions: 'Actions',
+    },
+    actions: {
+      viewRun: 'View run',
+    },
+    units: {
+      files: ' files',
+      dirs: ' dirs',
+    },
+  },
   runs: {
     title: 'Runs',
     statuses: {
@@ -1054,6 +1087,7 @@ const messages = {
     unarchiveJobFailed: 'Failed to unarchive job',
     runNowFailed: 'Failed to trigger run',
     fetchRunsFailed: 'Failed to fetch runs',
+    fetchSnapshotsFailed: 'Failed to fetch snapshots',
     formInvalid: 'Please fill required fields',
     invalidCron: 'Invalid cron expression',
     cronRequired: 'Cron schedule is required',

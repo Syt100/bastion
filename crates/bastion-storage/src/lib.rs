@@ -11,6 +11,7 @@ pub mod notification_destinations_repo;
 pub mod notifications_repo;
 pub mod notifications_settings_repo;
 pub mod operations_repo;
+pub mod run_artifacts_repo;
 pub mod runs_repo;
 pub mod secrets;
 pub mod secrets_repo;

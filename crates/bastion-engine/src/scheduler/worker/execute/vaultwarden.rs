@@ -162,6 +162,7 @@ pub(super) async fn execute_vaultwarden_run(
 
     Ok(serde_json::json!({
         "target": target_summary,
+        "artifact_format": pipeline.format,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
         "vaultwarden": {

@@ -150,6 +150,10 @@ function openRunDetail(runId: string): void {
   void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/runs/${encodeURIComponent(runId)}`)
 }
 
+function openSnapshots(jobId: string): void {
+  void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(jobId)}/snapshots`)
+}
+
 function openRestoreWizard(runId: string): void {
   restoreModal.value?.open(runId, { defaultNodeId: nodeIdOrHub.value })
 }
@@ -272,6 +276,11 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
               ),
               h(
                 NButton,
+                { size: 'small', onClick: () => openSnapshots(row.id) },
+                { default: () => t('jobs.actions.snapshots') },
+              ),
+              h(
+                NButton,
                 { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
                 { default: () => t('common.edit') },
               ),
@@ -383,6 +392,7 @@ watch(showArchived, () => {
           <div class="flex flex-wrap justify-end gap-2">
             <n-button size="small" type="primary" :disabled="!!job.archived_at" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
             <n-button size="small" @click="openRuns(job.id)">{{ t('jobs.actions.runs') }}</n-button>
+            <n-button size="small" @click="openSnapshots(job.id)">{{ t('jobs.actions.snapshots') }}</n-button>
             <n-button size="small" :disabled="!!job.archived_at" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
             <n-button size="small" :disabled="!!job.archived_at" @click="openDeploy(job.id)">{{ t('jobs.actions.deploy') }}</n-button>
             <n-button v-if="job.archived_at" size="small" @click="unarchiveJob(job.id)">{{ t('jobs.actions.unarchive') }}</n-button>

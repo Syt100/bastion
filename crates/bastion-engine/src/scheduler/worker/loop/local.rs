@@ -4,6 +4,7 @@ use tracing::{debug, info, warn};
 use bastion_core::job_spec;
 use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::jobs_repo;
+use bastion_storage::run_artifacts_repo;
 use bastion_storage::runs_repo::{self, RunStatus};
 
 use crate::run_events;
@@ -40,6 +41,11 @@ pub(super) async fn execute_and_complete(
             {
                 warn!(run_id = %run.id, error = %error, "failed to complete run");
                 return;
+            }
+            if let Err(error) =
+                run_artifacts_repo::upsert_run_artifact_from_successful_run(ctx.db, &run.id).await
+            {
+                warn!(run_id = %run.id, error = %error, "failed to index run artifact");
             }
             let _ = run_events::append_and_broadcast(
                 ctx.db,

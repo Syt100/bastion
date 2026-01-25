@@ -228,6 +228,7 @@ pub(super) async fn execute_filesystem_run(
 
     let summary = serde_json::json!({
         "target": target_summary,
+        "artifact_format": pipeline.format,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
         "filesystem": {
