@@ -14,6 +14,7 @@ mod cron;
 mod incomplete_cleanup;
 mod queue;
 mod retention;
+mod snapshot_retention;
 mod target_snapshot;
 mod worker;
 
@@ -75,6 +76,12 @@ pub fn spawn(args: SchedulerArgs) {
     tokio::spawn(retention::run_retention_loop(
         db.clone(),
         run_retention_days,
+        shutdown.clone(),
+    ));
+
+    tokio::spawn(snapshot_retention::run_snapshot_retention_loop(
+        db.clone(),
+        artifact_delete_notify.clone(),
         shutdown.clone(),
     ));
 
