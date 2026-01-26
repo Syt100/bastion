@@ -78,7 +78,9 @@ async function applyRetention(): Promise<void> {
   retentionError.value = null
   try {
     const resp = await jobs.applyJobRetention(form.id, buildRetentionPayload())
-    message.success(t('jobs.retention.applyOk', { n: resp.enqueued.length, skipped: resp.skipped_due_to_limits }))
+    message.success(
+      t('jobs.retention.applyOk', { n: resp.enqueued.length, existing: resp.already_exists, skipped: resp.skipped_due_to_limits }),
+    )
     await previewRetention()
   } catch (error) {
     retentionError.value = String(error)

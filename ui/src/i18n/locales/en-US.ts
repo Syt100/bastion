@@ -377,7 +377,7 @@ const messages = {
       applyNow: 'Apply now',
       saveFirst: 'Save the job first to preview/apply',
       enableFirst: 'Enable retention first',
-      applyOk: 'Enqueued {n} delete tasks (skipped {skipped} due to limits)',
+      applyOk: 'Enqueued {n} new delete tasks (existing {existing}, skipped {skipped} due to limits)',
       previewDisabledUntilSaved: 'Save to preview/apply',
       previewSummary: 'Keep {keep} / Delete {del}',
       previewTruncated: '(truncated)',

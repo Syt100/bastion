@@ -136,7 +136,7 @@ describe('useJobsStore', () => {
 
   it('applies retention with CSRF header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ enqueued: ['r1'], skipped_due_to_limits: 0 }), {
+      new Response(JSON.stringify({ enqueued: ['r1'], already_exists: 0, skipped_due_to_limits: 0 }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),

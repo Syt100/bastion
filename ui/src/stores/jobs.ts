@@ -165,6 +165,7 @@ export type RetentionPreviewResponse = {
 
 export type RetentionApplyResponse = {
   enqueued: string[]
+  already_exists: number
   skipped_due_to_limits: number
 }
 

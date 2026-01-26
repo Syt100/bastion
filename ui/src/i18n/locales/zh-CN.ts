@@ -377,7 +377,7 @@ const messages = {
       applyNow: '立即执行',
       saveFirst: '请先保存任务后再预览/执行',
       enableFirst: '请先启用保留策略',
-      applyOk: '已创建 {n} 个删除任务（受限跳过 {skipped}）',
+      applyOk: '已创建 {n} 个删除任务（已有 {existing} 个任务，受限跳过 {skipped}）',
       previewDisabledUntilSaved: '保存后可预览/执行',
       previewSummary: '将保留 {keep} / 将删除 {del}',
       previewTruncated: '（列表已省略）',

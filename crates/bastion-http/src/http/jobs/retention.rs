@@ -260,6 +260,8 @@ pub(in crate::http) async fn preview_job_retention(
 pub(in crate::http) struct RetentionApplyResponse {
     enqueued: Vec<String>,
     #[serde(default)]
+    already_exists: u64,
+    #[serde(default)]
     skipped_due_to_limits: u64,
 }
 
@@ -313,11 +315,13 @@ pub(in crate::http) async fn apply_job_retention(
     if allowed == 0 {
         return Ok(Json(RetentionApplyResponse {
             enqueued: Vec::new(),
+            already_exists: 0,
             skipped_due_to_limits: selection.delete.len() as u64,
         }));
     }
 
     let mut enqueued = Vec::new();
+    let mut already_exists = 0_u64;
     let mut skipped_due_to_limits = 0_u64;
 
     for (idx, d) in selection.delete.iter().enumerate() {
@@ -365,16 +369,19 @@ pub(in crate::http) async fn apply_job_retention(
                 now,
             )
             .await;
+            enqueued.push(artifact.run_id.clone());
+        } else {
+            already_exists = already_exists.saturating_add(1);
         }
 
         let _ =
             run_artifacts_repo::mark_run_artifact_deleting(&state.db, &artifact.run_id, now).await;
         state.artifact_delete_notify.notify_one();
-        enqueued.push(artifact.run_id);
     }
 
     Ok(Json(RetentionApplyResponse {
         enqueued,
+        already_exists,
         skipped_due_to_limits,
     }))
 }
