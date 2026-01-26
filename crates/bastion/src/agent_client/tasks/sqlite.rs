@@ -243,6 +243,10 @@ pub(super) async fn run_sqlite_backup(
         "artifact_format": artifact_format_for_totals,
         "entries_count": build.artifacts.entries_count,
         "parts": build.artifacts.parts.len(),
+        "metrics": {
+            "source_total": { "files": 1, "dirs": 0, "bytes": build.snapshot_size },
+            "transfer_total_bytes": transfer_total_bytes,
+        },
         "sqlite": {
             "path": sqlite_path,
             "snapshot_name": build.snapshot_name,

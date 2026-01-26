@@ -415,6 +415,43 @@ fn extract_metrics_from_progress(
     )
 }
 
+fn extract_metrics_from_summary(
+    summary: Option<&serde_json::Value>,
+) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
+    let Some(s) = summary else {
+        return (None, None, None, None);
+    };
+
+    let Some(metrics) = s.get("metrics").and_then(|v| v.as_object()) else {
+        return (None, None, None, None);
+    };
+
+    let source_total = metrics.get("source_total").and_then(|v| {
+        serde_json::from_value::<bastion_core::progress::ProgressUnitsV1>(v.clone()).ok()
+    });
+    let transfer_total_bytes = metrics.get("transfer_total_bytes").and_then(|v| v.as_u64());
+
+    (
+        source_total.map(|t| t.files),
+        source_total.map(|t| t.dirs),
+        source_total.map(|t| t.bytes),
+        transfer_total_bytes,
+    )
+}
+
+fn extract_metrics(
+    summary: Option<&serde_json::Value>,
+    progress: Option<&serde_json::Value>,
+) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
+    let (sf, sd, sb, tb) = extract_metrics_from_summary(summary);
+    if sf.is_some() || sd.is_some() || sb.is_some() || tb.is_some() {
+        let (psf, psd, psb, ptb) = extract_metrics_from_progress(progress);
+        return (sf.or(psf), sd.or(psd), sb.or(psb), tb.or(ptb));
+    }
+
+    extract_metrics_from_progress(progress)
+}
+
 pub async fn upsert_run_artifact_from_successful_run(
     db: &SqlitePool,
     run_id: &str,
@@ -449,7 +486,7 @@ pub async fn upsert_run_artifact_from_successful_run(
         .unwrap_or("archive_v1");
 
     let (source_files, source_dirs, source_bytes, transfer_bytes) =
-        extract_metrics_from_progress(run.progress.as_ref());
+        extract_metrics(run.summary.as_ref(), run.progress.as_ref());
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let snapshot_json = serde_json::to_string(&snapshot)?;
@@ -468,7 +505,6 @@ pub async fn upsert_run_artifact_from_successful_run(
           target_type = excluded.target_type,
           target_snapshot_json = excluded.target_snapshot_json,
           artifact_format = excluded.artifact_format,
-          status = excluded.status,
           started_at = excluded.started_at,
           ended_at = excluded.ended_at,
           source_files = excluded.source_files,
@@ -509,8 +545,8 @@ mod tests {
     use crate::runs_repo;
 
     use super::{
-        get_run_artifact, list_run_artifacts_for_job, pin_run_artifact, unpin_run_artifact,
-        upsert_run_artifact_from_successful_run,
+        get_run_artifact, list_run_artifacts_for_job, mark_run_artifact_deleted, pin_run_artifact,
+        unpin_run_artifact, upsert_run_artifact_from_successful_run,
     };
 
     #[tokio::test]
@@ -714,5 +750,262 @@ mod tests {
         let got2 = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
         assert!(got2.pinned_at.is_none());
         assert!(got2.pinned_by_user_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_is_idempotent_and_does_not_revive_lifecycle_status() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job",
+            None,
+            None,
+            Some("UTC"),
+            OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Queued,
+            1,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        runs_repo::set_run_target_snapshot(
+            &pool,
+            &run.id,
+            serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        runs_repo::set_run_progress(
+            &pool,
+            &run.id,
+            Some(serde_json::json!({
+                "v": 1,
+                "kind": "backup",
+                "stage": "upload",
+                "ts": 2,
+                "done": { "files": 0, "dirs": 0, "bytes": 1 },
+                "total": { "files": 0, "dirs": 0, "bytes": 1 },
+                "detail": { "backup": { "source_total": { "files": 1, "dirs": 0, "bytes": 1 }, "transfer_total_bytes": 1, "transfer_done_bytes": 1 } }
+            })),
+        )
+        .await
+        .unwrap();
+
+        runs_repo::complete_run(
+            &pool,
+            &run.id,
+            runs_repo::RunStatus::Success,
+            Some(serde_json::json!({ "artifact_format": "archive_v1" })),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            upsert_run_artifact_from_successful_run(&pool, &run.id)
+                .await
+                .unwrap()
+        );
+        let got = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert_eq!(got.status, "present");
+
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        mark_run_artifact_deleted(&pool, &run.id, now)
+            .await
+            .unwrap();
+
+        // Rebuild/re-upsert should update the snapshot index but must not "revive" lifecycle state.
+        assert!(
+            upsert_run_artifact_from_successful_run(&pool, &run.id)
+                .await
+                .unwrap()
+        );
+
+        let got2 = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert_eq!(got2.status, "deleted");
+    }
+
+    #[tokio::test]
+    async fn upsert_reads_metrics_from_summary_when_progress_is_missing() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job",
+            None,
+            None,
+            Some("UTC"),
+            OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Queued,
+            1,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        runs_repo::set_run_target_snapshot(
+            &pool,
+            &run.id,
+            serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        // Complete without writing progress_json; summary.metrics MUST still be indexed.
+        runs_repo::complete_run(
+            &pool,
+            &run.id,
+            runs_repo::RunStatus::Success,
+            Some(serde_json::json!({
+                "artifact_format": "archive_v1",
+                "metrics": {
+                    "source_total": { "files": 10, "dirs": 2, "bytes": 123 },
+                    "transfer_total_bytes": 456,
+                }
+            })),
+            None,
+        )
+        .await
+        .unwrap();
+
+        upsert_run_artifact_from_successful_run(&pool, &run.id)
+            .await
+            .unwrap();
+
+        let got = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert_eq!(got.source_files, Some(10));
+        assert_eq!(got.source_dirs, Some(2));
+        assert_eq!(got.source_bytes, Some(123));
+        assert_eq!(got.transfer_bytes, Some(456));
+    }
+
+    #[tokio::test]
+    async fn upsert_prefers_summary_metrics_over_progress() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job",
+            None,
+            None,
+            Some("UTC"),
+            OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "root": "/" },
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Queued,
+            1,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        runs_repo::set_run_target_snapshot(
+            &pool,
+            &run.id,
+            serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .unwrap();
+
+        // Progress exists but is not authoritative for final metrics.
+        runs_repo::set_run_progress(
+            &pool,
+            &run.id,
+            Some(serde_json::json!({
+                "v": 1,
+                "kind": "backup",
+                "stage": "upload",
+                "ts": 2,
+                "done": { "files": 0, "dirs": 0, "bytes": 999 },
+                "total": { "files": 0, "dirs": 0, "bytes": 999 },
+                "detail": { "backup": { "source_total": { "files": 1, "dirs": 0, "bytes": 1 }, "transfer_total_bytes": 999, "transfer_done_bytes": 999 } }
+            })),
+        )
+        .await
+        .unwrap();
+
+        runs_repo::complete_run(
+            &pool,
+            &run.id,
+            runs_repo::RunStatus::Success,
+            Some(serde_json::json!({
+                "artifact_format": "archive_v1",
+                "metrics": {
+                    "source_total": { "files": 10, "dirs": 2, "bytes": 123 },
+                    "transfer_total_bytes": 456,
+                }
+            })),
+            None,
+        )
+        .await
+        .unwrap();
+
+        upsert_run_artifact_from_successful_run(&pool, &run.id)
+            .await
+            .unwrap();
+
+        let got = get_run_artifact(&pool, &run.id).await.unwrap().unwrap();
+        assert_eq!(got.source_files, Some(10));
+        assert_eq!(got.source_dirs, Some(2));
+        assert_eq!(got.source_bytes, Some(123));
+        assert_eq!(got.transfer_bytes, Some(456));
     }
 }

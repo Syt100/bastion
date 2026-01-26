@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 use time::OffsetDateTime;
 
 use bastion_core::job_spec;
+use bastion_core::manifest::ArtifactFormatV1;
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
@@ -114,6 +115,22 @@ pub(super) async fn execute_sqlite_run(
 
     run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
         .await?;
+
+    let parts_bytes: u64 = build.artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&build.artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&build.artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&build.artifacts.complete_path)?.len();
+    let raw_tree_data_bytes = if pipeline.format == ArtifactFormatV1::RawTreeV1 {
+        build.snapshot_size
+    } else {
+        0
+    };
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size)
+        .saturating_add(raw_tree_data_bytes);
+
     struct UploadThrottle {
         last_emit: Instant,
         last_done: u64,
@@ -137,7 +154,7 @@ pub(super) async fn execute_sqlite_run(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -188,6 +205,10 @@ pub(super) async fn execute_sqlite_run(
         "artifact_format": pipeline.format,
         "entries_count": build.artifacts.entries_count,
         "parts": build.artifacts.parts.len(),
+        "metrics": {
+            "source_total": { "files": 1, "dirs": 0, "bytes": build.snapshot_size },
+            "transfer_total_bytes": transfer_total_bytes,
+        },
         "sqlite": {
             "path": sqlite_path,
             "snapshot_name": build.snapshot_name,

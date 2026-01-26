@@ -226,11 +226,24 @@ pub(super) async fn execute_filesystem_run(
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
+    let metrics = {
+        let mut m = serde_json::Map::new();
+        if let Some(t) = source_total {
+            m.insert("source_total".to_string(), serde_json::json!(t));
+        }
+        m.insert(
+            "transfer_total_bytes".to_string(),
+            serde_json::json!(transfer_total_bytes),
+        );
+        serde_json::Value::Object(m)
+    };
+
     let summary = serde_json::json!({
         "target": target_summary,
         "artifact_format": pipeline.format,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
+        "metrics": metrics,
         "filesystem": {
             "warnings_total": issues.warnings_total,
             "errors_total": issues.errors_total,

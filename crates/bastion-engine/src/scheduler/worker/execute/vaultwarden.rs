@@ -91,6 +91,16 @@ pub(super) async fn execute_vaultwarden_run(
 
     run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
         .await?;
+
+    let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
+    let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
+    let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
+    let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
+    let transfer_total_bytes = parts_bytes
+        .saturating_add(entries_size)
+        .saturating_add(manifest_size)
+        .saturating_add(complete_size);
+
     struct UploadThrottle {
         last_emit: Instant,
         last_done: u64,
@@ -114,7 +124,7 @@ pub(super) async fn execute_vaultwarden_run(
                 Err(poisoned) => poisoned.into_inner(),
             };
 
-            let total_bytes = p.bytes_total;
+            let total_bytes = Some(transfer_total_bytes);
             let done_bytes = p.bytes_done;
             let finished = total_bytes.is_some_and(|t| done_bytes >= t);
             let should_emit =
@@ -165,6 +175,9 @@ pub(super) async fn execute_vaultwarden_run(
         "artifact_format": pipeline.format,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
+        "metrics": {
+            "transfer_total_bytes": transfer_total_bytes,
+        },
         "vaultwarden": {
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",

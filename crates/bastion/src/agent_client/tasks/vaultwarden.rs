@@ -215,6 +215,9 @@ pub(super) async fn run_vaultwarden_backup(
         "artifact_format": artifact_format_for_summary,
         "entries_count": artifacts.entries_count,
         "parts": artifacts.parts.len(),
+        "metrics": {
+            "transfer_total_bytes": transfer_total_bytes,
+        },
         "vaultwarden": {
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",
