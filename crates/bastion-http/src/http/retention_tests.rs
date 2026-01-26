@@ -381,3 +381,88 @@ async fn retention_preview_and_apply_work_and_are_bounded() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn retention_preview_and_apply_validate_override_payload() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let session = seed_admin_session(&pool).await;
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/tmp"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+
+    // enabled=true but no keep rules => invalid.
+    let preview = client
+        .post(format!(
+            "{}/api/jobs/{}/retention/preview",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .json(&serde_json::json!({ "retention": { "enabled": true } }))
+        .send()
+        .await
+        .expect("preview");
+    assert_eq!(preview.status(), StatusCode::BAD_REQUEST);
+
+    let apply = client
+        .post(format!(
+            "{}/api/jobs/{}/retention/apply",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("X-CSRF-Token", &session.csrf_token)
+        .json(&serde_json::json!({ "retention": { "enabled": true } }))
+        .send()
+        .await
+        .expect("apply");
+    assert_eq!(apply.status(), StatusCode::BAD_REQUEST);
+
+    server.abort();
+}

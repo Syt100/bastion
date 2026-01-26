@@ -135,6 +135,26 @@ async fn load_retention_job(
     Ok((job, parsed.retention().clone()))
 }
 
+fn validate_retention_override(
+    job: &jobs_repo::Job,
+    retention: &job_spec::RetentionPolicyV1,
+) -> Result<(), AppError> {
+    let mut spec = job.spec.clone();
+    let map = spec
+        .as_object_mut()
+        .ok_or_else(|| AppError::bad_request("invalid_spec", "Invalid job spec"))?;
+    map.insert(
+        "retention".to_string(),
+        serde_json::to_value(retention)
+            .map_err(|_| AppError::bad_request("invalid_retention", "Invalid retention"))?,
+    );
+
+    job_spec::validate_value(&spec).map_err(|e| {
+        AppError::bad_request("invalid_retention", format!("Invalid retention: {e}"))
+    })?;
+    Ok(())
+}
+
 async fn compute_preview(
     state: &AppState,
     job_id: &str,
@@ -227,8 +247,9 @@ pub(in crate::http) async fn preview_job_retention(
 ) -> Result<Json<RetentionPreviewResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
-    let (_job, saved) = load_retention_job(&state, &job_id).await?;
+    let (job, saved) = load_retention_job(&state, &job_id).await?;
     let retention = req.retention.unwrap_or(saved);
+    validate_retention_override(&job, &retention)?;
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
     let preview = compute_preview(&state, &job_id, retention, now).await?;
@@ -252,8 +273,9 @@ pub(in crate::http) async fn apply_job_retention(
     let session = require_session(&state, &cookies).await?;
     require_csrf(&headers, &session)?;
 
-    let (_job, saved) = load_retention_job(&state, &job_id).await?;
+    let (job, saved) = load_retention_job(&state, &job_id).await?;
     let retention = req.retention.unwrap_or(saved);
+    validate_retention_override(&job, &retention)?;
 
     if !retention.enabled {
         return Err(AppError::bad_request(
