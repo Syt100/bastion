@@ -169,6 +169,7 @@ GitHub Actions CI runs the same script on pushes and pull requests (see `.github
 
 ## Docs
 
+- Docs site (GitHub Pages): `/<repo>/docs/`
 - `docs/README.md` — documentation index
 - `docs/data-directory.md` — data directory layout + key management
 - `docs/logging.md` — logging configuration + rotation

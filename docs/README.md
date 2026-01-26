@@ -1,4 +1,11 @@
-# Documentation index
+# Documentation
+
+This directory contains the documentation sources.
+
+- Docs site (GitHub Pages): `/<repo>/docs/`
+- Entry page: `docs/index.md`
+
+---
 
 This directory contains topic-focused documentation.
 
