@@ -296,3 +296,131 @@ async fn archive_job_with_cascade_enqueues_deletes_for_unpinned_snapshots_only()
 
     server.abort();
 }
+
+#[tokio::test]
+async fn archive_job_with_cascade_enqueues_deletes_across_pages() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let snapshot_json =
+        serde_json::json!({ "node_id": "hub", "target": { "type": "local_dir", "base_dir": "/tmp" } })
+            .to_string();
+
+    // Create more than one page worth of snapshots so OFFSET-based pagination would skip rows when
+    // we mark status=deleting while scanning status=present.
+    const N: usize = 450;
+    for i in 0..N {
+        let ended_at = now - i as i64;
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Success,
+            ended_at - 10,
+            Some(ended_at),
+            Some(serde_json::json!({ "artifact_format": "archive_v1" })),
+            None,
+        )
+        .await
+        .expect("create run");
+
+        sqlx::query(
+            r#"
+            INSERT INTO run_artifacts (
+              run_id, job_id, node_id, target_type, target_snapshot_json,
+              artifact_format, status, started_at, ended_at,
+              created_at, updated_at
+            ) VALUES (?, ?, 'hub', 'local_dir', ?, 'archive_v1', 'present', ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&run.id)
+        .bind(&job.id)
+        .bind(&snapshot_json)
+        .bind(ended_at - 10)
+        .bind(ended_at)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert artifact");
+    }
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/archive?cascade_snapshots=true",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .send()
+        .await
+        .expect("archive");
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let tasks =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM artifact_delete_tasks WHERE job_id = ?")
+            .bind(&job.id)
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+    assert_eq!(tasks as usize, N);
+
+    server.abort();
+}

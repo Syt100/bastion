@@ -397,17 +397,19 @@ async fn cascade_enqueue_snapshot_deletes(
     const PAGE_LIMIT: u64 = 200;
     const MAX_ENQUEUE: usize = 1000;
 
-    let mut cursor = 0_u64;
+    let mut before_ended_at: Option<i64> = None;
+    let mut before_run_id: Option<String> = None;
     let mut enqueued = 0_usize;
     let mut skipped_pinned = 0_usize;
 
     while enqueued < MAX_ENQUEUE {
-        let items = run_artifacts_repo::list_run_artifacts_for_job(
+        let items = run_artifacts_repo::list_run_artifacts_for_job_before(
             &state.db,
             job_id,
-            cursor,
             PAGE_LIMIT,
             Some("present"),
+            before_ended_at,
+            before_run_id.as_deref(),
         )
         .await?;
 
@@ -415,7 +417,11 @@ async fn cascade_enqueue_snapshot_deletes(
             break;
         }
 
-        cursor = cursor.saturating_add(items.len() as u64);
+        // Keyset cursor: continue after the last (oldest) row in this page.
+        if let Some(last) = items.last() {
+            before_ended_at = Some(last.ended_at);
+            before_run_id = Some(last.run_id.clone());
+        }
 
         for artifact in items {
             if artifact.pinned_at.is_some() {

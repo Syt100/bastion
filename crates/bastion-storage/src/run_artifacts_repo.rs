@@ -158,6 +158,59 @@ pub async fn list_run_artifacts_for_job(
     Ok(out)
 }
 
+pub async fn list_run_artifacts_for_job_before(
+    db: &SqlitePool,
+    job_id: &str,
+    limit: u64,
+    status: Option<&str>,
+    before_ended_at: Option<i64>,
+    before_run_id: Option<&str>,
+) -> Result<Vec<RunArtifact>, anyhow::Error> {
+    let limit = limit.clamp(1, 200);
+
+    if before_ended_at.is_some() ^ before_run_id.is_some() {
+        anyhow::bail!("cursor requires both before_ended_at and before_run_id");
+    }
+
+    // Keyset pagination (ended_at DESC, run_id DESC) to avoid OFFSET inconsistencies when rows are
+    // updated during iteration (e.g., marking status=deleting while scanning status=present).
+    let mut sql = String::from(
+        r#"
+        SELECT
+          run_id, job_id, node_id, target_type, target_snapshot_json,
+          artifact_format, status, started_at, ended_at,
+          pinned_at, pinned_by_user_id,
+          source_files, source_dirs, source_bytes, transfer_bytes,
+          last_error_kind, last_error, last_attempt_at
+        FROM run_artifacts
+        WHERE job_id = ?
+        "#,
+    );
+
+    if status.is_some() {
+        sql.push_str(" AND status = ?");
+    }
+    if let (Some(_), Some(_)) = (before_ended_at, before_run_id) {
+        sql.push_str(" AND (ended_at < ? OR (ended_at = ? AND run_id < ?))");
+    }
+    sql.push_str(" ORDER BY ended_at DESC, run_id DESC LIMIT ?");
+
+    let mut q = sqlx::query(&sql).bind(job_id);
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+    if let (Some(ended_at), Some(run_id)) = (before_ended_at, before_run_id) {
+        q = q.bind(ended_at).bind(ended_at).bind(run_id);
+    }
+    let rows = q.bind(limit as i64).fetch_all(db).await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(parse_row(&row)?);
+    }
+    Ok(out)
+}
+
 pub async fn list_retention_items_for_job(
     db: &SqlitePool,
     job_id: &str,
