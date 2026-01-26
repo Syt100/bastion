@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use sqlx::{Row, SqlitePool};
 
 use super::types::ArtifactDeleteEvent;
@@ -64,7 +62,6 @@ pub async fn append_event(
                     || msg.contains("database is locked")
                     || msg.contains("SQLITE_BUSY");
                 if retryable && attempt + 1 < MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_millis(5 * (attempt + 1) as u64)).await;
                     continue;
                 }
                 return Err(error.into());
