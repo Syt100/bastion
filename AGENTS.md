@@ -25,3 +25,10 @@ The environment variable `GITHUB_PAT_TOKEN` MUST be treated as a secret.
 - Do NOT run commands that may output environment variables (for example: `env`, `printenv`, `set`, `export -p`) if they could disclose `GITHUB_PAT_TOKEN`.
 - Only allowed interaction: check whether `GITHUB_PAT_TOKEN` is set (existence) without displaying its value.
   - Example (safe): `test -n "${GITHUB_PAT_TOKEN+x}"` (checks existence only; prints nothing)
+
+## Project Workflow
+
+- OpenSpec: for non-trivial changes, create/spec first, then implement; mark spec tasks complete when done.
+- Small tweaks: if explicitly approved as "micro", you may skip spec and change code directly.
+- UI: ensure mobile responsive behavior; you may use `chrome-devtools-mcp` to inspect/debug pages.
+- Before push: run `scripts/ci.sh` locally and ensure it passes.
