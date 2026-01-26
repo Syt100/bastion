@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use sqlx::{Row, SqlitePool};
 
 use super::types::ArtifactDeleteEvent;
@@ -13,43 +15,64 @@ pub async fn append_event(
 ) -> Result<ArtifactDeleteEvent, anyhow::Error> {
     let fields_json = fields.as_ref().map(serde_json::to_string).transpose()?;
 
-    let mut tx = db.begin().await?;
-    let row = sqlx::query(
-        "SELECT COALESCE(MAX(seq), 0) AS max_seq FROM artifact_delete_events WHERE run_id = ?",
-    )
-    .bind(run_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    // NOTE: `artifact_delete_events` uses a per-run `(run_id, seq)` primary key. Multiple producers
+    // (Hub, delete worker, agent callbacks) can append concurrently, so we must tolerate races.
+    //
+    // We compute the next seq via a subquery and retry on UNIQUE/busy errors.
+    const MAX_ATTEMPTS: usize = 10;
+    for attempt in 0..MAX_ATTEMPTS {
+        let mut tx = db.begin().await?;
+        let res = sqlx::query(
+            r#"
+            INSERT INTO artifact_delete_events (run_id, seq, ts, level, kind, message, fields_json)
+            VALUES (
+              ?,
+              COALESCE((SELECT MAX(seq) FROM artifact_delete_events WHERE run_id = ?), 0) + 1,
+              ?, ?, ?, ?, ?
+            )
+            RETURNING seq
+            "#,
+        )
+        .bind(run_id)
+        .bind(run_id)
+        .bind(ts)
+        .bind(level)
+        .bind(kind)
+        .bind(message)
+        .bind(fields_json.clone())
+        .fetch_one(&mut *tx)
+        .await;
 
-    let max_seq = row.get::<i64, _>("max_seq");
-    let seq = max_seq + 1;
+        match res {
+            Ok(row) => {
+                let seq = row.get::<i64, _>("seq");
+                tx.commit().await?;
+                return Ok(ArtifactDeleteEvent {
+                    run_id: run_id.to_string(),
+                    seq,
+                    ts,
+                    level: level.to_string(),
+                    kind: kind.to_string(),
+                    message: message.to_string(),
+                    fields,
+                });
+            }
+            Err(error) => {
+                let _ = tx.rollback().await;
+                let msg = error.to_string();
+                let retryable = msg.contains("UNIQUE constraint failed")
+                    || msg.contains("database is locked")
+                    || msg.contains("SQLITE_BUSY");
+                if retryable && attempt + 1 < MAX_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(5 * (attempt + 1) as u64)).await;
+                    continue;
+                }
+                return Err(error.into());
+            }
+        }
+    }
 
-    sqlx::query(
-        r#"
-        INSERT INTO artifact_delete_events (run_id, seq, ts, level, kind, message, fields_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(run_id)
-    .bind(seq)
-    .bind(ts)
-    .bind(level)
-    .bind(kind)
-    .bind(message)
-    .bind(fields_json)
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-    Ok(ArtifactDeleteEvent {
-        run_id: run_id.to_string(),
-        seq,
-        ts,
-        level: level.to_string(),
-        kind: kind.to_string(),
-        message: message.to_string(),
-        fields,
-    })
+    unreachable!("append_event retry loop should always return");
 }
 
 pub async fn list_events(
