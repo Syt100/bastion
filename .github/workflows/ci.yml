@@ -10,11 +10,19 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      GITLEAKS_VERSION: v8.30.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Cache gitleaks
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bastion-tools/bin
+          key: ${{ runner.os }}-bastion-tools-${{ env.GITLEAKS_VERSION }}
 
       - name: Setup Go
         uses: actions/setup-go@v5

@@ -12,14 +12,19 @@ if (-not $gitleaks) {
     throw "gitleaks not found and Go is not installed. Install gitleaks: https://github.com/gitleaks/gitleaks"
   }
 
-  $gitleaksVersion = "v8.30.0"
+  $gitleaksVersion = if ($env:GITLEAKS_VERSION) { $env:GITLEAKS_VERSION } else { "v8.30.0" }
   $baseDir = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $env:USERPROFILE }
   $toolsDir = Join-Path $baseDir "bastion-tools\\bin"
   New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+  $gitleaksExe = Join-Path $toolsDir "gitleaks.exe"
 
-  $env:GOBIN = $toolsDir
-  go install "github.com/zricethezav/gitleaks/v8@$gitleaksVersion"
-  $env:PATH = "$toolsDir;$env:PATH"
+  if (Test-Path $gitleaksExe) {
+    $env:PATH = "$toolsDir;$env:PATH"
+  } else {
+    $env:GOBIN = $toolsDir
+    go install "github.com/zricethezav/gitleaks/v8@$gitleaksVersion"
+    $env:PATH = "$toolsDir;$env:PATH"
+  }
 }
 
 gitleaks detect --source $rootDir --redact --no-banner --exit-code 1
