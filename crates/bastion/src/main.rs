@@ -1,5 +1,6 @@
 mod agent_client;
 mod config;
+mod i18n;
 mod logging;
 
 use std::sync::Arc;
@@ -20,8 +21,10 @@ use bastion_storage::hub_runtime_config_repo;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cmd = Cli::command();
-    let matches = cmd.get_matches();
+    let argv: Vec<_> = std::env::args_os().collect();
+    let locale = i18n::cli::resolve_cli_locale();
+    let cmd = i18n::cli::localize_command(Cli::command(), locale);
+    let matches = cmd.get_matches_from(argv);
     let Cli {
         command,
         hub,

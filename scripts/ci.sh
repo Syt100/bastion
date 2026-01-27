@@ -30,6 +30,9 @@ npm run build-only --prefix ui
 echo "==> Docs: install"
 npm ci --prefix docs
 
+echo "==> Docs: generate reference"
+cargo run -p bastion --bin docgen -- --check
+
 echo "==> Docs: build"
 DOCS_BASE=/docs/ npm run build --prefix docs
 

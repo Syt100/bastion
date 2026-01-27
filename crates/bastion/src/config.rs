@@ -8,7 +8,12 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use ipnet::IpNet;
 
 #[derive(Debug, Parser)]
-#[command(name = "bastion", version, about = "Bastion backup server (MVP)")]
+#[command(
+    name = "bastion",
+    version,
+    about = "Bastion backup server (MVP)",
+    disable_help_subcommand = true
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -22,7 +27,9 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Run a Bastion Agent and connect it to a Hub.
     Agent(AgentArgs),
+    /// Manage secrets keypacks in the Hub data directory.
     Keypack {
         #[command(subcommand)]
         command: KeypackCommand,
@@ -129,8 +136,11 @@ pub struct AgentArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum KeypackCommand {
+    /// Export a password-encrypted keypack.
     Export(KeypackExportArgs),
+    /// Import a password-encrypted keypack.
     Import(KeypackImportArgs),
+    /// Rotate the Hub master key (master.key).
     Rotate(KeypackRotateArgs),
 }
 

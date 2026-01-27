@@ -87,6 +87,10 @@ export default defineConfig(({ command }) => {
                 text: 'Recipes',
                 items: [{ text: 'Vaultwarden', link: '/user/recipes/vaultwarden' }],
               },
+              {
+                text: 'Reference',
+                items: [{ text: 'CLI', link: '/user/reference/cli' }],
+              },
             ],
             '/dev/': [
               {
@@ -163,6 +167,10 @@ export default defineConfig(({ command }) => {
               {
                 text: '配方',
                 items: [{ text: 'Vaultwarden', link: '/zh/user/recipes/vaultwarden' }],
+              },
+              {
+                text: '参考',
+                items: [{ text: 'CLI', link: '/zh/user/reference/cli' }],
               },
             ],
             '/zh/dev/': [

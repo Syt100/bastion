@@ -42,6 +42,9 @@ npm test --prefix ui
 Write-Host "==> Docs: install"
 npm ci --prefix docs
 
+Write-Host "==> Docs: generate reference"
+cargo run -p bastion --bin docgen -- --check
+
 Write-Host "==> Docs: build"
 $env:DOCS_BASE = "/docs/"
 npm run build --prefix docs

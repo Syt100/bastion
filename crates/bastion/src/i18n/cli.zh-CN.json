@@ -1,0 +1,42 @@
+{
+  "bastion.about": "Bastion 备份服务器（MVP）",
+
+  "bastion.arg.log.help": "日志过滤器（语法与 RUST_LOG 相同），例如 `info`、`bastion=debug,tower_http=warn`。",
+  "bastion.arg.log.long_help": "日志过滤器（语法与 RUST_LOG 相同），例如 `info`、`bastion=debug,tower_http=warn`。\n\n未设置时，Bastion 默认使用较保守的 `info,tower_http=warn` 过滤器。",
+  "bastion.arg.log_file.help": "可选的日志文件路径。设置后，日志会同时写入控制台和文件。",
+  "bastion.arg.log_file.long_help": "可选的日志文件路径。设置后，日志会同时写入控制台和文件。\n\n对于轮转日志，Bastion 使用文件名作为前缀（例如 `bastion.log.2025-12-31`）。",
+  "bastion.arg.log_rotation.help": "`--log-file` 的日志轮转策略（默认：daily）。",
+  "bastion.arg.log_keep_files.help": "保留多少个轮转日志文件（默认：30，0 表示不清理）。",
+
+  "bastion.arg.host.help": "绑定地址（默认：127.0.0.1）。",
+  "bastion.arg.port.help": "绑定端口（默认：9876）。",
+  "bastion.arg.data_dir.help": "覆盖数据目录（也支持 BASTION_DATA_DIR）。",
+  "bastion.arg.insecure_http.help": "显式允许不安全的 HTTP/WS 模式（仅开发/局域网）。",
+  "bastion.arg.debug_errors.help": "在 API 响应中包含仅用于调试的错误诊断信息（仅开发环境）。",
+  "bastion.arg.debug_errors.long_help": "在 API 响应中包含仅用于调试的错误诊断信息（仅开发环境）。\n\n启用后，HTTP 500 `internal_error` 响应可能会在 `details.debug` 中包含安全的诊断信息。",
+  "bastion.arg.run_retention_days.help": "运行记录保留天数（默认：180）。",
+  "bastion.arg.incomplete_cleanup_days.help": "清理超过 N 天的未完成运行（缺少 complete.json）（默认：7，0 表示禁用）。",
+  "bastion.arg.hub_timezone.help": "Hub 时区（IANA），用作默认的计划任务时区（默认：本机系统时区）。",
+  "bastion.arg.hub_timezone.long_help": "Hub 时区（IANA），用作默认的计划任务时区（默认：本机系统时区）。\n\n示例：`UTC`、`Asia/Shanghai`、`America/Los_Angeles`。",
+  "bastion.arg.trusted_proxies.help": "允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。",
+  "bastion.arg.trusted_proxies.long_help": "允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。\n\n可多次指定：`--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`。",
+
+  "bastion.agent.about": "运行 Bastion Agent 并连接到 Hub。",
+  "bastion.agent.arg.hub_url.help": "Hub 基础 URL，例如 `http://hub:9876` 或 `https://hub.example.com`。",
+  "bastion.agent.arg.enroll_token.help": "注册令牌（仅当 Agent 尚未加入 Hub 时需要）。",
+  "bastion.agent.arg.name.help": "友好的 Agent 名称（存储在 Hub 上，可选）。",
+  "bastion.agent.arg.data_dir.help": "覆盖数据目录（也支持 BASTION_DATA_DIR）。",
+  "bastion.agent.arg.heartbeat_seconds.help": "心跳间隔（秒，默认：15）。",
+
+  "bastion.keypack.about": "管理 Hub 数据目录中的 secrets keypack。",
+  "bastion.keypack.export.about": "导出密码加密的 keypack。",
+  "bastion.keypack.export.arg.out.help": "密码加密 keypack 的输出路径。",
+  "bastion.keypack.export.arg.password.help": "Keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。",
+  "bastion.keypack.export.arg.password_stdin.help": "从 stdin 读取 keypack 密码（会去除末尾换行）。",
+  "bastion.keypack.import.about": "导入密码加密的 keypack。",
+  "bastion.keypack.import.arg.in.help": "密码加密 keypack 的输入路径。",
+  "bastion.keypack.import.arg.force.help": "覆盖现有的 data_dir/master.key。",
+  "bastion.keypack.import.arg.password.help": "Keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。",
+  "bastion.keypack.import.arg.password_stdin.help": "从 stdin 读取 keypack 密码（会去除末尾换行）。",
+  "bastion.keypack.rotate.about": "轮转 Hub 主密钥（master.key）。"
+}
