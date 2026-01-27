@@ -41,10 +41,13 @@ Open the Web UI:
 
 On first launch, Bastion requires initialization (create the first user). After that, you can log in normally.
 
+Note: this MVP currently exposes only a single-user setup flow (no user management UI yet).
+
 ## 4. Next steps
 
 - (Optional) [Enroll Agents](/user/agents) to run backups on other machines.
 - Create [Jobs](/user/jobs).
+- Monitor [Runs](/user/runs) and practice recovery with [Restore and verify](/user/restore-verify).
 - Configure [Storage (WebDAV)](/user/storage) if you want remote targets.
 - Use [Backup snapshots](/user/backup-snapshots) for pin/delete/retention.
-
+- (Optional) Configure [Notifications](/user/operations/notifications).

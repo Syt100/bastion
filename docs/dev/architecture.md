@@ -18,6 +18,7 @@
 - **Artifact delete queue**: asynchronous snapshot deletion with retries and an event log.
 - **Snapshot retention loop**: server-enforced retention based on job policies (keep last / keep days), respecting safety limits.
 - **Incomplete cleanup**: cleanup of incomplete/failed staging directories.
+- **Run retention**: prunes old run history while keeping runs that still have “live” snapshots.
+- **Notifications loop**: sends queued WeCom/email notifications when runs finish.
 
 For user-facing behavior and UI entry points, see the [User manual](/user/).
-

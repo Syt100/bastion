@@ -53,7 +53,7 @@ Notes:
 
 Entry points:
 
-- **Settings → Storage → WebDAV credentials** (Hub node) → **Distribute**
+- **Settings → Storage** (Hub node) → **Distribute**
 
 ### `job_deploy`
 
@@ -78,4 +78,3 @@ The Hub exposes:
 - `GET /api/bulk-operations/{id}` — operation detail with items
 - `POST /api/bulk-operations/{id}/retry-failed` — retry failed items
 - `POST /api/bulk-operations/{id}/cancel` — cancel an operation
-

@@ -67,3 +67,7 @@ Then build the Hub with embedded assets:
 cargo build -p bastion --features embed-web
 ```
 
+Notes:
+
+- `embed-web` = `embed-ui` + `embed-docs`.
+- If you only want to embed one of them, use `--features embed-ui` or `--features embed-docs`.

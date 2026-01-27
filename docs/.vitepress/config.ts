@@ -49,6 +49,7 @@ export default defineConfig(({ command }) => {
             text: 'Getting started',
             items: [
               { text: 'Overview', link: '/user/' },
+              { text: 'Concepts', link: '/user/concepts' },
               { text: 'Quickstart', link: '/user/getting-started' },
             ],
           },
@@ -57,6 +58,8 @@ export default defineConfig(({ command }) => {
             items: [
               { text: 'Agents', link: '/user/agents' },
               { text: 'Jobs', link: '/user/jobs' },
+              { text: 'Runs', link: '/user/runs' },
+              { text: 'Restore and verify', link: '/user/restore-verify' },
               { text: 'Backup snapshots', link: '/user/backup-snapshots' },
               { text: 'Bulk operations', link: '/user/bulk-operations' },
               { text: 'Storage (WebDAV)', link: '/user/storage' },
@@ -65,9 +68,12 @@ export default defineConfig(({ command }) => {
           {
             text: 'Operations',
             items: [
-              { text: 'Reverse proxy', link: '/user/operations/reverse-proxy' },
+              { text: 'Runtime config', link: '/user/operations/runtime-config' },
+              { text: 'Notifications', link: '/user/operations/notifications' },
               { text: 'Logging', link: '/user/operations/logging' },
+              { text: 'Maintenance', link: '/user/operations/maintenance' },
               { text: 'Data directory', link: '/user/operations/data-directory' },
+              { text: 'Reverse proxy', link: '/user/operations/reverse-proxy' },
             ],
           },
           {

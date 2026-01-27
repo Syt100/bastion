@@ -16,7 +16,13 @@ This means:
 
 In the Web UI:
 
-- **Settings → Storage → WebDAV credentials**
+- **Settings → Storage** (Hub context by default)
+
+Storage settings are shown in a node context (`hub` or a specific agent). You can:
+
+- create/edit/delete credentials by name
+- view update timestamps
+- copy credential names for use in jobs
 
 You can create/edit/delete credential entries by name.
 
@@ -34,3 +40,9 @@ Progress and per-agent results are tracked in:
 
 - **Settings → Bulk operations**
 
+## Where WebDAV credentials are used
+
+- **Job targets**: when you pick target type **WebDAV**, you select a credential name.
+- **Restore to WebDAV**: restore uses the executor node’s WebDAV secret scope, so agent-run restores may require distributing the same credential to that agent first.
+
+See: [Restore and verify](/user/restore-verify).

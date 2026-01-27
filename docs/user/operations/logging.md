@@ -14,6 +14,17 @@ You can configure the log filter using one of:
 
 The filter syntax follows the standard `tracing_subscriber::EnvFilter` format.
 
+You can also set logging from the Web UI:
+
+- **Settings → Runtime config**
+
+See: [Runtime config](/user/operations/runtime-config).
+
+Notes:
+
+- Some changes require a Hub restart to take effect.
+- CLI/env values override UI-saved values (the UI will show them as overridden).
+
 Examples:
 ```bash
 # Default (INFO)
