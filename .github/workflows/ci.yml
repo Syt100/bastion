@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
+          # This repo isn't a Go module (no go.sum), we only need Go to `go install` tools (gitleaks).
+          cache: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
