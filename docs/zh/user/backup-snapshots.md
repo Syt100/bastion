@@ -1,0 +1,67 @@
+# 备份快照（Backup snapshots）
+
+**备份快照（snapshot）** 是一次成功 run 产生的输出：包括存储在 target 中的实际备份数据，以及 Hub 中的一条索引记录。
+
+在 Web UI 中，snapshot 是一等资源：你可以 **固定（pin）**、**删除（delete）**，并配置/执行 **保留策略（retention）**。
+
+## 在哪里查看快照
+
+在 Web UI：
+
+- **Jobs** → 进入某个 job → **Snapshots**
+
+快照按 job 列出，通常包含运行时间、target、格式、大小/统计信息（若可用）以及状态。
+
+## 状态含义
+
+- **present**：快照存在且可用
+- **deleting**：删除任务已入队或正在执行
+- **deleted**：快照已成功删除
+- **missing**：target 中找不到快照（视为“已经不在了”）
+- **error**：删除失败，可能正在重试/被阻塞/已放弃（查看 delete log）
+
+## 固定（Pin）快照
+
+固定是一种安全机制：
+
+- 被固定的快照不会被自动保留策略删除。
+- 手动删除固定快照需要在 UI 中进行更明确的 “force” 确认。
+
+## 删除快照（单个 / 批量）
+
+删除是异步的（避免 HTTP 超时，并支持重试）。
+
+典型流程：
+
+1. 选择一个或多个快照
+2. 点击 **Delete** 并确认
+3. 快照会进入 **deleting** 状态，后台任务开始执行
+4. 通过 **Delete log** 查看进度、错误，以及 retry/ignore 操作
+
+若删除失败：
+
+- **Retry now**：立即重新入队
+- **Ignore**：将该删除任务标记为忽略（例如你已经在 Bastion 外部手动删除了数据）
+
+## 保留策略（keep last N / keep days）
+
+保留策略由服务端强制执行，用于控制存储占用。
+
+在 job 编辑器中可配置：
+
+- **keep last**：保留最近 N 个快照
+- **keep days**：保留最近 N 天内的快照
+- **max delete per tick / per day**：安全阀，避免一次性删除过多
+
+UI 支持：
+
+- **Preview**：预览将要删除的快照
+- **Apply now**：立即入队执行保留策略删除
+
+固定（pinned）的快照永远不会被保留策略删除。
+
+## 多节点说明（Hub vs Agent）
+
+- **local_dir target**：快照数据实际保存在执行该 job 的 node 上（Hub 或某个 agent）。删除任务必须在该 node 上执行，因此离线 agent 会导致删除延后。
+- **WebDAV target**：快照保存在远端 WebDAV 存储中。删除需要执行 node 具备对应 WebDAV 凭据（通常是 Hub，除非你已将 secret 分发到 agent）。
+
