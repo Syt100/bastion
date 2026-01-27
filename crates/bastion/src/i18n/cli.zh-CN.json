@@ -28,6 +28,12 @@
   "bastion.agent.arg.data_dir.help": "覆盖数据目录（也支持 BASTION_DATA_DIR）。",
   "bastion.agent.arg.heartbeat_seconds.help": "心跳间隔（秒，默认：15）。",
 
+  "bastion.config.about": "查看 Hub 生效配置（值与来源）。",
+  "bastion.config.arg.json.help": "输出 JSON（便于脚本/CI 使用）。",
+
+  "bastion.doctor.about": "运行常见部署问题的诊断。",
+  "bastion.doctor.arg.json.help": "输出 JSON（便于脚本/CI 使用）。",
+
   "bastion.keypack.about": "管理 Hub 数据目录中的 secrets keypack。",
   "bastion.keypack.export.about": "导出密码加密的 keypack。",
   "bastion.keypack.export.arg.out.help": "密码加密 keypack 的输出路径。",

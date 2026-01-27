@@ -10,6 +10,8 @@ Usage: bastion [OPTIONS] [COMMAND]
 
 Commands:
   agent    Run a Bastion Agent and connect it to a Hub
+  config   Inspect effective Hub configuration (values + sources)
+  doctor   Run diagnostics for common setup issues
   keypack  Manage secrets keypacks in the Hub data directory
 
 Options:
@@ -135,6 +137,36 @@ Options:
           
           [env: BASTION_AGENT_HEARTBEAT_SECONDS=]
           [default: 15]
+
+  -h, --help
+          Print help
+```
+
+## bastion config
+
+```text
+Inspect effective Hub configuration (values + sources)
+
+Usage: bastion config [OPTIONS]
+
+Options:
+      --json
+          Output JSON instead of human-readable text
+
+  -h, --help
+          Print help
+```
+
+## bastion doctor
+
+```text
+Run diagnostics for common setup issues
+
+Usage: bastion doctor [OPTIONS]
+
+Options:
+      --json
+          Output JSON instead of human-readable text
 
   -h, --help
           Print help

@@ -29,11 +29,29 @@ pub struct Cli {
 pub enum Command {
     /// Run a Bastion Agent and connect it to a Hub.
     Agent(AgentArgs),
+    /// Inspect effective Hub configuration (values + sources).
+    Config(ConfigArgs),
+    /// Run diagnostics for common setup issues.
+    Doctor(DoctorArgs),
     /// Manage secrets keypacks in the Hub data directory.
     Keypack {
         #[command(subcommand)]
         command: KeypackCommand,
     },
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ConfigArgs {
+    /// Output JSON instead of human-readable text.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct DoctorArgs {
+    /// Output JSON instead of human-readable text.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args, Clone)]

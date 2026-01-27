@@ -99,6 +99,8 @@ Bastion 备份服务器（MVP）
 
 命令:
   agent    运行 Bastion Agent 并连接到 Hub。
+  config   查看 Hub 生效配置（值与来源）。
+  doctor   运行常见部署问题的诊断。
   keypack  管理 Hub 数据目录中的 secrets keypack。
 ```
 
@@ -135,6 +137,36 @@ Bastion 备份服务器（MVP）
           
           [env: BASTION_AGENT_HEARTBEAT_SECONDS=]
           [default: 15]
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+## bastion config
+
+```text
+查看 Hub 生效配置（值与来源）。
+
+用法: bastion config [OPTIONS]
+
+选项:
+      --json
+          输出 JSON（便于脚本/CI 使用）。
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+## bastion doctor
+
+```text
+运行常见部署问题的诊断。
+
+用法: bastion doctor [OPTIONS]
+
+选项:
+      --json
+          输出 JSON（便于脚本/CI 使用）。
 
   -h, --help
           Print help (see a summary with '-h')
