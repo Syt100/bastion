@@ -38,3 +38,10 @@ npm ci --prefix ui
 
 Write-Host "==> UI: test"
 npm test --prefix ui
+
+Write-Host "==> Docs: install"
+npm ci --prefix docs
+
+Write-Host "==> Docs: build"
+$env:DOCS_BASE = "/docs/"
+npm run build --prefix docs

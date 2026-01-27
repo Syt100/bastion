@@ -40,6 +40,7 @@ tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"]
 [features]
 default = []
 embed-ui = ["dep:include_dir"]
+embed-docs = ["dep:include_dir"]
 
 [lints]
 workspace = true

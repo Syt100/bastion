@@ -51,6 +51,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // Let "Help" (/docs) work when the UI is served from the Vite dev server.
+      '/docs': {
+        target: 'http://127.0.0.1:9876',
+        changeOrigin: false,
+      },
     },
   },
   resolve: {

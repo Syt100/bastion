@@ -20,6 +20,7 @@ use bastion_storage::secrets::SecretsCrypto;
 mod agents;
 mod auth;
 mod bulk_operations;
+mod docs;
 mod error;
 mod fs;
 mod jobs;
@@ -400,8 +401,14 @@ pub fn router(state: AppState) -> Router {
         .route("/agent/ws", get(agents::agent_ws))
         .layer(DefaultBodyLimit::max(AGENT_BODY_LIMIT_BYTES));
 
+    let docs_router = Router::new()
+        .route("/docs", get(docs::docs_redirect))
+        .route("/docs/", get(docs::docs_fallback))
+        .route("/docs/{*path}", get(docs::docs_fallback));
+
     api_router
         .merge(agent_router)
+        .merge(docs_router)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::require_secure_middleware,

@@ -59,6 +59,16 @@ npm run dev --prefix ui
 Open the UI at `http://localhost:5173`. The dev server proxies:
 - `/api/*` → `http://127.0.0.1:9876`
 - `/agent/*` → `http://127.0.0.1:9876` (including WebSocket upgrade)
+- `/docs/*` → `http://127.0.0.1:9876` (product docs, built output)
+
+To build docs for the Hub (filesystem mode):
+
+```bash
+npm ci --prefix docs
+npm run build --prefix docs
+```
+
+Then open `http://localhost:5173/docs/` (or use the UI "Help" button).
 
 ### Serve the built UI from the Hub (filesystem mode)
 
@@ -169,7 +179,7 @@ GitHub Actions CI runs the same script on pushes and pull requests (see `.github
 
 ## Docs
 
-- Docs site (GitHub Pages): `/<repo>/docs/`
+- Product docs: `/docs/` (served by the Hub; can be embedded in release builds)
 - `docs/README.md` — documentation index
 - `docs/data-directory.md` — data directory layout + key management
 - `docs/logging.md` — logging configuration + rotation

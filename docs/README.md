@@ -2,8 +2,8 @@
 
 This directory contains the documentation sources.
 
-- Docs site (GitHub Pages): `/<repo>/docs/`
-- Entry page: `docs/index.md`
+- In-app docs entry: `/docs/`
+- Entry page: `docs/index.md` (VitePress)
 
 ---
 

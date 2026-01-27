@@ -27,6 +27,12 @@ npm ci --prefix ui
 echo "==> UI: build"
 npm run build-only --prefix ui
 
+echo "==> Docs: install"
+npm ci --prefix docs
+
+echo "==> Docs: build"
+DOCS_BASE=/docs/ npm run build --prefix docs
+
 echo "==> Rust: fmt"
 cargo fmt --check
 

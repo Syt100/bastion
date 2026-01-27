@@ -37,6 +37,8 @@ iana-time-zone = "0.1.64"
 [features]
 default = []
 embed-ui = ["bastion-http/embed-ui"]
+embed-docs = ["bastion-http/embed-docs"]
+embed-web = ["embed-ui", "embed-docs"]
 
 [dev-dependencies]
 tempfile = "3.23.0"

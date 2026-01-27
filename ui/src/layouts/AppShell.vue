@@ -128,6 +128,11 @@ function onSelectLanguage(key: string | number): void {
   ui.setLocale(key as SupportedLocale)
 }
 
+function openDocs(): void {
+  // Open in a new tab so users can keep their current UI state.
+  window.open('/docs/', '_blank', 'noopener')
+}
+
 function navigateMenu(key: unknown): void {
   if (typeof key !== 'string') return
   if (!menuRouteKeySet.has(key)) return
@@ -150,12 +155,17 @@ function onUpdateExpandedKeys(keys: string[]): void {
 const mobileActions = computed(() => [
   ...getLocaleDropdownOptions(),
   { type: 'divider', key: '__d1' },
+  { label: t('common.help'), key: 'docs' },
   { label: ui.darkMode ? t('common.light') : t('common.dark'), key: 'toggle_theme' },
   { type: 'divider', key: '__d2' },
   { label: t('common.logout'), key: 'logout' },
 ])
 
 function onSelectMobileAction(key: string | number): void {
+  if (key === 'docs') {
+    openDocs()
+    return
+  }
   if (key === 'toggle_theme') {
     ui.toggleDarkMode()
     return
@@ -262,6 +272,7 @@ onMounted(async () => {
 
           <div class="flex items-center gap-2">
             <template v-if="isDesktop">
+              <n-button quaternary @click="openDocs">{{ t('common.help') }}</n-button>
               <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
                 <n-button quaternary>{{ t('common.language') }}</n-button>
               </n-dropdown>

@@ -41,14 +41,19 @@ jobs:
           npm ci --prefix ui
           npm run build-only --prefix ui
 
+      - name: Build docs (for embed-docs)
+        run: |
+          npm ci --prefix docs
+          DOCS_BASE=/docs/ npm run build --prefix docs
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build (release, embed-ui)
-        run: cargo build -p bastion --release --locked --features embed-ui
+      - name: Build (release, embed-web)
+        run: cargo build -p bastion --release --locked --features embed-web
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
