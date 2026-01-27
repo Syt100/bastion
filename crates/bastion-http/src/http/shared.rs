@@ -6,6 +6,7 @@ use super::{AppError, AppState};
 use bastion_storage::auth;
 
 pub(in crate::http) const SESSION_COOKIE_NAME: &str = "bastion_session";
+pub(in crate::http) const LOCALE_COOKIE_NAME: &str = "bastion_locale";
 pub(in crate::http) const CSRF_HEADER: &str = "x-csrf-token";
 
 pub(in crate::http) async fn require_session(

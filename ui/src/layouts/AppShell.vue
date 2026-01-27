@@ -130,7 +130,8 @@ function onSelectLanguage(key: string | number): void {
 
 function openDocs(): void {
   // Open in a new tab so users can keep their current UI state.
-  window.open('/docs/', '_blank', 'noopener')
+  const docsRoot = ui.locale === 'zh-CN' ? '/docs/zh/' : '/docs/'
+  window.open(docsRoot, '_blank', 'noopener')
 }
 
 function navigateMenu(key: unknown): void {
