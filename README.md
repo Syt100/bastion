@@ -12,14 +12,14 @@ This repository is an MVP and is still evolving: expect breaking changes until a
 
 ## Key features
 
-- **Agent labels**: tag agents (e.g., `prod`, `cn`, `db`) and filter/target operations by label. See `docs/agents.md`.
-- **Config sync observability**: each agent shows desired/applied config snapshot state and last sync error, with “Sync now” actions. See `docs/agents.md`.
-- **Bulk operations**: create async, per-agent operations with progress tracking + retry/cancel. See `docs/bulk-operations.md`.
+- **Agent labels**: tag agents (e.g., `prod`, `cn`, `db`) and filter/target operations by label. See `docs/user/agents.md`.
+- **Config sync observability**: each agent shows desired/applied config snapshot state and last sync error, with “Sync now” actions. See `docs/user/agents.md`.
+- **Bulk operations**: create async, per-agent operations with progress tracking + retry/cancel. See `docs/user/bulk-operations.md`.
   - Bulk labels add/remove
   - Bulk “sync config now”
   - Bulk WebDAV credential distribution from Hub to agents
   - Bulk deploy (clone) a job to many agents
-- **Job scheduling**: manual/simple/cron schedules with explicit schedule timezone and overlap policy. See `docs/jobs.md`.
+- **Job scheduling**: manual/simple/cron schedules with explicit schedule timezone and overlap policy. See `docs/user/jobs.md`.
 
 ## Quickstart (local dev)
 
@@ -151,9 +151,9 @@ Logging:
 
 ## Security notes
 
-- Bastion stores state in a data directory (SQLite + encrypted secrets). See `docs/data-directory.md`.
-- Use keypack export/import to back up or migrate `master.key`. See `docs/data-directory.md`.
-- For reverse proxy deployments (TLS termination), ensure `X-Forwarded-*` headers are set and proxies are trusted. See `docs/reverse-proxy.md`.
+- Bastion stores state in a data directory (SQLite + encrypted secrets). See `docs/user/operations/data-directory.md`.
+- Use keypack export/import to back up or migrate `master.key`. See `docs/user/operations/data-directory.md`.
+- For reverse proxy deployments (TLS termination), ensure `X-Forwarded-*` headers are set and proxies are trusted. See `docs/user/operations/reverse-proxy.md`.
 
 ## Development
 
@@ -181,10 +181,10 @@ GitHub Actions CI runs the same script on pushes and pull requests (see `.github
 
 - Product docs: `/docs/` (served by the Hub; can be embedded in release builds)
 - `docs/README.md` — documentation index
-- `docs/data-directory.md` — data directory layout + key management
-- `docs/logging.md` — logging configuration + rotation
-- `docs/reverse-proxy.md` — reverse proxy examples (Nginx/Caddy)
-- `docs/recipes/vaultwarden.md` — Vaultwarden backup recipe
+- `docs/user/operations/data-directory.md` — data directory layout + key management
+- `docs/user/operations/logging.md` — logging configuration + rotation
+- `docs/user/operations/reverse-proxy.md` — reverse proxy examples (Nginx/Caddy)
+- `docs/user/recipes/vaultwarden.md` — Vaultwarden backup recipe
 
 ## License
 

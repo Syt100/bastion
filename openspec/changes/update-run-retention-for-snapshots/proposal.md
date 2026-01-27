@@ -11,7 +11,7 @@ We need run retention to be snapshot-aware:
 - runs with `run_artifacts.status=present` (or deleting/error) should not be pruned
 - runs can be pruned after the associated snapshot is deleted/missing
 
-High-level design reference: `docs/backup-snapshots.md` ("与现有 run retention 的关系").
+High-level design reference: `docs/dev/design/backup-snapshots.md` ("与现有 run retention 的关系").
 
 ## What Changes
 - Update the run retention pruning query to skip runs that still have live snapshots.
@@ -28,4 +28,3 @@ High-level design reference: `docs/backup-snapshots.md` ("与现有 run retentio
 ## Success Criteria
 - Runs with existing snapshots are not pruned.
 - After snapshots are deleted, run retention can prune old runs as before.
-

@@ -7,7 +7,7 @@ We need a first-class "pin/protect" flag that:
 - excludes snapshots from retention selection
 - adds stronger guardrails for manual deletion
 
-High-level design reference: `docs/backup-snapshots.md`.
+High-level design reference: `docs/dev/design/backup-snapshots.md`.
 
 ## What Changes
 - Add `pinned_at` / `pinned_by_user_id` fields to the snapshot index (`run_artifacts`).
@@ -33,4 +33,3 @@ High-level design reference: `docs/backup-snapshots.md`.
 ## Success Criteria
 - Users can pin/unpin snapshots in the UI.
 - Pinned snapshots clearly display as protected and cannot be deleted accidentally.
-

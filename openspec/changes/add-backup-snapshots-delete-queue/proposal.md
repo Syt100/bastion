@@ -12,7 +12,7 @@ Deletion must be:
 We already have a proven pattern in the codebase: `incomplete_cleanup_tasks` + events + UI.
 This change applies the same pattern to **successful snapshot deletion**.
 
-High-level design reference: `docs/backup-snapshots.md`.
+High-level design reference: `docs/dev/design/backup-snapshots.md`.
 
 ## What Changes
 - Add `artifact_delete_tasks` + `artifact_delete_events` tables (modeled after incomplete cleanup).
@@ -48,4 +48,3 @@ High-level design reference: `docs/backup-snapshots.md`.
 - Users can delete snapshots from the UI without blocking the page.
 - If the target is unavailable, the task retries with backoff and the UI shows actionable status/errors.
 - Operators can retry/ignore and view the event log.
-

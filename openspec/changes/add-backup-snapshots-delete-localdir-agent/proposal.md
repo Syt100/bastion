@@ -8,7 +8,7 @@ To manage snapshots in a multi-node deployment, the Hub must be able to:
 - dispatch deletion work to the correct Agent
 - observe progress/errors and allow retries when the Agent is offline
 
-High-level design reference: `docs/backup-snapshots.md`.
+High-level design reference: `docs/dev/design/backup-snapshots.md`.
 
 ## What Changes
 - Extend the Hub/Agent protocol with snapshot deletion messages:
@@ -43,4 +43,3 @@ High-level design reference: `docs/backup-snapshots.md`.
 - Snapshots stored on Agents can be deleted from the Hub UI.
 - If an Agent is offline, delete tasks remain queued/retrying and succeed once the Agent reconnects.
 - Operators can inspect events/errors for Agent-executed deletions.
-

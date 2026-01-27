@@ -1,5 +1,5 @@
 ## 1. Spec & Design
-- [x] Ensure the snapshot management design doc exists and is up to date: `docs/backup-snapshots.md`
+- [x] Ensure the snapshot management design doc exists and is up to date: `docs/dev/design/backup-snapshots.md`
 - [x] Define the snapshot index schema and required fields (status, target snapshot, metrics)
 - [x] Validate this change with `openspec validate add-backup-snapshots-index --strict`
 

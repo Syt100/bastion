@@ -28,7 +28,11 @@ export default defineConfig(({ command }) => {
     base: command === 'serve' ? '/' : buildBase(),
 
     themeConfig: {
-      nav: [{ text: 'Docs', link: '/' }],
+      nav: [
+        { text: 'Home', link: '/' },
+        { text: 'User Manual', link: '/user/' },
+        { text: 'Developer Docs', link: '/dev/' },
+      ],
       socialLinks: [{ icon: 'github', link: repoUrl }],
 
       search: {
@@ -39,31 +43,54 @@ export default defineConfig(({ command }) => {
         pattern: `${repoUrl}/edit/main/docs/:path`,
       },
 
-      sidebar: [
-        {
-          text: 'Product / Web UI',
-          items: [
-            { text: 'Agents', link: '/agents' },
-            { text: 'Jobs', link: '/jobs' },
-            { text: 'Backup snapshots', link: '/backup-snapshots' },
-            { text: 'Bulk operations', link: '/bulk-operations' },
-            { text: 'Storage (WebDAV)', link: '/storage' },
-          ],
-        },
-        {
-          text: 'Operations / Deployment',
-          items: [
-            { text: 'Reverse proxy', link: '/reverse-proxy' },
-            { text: 'Logging', link: '/logging' },
-            { text: 'Data directory', link: '/data-directory' },
-          ],
-        },
-        {
-          text: 'Recipes',
-          items: [{ text: 'Vaultwarden', link: '/recipes/vaultwarden' }],
-        },
-      ],
+      sidebar: {
+        '/user/': [
+          {
+            text: 'Getting started',
+            items: [
+              { text: 'Overview', link: '/user/' },
+              { text: 'Quickstart', link: '/user/getting-started' },
+            ],
+          },
+          {
+            text: 'Using Bastion',
+            items: [
+              { text: 'Agents', link: '/user/agents' },
+              { text: 'Jobs', link: '/user/jobs' },
+              { text: 'Backup snapshots', link: '/user/backup-snapshots' },
+              { text: 'Bulk operations', link: '/user/bulk-operations' },
+              { text: 'Storage (WebDAV)', link: '/user/storage' },
+            ],
+          },
+          {
+            text: 'Operations',
+            items: [
+              { text: 'Reverse proxy', link: '/user/operations/reverse-proxy' },
+              { text: 'Logging', link: '/user/operations/logging' },
+              { text: 'Data directory', link: '/user/operations/data-directory' },
+            ],
+          },
+          {
+            text: 'Recipes',
+            items: [{ text: 'Vaultwarden', link: '/user/recipes/vaultwarden' }],
+          },
+        ],
+        '/dev/': [
+          {
+            text: 'Development',
+            items: [
+              { text: 'Overview', link: '/dev/' },
+              { text: 'Build and run', link: '/dev/build' },
+              { text: 'Docs site', link: '/dev/docs-site' },
+              { text: 'Architecture', link: '/dev/architecture' },
+            ],
+          },
+          {
+            text: 'Design notes',
+            items: [{ text: 'Backup snapshots', link: '/dev/design/backup-snapshots' }],
+          },
+        ],
+      },
     },
   }
 })
-

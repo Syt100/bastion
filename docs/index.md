@@ -1,22 +1,19 @@
-# Documentation
+# Bastion Documentation
 
-This site is built from the repository `docs/` directory.
+This documentation is shipped with Bastion and served by the Hub at `/docs/` (public by default).
 
-## Product / Web UI
+## User manual
 
-- [Agents](./agents.md) — enrollment, labels, config sync status and actions
-- [Jobs](./jobs.md) — jobs, schedules/timezones, deploy-to-nodes
-- [Backup snapshots](./backup-snapshots.md) — backup snapshots (artifacts) management, deletion and retention (design)
-- [Bulk operations](./bulk-operations.md) — bulk operations, preview, retry/cancel, supported kinds
-- [Storage (WebDAV)](./storage.md) — WebDAV credentials and distribution to agents
+If you are running Bastion for yourself, your family, or a small team, start here:
 
-## Operations / Deployment
+- [User manual](/user/)
+- [Quickstart](/user/getting-started)
 
-- [Reverse proxy](./reverse-proxy.md) — Nginx/Caddy examples, trusted proxies, WebSocket upgrade notes
-- [Logging](./logging.md) — log filtering, file logging, rotation, retention
-- [Data directory](./data-directory.md) — data directory layout, `master.key`, keypack export/import/rotation
+## Developer docs
 
-## Recipes
+If you are contributing to Bastion or hacking on the codebase:
 
-- [Vaultwarden backup recipe](./recipes/vaultwarden.md) — Vaultwarden backup recipe (Docker/Compose + SQLite)
+- [Developer docs](/dev/)
+- [Build and run](/dev/build)
+- [Docs site (VitePress + in-app hosting)](/dev/docs-site)
 

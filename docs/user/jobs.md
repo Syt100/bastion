@@ -45,3 +45,9 @@ Preview:
 - The deploy modal supports a preview step that shows planned names and per-node validation results.
 - After starting the deploy, progress and per-node outcomes are tracked in **Settings → Bulk operations**.
 
+## Backup snapshots and retention
+
+Successful runs can produce a **backup snapshot** (the stored backup output).
+
+- Manage snapshots (pin/delete/delete log): see [Backup snapshots](/user/backup-snapshots).
+- Configure retention (keep last / keep days): in the job editor, under **Retention**.

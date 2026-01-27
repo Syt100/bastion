@@ -9,7 +9,7 @@ Today Bastion stores run history, but "successful backup output" is not a first-
 
 This change introduces a snapshot index and a dedicated, independent snapshots page in the Web UI (read-only for now).
 
-High-level design reference: `docs/backup-snapshots.md`.
+High-level design reference: `docs/dev/design/backup-snapshots.md`.
 
 ## What Changes
 - Add a persistent snapshot index table (`run_artifacts` / "snapshots") in the Hub DB.
@@ -41,4 +41,3 @@ High-level design reference: `docs/backup-snapshots.md`.
 - A user can open a job and navigate to a dedicated "Snapshots" page.
 - The page lists recent snapshots with key metadata and links to run details.
 - APIs support filtering/pagination and remain stable for later deletion/retention work.
-

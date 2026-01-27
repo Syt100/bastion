@@ -7,22 +7,13 @@ This directory contains the documentation sources.
 
 ---
 
-This directory contains topic-focused documentation.
+## Structure
 
-## Product / Web UI
+- `docs/index.md` — landing page (user manual + developer docs)
+- `docs/user/` — user manual (Web UI usage + operations for self-hosting)
+- `docs/dev/` — developer docs (build/dev workflow, docs-site integration, architecture notes)
 
-- `agents.md` — enrollment, labels, config sync status and actions
-- `jobs.md` — jobs, schedules/timezones, deploy-to-nodes
-- `backup-snapshots.md` — backup snapshots (artifacts) management, deletion and retention (design)
-- `bulk-operations.md` — bulk operations, preview, retry/cancel, supported kinds
-- `storage.md` — WebDAV credentials and distribution to agents
+## Notes
 
-## Operations / Deployment
-
-- `reverse-proxy.md` — Nginx/Caddy examples, trusted proxies, WebSocket upgrade notes
-- `logging.md` — log filtering, file logging, rotation, retention
-- `data-directory.md` — data directory layout, `master.key`, keypack export/import/rotation
-
-## Recipes
-
-- `recipes/vaultwarden.md` — Vaultwarden backup recipe (Docker/Compose + SQLite)
+- VitePress output is built into `docs/.vitepress/dist/`.
+- The Hub serves docs from `docs/.vitepress/dist` by default (filesystem mode), or from embedded assets when built with `embed-docs`.

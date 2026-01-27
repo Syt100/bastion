@@ -9,7 +9,7 @@ Operators should be able to choose:
 
 This reduces manual cleanup work and makes lifecycle management predictable.
 
-High-level design reference: `docs/backup-snapshots.md` (milestone "Job deletion cascade").
+High-level design reference: `docs/dev/design/backup-snapshots.md` (milestone "Job deletion cascade").
 
 ## What Changes
 - Extend the job archive flow to optionally enqueue deletion for all snapshots of that job.
@@ -31,4 +31,3 @@ High-level design reference: `docs/backup-snapshots.md` (milestone "Job deletion
 ## Success Criteria
 - Users can archive a job with an explicit cascade option.
 - If cascade is selected, snapshot delete tasks are enqueued and visible in the snapshots UI.
-

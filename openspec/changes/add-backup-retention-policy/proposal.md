@@ -9,7 +9,7 @@ We need a long-term, best-practice retention system that is:
 - safe (preview/simulate, rate limits)
 - compatible with multi-node storage ownership (Hub/Agent)
 
-High-level design reference: `docs/backup-snapshots.md`.
+High-level design reference: `docs/dev/design/backup-snapshots.md`.
 
 ## What Changes
 - Add a retention configuration to job specs (and a global default in Hub settings).
@@ -44,4 +44,3 @@ High-level design reference: `docs/backup-snapshots.md`.
 ## Success Criteria
 - Users can configure retention per job and preview which snapshots would be deleted.
 - The system automatically enqueues deletions and keeps storage bounded over time.
-

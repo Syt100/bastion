@@ -1,6 +1,10 @@
-# 备份数据管理（Snapshots / Artifacts）
+# 备份数据管理（Snapshots / Artifacts）设计与实现说明
 
-本文档描述 Bastion 的“备份数据管理”能力的推荐架构与落地方案，目标是让用户可以在 Web UI 中：
+本文档描述 Bastion 的“备份数据管理”子系统（snapshot 索引、删除队列、保留策略）的设计与实现要点。
+
+用户侧使用方式请优先参考用户手册：`/user/backup-snapshots`。
+
+目标能力：
 
 - 查看历史成功备份产生的“备份数据（Snapshot/Artifact）”
 - 手动删除备份数据（支持批量、可重试、可观测）
@@ -17,12 +21,9 @@
 
 - `runs`：运行记录（成功/失败/进度/摘要/错误等）
 - “不完整运行清理”（`incomplete_cleanup_tasks` + UI）：用于清理失败/中断/不完整的 target run（例如 WebDAV 不可达导致清理失败会重试/可忽略/可查看事件）
+- “备份数据（Snapshot）管理”（已实现）：`run_artifacts`（索引）、`artifact_delete_tasks`（删除队列 + 事件）、`snapshot_retention`（保留策略执行）
 
-但缺少：
-
-- 对“成功备份产生的数据”的生命周期管理：无法列出、删除、固定保护、保留策略清理。
-
-另外，工程上已经具备可复用的模式：
+工程上可复用的模式：
 
 - 任务队列 + 状态机 + 事件日志 + 退避重试（incomplete cleanup 已实现）
 - 多节点上下文（Hub/Agent）
@@ -288,7 +289,7 @@ Hub 无法直接访问 Agent 的 `base_dir`，因此删除需要跨节点执行�
 
 ### 7.2 webdav 删除：执行节点与凭据作用域
 
-目前 WebDAV secret 是 node-scoped（参见 `docs/storage.md` 与 secret 分发能力）。
+目前 WebDAV secret 是 node-scoped（参见 `docs/user/storage.md` 与 secret 分发能力）。
 
 因此：
 
@@ -463,4 +464,3 @@ Hub 无法直接访问 Agent 的 `base_dir`，因此删除需要跨节点执行�
 
 6) **扩展点**
    - 支持更多 target（S3 等）：补充 target snapshot 与 delete adapter
-
