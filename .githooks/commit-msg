@@ -28,7 +28,7 @@ stripped = re.sub(r"`[^`]*`", "", stripped)
 
 bad_patterns = [
     r"\\n\\n",      # attempted blank line
-    r"\\n[\\-*#]",  # attempted bullet/heading on next line
+    r"\\n[-*#]",    # attempted bullet/heading on next line
 ]
 
 for pat in bad_patterns:
@@ -41,4 +41,3 @@ for pat in bad_patterns:
         )
         sys.exit(1)
 PY
-
