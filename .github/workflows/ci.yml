@@ -99,6 +99,19 @@ jobs:
             printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Bastion Docs (stub)</title>' > docs/.vitepress/dist/index.html
           fi
 
+      - name: Windows: disable debug symbols (avoid LNK1318)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Windows CI sometimes fails with `LNK1318: Unexpected PDB error` when linking test binaries.
+          # Disabling debug symbols avoids generating PDBs for these fast CI checks.
+          {
+            echo "CARGO_INCREMENTAL=0"
+            echo "RUSTFLAGS=-C debuginfo=0 -C link-arg=/DEBUG:NONE -C link-arg=/INCREMENTAL:NO"
+          } >> "${GITHUB_ENV}"
+
       - name: Rust clippy (deny warnings)
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
