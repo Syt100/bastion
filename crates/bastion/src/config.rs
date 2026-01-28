@@ -51,7 +51,7 @@ pub struct ServiceArgs {
 }
 
 #[cfg(windows)]
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, Clone)]
 pub enum ServiceCommand {
     /// Run as a Windows Service (internal).
     #[command(hide = true)]

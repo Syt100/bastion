@@ -12,8 +12,8 @@
 
 ## 3. Validation
 - [x] 3.1 Run `bash scripts/ci.sh`
-- [ ] 3.2 Validate release packaging via GitHub Actions (workflow_dispatch dry-run is OK)
+- [x] 3.2 Validate release packaging via GitHub Actions (workflow_dispatch dry-run is OK)
 
 ## 4. Commits
 - [x] 4.1 Commit implementation changes (detailed message)
-- [ ] 4.2 Mark OpenSpec tasks complete and commit
+- [x] 4.2 Mark OpenSpec tasks complete and commit
