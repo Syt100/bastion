@@ -49,7 +49,9 @@ jobs:
         with:
           node-version: "20.19.0"
           cache: "npm"
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: |
+            ui/package-lock.json
+            docs/package-lock.json
 
       - name: Build UI (for embed-ui)
         run: |
@@ -94,6 +96,13 @@ jobs:
           fi
           tar -C "${bin_dir}" -czf "${asset}" bastion
 
+      - name: Cache cargo packagers (Linux)
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bastion-tools/cargo
+          key: ${{ runner.os }}-bastion-cargo-packagers-cargo-deb-3.6.2-cargo-generate-rpm-0.20.0
+
       - name: Package (Linux .deb/.rpm)
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
@@ -104,9 +113,16 @@ jobs:
             version="0.0.0"
           fi
 
-          # Install cargo packagers (pinned by Cargo.lock within the tool crates).
-          cargo install cargo-deb --locked --version 3.6.2
-          cargo install cargo-generate-rpm --locked --version 0.20.0
+          tools_root="${HOME}/.cache/bastion-tools/cargo"
+          export PATH="${tools_root}/bin:${PATH}"
+
+          # Install packagers once (cached across workflow runs).
+          if [ ! -x "${tools_root}/bin/cargo-deb" ]; then
+            cargo install cargo-deb --locked --version 3.6.2 --root "${tools_root}"
+          fi
+          if [ ! -x "${tools_root}/bin/cargo-generate-rpm" ]; then
+            cargo install cargo-generate-rpm --locked --version 0.20.0 --root "${tools_root}"
+          fi
 
           # Debian package (binary-only).
           cargo deb -p bastion \
