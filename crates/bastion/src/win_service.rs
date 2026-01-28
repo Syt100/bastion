@@ -78,15 +78,16 @@ fn service_main_inner() -> Result<(), anyhow::Error> {
 
         // A Windows Service typically has no interactive console; default to a log file unless
         // the user explicitly configured `--log-file` or `BASTION_LOG_FILE`.
-        if logging.log_file.is_none() && std::env::var_os("BASTION_LOG_FILE").is_none() {
-            if let Ok(program_data) = std::env::var("PROGRAMDATA") {
-                logging.log_file = Some(
-                    std::path::PathBuf::from(program_data)
-                        .join("bastion")
-                        .join("logs")
-                        .join("bastion.log"),
-                );
-            }
+        if logging.log_file.is_none()
+            && std::env::var_os("BASTION_LOG_FILE").is_none()
+            && let Ok(program_data) = std::env::var("PROGRAMDATA")
+        {
+            logging.log_file = Some(
+                std::path::PathBuf::from(program_data)
+                    .join("bastion")
+                    .join("logs")
+                    .join("bastion.log"),
+            );
         }
 
         crate::run_hub(hub, logging, &matches, shutdown.clone()).await
