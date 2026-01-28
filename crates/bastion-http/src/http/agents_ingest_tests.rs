@@ -624,9 +624,12 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         .header("authorization", format!("Bearer {agent_key}"))
         .body(axum::body::Body::from(payload))
         .expect("request");
-    req.extensions_mut().insert(axum::extract::ConnectInfo(peer));
+    req.extensions_mut()
+        .insert(axum::extract::ConnectInfo(peer));
 
-    let resp = tower::ServiceExt::oneshot(app, req).await.expect("response");
+    let resp = tower::ServiceExt::oneshot(app, req)
+        .await
+        .expect("response");
 
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
