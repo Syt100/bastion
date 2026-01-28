@@ -72,5 +72,20 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Prepare embedded assets (stub)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # `embed-web` uses `include_dir!` at compile-time, which requires these directories to exist.
+          # Platform CI only runs `cargo clippy`, so a tiny stub is enough to unblock compilation.
+          mkdir -p ui/dist docs/.vitepress/dist
+          if [ ! -f ui/dist/index.html ]; then
+            printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Bastion UI (stub)</title>' > ui/dist/index.html
+          fi
+          if [ ! -f docs/.vitepress/dist/index.html ]; then
+            printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Bastion Docs (stub)</title>' > docs/.vitepress/dist/index.html
+          fi
+
       - name: Rust clippy (deny warnings)
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
