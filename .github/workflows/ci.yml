@@ -48,3 +48,29 @@ jobs:
 
       - name: Run checks
         run: bash scripts/ci.sh
+
+  rust-platform:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-15-intel
+          - macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Rust clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
