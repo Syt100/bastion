@@ -13,6 +13,13 @@ Bastion 会把状态与 secrets 存放在一个可配置的数据目录中。
    - Windows：`%PROGRAMDATA%\\bastion\\data`（如果可用）
    - 否则：由 `directories` crate 决定的 OS 应用数据目录（local）
 
+说明：
+
+- 对于 Linux `.deb/.rpm` + systemd 的安装方式，安装包会提供 `/etc/bastion/bastion.env`，并设置：
+  - `BASTION_DATA_DIR=/var/lib/bastion`
+- 对于 Windows MSI（以服务方式运行），默认通常会解析到：
+  - `%PROGRAMDATA%\\bastion\\data`
+
 ## 目录里有什么？
 
 常见文件/目录：
@@ -68,4 +75,3 @@ Bastion 提供一种带密码加密的 “keypack” 用于备份 `master.key`�
 ```
 
 轮转会保留旧 keys，因此旧 secrets 仍可被解密；新 secrets 会使用新的 active key。
-

@@ -29,6 +29,25 @@
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99">
         <File Id="BastionExeFile" Source="$(var.SourceDir)\bastion.exe" KeyPath="yes" />
+
+        <!-- Install a Windows Service entry, but do NOT start it automatically. -->
+        <ServiceInstall
+          Id="BastionServiceInstall"
+          Name="Bastion"
+          DisplayName="Bastion"
+          Description="Bastion backup server"
+          Type="ownProcess"
+          Start="demand"
+          ErrorControl="normal"
+          Arguments="service run"
+        />
+        <ServiceControl
+          Id="BastionServiceControl"
+          Name="Bastion"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes"
+        />
       </Component>
     </ComponentGroup>
   </Fragment>

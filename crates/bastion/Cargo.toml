@@ -37,6 +37,9 @@ cron = "0.15.0"
 uuid = { version = "1.18.1", features = ["v4"] }
 iana-time-zone = "0.1.64"
 
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7.0"
+
 [features]
 default = []
 embed-ui = ["bastion-http/embed-ui"]
@@ -55,6 +58,8 @@ section = "utils"
 priority = "optional"
 assets = [
   ["../../target/release/bastion", "usr/bin/bastion", "755"],
+  ["../../packaging/linux/bastion.service", "lib/systemd/system/bastion.service", "644"],
+  ["../../packaging/linux/bastion.env", "etc/bastion/bastion.env", "640"],
   ["../../LICENSE", "usr/share/doc/bastion/LICENSE", "644"],
   ["../../README.md", "usr/share/doc/bastion/README.md", "644"],
 ]
@@ -62,6 +67,8 @@ assets = [
 [package.metadata.generate-rpm]
 assets = [
   { source = "../../target/release/bastion", dest = "/usr/bin/bastion", mode = "755" },
+  { source = "../../packaging/linux/bastion.service", dest = "/usr/lib/systemd/system/bastion.service", mode = "644" },
+  { source = "../../packaging/linux/bastion.env", dest = "/etc/bastion/bastion.env", mode = "640" },
   { source = "../../LICENSE", dest = "/usr/share/doc/bastion/LICENSE", mode = "644" },
   { source = "../../README.md", dest = "/usr/share/doc/bastion/README.md", mode = "644" },
 ]

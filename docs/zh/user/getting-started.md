@@ -23,13 +23,21 @@
   - `./bastion`
 - Debian/Ubuntu `.deb`：
   - `sudo dpkg -i bastion-<version>-x86_64-unknown-linux-gnu.deb`
-  - 使用 `bastion` 启动
+  - `sudo systemctl daemon-reload`
+  - 启动（安装包 **不会** 自动启动）：`sudo systemctl start bastion`
+  - （可选）开机自启：`sudo systemctl enable bastion`
 - Fedora/RHEL/openSUSE `.rpm`：
   - `sudo rpm -Uvh bastion-<version>-x86_64-unknown-linux-gnu.rpm`
-  - 使用 `bastion` 启动
+  - `sudo systemctl daemon-reload`
+  - 启动（安装包 **不会** 自动启动）：`sudo systemctl start bastion`
+  - （可选）开机自启：`sudo systemctl enable bastion`
 - Windows `.msi`：
   - 运行 MSI 安装
-  - 通过 `C:\\Program Files\\Bastion\\bastion.exe` 启动（MSI 默认不会写入 PATH）
+  - MSI 会安装 Windows 服务，但 **不会** 自动启动
+  - 启动服务（二选一）：
+    - 打开服务管理器（`services.msc`）→ `Bastion` → 启动
+    - `sc start Bastion`
+  - （可选）通过 `C:\\Program Files\\Bastion\\bastion.exe` 交互式启动（MSI 默认不会写入 PATH）
 
 你也可以从源码构建（见 [开发文档](/zh/dev/)）。
 

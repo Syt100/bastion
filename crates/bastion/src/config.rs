@@ -33,11 +33,29 @@ pub enum Command {
     Config(ConfigArgs),
     /// Run diagnostics for common setup issues.
     Doctor(DoctorArgs),
+    /// Run Bastion as a Windows Service (used by the MSI installer).
+    #[cfg(windows)]
+    Service(ServiceArgs),
     /// Manage secrets keypacks in the Hub data directory.
     Keypack {
         #[command(subcommand)]
         command: KeypackCommand,
     },
+}
+
+#[cfg(windows)]
+#[derive(Debug, Args, Clone)]
+pub struct ServiceArgs {
+    #[command(subcommand)]
+    pub command: ServiceCommand,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Subcommand)]
+pub enum ServiceCommand {
+    /// Run as a Windows Service (internal).
+    #[command(hide = true)]
+    Run,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -3,6 +3,10 @@
 ## 默认行为
 
 - Bastion 默认将日志输出到控制台。
+- 在 systemd 下运行时，控制台日志会被 journald 接管：
+  - `journalctl -u bastion -f`
+- 在 Windows 服务模式（MSI 安装）下，如果你没有显式配置 `--log-file` / `BASTION_LOG_FILE`，Bastion 默认会写入：
+  - `%PROGRAMDATA%\\bastion\\logs\\bastion.log`
 - 如果没有显式配置 filter，Bastion 会使用一个相对保守的默认 filter：
   - `info,tower_http=warn`
   - 该配置会保留 Bastion 的 `INFO` 日志，同时抑制较吵的逐请求 HTTP access logs。
@@ -32,13 +36,13 @@
 
 ```bash
 # 默认（INFO）
-./bastion
+bastion
 
 # 更详细的 Bastion 日志，同时保持 HTTP 访问日志安静
-./bastion --log "bastion=debug,tower_http=warn"
+bastion --log "bastion=debug,tower_http=warn"
 
 # 同时开启 HTTP 请求日志
-./bastion --log "info,tower_http=info"
+bastion --log "info,tower_http=info"
 ```
 
 ## 文件日志与轮转（Rotation）
@@ -68,7 +72,7 @@
 示例：
 
 ```bash
-./bastion \
+bastion \
   --log-file ./data/logs/bastion.log \
   --log-rotation daily \
   --log-keep-files 30
@@ -79,4 +83,3 @@
 Bastion **禁止**在日志中输出敏感信息（密码、token、私钥等）。
 
 如果你把凭据直接写进 URL，Bastion 会尽力在日志中做脱敏，但仍建议避免在 URL 中嵌入 secrets。
-

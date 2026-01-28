@@ -23,13 +23,21 @@ Examples:
   - `./bastion`
 - Debian/Ubuntu `.deb`:
   - `sudo dpkg -i bastion-<version>-x86_64-unknown-linux-gnu.deb`
-  - Run with `bastion`
+  - `sudo systemctl daemon-reload`
+  - Start (the package does **not** auto-start): `sudo systemctl start bastion`
+  - (Optional) Enable on boot: `sudo systemctl enable bastion`
 - Fedora/RHEL/openSUSE `.rpm`:
   - `sudo rpm -Uvh bastion-<version>-x86_64-unknown-linux-gnu.rpm`
-  - Run with `bastion`
+  - `sudo systemctl daemon-reload`
+  - Start (the package does **not** auto-start): `sudo systemctl start bastion`
+  - (Optional) Enable on boot: `sudo systemctl enable bastion`
 - Windows `.msi`:
   - Install the MSI
-  - Run from `C:\Program Files\Bastion\bastion.exe` (the MSI does not add PATH by default)
+  - The MSI installs a Windows Service, but does **not** start it automatically
+  - Start the service (one of):
+    - Services app (`services.msc`) → `Bastion` → Start
+    - `sc start Bastion`
+  - (Optional) Run interactively from `C:\Program Files\Bastion\bastion.exe` (the MSI does not add PATH by default)
 
 You can also build from source (see [Developer docs](/dev/)).
 

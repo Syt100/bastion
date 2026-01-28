@@ -13,6 +13,13 @@ Priority order:
    - Windows: `%PROGRAMDATA%\\bastion\\data` (if available)
    - Otherwise: OS-specific app local data dir (via `directories` crate)
 
+Notes:
+
+- For Linux `.deb/.rpm` installs with systemd, the package ships `/etc/bastion/bastion.env` and sets:
+  - `BASTION_DATA_DIR=/var/lib/bastion`
+- For Windows MSI installs running as a service, the default typically resolves to:
+  - `%PROGRAMDATA%\\bastion\\data`
+
 ## What files are inside?
 
 Common files/directories:
@@ -68,4 +75,3 @@ Rotate the active key in `master.key`:
 ```
 
 Rotation keeps old keys so existing secrets remain decryptable; new secrets use the new active key.
-

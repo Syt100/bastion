@@ -2,6 +2,8 @@ mod agent_client;
 mod config;
 mod i18n;
 mod logging;
+#[cfg(windows)]
+mod win_service;
 
 use std::sync::Arc;
 
@@ -48,6 +50,10 @@ async fn main() -> Result<(), anyhow::Error> {
             }
             Command::Doctor(args) => {
                 run_doctor_command(args, hub, logging_args, &matches).await?;
+            }
+            #[cfg(windows)]
+            Command::Service(args) => {
+                win_service::run(args)?;
             }
             Command::Keypack { command } => {
                 let _logging_guard = logging::init(&logging_args)?;
@@ -97,6 +103,58 @@ async fn main() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
+    let shutdown = CancellationToken::new();
+    spawn_shutdown_signal_handlers(shutdown.clone());
+    run_hub(hub, logging_args, &matches, shutdown).await
+}
+
+fn spawn_shutdown_signal_handlers(shutdown: CancellationToken) {
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!(error = %err, "failed to register SIGTERM handler");
+                    // Fall back to Ctrl-C only.
+                    if tokio::signal::ctrl_c().await.is_ok() {
+                        tracing::info!("shutdown signal received");
+                        shutdown.cancel();
+                    }
+                    return;
+                }
+            };
+
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("shutdown signal received");
+                    shutdown.cancel();
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("shutdown signal received (SIGTERM)");
+                    shutdown.cancel();
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                tracing::info!("shutdown signal received");
+                shutdown.cancel();
+            }
+        }
+    });
+}
+
+pub(crate) async fn run_hub(
+    hub: crate::config::HubArgs,
+    logging_args: crate::config::LoggingArgs,
+    matches: &clap::ArgMatches,
+    shutdown: CancellationToken,
+) -> Result<(), anyhow::Error> {
     let mut config = hub.into_config()?;
     let pool = bastion_storage::db::init(&config.data_dir).await?;
 
@@ -105,7 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .unwrap_or_default();
 
     let (hub_runtime_config, effective_logging_args) =
-        resolve_hub_runtime_config_meta(&mut config, &matches, &saved, logging_args);
+        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args);
 
     let _logging_guard = logging::init(&effective_logging_args)?;
     info!(
@@ -128,7 +186,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let jobs_notify = Arc::new(tokio::sync::Notify::new());
     let notifications_notify = Arc::new(tokio::sync::Notify::new());
     let bulk_ops_notify = Arc::new(tokio::sync::Notify::new());
-    let shutdown = CancellationToken::new();
 
     scheduler::spawn(scheduler::SchedulerArgs {
         db: pool.clone(),
@@ -186,14 +243,6 @@ async fn main() -> Result<(), anyhow::Error> {
         insecure_http = config.insecure_http,
         "bastion started"
     );
-
-    let shutdown_signal = shutdown.clone();
-    tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::info!("shutdown signal received");
-            shutdown_signal.cancel();
-        }
-    });
 
     axum::serve(
         listener,

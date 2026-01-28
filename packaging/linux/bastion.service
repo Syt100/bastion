@@ -1,0 +1,36 @@
+[Unit]
+Description=Bastion backup server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/bastion
+EnvironmentFile=-/etc/bastion/bastion.env
+
+# Restart on crashes (does not auto-start on install; see docs).
+Restart=on-failure
+RestartSec=3
+
+# Data directory lives under /var/lib via StateDirectory and BASTION_DATA_DIR in the env file.
+DynamicUser=true
+StateDirectory=bastion
+StateDirectoryMode=0750
+
+# Basic hardening (keep conservative to avoid breaking common deployments).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

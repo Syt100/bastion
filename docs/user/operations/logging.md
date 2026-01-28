@@ -2,6 +2,10 @@
 
 ## Defaults
 - Bastion logs to the console by default.
+- When running under systemd, console logs are captured by journald:
+  - `journalctl -u bastion -f`
+- When running as a Windows Service (MSI install), Bastion defaults to a log file unless configured:
+  - `%PROGRAMDATA%\\bastion\\logs\\bastion.log`
 - If no explicit filter is configured, Bastion uses a conservative default filter:
   - `info,tower_http=warn`
   - This keeps Bastion `INFO` logs visible while suppressing noisy per-request HTTP access logs.
@@ -28,13 +32,13 @@ Notes:
 Examples:
 ```bash
 # Default (INFO)
-./bastion
+bastion
 
 # More details from Bastion code, keep HTTP logs quiet
-./bastion --log "bastion=debug,tower_http=warn"
+bastion --log "bastion=debug,tower_http=warn"
 
 # Enable HTTP request logs too
-./bastion --log "info,tower_http=info"
+bastion --log "info,tower_http=info"
 ```
 
 ## File Logging + Rotation
@@ -58,7 +62,7 @@ Notes:
 
 Example:
 ```bash
-./bastion \
+bastion \
   --log-file ./data/logs/bastion.log \
   --log-rotation daily \
   --log-keep-files 30
