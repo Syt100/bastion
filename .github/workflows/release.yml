@@ -121,15 +121,21 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
             $version = "0.0.0"
           }
+          if ($version -match '^\d+\.\d+\.\d+$') {
+            # WiX expects the Product/@Version value in x.x.x.x form.
+            $version = "$version.0"
+          }
 
-          candle.exe -nologo `
-            -out "bastion.wixobj" `
-            -dProductVersion=$version `
-            -dSourceDir="target\\release" `
+          $wixObj = "bastion.wixobj"
+          & candle.exe `
+            -nologo `
+            -out $wixObj `
+            "-dProductVersion=$version" `
+            "-dSourceDir=target\\release" `
             "packaging\\windows\\bastion.wxs"
 
           $asset = "bastion-${{ github.ref_name }}-${{ matrix.platform }}.msi"
-          light.exe -nologo -o $asset "bastion.wixobj"
+          & light.exe -nologo -o $asset $wixObj
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
