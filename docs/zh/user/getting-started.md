@@ -6,8 +6,30 @@
 
 当前官方发布的制品格式：
 
-- **Linux**：`*.tar.gz`（包含 `bastion` 二进制）
-- **Windows**：`*.zip`（包含 `bastion.exe`）
+- **Linux**：
+  - `*.tar.gz`（便携版，包含 `bastion` 二进制）
+  - `*.deb`（Debian/Ubuntu）
+  - `*.rpm`（Fedora/RHEL/openSUSE）
+- **Windows**：
+  - `*.zip`（便携版，包含 `bastion.exe`）
+  - `*.msi`（安装包）
+- **macOS**：
+  - `*.tar.gz`（便携版，包含 `bastion` 二进制；x64 + arm64）
+
+示例：
+
+- Linux `.tar.gz` / macOS `.tar.gz`：
+  - `tar -xzf bastion-<version>-<platform>.tar.gz`
+  - `./bastion`
+- Debian/Ubuntu `.deb`：
+  - `sudo dpkg -i bastion-<version>-linux-x64.deb`
+  - 使用 `bastion` 启动
+- Fedora/RHEL/openSUSE `.rpm`：
+  - `sudo rpm -Uvh bastion-<version>-linux-x64.rpm`
+  - 使用 `bastion` 启动
+- Windows `.msi`：
+  - 运行 MSI 安装
+  - 通过 `C:\\Program Files\\Bastion\\bastion.exe` 启动（MSI 默认不会写入 PATH）
 
 你也可以从源码构建（见 [开发文档](/zh/dev/)）。
 
@@ -51,4 +73,3 @@
 - 如果需要远端存储，配置 [存储（WebDAV）](/zh/user/storage)。
 - 在 [备份快照](/zh/user/backup-snapshots) 中管理备份产物（固定/删除/保留策略）。
 - （可选）配置 [通知](/zh/user/operations/notifications)。
-

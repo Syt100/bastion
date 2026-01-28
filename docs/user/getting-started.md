@@ -6,8 +6,30 @@ This guide assumes a small deployment (one Hub, optional Agents).
 
 Current official release artifacts are:
 
-- **Linux**: `*.tar.gz` (contains the `bastion` binary)
-- **Windows**: `*.zip` (contains `bastion.exe`)
+- **Linux**:
+  - `*.tar.gz` (portable, contains the `bastion` binary)
+  - `*.deb` (Debian/Ubuntu)
+  - `*.rpm` (Fedora/RHEL/openSUSE)
+- **Windows**:
+  - `*.zip` (portable, contains `bastion.exe`)
+  - `*.msi` (installer)
+- **macOS**:
+  - `*.tar.gz` (portable, contains the `bastion` binary; x64 + arm64)
+
+Examples:
+
+- Linux `.tar.gz` / macOS `.tar.gz`:
+  - `tar -xzf bastion-<version>-<platform>.tar.gz`
+  - `./bastion`
+- Debian/Ubuntu `.deb`:
+  - `sudo dpkg -i bastion-<version>-linux-x64.deb`
+  - Run with `bastion`
+- Fedora/RHEL/openSUSE `.rpm`:
+  - `sudo rpm -Uvh bastion-<version>-linux-x64.rpm`
+  - Run with `bastion`
+- Windows `.msi`:
+  - Install the MSI
+  - Run from `C:\Program Files\Bastion\bastion.exe` (the MSI does not add PATH by default)
 
 You can also build from source (see [Developer docs](/dev/)).
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="Bastion"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    Manufacturer="Bastion Contributors"
+    UpgradeCode="cd8c3109-e86a-4a62-a73e-cbe52dbbd718"
+  >
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Bastion is already installed." />
+    <MediaTemplate />
+
+    <Feature Id="ProductFeature" Title="Bastion" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Bastion" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99">
+        <File Id="BastionExeFile" Source="$(var.SourceDir)\bastion.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

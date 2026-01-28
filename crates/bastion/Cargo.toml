@@ -2,6 +2,9 @@
 name = "bastion"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+description = "Bastion backup server"
+repository = "https://github.com/Syt100/bastion"
 
 [dependencies]
 bastion-core = { path = "../bastion-core" }
@@ -42,3 +45,23 @@ embed-web = ["embed-ui", "embed-docs"]
 
 [dev-dependencies]
 tempfile = "3.23.0"
+
+# Packaging metadata used by GitHub release workflows.
+# We keep packages minimal (just the `bastion` binary + docs).
+[package.metadata.deb]
+maintainer = "Bastion Contributors <noreply@github.com>"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+  ["../../target/release/bastion", "usr/bin/bastion", "755"],
+  ["../../LICENSE", "usr/share/doc/bastion/LICENSE", "644"],
+  ["../../README.md", "usr/share/doc/bastion/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "../../target/release/bastion", dest = "/usr/bin/bastion", mode = "755" },
+  { source = "../../LICENSE", dest = "/usr/share/doc/bastion/LICENSE", mode = "644" },
+  { source = "../../README.md", dest = "/usr/share/doc/bastion/README.md", mode = "644" },
+]

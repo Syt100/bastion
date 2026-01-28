@@ -13,7 +13,8 @@ jobs:
     name: build (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     env:
-      BASTION_VERSION: ${{ github.ref_name }}
+      # For workflow_dispatch (branch refs), use a safe placeholder version for packaging steps that require semver.
+      BASTION_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0' }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +25,12 @@ jobs:
           - os: windows-latest
             platform: windows-x64
             asset_ext: zip
+          - os: macos-13
+            platform: macos-x64
+            asset_ext: tar.gz
+          - os: macos-14
+            platform: macos-arm64
+            asset_ext: tar.gz
 
     steps:
       - name: Checkout
@@ -42,9 +49,11 @@ jobs:
           npm run build-only --prefix ui
 
       - name: Build docs (for embed-docs)
+        env:
+          DOCS_BASE: /docs/
         run: |
           npm ci --prefix docs
-          DOCS_BASE=/docs/ npm run build --prefix docs
+          npm run build --prefix docs
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -61,12 +70,71 @@ jobs:
           asset="bastion-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz"
           tar -C target/release -czf "${asset}" bastion
 
+      - name: Package (Linux .deb/.rpm)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+
+          version="${BASTION_VERSION#v}"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            version="0.0.0"
+          fi
+
+          # Install cargo packagers (pinned by Cargo.lock within the tool crates).
+          cargo install cargo-deb --locked --version 3.6.2
+          cargo install cargo-generate-rpm --locked --version 0.20.0
+
+          # Debian package (binary-only).
+          cargo deb -p bastion \
+            --no-build \
+            --no-strip \
+            --deb-version "${version}" \
+            --output target/debian \
+            -- \
+            --locked \
+            --features embed-web
+          deb="$(ls -1 target/debian/*.deb | head -n 1)"
+          cp "${deb}" "bastion-${{ github.ref_name }}-${{ matrix.platform }}.deb"
+
+          # RPM package (binary-only). Run from the package directory because the repo root is a workspace manifest.
+          (cd crates/bastion && cargo generate-rpm --auto-req builtin --output "../../bastion-${{ github.ref_name }}-${{ matrix.platform }}.rpm")
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $asset = "bastion-${{ github.ref_name }}-${{ matrix.platform }}.zip"
           Compress-Archive -Path "target\\release\\bastion.exe" -DestinationPath $asset -Force
+
+      - name: Package (Windows MSI)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # WiX Toolset v3 (candle/light) via Chocolatey.
+          choco install wixtoolset -y --no-progress
+
+          $version = $env:BASTION_VERSION
+          if (-not $version) { $version = "0.0.0" }
+          $version = $version -replace '^v',''
+          if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+            $version = "0.0.0"
+          }
+
+          candle.exe -nologo `
+            -dProductVersion=$version `
+            -dSourceDir="target\\release" `
+            "packaging\\windows\\bastion.wxs"
+
+          $asset = "bastion-${{ github.ref_name }}-${{ matrix.platform }}.msi"
+          light.exe -nologo -o $asset "bastion.wixobj"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          asset="bastion-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz"
+          tar -C target/release -czf "${asset}" bastion
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -91,6 +159,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum * > sha256sums.txt)
 
       - name: Generate release notes
         run: |
