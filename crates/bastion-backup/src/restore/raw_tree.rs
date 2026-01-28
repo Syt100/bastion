@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use base64::Engine as _;
 use bastion_core::progress::ProgressUnitsV1;
 
@@ -442,6 +443,11 @@ fn apply_fs_metadata_best_effort_inner(
     rec: &EntryRecord,
     kind: FsEntryKind,
 ) -> Result<(), anyhow::Error> {
+    #[cfg(not(unix))]
+    {
+        let _ = kind;
+    }
+
     // mode
     #[cfg(unix)]
     if let Some(mode) = rec.mode {
