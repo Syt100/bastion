@@ -7,9 +7,9 @@
 当前官方发布的制品格式：
 
 - **Linux**：
-  - `*.tar.gz`（便携版，包含 `bastion` 二进制）
-  - `*.deb`（Debian/Ubuntu）
-  - `*.rpm`（Fedora/RHEL/openSUSE）
+  - `*.tar.gz`（便携版，包含 `bastion` 二进制；`gnu` + `musl`）
+  - `*.deb`（Debian/Ubuntu；仅 `gnu`）
+  - `*.rpm`（Fedora/RHEL/openSUSE；仅 `gnu`）
 - **Windows**：
   - `*.zip`（便携版，包含 `bastion.exe`）
   - `*.msi`（安装包）
@@ -19,13 +19,13 @@
 示例：
 
 - Linux `.tar.gz` / macOS `.tar.gz`：
-  - `tar -xzf bastion-<version>-<platform>.tar.gz`
+  - `tar -xzf bastion-<version>-<target>.tar.gz`
   - `./bastion`
 - Debian/Ubuntu `.deb`：
-  - `sudo dpkg -i bastion-<version>-linux-x64.deb`
+  - `sudo dpkg -i bastion-<version>-x86_64-unknown-linux-gnu.deb`
   - 使用 `bastion` 启动
 - Fedora/RHEL/openSUSE `.rpm`：
-  - `sudo rpm -Uvh bastion-<version>-linux-x64.rpm`
+  - `sudo rpm -Uvh bastion-<version>-x86_64-unknown-linux-gnu.rpm`
   - 使用 `bastion` 启动
 - Windows `.msi`：
   - 运行 MSI 安装

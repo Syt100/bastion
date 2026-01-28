@@ -7,9 +7,9 @@ This guide assumes a small deployment (one Hub, optional Agents).
 Current official release artifacts are:
 
 - **Linux**:
-  - `*.tar.gz` (portable, contains the `bastion` binary)
-  - `*.deb` (Debian/Ubuntu)
-  - `*.rpm` (Fedora/RHEL/openSUSE)
+  - `*.tar.gz` (portable, contains the `bastion` binary; `gnu` + `musl`)
+  - `*.deb` (Debian/Ubuntu; `gnu` only)
+  - `*.rpm` (Fedora/RHEL/openSUSE; `gnu` only)
 - **Windows**:
   - `*.zip` (portable, contains `bastion.exe`)
   - `*.msi` (installer)
@@ -19,13 +19,13 @@ Current official release artifacts are:
 Examples:
 
 - Linux `.tar.gz` / macOS `.tar.gz`:
-  - `tar -xzf bastion-<version>-<platform>.tar.gz`
+  - `tar -xzf bastion-<version>-<target>.tar.gz`
   - `./bastion`
 - Debian/Ubuntu `.deb`:
-  - `sudo dpkg -i bastion-<version>-linux-x64.deb`
+  - `sudo dpkg -i bastion-<version>-x86_64-unknown-linux-gnu.deb`
   - Run with `bastion`
 - Fedora/RHEL/openSUSE `.rpm`:
-  - `sudo rpm -Uvh bastion-<version>-linux-x64.rpm`
+  - `sudo rpm -Uvh bastion-<version>-x86_64-unknown-linux-gnu.rpm`
   - Run with `bastion`
 - Windows `.msi`:
   - Install the MSI

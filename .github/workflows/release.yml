@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: build (${{ matrix.platform }})
+    name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     env:
       # For workflow_dispatch (branch refs), use a safe placeholder version for packaging steps that require semver.
@@ -20,16 +20,24 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+            cargo_target: ""
+            asset_ext: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            cargo_target: x86_64-unknown-linux-musl
             asset_ext: tar.gz
           - os: windows-latest
-            platform: windows-x64
+            target: x86_64-pc-windows-msvc
+            cargo_target: ""
             asset_ext: zip
           - os: macos-15-intel
-            platform: macos-x64
+            target: x86_64-apple-darwin
+            cargo_target: ""
             asset_ext: tar.gz
           - os: macos-latest
-            platform: macos-arm64
+            target: aarch64-apple-darwin
+            cargo_target: ""
             asset_ext: tar.gz
 
     steps:
@@ -61,17 +69,33 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Setup musl (Linux)
+        if: runner.os == 'Linux' && matrix.cargo_target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+
       - name: Build (release, embed-web)
+        if: matrix.cargo_target == ''
         run: cargo build -p bastion --release --locked --features embed-web
+
+      - name: Build (release, embed-web, cross-target)
+        if: matrix.cargo_target != ''
+        run: cargo build -p bastion --release --locked --features embed-web --target ${{ matrix.cargo_target }}
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: |
-          asset="bastion-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz"
-          tar -C target/release -czf "${asset}" bastion
+          asset="bastion-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          bin_dir="target/release"
+          if [ -n "${{ matrix.cargo_target }}" ]; then
+            bin_dir="target/${{ matrix.cargo_target }}/release"
+          fi
+          tar -C "${bin_dir}" -czf "${asset}" bastion
 
       - name: Package (Linux .deb/.rpm)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           set -euo pipefail
 
@@ -94,16 +118,16 @@ jobs:
             --locked \
             --features embed-web
           deb="$(ls -1 target/debian/*.deb | head -n 1)"
-          cp "${deb}" "bastion-${{ github.ref_name }}-${{ matrix.platform }}.deb"
+          cp "${deb}" "bastion-${{ github.ref_name }}-${{ matrix.target }}.deb"
 
           # RPM package (binary-only). Run from the package directory because the repo root is a workspace manifest.
-          (cd crates/bastion && cargo generate-rpm --auto-req builtin --output "../../bastion-${{ github.ref_name }}-${{ matrix.platform }}.rpm")
+          (cd crates/bastion && cargo generate-rpm --auto-req builtin --output "../../bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm")
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $asset = "bastion-${{ github.ref_name }}-${{ matrix.platform }}.zip"
+          $asset = "bastion-${{ github.ref_name }}-${{ matrix.target }}.zip"
           Compress-Archive -Path "target\\release\\bastion.exe" -DestinationPath $asset -Force
 
       - name: Package (Windows MSI)
@@ -134,20 +158,20 @@ jobs:
             "-dSourceDir=target\\release" `
             "packaging\\windows\\bastion.wxs"
 
-          $asset = "bastion-${{ github.ref_name }}-${{ matrix.platform }}.msi"
+          $asset = "bastion-${{ github.ref_name }}-${{ matrix.target }}.msi"
           & light.exe -nologo -o $asset $wixObj
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          asset="bastion-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz"
+          asset="bastion-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
           tar -C target/release -czf "${asset}" bastion
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ matrix.platform }}
-          path: bastion-${{ github.ref_name }}-${{ matrix.platform }}.*
+          name: bastion-${{ matrix.target }}
+          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.*
           if-no-files-found: error
 
   release:
