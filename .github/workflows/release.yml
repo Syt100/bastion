@@ -25,10 +25,10 @@ jobs:
           - os: windows-latest
             platform: windows-x64
             asset_ext: zip
-          - os: macos-13
+          - os: macos-15-intel
             platform: macos-x64
             asset_ext: tar.gz
-          - os: macos-14
+          - os: macos-latest
             platform: macos-arm64
             asset_ext: tar.gz
 
