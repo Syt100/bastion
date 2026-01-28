@@ -99,7 +99,7 @@ jobs:
             printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Bastion Docs (stub)</title>' > docs/.vitepress/dist/index.html
           fi
 
-      - name: Windows: disable debug symbols (avoid LNK1318)
+      - name: "Windows: disable debug symbols (avoid LNK1318)"
         if: runner.os == 'Windows'
         shell: bash
         run: |
