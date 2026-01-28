@@ -598,39 +598,35 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         hub_runtime_config: Default::default(),
     });
 
-    let (listener, addr) = start_test_server().await;
-    let server = tokio::spawn(async move {
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .await
-        .expect("serve");
-    });
-
     // Intentionally exceed the configured Agent body limit with a large message payload.
     let big_message = "x".repeat(5 * 1024 * 1024);
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/agent/runs/ingest", base_url(addr)))
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "run": {
+            "id": "r1",
+            "job_id": job.id,
+            "status": "success",
+            "started_at": 1,
+            "ended_at": 2,
+            "events": [
+                { "seq": 1, "ts": 1, "level": "info", "kind": "k", "message": big_message }
+            ]
+        }
+    }))
+    .expect("payload");
+
+    // Use `oneshot` instead of a real TCP client to avoid platform-specific behavior where
+    // the server may reset the connection while the client is still streaming a too-large body.
+    let peer: std::net::SocketAddr = "127.0.0.1:1234".parse().expect("peer");
+    let mut req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/agent/runs/ingest")
+        .header("content-type", "application/json")
         .header("authorization", format!("Bearer {agent_key}"))
-        .json(&serde_json::json!({
-            "run": {
-                "id": "r1",
-                "job_id": job.id,
-                "status": "success",
-                "started_at": 1,
-                "ended_at": 2,
-                "events": [
-                    { "seq": 1, "ts": 1, "level": "info", "kind": "k", "message": big_message }
-                ]
-            }
-        }))
-        .send()
-        .await
+        .body(axum::body::Body::from(payload))
         .expect("request");
+    req.extensions_mut().insert(axum::extract::ConnectInfo(peer));
+
+    let resp = tower::ServiceExt::oneshot(app, req).await.expect("response");
 
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-
-    server.abort();
 }
