@@ -123,6 +123,7 @@ jobs:
           }
 
           candle.exe -nologo `
+            -out "bastion.wixobj" `
             -dProductVersion=$version `
             -dSourceDir="target\\release" `
             "packaging\\windows\\bastion.wxs"
