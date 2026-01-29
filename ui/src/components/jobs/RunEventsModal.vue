@@ -330,10 +330,9 @@ function formatRelativeSeconds(seconds: number): string {
         ? { n: Math.round(abs / 60), s: 'm' }
         : { n: Math.round(abs), s: 's' }
 
-  const v = `${unit.n}${unit.s}`
-  const isZh = locale.value.startsWith('zh')
-  if (seconds >= 0) return isZh ? `${v}后` : `in ${v}`
-  return isZh ? `${v}前` : `${v} ago`
+  const v = `${unit.n}${t(`common.timeUnits.${unit.s}`)}`
+  if (seconds >= 0) return t('common.relativeTime.in', { value: v })
+  return t('common.relativeTime.ago', { value: v })
 }
 
 function pickSummaryChips(e: RunEvent): SummaryChip[] {

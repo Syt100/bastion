@@ -540,8 +540,8 @@ onMounted(async () => {
         <div class="shrink-0">
           <div class="text-sm opacity-70 mb-1">{{ t('agents.filters.mode') }}</div>
           <n-radio-group v-model:value="labelsMode" size="small">
-            <n-radio-button value="and">AND</n-radio-button>
-            <n-radio-button value="or">OR</n-radio-button>
+            <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
+            <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
           </n-radio-group>
         </div>
         <div class="shrink-0 flex justify-end">

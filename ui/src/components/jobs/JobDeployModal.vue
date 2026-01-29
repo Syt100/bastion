@@ -260,8 +260,8 @@ defineExpose<JobDeployModalExpose>({ open })
 
             <n-form-item :label="t('jobs.deploy.labelsMode')" :show-feedback="false">
               <n-radio-group v-model:value="labelsMode" size="small">
-                <n-radio-button value="and">AND</n-radio-button>
-                <n-radio-button value="or">OR</n-radio-button>
+                <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
+                <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
               </n-radio-group>
             </n-form-item>
           </template>

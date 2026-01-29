@@ -232,7 +232,7 @@ async function copyPreviewJson(): Promise<void> {
 
     <div class="app-border-subtle rounded-lg p-3 app-glass-soft">
       <div class="flex items-center justify-between gap-3">
-        <div class="text-sm font-medium">JSON</div>
+        <div class="text-sm font-medium">{{ t('common.json') }}</div>
         <div class="flex items-center gap-2">
           <n-button size="small" secondary @click="showJsonPreview = !showJsonPreview">
             {{ showJsonPreview ? t('jobs.actions.hideJson') : t('jobs.actions.showJson') }}

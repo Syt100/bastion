@@ -52,6 +52,8 @@ const auth = useAuthStore()
 const agents = useAgentsStore()
 const system = useSystemStore()
 
+const versionTag = computed(() => (system.version ? `v${system.version}` : null))
+
 const nodeIdParam = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
 const menuPath = computed(() => (route.path.startsWith('/n/') ? route.path.replace(/^\/n\/[^/]+/, '') || '/' : route.path))
 const nodeSuffix = computed(() => {
@@ -236,7 +238,7 @@ onMounted(async () => {
     >
       <div class="h-14 px-4 flex items-center gap-3 border-b border-black/5 dark:border-white/10">
         <AppLogo />
-        <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
+        <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
       </div>
 
       <div class="px-4 py-3 border-b border-black/5 dark:border-white/10">
@@ -267,7 +269,7 @@ onMounted(async () => {
 
             <template v-if="!isDesktop">
               <AppLogo />
-              <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
+              <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
             </template>
           </div>
 
@@ -309,7 +311,7 @@ onMounted(async () => {
       <n-card class="mb-3" :bordered="false">
         <div class="flex items-center justify-between">
           <AppLogo size="sm" />
-          <n-tag size="small" type="info" :bordered="false">{{ t('common.beta') }}</n-tag>
+          <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
         </div>
       </n-card>
 
