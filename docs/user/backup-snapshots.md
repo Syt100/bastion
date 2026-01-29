@@ -1,6 +1,6 @@
 # Backup snapshots
 
-A **backup snapshot** is the output produced by a successful job run (the actual backup data stored in your target, plus a small index record in the Hub).
+A **snapshot** is the output produced by a successful job run: the backup data stored in your target, plus a small index record in the Hub.
 
 In the Web UI, snapshots are a first-class resource: you can **pin**, **delete**, and apply **retention policies**.
 
@@ -50,7 +50,7 @@ Retention is enforced by the server and helps keep storage usage under control.
 In the job editor you can configure:
 
 - **keep last**: keep the most recent N snapshots
-- **keep days**: keep snapshots newer than N days
+- **keep days**: keep snapshots from the last N days
 - **max delete per tick / per day**: safety limits to avoid mass deletion
 
 The UI supports:
@@ -64,4 +64,3 @@ Pinned snapshots are never deleted by retention.
 
 - **local_dir targets**: snapshot data lives on the node that ran the job (Hub or an Agent). Delete tasks must execute on that node, so offline agents can delay deletion.
 - **WebDAV targets**: snapshots live in remote WebDAV storage. Deletion requires credentials on the executing node (often the Hub unless you distribute secrets to agents).
-

@@ -1,15 +1,15 @@
-# Jobs（作业）
+# 备份任务（Jobs）
 
-**Job（作业）** 用来定义：备份什么、存到哪里、何时运行。
+**备份任务（Job）** 用来定义：备份什么、存到哪里、何时运行。
 
-## Job 运行位置（Hub vs Agent）
+## 运行位置（Hub vs 客户端）
 
-每个 job 只会在一个 node 上运行：
+每个任务只会在一个节点上运行：
 
 - **Hub（本机）**：在 Hub 所在机器上执行。
-- **Agent**：在某个已接入的 agent 机器上执行。
+- **客户端（Agent）**：在某个已接入的客户端机器上执行。
 
-在 Web UI 中，Jobs 页面带有 **node 上下文**（`hub` 或某个 agent）。你可以通过主布局中的 node 选择器切换查看/创建对应 node 的 jobs。
+在 Web UI 中，Jobs 页面按 **节点上下文** 展示（`hub` 或某个客户端）。你可以通过主布局中的节点选择器切换查看/创建对应节点的任务。
 
 ## 创建与编辑 Job
 
@@ -17,18 +17,18 @@
 
 - **Jobs** → **Create**
 
-Job 编辑器按步骤组织：
+任务编辑器按步骤组织：
 
-- **Basics**：名称、node、计划（schedule）、时区（timezone）、重叠策略（overlap policy）、保留策略（retention）
-- **Source**：备份源（取决于 job 类型）
-- **Target**：备份存储位置（本地目录 / WebDAV）
-- **Security**：产物格式（artifact format）+ 可选加密
-- **Notifications**：继承或自定义通知目的地
-- **Review**：最终汇总（可选 JSON 预览）
+- **基本信息（Basics）**：名称、节点、计划、时区、重叠策略、保留策略
+- **数据源（Source）**：备份源（取决于任务类型）
+- **备份目标（Target）**：备份存储位置（本地目录 / WebDAV）
+- **安全（Security）**：产物格式 + 可选加密
+- **通知（Notifications）**：继承或自定义通知目的地
+- **预览（Review）**：最终汇总（可选 JSON 预览）
 
-## 调度（Schedule）与重叠（Overlap）
+## 调度与重叠
 
-每个 job 包含：
+每个任务包含：
 
 - **Schedule mode**
   - **Manual**：不自动触发；通过 **Run now** 手动运行
@@ -113,15 +113,15 @@ Target 支持设置 **part size**（MiB）。较大的备份会被拆分为多�
 - Hub 在首次使用时会自动创建该 key
 - Agent 只会拿到用于加密的 public recipient；当需要把加密备份 restore 到 agent 时，Hub 会在派发 restore 前自动确保 agent 具备所需私钥
 
-## 备份快照与保留策略（Retention）
+## 快照与保留策略
 
-成功的 run 会生成一个 **snapshot（备份快照）**。你可以：
+成功的 run 会生成一个 **快照（snapshot）**。你可以：
 
-- 在 job 维度查看/固定/删除快照：[备份快照](/zh/user/backup-snapshots)
-- 在 job 上配置保留策略（retention）：
-  - keep last / keep days
+- 在任务维度查看/固定/删除快照：[备份快照](/zh/user/backup-snapshots)
+- 在任务上配置保留策略：
+  - 保留最近 N 份 / 保留最近 N 天内的快照
   - 安全阀：max delete per tick / per day
-  - 新建 job 时的 **默认值**来自 **Settings → Runtime config**
+  - 新建任务的 **默认值**来自 **Settings → Runtime config**
 
 ## 通知（Notifications）
 
@@ -172,9 +172,8 @@ Deploy 会做的事：
 
 ## 归档与删除 Job
 
-Job 可以归档（停止调度并从默认视图隐藏）。
+任务可以归档（停止调度并从默认视图隐藏）。
 
-- **Archive**：禁用“Run now”等变更操作；可选“级联删除快照”（会跳过已固定的快照）
+- **Archive**：停止调度并隐藏任务；可选“同时删除快照”（会跳过已固定的快照）
 - **Unarchive**：恢复为活跃状态
-- **Delete**：从 Hub 数据库中永久删除 job（与快照删除是不同概念）
-
+- **Delete**：从 Hub 数据库中永久删除任务与运行历史（与快照删除是不同概念）

@@ -64,9 +64,9 @@ Bastion 在 Web UI 中提供一组 Hub 的运行时配置项。
 
 另见：[日志](/zh/user/operations/logging)。
 
-### Default backup retention（新建 jobs 的默认值）
+### 默认快照保留（新建任务）
 
-以下默认值会在你创建 **新 job** 时在 job 编辑器中自动带出：
+以下默认值会在你创建 **新任务** 时在任务编辑器中自动带出：
 
 - enabled
 - keep last / keep days
@@ -74,7 +74,7 @@ Bastion 在 Web UI 中提供一组 Hub 的运行时配置项。
 
 说明：
 
-- 修改默认值不会影响已经存在的 jobs。
+- 修改默认值不会影响已经存在的任务。
 - 该设置会被 UI 立即使用（不需要重启）。
 
 ## 重启提示
@@ -82,4 +82,3 @@ Bastion 在 Web UI 中提供一组 Hub 的运行时配置项。
 多数运行时配置字段是在 Hub 启动时加载的。
 
 当你修改 Hub timezone / run retention / incomplete cleanup / logging 等配置后，建议重启 Hub 以应用新的 effective 值。
-

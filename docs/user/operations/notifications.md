@@ -1,6 +1,6 @@
 # Notifications (WeCom bot + email)
 
-Bastion can send per-run notifications when a run finishes (success/failed/rejected).
+Bastion can send notifications when a run finishes (success/failed/rejected).
 
 In the Web UI:
 
@@ -48,7 +48,7 @@ Create a destination with:
 - **TLS mode**: `starttls` / `implicit` / `none`
 - **Username / password** (if required by your SMTP server)
 - **From**
-- **To**: one or more recipient addresses
+- **To**: one or more recipient addresses (one per line or comma-separated)
 
 You can also:
 
@@ -96,4 +96,3 @@ Actions:
 - **Cancel**: cancels a queued notification
 
 Tip: if notifications are disabled (globally, by channel, or by destination), Bastion cancels queued items automatically.
-

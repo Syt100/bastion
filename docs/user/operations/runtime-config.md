@@ -64,7 +64,7 @@ Logging can be configured via the runtime config page:
 
 See: [Logging](/user/operations/logging).
 
-### Default backup retention (new jobs)
+### Default snapshot retention (new jobs)
 
 These defaults are applied when you create a **new** job in the job editor:
 
@@ -82,4 +82,3 @@ Notes:
 Most runtime config fields are loaded at Hub startup.
 
 After changing Hub timezone / run retention / incomplete cleanup / logging settings, restart the Hub to apply the new values.
-

@@ -113,15 +113,15 @@ For `archive_v1`, you can enable payload encryption (age x25519).
 - The Hub auto-creates the key on first use
 - Agents receive only the public recipient for encryption; for restore-to-agent, the Hub will distribute the required private key automatically as part of starting the restore
 
-## Backup snapshots and retention
+## Snapshots and retention
 
-Successful runs produce a **backup snapshot** (the stored backup output). You can:
+Successful runs produce a **snapshot** (the backup output stored in your target). You can:
 
 - view/pin/delete snapshots per job: [Backup snapshots](/user/backup-snapshots)
 - configure retention on the job:
-  - keep last / keep days
+  - keep last N snapshots / keep snapshots from the last N days
   - safety limits (max deletes per tick / per day)
-  - **defaults** come from **Settings → Runtime config** when you create a new job
+  - new jobs inherit **defaults** from **Settings → Runtime config**
 
 ## Notifications (per job)
 
@@ -174,6 +174,6 @@ See:
 
 Jobs can be archived to stop scheduling and hide them from the default view.
 
-- **Archive**: disables “Run now” and other mutating actions; you can optionally “cascade delete snapshots” (pinned snapshots are skipped)
+- **Archive**: stops scheduling and hides the job; optionally queue deletion of existing snapshots (pinned snapshots are skipped)
 - **Unarchive**: makes the job active again
-- **Delete**: permanently removes the job from the Hub database (separate from snapshot deletion)
+- **Delete**: permanently deletes the job and its run history (separate from snapshot deletion)
