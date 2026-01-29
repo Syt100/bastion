@@ -22,5 +22,5 @@ If you are new to Bastion, start with: [Concepts and terminology](/user/concepts
 ## Reference
 
 - [Bulk operations](/user/bulk-operations) (labels, “sync config now”, distribute WebDAV credentials, deploy jobs)
-- [Operations](/user/operations/reverse-proxy) (reverse proxy / runtime config / logging / maintenance / data directory)
+- [Operations](/user/operations/defaults) (defaults / upgrade & rollback / reverse proxy / runtime config / logging / observability)
 - [Recipes](/user/recipes/vaultwarden)

@@ -14,7 +14,10 @@ pub(super) async fn require_secure_middleware(
     next: Next,
 ) -> Response {
     let path = req.uri().path();
-    let allow_insecure = matches!(path, "/api/health" | "/api/system" | "/api/setup/status");
+    let allow_insecure = matches!(
+        path,
+        "/api/health" | "/api/ready" | "/api/system" | "/api/setup/status"
+    );
 
     if allow_insecure {
         return next.run(req).await;

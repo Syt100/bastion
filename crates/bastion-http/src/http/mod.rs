@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
+use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -138,6 +139,22 @@ async fn health() -> Json<HealthResponse> {
 }
 
 #[derive(Debug, Serialize)]
+struct ReadyResponse {
+    ok: bool,
+}
+
+async fn ready(state: axum::extract::State<AppState>) -> (StatusCode, Json<ReadyResponse>) {
+    // Readiness should reflect whether the Hub can serve requests, including DB connectivity.
+    let ok = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, Json(ReadyResponse { ok }))
+}
+
+#[derive(Debug, Serialize)]
 struct SystemStatusResponse {
     version: &'static str,
     build_time_unix: Option<i64>,
@@ -179,6 +196,7 @@ pub fn router(state: AppState) -> Router {
 
     let api_router = Router::new()
         .route("/api/health", get(health))
+        .route("/api/ready", get(ready))
         .route("/api/system", get(system_status))
         .route(
             "/api/settings/hub-runtime-config",
@@ -432,6 +450,9 @@ mod agents_ingest_tests;
 
 #[cfg(test)]
 mod filter_multiselect_tests;
+
+#[cfg(test)]
+mod observability_tests;
 
 #[cfg(test)]
 mod bulk_operations_tests;

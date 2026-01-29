@@ -75,12 +75,15 @@ export default defineConfig(({ command }) => {
               {
                 text: 'Operations',
                 items: [
+                  { text: 'Defaults', link: '/user/operations/defaults' },
+                  { text: 'Upgrade and rollback', link: '/user/operations/upgrade-rollback' },
                   { text: 'Runtime config', link: '/user/operations/runtime-config' },
                   { text: 'Notifications', link: '/user/operations/notifications' },
                   { text: 'Logging', link: '/user/operations/logging' },
                   { text: 'Maintenance', link: '/user/operations/maintenance' },
                   { text: 'Data directory', link: '/user/operations/data-directory' },
                   { text: 'Reverse proxy', link: '/user/operations/reverse-proxy' },
+                  { text: 'Observability', link: '/user/operations/observability' },
                 ],
               },
               {
@@ -156,12 +159,15 @@ export default defineConfig(({ command }) => {
               {
                 text: '运维',
                 items: [
+                  { text: '默认行为与优先级', link: '/zh/user/operations/defaults' },
+                  { text: '升级与回滚', link: '/zh/user/operations/upgrade-rollback' },
                   { text: '运行时配置', link: '/zh/user/operations/runtime-config' },
                   { text: '通知', link: '/zh/user/operations/notifications' },
                   { text: '日志', link: '/zh/user/operations/logging' },
                   { text: '维护', link: '/zh/user/operations/maintenance' },
                   { text: '数据目录', link: '/zh/user/operations/data-directory' },
                   { text: '反向代理', link: '/zh/user/operations/reverse-proxy' },
+                  { text: '可观测性', link: '/zh/user/operations/observability' },
                 ],
               },
               {

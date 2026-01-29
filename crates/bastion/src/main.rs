@@ -6,6 +6,7 @@ mod logging;
 mod win_service;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::parser::ValueSource;
 use clap::{CommandFactory, FromArgMatches as _};
@@ -425,6 +426,23 @@ async fn run_doctor_command(
         }
     };
 
+    // Warn when binding to a non-loopback address without explicitly allowing insecure HTTP.
+    // This is a common "it works locally but not from LAN" misconfiguration: the operator needs
+    // either `--insecure-http` (LAN/dev) or a TLS-terminating reverse proxy.
+    if !config.bind.ip().is_loopback() && !config.insecure_http {
+        checks.push(serde_json::json!({
+            "id": "bind_security",
+            "status": "warn",
+            "message": format!(
+                "bind {} without --insecure-http: HTTPS via reverse proxy is required for non-loopback access",
+                config.bind
+            ),
+        }));
+    }
+
+    // Validate the bind address is usable: either free, or already served by Bastion.
+    checks.push(check_bind_availability(config.bind).await);
+
     // DB open + load saved runtime config (also gives us a consistent "effective" view).
     let pool = match bastion_storage::db::init(&config.data_dir).await {
         Ok(p) => {
@@ -533,6 +551,92 @@ async fn run_doctor_command(
     }
 
     Ok(())
+}
+
+async fn check_bind_availability(bind: std::net::SocketAddr) -> serde_json::Value {
+    match tokio::net::TcpListener::bind(bind).await {
+        Ok(listener) => {
+            drop(listener);
+            serde_json::json!({
+                "id": "bind",
+                "status": "ok",
+                "message": format!("bind {} is available", bind),
+            })
+        }
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::AddrInUse {
+                if probe_bastion_system_endpoint(bind).await {
+                    return serde_json::json!({
+                        "id": "bind",
+                        "status": "ok",
+                        "message": format!("bind {} is already in use by Bastion (Hub appears to be running)", bind),
+                    });
+                }
+                return serde_json::json!({
+                    "id": "bind",
+                    "status": "fail",
+                    "message": format!("bind {} is already in use by another process", bind),
+                });
+            }
+
+            serde_json::json!({
+                "id": "bind",
+                "status": "fail",
+                "message": format!("bind {} is not usable: {err}", bind),
+            })
+        }
+    }
+}
+
+async fn probe_bastion_system_endpoint(bind: std::net::SocketAddr) -> bool {
+    let probe_addr = match bind.ip() {
+        std::net::IpAddr::V4(ip) if ip.is_unspecified() => std::net::SocketAddr::new(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            bind.port(),
+        ),
+        std::net::IpAddr::V6(ip) if ip.is_unspecified() => std::net::SocketAddr::new(
+            std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+            bind.port(),
+        ),
+        ip => std::net::SocketAddr::new(ip, bind.port()),
+    };
+
+    // Use `/api/system` because it is safe (no secrets) and specific to Bastion.
+    let url = match probe_addr.ip() {
+        std::net::IpAddr::V4(ip) => format!("http://{}:{}/api/system", ip, probe_addr.port()),
+        std::net::IpAddr::V6(ip) => format!("http://[{}]:{}/api/system", ip, probe_addr.port()),
+    };
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    let resp = match client.get(url).send().await {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    if !resp.status().is_success() {
+        return false;
+    }
+
+    let body: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    // Minimal shape check to reduce false positives.
+    let version_ok = body.get("version").and_then(|v| v.as_str()).is_some();
+    let insecure_ok = body
+        .get("insecure_http")
+        .and_then(|v| v.as_bool())
+        .is_some();
+    let tz_ok = body.get("hub_timezone").and_then(|v| v.as_str()).is_some();
+    version_ok && insecure_ok && tz_ok
 }
 
 fn resolve_hub_runtime_config_meta(
