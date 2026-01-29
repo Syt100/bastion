@@ -4,7 +4,7 @@
 ## bastion
 
 ```text
-Bastion 备份服务器（MVP）
+Bastion 备份服务器
 
 用法: bastion [OPTIONS] [COMMAND]
 
@@ -118,7 +118,7 @@ Bastion 备份服务器（MVP）
           [env: BASTION_HUB_URL=]
 
       --enroll-token <ENROLL_TOKEN>
-          注册令牌（仅当 Agent 尚未加入 Hub 时需要）。
+          接入令牌（仅当 Agent 尚未接入 Hub 时需要）。
           
           [env: BASTION_AGENT_ENROLL_TOKEN=]
 

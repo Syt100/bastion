@@ -4,7 +4,7 @@
 ## bastion
 
 ```text
-Bastion backup server (MVP)
+Bastion backup server
 
 Usage: bastion [OPTIONS] [COMMAND]
 

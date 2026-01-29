@@ -53,6 +53,5 @@ Bastion 会备份的内容：
 
 ## 说明
 
-- 本 MVP 的 Vaultwarden 配方仅支持 SQLite。
+- 当前 Vaultwarden 配方仅支持 SQLite。
 - 如果你的 Vaultwarden 使用 MySQL/PostgreSQL，请等待 Bastion 的数据库备份原语支持这些引擎后，再扩展对应配方。
-

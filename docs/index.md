@@ -15,7 +15,7 @@ If you are running Bastion for yourself, your family, or a small team, start her
 
 ## Developer docs
 
-If you are contributing to Bastion or hacking on the codebase:
+If you are contributing to Bastion or working on the codebase:
 
 - [Developer docs](/dev/)
 - [Build and run](/dev/build)

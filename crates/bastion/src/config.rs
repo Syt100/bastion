@@ -11,7 +11,7 @@ use ipnet::IpNet;
 #[command(
     name = "bastion",
     version,
-    about = "Bastion backup server (MVP)",
+    about = "Bastion backup server",
     disable_help_subcommand = true
 )]
 pub struct Cli {

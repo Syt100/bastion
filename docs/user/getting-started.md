@@ -71,7 +71,7 @@ Open the Web UI:
 
 On first launch, Bastion requires initialization (create the first user). After that, you can log in normally.
 
-Note: this MVP currently exposes only a single-user setup flow (no user management UI yet).
+Note: Bastion currently supports a single-admin setup flow (no user management UI yet).
 
 ## 4. Next steps
 

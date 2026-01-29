@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
--- Users (single-user MVP, but structured for future expansion).
+-- Users (single-admin for now, but structured for future expansion).
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
@@ -87,4 +87,3 @@ CREATE TABLE IF NOT EXISTS run_events (
   FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_run_events_ts ON run_events(ts);
-

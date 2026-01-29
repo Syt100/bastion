@@ -53,6 +53,5 @@ Use **Restore drill** in the UI to verify end-to-end integrity:
 
 ## Notes
 
-- Only SQLite is supported for the Vaultwarden recipe in this MVP.
+- This Vaultwarden recipe currently supports SQLite only.
 - If you run Vaultwarden with MySQL/PostgreSQL, wait for Bastion’s database backup primitives to support those engines before adding a Vaultwarden recipe for them.
-

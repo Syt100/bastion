@@ -1,6 +1,6 @@
 # Developer docs
 
-This section is for contributors and people hacking on Bastion.
+This section is for contributors and people working on Bastion.
 
 ## Quick links
 
@@ -13,4 +13,3 @@ This section is for contributors and people hacking on Bastion.
 
 - Linux/macOS: `bash scripts/ci.sh`
 - Windows: `powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
-

@@ -1,5 +1,5 @@
 {
-  "bastion.about": "Bastion 备份服务器（MVP）",
+  "bastion.about": "Bastion 备份服务器",
 
   "bastion.arg.log.help": "日志过滤器（语法与 RUST_LOG 相同），例如 `info`、`bastion=debug,tower_http=warn`。",
   "bastion.arg.log.long_help": "日志过滤器（语法与 RUST_LOG 相同），例如 `info`、`bastion=debug,tower_http=warn`。\n\n未设置时，Bastion 默认使用较保守的 `info,tower_http=warn` 过滤器。",
@@ -23,7 +23,7 @@
 
   "bastion.agent.about": "运行 Bastion Agent 并连接到 Hub。",
   "bastion.agent.arg.hub_url.help": "Hub 基础 URL，例如 `http://hub:9876` 或 `https://hub.example.com`。",
-  "bastion.agent.arg.enroll_token.help": "注册令牌（仅当 Agent 尚未加入 Hub 时需要）。",
+  "bastion.agent.arg.enroll_token.help": "接入令牌（仅当 Agent 尚未接入 Hub 时需要）。",
   "bastion.agent.arg.name.help": "友好的 Agent 名称（存储在 Hub 上，可选）。",
   "bastion.agent.arg.data_dir.help": "覆盖数据目录（也支持 BASTION_DATA_DIR）。",
   "bastion.agent.arg.heartbeat_seconds.help": "心跳间隔（秒，默认：15）。",
