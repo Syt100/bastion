@@ -1,6 +1,6 @@
 # Bulk operations
 
-Bulk operations are persistent, async actions applied to a set of agents (nodes).
+Bulk operations are persistent, async actions applied to a set of agents.
 
 They are useful for fleet-wide tasks such as updating labels, distributing credentials, syncing config, or cloning jobs.
 
@@ -19,7 +19,7 @@ Each item tracks:
 
 - View and manage operations: **Settings → Bulk operations**
   - Open an operation to see per-agent items
-  - **Retry failed**: re-queues only failed items
+  - **Retry failed items**: re-queues only failed items
   - **Cancel**: cancels queued items (running items keep running)
 
 Many bulk operations support a **preview** step in the UI to show a dry-run plan.
@@ -32,7 +32,7 @@ Add or remove labels on selected agents.
 
 Entry points:
 
-- **Agents** → **Bulk labels**
+- **Agents** → **Bulk edit labels**
 
 ### `sync_config_now`
 
@@ -40,7 +40,7 @@ Request agents to sync/apply the latest config snapshot.
 
 Entry points:
 
-- **Agents** → **Sync config now**
+- **Agents** → **Sync config**
 
 ### `webdav_secret_distribute`
 

@@ -1,15 +1,13 @@
 # Agents
 
-This document describes agent enrollment and day-to-day agent management in the Web UI.
+Agents let Bastion run jobs on other machines. This page covers enrollment and day-to-day management in the Web UI.
 
 ## Enrollment
 
-High-level flow:
+1. In the Web UI: **Agents** → **Create enrollment token**
+2. On the target machine: start the agent with `--enroll-token <token>`
 
-1. In the Web UI: **Agents** → create an **enrollment token**
-2. On the target machine: run `bastion agent ... --enroll-token <token>`
-
-Enrollment tokens are time-limited (default: 1 hour) and can optionally be configured with a limited number of uses. Treat them as secrets.
+Enrollment tokens expire (default: 1 hour) and can optionally be limited by remaining uses. Treat them as secrets.
 
 Example:
 
@@ -23,17 +21,17 @@ Example:
 Notes:
 
 - The agent keeps its enrollment identity in its own data directory (`--data-dir` / `BASTION_DATA_DIR`).
-- If an agent is already enrolled, `--enroll-token` is not required.
+- If an agent is already enrolled, you don't need `--enroll-token`.
 
-## Agent lifecycle and status
+## Status and lifecycle
 
 Agents can be:
 
-- **online**: connected recently (Hub shows it as online)
-- **offline**: not currently connected (some actions will be queued until it reconnects)
-- **revoked**: explicitly revoked; it should no longer be trusted
+- **Online**: connected recently
+- **Offline**: not currently connected (some actions will be queued until it reconnects)
+- **Revoked**: revoked by an admin; it should no longer be trusted
 
-In the Agents page you can also open an agent detail view that shows config snapshot status and recent errors.
+Use the agent detail view to inspect config sync status and recent errors.
 
 ## Labels (grouping and targeting)
 
@@ -52,19 +50,19 @@ Common patterns:
 
 ## Config sync (status + actions)
 
-The Hub generates a per-agent “config snapshot” (jobs + secrets + runtime-relevant settings for that agent).
-Agents pull/apply this snapshot when online.
+The Hub generates a per-agent **config snapshot** (jobs + secrets + runtime-relevant settings).
+When online, agents pull and apply it.
 
-In the Web UI (Agents page), each agent exposes:
+In the agent detail view:
 
 - **Desired snapshot ID**: what the Hub wants the agent to apply next
 - **Applied snapshot ID**: what the agent last reported as applied
-- **Last error**: last sync error kind/message and timestamp (if any)
+- **Last error**: most recent sync error kind/message and timestamp (if any)
 
 Actions:
 
 - **Sync now** (per agent): attempt to send/prompt the agent to sync immediately
-- **Sync config now** (bulk): schedule a bulk operation to prompt multiple agents
+- **Sync config** (bulk): schedule a bulk operation to prompt multiple agents
 
 Notes:
 
@@ -78,6 +76,7 @@ Notes:
 Rotating an agent key generates a new credential for the same agent ID.
 
 - The UI will show the new key once; you need to update the agent’s `agent.json` (in its data dir) and restart the agent.
+- The UI will show the new key once; you need to update the agent's `agent.json` (in its data dir) and restart the agent.
 
 ### Revoke agent
 
