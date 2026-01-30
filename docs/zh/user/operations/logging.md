@@ -23,7 +23,7 @@
 
 你也可以在 Web UI 中设置日志：
 
-- **Settings → Runtime config**
+- **设置 → 运行时配置**
 
 另见：[运行时配置](/zh/user/operations/runtime-config)。
 

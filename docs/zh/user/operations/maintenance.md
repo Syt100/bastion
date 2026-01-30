@@ -1,16 +1,16 @@
-# 维护（incomplete cleanup）
+# 运维（不完整运行清理）
 
-Bastion 在运行过程中会产生临时的“staging”数据。如果某次 run 失败、被中断，或 Hub/Agent 崩溃，可能会留下部分临时数据。
+Bastion 在运行过程中会产生临时的 staging 数据。如果某次运行失败/中断，或 Hub/客户端崩溃，可能会留下部分临时数据。
 
-为避免磁盘占用持续增长，Bastion 提供 **incomplete cleanup** 任务队列，用于自动清理“足够旧”的不完整 runs。
+为避免磁盘占用持续增长，Bastion 提供 **不完整运行清理** 任务队列，用于自动清理“足够旧”的不完整运行。
 
 在 Web UI：
 
-- **Settings → Maintenance → Cleanup**
+- **设置 → 运维 → 不完整运行清理**
 
 ## 清理对象
 
-incomplete cleanup 任务会针对 **非 success** 的 runs（failed/rejected）且早于截止时间的记录。
+不完整运行清理会针对 **非 success** 的运行记录（failed/rejected）且早于截止时间的记录。
 
 根据该 run 的 target 类型，清理可能包含：
 
@@ -21,30 +21,29 @@ incomplete cleanup 任务会针对 **非 success** 的 runs（failed/rejected）
 
 ## 状态含义
 
-- **queued**：等待执行
-- **running**：执行中
-- **retrying**：之前失败，稍后重试
-- **blocked**：无法自动推进（需要用户处理或环境修复）
-- **abandoned**：重试次数过多/任务过旧，已放弃
-- **done**：清理成功
-- **ignored**：用户显式忽略
+- **queued（排队中）**：等待执行
+- **running（运行中）**：正在清理
+- **retrying（重试中）**：之前失败，稍后重试
+- **blocked（已阻塞）**：无法自动推进（通常需要先修复配置/鉴权问题）
+- **abandoned（已放弃）**：达到阈值后自动停止重试
+- **done（已完成）**：清理完成或已确认无需清理
+- **ignored（已忽略）**：已被显式忽略，不再自动重试
 
 ## UI 可用操作
 
-- **Retry now**：立即安排重试（通常在你修复根因后使用）
-- **Ignore**：停止重试该任务（例如你已手动清理，或接受残留）
-- **Unignore**：把 ignored 的任务重新放回队列
+- **立即重试**：立即安排重试（通常在你修复根因后使用）
+- **忽略**：停止自动重试该任务（例如你已手动清理，或接受残留）
+- **取消忽略**：把已忽略的任务重新放回队列
 - 打开任务查看 **事件日志** 与最近错误详情
 
 ## 配置
 
-截止时间由 **Incomplete cleanup days** 控制：
+截止时间由 **不完整运行清理天数** 控制：
 
-- Web UI：**Settings → Runtime config**
+- Web UI：**设置 → 运行时配置**
 - CLI/env：`--incomplete-cleanup-days` / `BASTION_INCOMPLETE_CLEANUP_DAYS`
 
 说明：
 
 - 默认 `7` 天
 - 设为 `0` 会禁用 incomplete cleanup 循环（需要你自行手动清理）
-
