@@ -565,7 +565,7 @@ const messages = {
       fields: {
         bindHost: 'Bind host',
         bindPort: 'Bind port',
-        dataDir: 'Data dir',
+        dataDir: 'Data directory',
         insecureHttp: 'Allow insecure HTTP',
         trustedProxies: 'Trusted proxies',
         debugErrors: 'Debug errors',
