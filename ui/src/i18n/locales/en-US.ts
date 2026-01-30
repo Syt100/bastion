@@ -976,7 +976,7 @@ const messages = {
       detail: 'Details',
       events: 'Events',
       restore: 'Restore',
-      verify: 'Restore drill',
+      verify: 'Verify',
     },
   },
   runEvents: {
@@ -1054,11 +1054,12 @@ const messages = {
     selectionSummary: 'Selected: {files} files, {dirs} dirs',
   },
   verify: {
-    title: 'Restore drill',
-    helpTitle: 'Runs a full restore drill',
-    helpBody: 'Downloads the backup, restores it into a temporary directory, and verifies file hashes. For SQLite backups, it also runs PRAGMA integrity_check',
+    title: 'Verify',
+    helpTitle: 'Runs a full restore verification',
+    helpBody:
+      'Downloads the snapshot, restores it into a temporary directory, and verifies file hashes. For SQLite, it also runs PRAGMA integrity_check',
     actions: {
-      start: 'Start drill',
+      start: 'Start verification',
     },
   },
   operations: {
@@ -1237,12 +1238,12 @@ const messages = {
     vaultwardenDataDirRequired: 'Vaultwarden data directory is required',
     restoreSelectionRequired: 'Select at least one file or directory',
     restoreDestinationRequired: 'Destination directory is required',
-    restoreStartFailed: 'Failed to start restore',
-    verifyStartFailed: 'Failed to start restore drill',
-    fetchRunEventsFailed: 'Failed to fetch run events',
+    restoreStartFailed: 'Could not start restore',
+    verifyStartFailed: 'Could not start verification',
+    fetchRunEventsFailed: 'Could not load run events',
     fsPathRequired: 'Path is required',
-    fsListFailed: 'Failed to list files',
-    runEntriesFailed: 'Failed to list archive entries',
+    fsListFailed: 'Could not list files',
+    runEntriesFailed: 'Could not list archive entries',
   },
 } as const
 

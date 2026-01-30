@@ -975,7 +975,7 @@ const messages = {
       detail: '详情',
       events: '事件',
       restore: '恢复',
-      verify: '恢复演练',
+      verify: '校验',
     },
   },
   runEvents: {
@@ -1053,11 +1053,11 @@ const messages = {
     selectionSummary: '已选：{files} 文件，{dirs} 目录',
   },
   verify: {
-    title: '恢复演练',
-    helpTitle: '将执行完整恢复流程进行验证',
-    helpBody: '系统会下载备份、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
+    title: '校验',
+    helpTitle: '执行完整的恢复校验',
+    helpBody: '系统会下载快照、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
     actions: {
-      start: '开始演练',
+      start: '开始校验',
     },
   },
   operations: {
@@ -1075,7 +1075,7 @@ const messages = {
   },
   messages: {
     initializedPleaseSignIn: '初始化完成，请登录',
-    enrollmentTokenCreated: '注册令牌已创建',
+    enrollmentTokenCreated: '接入令牌已创建',
     copied: '已复制',
     agentRevoked: '客户端已撤销',
     agentKeyRotated: '客户端密钥已轮换',
@@ -1236,12 +1236,12 @@ const messages = {
     vaultwardenDataDirRequired: 'Vaultwarden 数据目录不能为空',
     restoreSelectionRequired: '请选择至少一个文件或目录',
     restoreDestinationRequired: '目标目录不能为空',
-    restoreStartFailed: '开始恢复失败',
-    verifyStartFailed: '开始恢复演练失败',
-    fetchRunEventsFailed: '获取运行事件失败',
+    restoreStartFailed: '无法开始恢复',
+    verifyStartFailed: '无法开始校验',
+    fetchRunEventsFailed: '加载运行事件失败',
     fsPathRequired: '路径不能为空',
     fsListFailed: '列出文件失败',
-    runEntriesFailed: '列出归档文件失败',
+    runEntriesFailed: '列出归档条目失败',
   },
 } as const
 
