@@ -75,11 +75,18 @@ Notes:
 
 Rotating an agent key generates a new credential for the same agent ID.
 
-- The UI will show the new key once; you need to update the agent’s `agent.json` (in its data dir) and restart the agent.
-- The UI will show the new key once; you need to update the agent's `agent.json` (in its data dir) and restart the agent.
+Suggested flow:
+
+1. In the agent detail view, click **Rotate agent key**
+2. Copy the new key (shown once)
+3. On the agent machine, update `agent.json` in the agent data dir (replace it with the new key)
+4. Restart the agent process
 
 ### Revoke agent
 
 Revoking an agent marks it as revoked on the Hub. A revoked agent should be treated as compromised/untrusted.
 
-If you intend to re-add the machine, enroll it again as a new agent.
+If you intend to re-add the machine, enroll it again as a new agent:
+
+- Clear the agent's data dir (or at least delete `agent.json`)
+- Create a new enrollment token and enroll again
