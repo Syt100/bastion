@@ -147,7 +147,7 @@ export default defineConfig(({ command }) => {
               {
                 text: '使用 Bastion',
                 items: [
-                  { text: '客户端（Agents）', link: '/zh/user/agents' },
+                  { text: '客户端（Agent）', link: '/zh/user/agents' },
                   { text: '备份任务（Jobs）', link: '/zh/user/jobs' },
                   { text: '运行记录（Runs）', link: '/zh/user/runs' },
                   { text: '恢复与校验', link: '/zh/user/restore-verify' },
