@@ -694,11 +694,11 @@ const messages = {
         labelsPlaceholder: '选择标签',
         labelsMode: '模式',
         nodeIds: '客户端 ID',
-        nodeIdsPlaceholder: '每行一个 / 逗号分隔',
+        nodeIdsPlaceholder: '每行一个或逗号分隔',
         overwrite: '覆盖',
         overwriteHelp: '当目标客户端已存在同名凭据时进行覆盖',
         preview: '预览',
-        previewRequired: '请先点击预览',
+        previewRequired: '请先预览',
         execute: '开始分发',
         previewTitle: '预览结果',
         previewColumns: {
