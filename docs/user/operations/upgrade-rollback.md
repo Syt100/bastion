@@ -38,10 +38,10 @@ After upgrade, verify:
 
 ## Upgrade by installation method
 
-### Docker (recommended for most users)
+### Docker / containers (if you run Bastion in a container)
 
 Assumptions:
-- Your data directory is stored in a Docker volume or bind mount.
+- Your data directory is persisted via a Docker volume or bind mount.
 
 Steps:
 

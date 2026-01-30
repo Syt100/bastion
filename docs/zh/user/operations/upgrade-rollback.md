@@ -40,7 +40,7 @@ bastion keypack export --out /secure/location/bastion-keypack.json --password-st
 
 ## 按安装方式升级
 
-### Docker（多数用户推荐）
+### Docker（容器部署场景）
 
 前提：
 - 数据目录通过 Docker volume 或 bind mount 持久化
