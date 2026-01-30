@@ -542,7 +542,7 @@ const messages = {
     },
     hubRuntimeConfig: {
       title: 'Hub 运行配置',
-      restartRequired: '在此保存的配置需要重启 Hub 后才会生效。被命令行/环境变量覆盖的字段在此不可编辑。',
+      restartRequired: '保存后需重启 Hub 生效；被命令行/环境变量覆盖的字段在此只读。',
       sections: {
         startup: {
           title: '启动参数（只读）',
@@ -577,7 +577,7 @@ const messages = {
         backupRetentionKeepDays: '保留最近 N 天（0 表示不设置）',
         backupRetentionMaxDeletePerTick: '每次最多删除（份）',
         backupRetentionMaxDeletePerDay: '每天最多删除（份）',
-        backupRetentionTips: '提示：需设置“保留最近 N 份”和/或“保留最近 N 天”；已固定（Pinned）的快照不会被自动删除。',
+        backupRetentionTips: '提示：需设置“保留最近 N 份”和/或“保留最近 N 天”；已固定的快照不会被自动删除。',
         logFilter: '日志过滤器',
         logFile: '日志文件',
         logRotation: '日志轮转',
@@ -671,10 +671,9 @@ const messages = {
         actionHelp: {
           more: '打开详情查看目标快照、事件与最近错误；不会改变任务状态。',
           retryNow:
-            '重新入队（下次尝试=现在），重置尝试次数并清空最近错误（历史仍可在“事件”中查看）。',
-          ignore: '标记为“已忽略”以停止自动重试（可选原因）；之后仍可“取消忽略”或“立即重试”。',
-          unignore:
-            '取消忽略并恢复自动重试（回到“排队中”，下次尝试=现在）。',
+            '重新入队（下次尝试=现在），重置尝试次数并清空最近错误；历史事件保留。',
+          ignore: '标记为“已忽略”以停止自动重试（可选原因）；之后仍可取消忽略或立即重试。',
+          unignore: '取消忽略并恢复自动重试（回到“排队中”，下次尝试=现在）。',
         },
       },
     },
@@ -698,7 +697,7 @@ const messages = {
         overwrite: '覆盖',
         overwriteHelp: '当目标客户端已存在同名凭据时进行覆盖',
         preview: '预览',
-        previewRequired: '请先预览',
+        previewRequired: '分发前请先预览。',
         execute: '开始分发',
         previewTitle: '预览结果',
         previewColumns: {
@@ -856,7 +855,7 @@ const messages = {
     deleteTaskExecutor: '执行节点：{node}',
     pinnedTooltip: '已固定：不会被保留策略自动清理；删除需要强制确认。',
     columns: {
-      endedAt: '时间',
+      endedAt: '完成时间',
       status: '状态',
       format: '格式',
       target: '目标',
@@ -893,7 +892,7 @@ const messages = {
       attempts: '尝试次数',
       lastError: '最近错误',
       events: '事件',
-      ignorePlaceholder: '可选：忽略原因（最多 200 字）',
+      ignorePlaceholder: '可选原因（最多 200 字）',
     },
   },
   runs: {

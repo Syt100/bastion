@@ -543,7 +543,7 @@ const messages = {
     hubRuntimeConfig: {
       title: 'Hub runtime config',
       restartRequired:
-        'Changes saved here require a Hub restart to take effect. Fields overridden by CLI/ENV cannot be edited here.',
+        'Restart the Hub after saving. Fields overridden by CLI/ENV are read-only here.',
       sections: {
         startup: {
           title: 'Startup (read-only)',
@@ -671,11 +671,9 @@ const messages = {
         actionHelpTitle: 'Actions',
         actionHelp: {
           more: 'Open details (target snapshot, events, last error). Does not change status.',
-          retryNow:
-            'Re-queue the task (next attempt = now), reset attempts, and clear last error. History remains in Events.',
-          ignore: 'Mark as ignored to stop automatic retries (optional reason). You can unignore or retry later.',
-          unignore:
-            'Remove ignore and resume automatic retries (task returns to Queued; next attempt = now).',
+          retryNow: 'Re-queue now, reset attempts, and clear the last error. Event history is preserved.',
+          ignore: 'Stop automatic retries (optional reason). You can unignore or retry later.',
+          unignore: 'Resume automatic retries (returns to Queued; next attempt = now).',
         },
       },
     },
@@ -699,7 +697,7 @@ const messages = {
         overwrite: 'Overwrite',
         overwriteHelp: 'Overwrite if the credential already exists on an agent',
         preview: 'Preview',
-        previewRequired: 'Run preview first',
+        previewRequired: 'Preview before distributing.',
         execute: 'Distribute',
         previewTitle: 'Preview',
         previewColumns: {
@@ -855,9 +853,9 @@ const messages = {
       abandoned: 'Abandoned',
     },
     deleteTaskExecutor: 'Executor: {node}',
-    pinnedTooltip: 'Pinned: excluded from retention. Force confirmation is required to delete.',
+    pinnedTooltip: 'Pinned: excluded from retention. Deleting requires force confirmation.',
     columns: {
-      endedAt: 'Time',
+      endedAt: 'Completed',
       status: 'Status',
       format: 'Format',
       target: 'Target',
@@ -879,14 +877,14 @@ const messages = {
     },
     units: {
       files: ' files',
-      dirs: ' dirs',
+      dirs: ' directories',
     },
     deleteConfirm: {
       title: 'Delete snapshots',
-      subtitle: 'A delete task will be created for {count} snapshots (async)',
+      subtitle: 'Creates delete tasks for {count} snapshots (runs in background)',
       pinnedWarningTitle: 'Pinned snapshots selected',
       pinnedWarning: '{count} pinned snapshots are selected. Deleting them requires force confirmation.',
-      forcePinnedLabel: 'I understand and want to force delete pinned snapshots',
+      forcePinnedLabel: 'I understand. Force delete pinned snapshots.',
     },
     deleteLog: {
       title: 'Delete task',
@@ -894,7 +892,7 @@ const messages = {
       attempts: 'Attempts',
       lastError: 'Last error',
       events: 'Events',
-      ignorePlaceholder: 'Optional: ignore reason (max 200 chars)',
+      ignorePlaceholder: 'Optional reason (max 200 chars)',
     },
   },
   runs: {
