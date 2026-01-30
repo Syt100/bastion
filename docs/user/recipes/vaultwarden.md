@@ -34,8 +34,7 @@ In Bastion Web UI:
 3. Choose a target:
    - **Local directory** (simplest): `/opt/bastion-backups`
    - **WebDAV**: configure WebDAV credentials in Settings first
-4. (Optional) Enable SQLite `PRAGMA integrity_check`
-5. (Optional) Enable backup encryption (age)
+4. (Optional) Enable backup encryption (age)
 
 What Bastion backs up:
 
@@ -49,7 +48,7 @@ Use **Verify** in the UI to run an end-to-end integrity check:
 - Downloads the snapshot
 - Restores it into a temporary directory
 - Verifies file hashes
-- Runs `PRAGMA integrity_check` for SQLite backups
+- Runs `PRAGMA integrity_check` for `db.sqlite3`
 
 ## Notes
 
