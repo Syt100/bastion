@@ -161,7 +161,7 @@ export default defineConfig(({ command }) => {
                 items: [
                   { text: '默认行为与优先级', link: '/zh/user/operations/defaults' },
                   { text: '升级与回滚', link: '/zh/user/operations/upgrade-rollback' },
-                  { text: '运行时配置', link: '/zh/user/operations/runtime-config' },
+                  { text: '运行配置', link: '/zh/user/operations/runtime-config' },
                   { text: '通知', link: '/zh/user/operations/notifications' },
                   { text: '日志', link: '/zh/user/operations/logging' },
                   { text: '不完整运行清理', link: '/zh/user/operations/maintenance' },

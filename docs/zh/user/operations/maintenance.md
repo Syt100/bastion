@@ -40,7 +40,7 @@ Bastion 在运行过程中会产生临时的 staging 数据。如果某次运行
 
 截止时间由 **不完整运行清理天数** 控制：
 
-- Web UI：**设置 → 运行时配置**
+- Web UI：**设置 → 运行配置**
 - CLI/env：`--incomplete-cleanup-days` / `BASTION_INCOMPLETE_CLEANUP_DAYS`
 
 说明：

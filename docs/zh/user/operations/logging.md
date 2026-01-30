@@ -23,9 +23,9 @@
 
 你也可以在 Web UI 中设置日志：
 
-- **设置 → 运行时配置**
+- **设置 → 运行配置**
 
-另见：[运行时配置](/zh/user/operations/runtime-config)。
+另见：[运行配置](/zh/user/operations/runtime-config)。
 
 注意：
 

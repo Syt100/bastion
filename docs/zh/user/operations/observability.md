@@ -32,7 +32,7 @@ readiness 会检查关键依赖（包括数据库连通性）。
 - 版本号（tag 或 crate version）
 - 构建时间（如果可用）
 - 是否开启 `--insecure-http`
-- Hub timezone
+- Hub 时区
 
 ## 请求 ID
 

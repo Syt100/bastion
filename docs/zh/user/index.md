@@ -22,5 +22,5 @@ Bastion 是面向小规模部署（个人/家庭/小团队）的自托管备份�
 ## 参考
 
 - [批量操作](/zh/user/bulk-operations)（标签、同步配置、分发 WebDAV 凭据、部署任务）
-- [运维](/zh/user/operations/defaults)（默认行为 / 升级与回滚 / 反向代理 / 运行时配置 / 日志 / 可观测性）
+- [运维](/zh/user/operations/defaults)（默认行为 / 升级与回滚 / 反向代理 / 运行配置 / 日志 / 可观测性）
 - [配方](/zh/user/recipes/vaultwarden)
