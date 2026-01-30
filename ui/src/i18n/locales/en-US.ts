@@ -199,7 +199,7 @@ const messages = {
     },
     bulkSyncModal: {
       title: 'Sync config',
-      help: 'Queue the latest config snapshot for delivery to multiple agents',
+      help: 'Send the latest config to multiple agents (queued if offline).',
       target: 'Target',
       targetSelected: 'Selected agents ({count})',
       targetLabelFilter: 'Label filter',
@@ -223,7 +223,7 @@ const messages = {
   bulk: {
     title: 'Bulk operations',
     subtitle: 'Monitor and manage bulk operations across agents',
-    detailTitle: 'Bulk operation',
+    detailTitle: 'Bulk operation details',
     kinds: {
       agent_labels_add: 'Add labels',
       agent_labels_remove: 'Remove labels',
