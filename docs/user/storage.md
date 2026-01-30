@@ -1,4 +1,4 @@
-# Storage (WebDAV credentials)
+# Storage (WebDAV)
 
 Bastion currently supports WebDAV as a remote storage target.
 
@@ -23,8 +23,6 @@ Storage settings are shown in a node context (`hub` or a specific agent). You ca
 - create/edit/delete credentials by name
 - view update timestamps
 - copy credential names for use in jobs
-
-You can create/edit/delete credential entries by name.
 
 ## Distribute a WebDAV credential to agents
 
