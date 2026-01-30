@@ -1026,7 +1026,7 @@ const messages = {
       webdavPrefix: '目标前缀',
       webdavPrefixPlaceholder: 'path/prefix',
       webdavPrefixHelp: '恢复后的路径将写入到该前缀下。',
-      webdavMetaNote: '系统会在该前缀下创建 .bastion-meta/ 目录，用于记录元数据，便于后续恢复。',
+      webdavMetaNote: '会在该前缀下创建 .bastion-meta/ 目录，用于记录元数据，便于后续恢复。',
       conflictPolicy: '冲突策略',
       selection: '恢复内容（可选）',
       selectionHelp: '不选择表示恢复全部；选择目录表示恢复其下所有文件',
@@ -1054,7 +1054,7 @@ const messages = {
   },
   verify: {
     title: '校验',
-    helpTitle: '执行完整的恢复校验',
+    helpTitle: '端到端校验',
     helpBody: '下载快照、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
     actions: {
       start: '开始校验',
