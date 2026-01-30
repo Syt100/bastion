@@ -27,6 +27,7 @@ import { useMediaQuery } from '@/lib/media'
 import { filterRunEvents, findFirstEventSeq, uniqueRunEventKinds } from '@/lib/run_events'
 import { runTargetTypeLabel } from '@/lib/runs'
 import { parseRunSummary } from '@/lib/run_summary'
+import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
 import { useUiStore } from '@/stores/ui'
 import type { RunEvent } from '@/stores/jobs'
 import type { Operation } from '@/stores/operations'
@@ -111,12 +112,13 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
   {
     title: t('operations.kind'),
     key: 'kind',
-    render: (row) => row.kind,
+    render: (row) => operationKindLabel(t, row.kind),
   },
   {
     title: t('runs.columns.status'),
     key: 'status',
-    render: (row) => h(NTag, { type: opStatusTagType(row.status) }, { default: () => row.status }),
+    render: (row) =>
+      h(NTag, { type: opStatusTagType(row.status) }, { default: () => operationStatusLabel(t, row.status) }),
   },
   {
     title: t('bulk.columns.progress'),
@@ -356,13 +358,15 @@ async function copyEventJson(e: RunEvent): Promise<void> {
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
               <div class="text-xs opacity-70 space-y-1">
                 <div v-if="parsedSummary.sqlitePath">
-                  sqlite: <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
+                  {{ t('runs.detail.sqlitePath') }}: <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
                 </div>
                 <div v-if="parsedSummary.sqliteSnapshotName">
-                  snapshot: <span class="font-mono tabular-nums">{{ parsedSummary.sqliteSnapshotName }}</span>
+                  {{ t('runs.detail.sqliteSnapshot') }}:
+                  <span class="font-mono tabular-nums">{{ parsedSummary.sqliteSnapshotName }}</span>
                 </div>
                 <div v-if="parsedSummary.vaultwardenDataDir">
-                  vaultwarden: <span class="font-mono tabular-nums">{{ parsedSummary.vaultwardenDataDir }}</span>
+                  {{ t('runs.detail.vaultwardenDataDir') }}:
+                  <span class="font-mono tabular-nums">{{ parsedSummary.vaultwardenDataDir }}</span>
                 </div>
               </div>
             </div>

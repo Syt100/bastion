@@ -224,6 +224,26 @@ const messages = {
     title: 'Bulk operations',
     subtitle: 'Monitor and manage bulk operations across agents',
     detailTitle: 'Bulk operation',
+    kinds: {
+      agent_labels_add: 'Add labels',
+      agent_labels_remove: 'Remove labels',
+      sync_config_now: 'Sync config',
+      job_deploy: 'Deploy job',
+      webdav_secret_distribute: 'Distribute WebDAV credential',
+    },
+    statuses: {
+      queued: 'Queued',
+      running: 'Running',
+      done: 'Done',
+      canceled: 'Canceled',
+    },
+    itemStatuses: {
+      queued: 'Queued',
+      running: 'Running',
+      success: 'Success',
+      failed: 'Failed',
+      canceled: 'Canceled',
+    },
     columns: {
       kind: 'Type',
       status: 'Status',
@@ -911,6 +931,9 @@ const messages = {
       overviewTitle: 'Overview',
       duration: 'Duration',
       target: 'Target',
+      sqlitePath: 'SQLite path',
+      sqliteSnapshot: 'SQLite snapshot',
+      vaultwardenDataDir: 'Vaultwarden data directory',
       entries: 'Entries: {count}',
       parts: 'Parts: {count}',
       warnings: 'Warnings: {count}',
@@ -1063,6 +1086,15 @@ const messages = {
   operations: {
     title: 'Operations',
     kind: 'Type',
+    kinds: {
+      restore: 'Restore',
+      verify: 'Verify',
+    },
+    statuses: {
+      running: 'Running',
+      success: 'Success',
+      failed: 'Failed',
+    },
     startedAt: 'Started',
     endedAt: 'Ended',
     restore: {

@@ -224,6 +224,26 @@ const messages = {
     title: '批量操作',
     subtitle: '查看与管理跨客户端的批量操作',
     detailTitle: '批量操作详情',
+    kinds: {
+      agent_labels_add: '添加标签',
+      agent_labels_remove: '移除标签',
+      sync_config_now: '同步配置',
+      job_deploy: '部署任务',
+      webdav_secret_distribute: '分发 WebDAV 凭据',
+    },
+    statuses: {
+      queued: '排队中',
+      running: '运行中',
+      done: '已完成',
+      canceled: '已取消',
+    },
+    itemStatuses: {
+      queued: '排队中',
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+      canceled: '已取消',
+    },
     columns: {
       kind: '类型',
       status: '状态',
@@ -911,6 +931,9 @@ const messages = {
       overviewTitle: '概览',
       duration: '耗时',
       target: '目标',
+      sqlitePath: 'SQLite 路径',
+      sqliteSnapshot: 'SQLite 快照',
+      vaultwardenDataDir: 'Vaultwarden 数据目录',
       entries: '条目：{count}',
       parts: '分片：{count}',
       warnings: '警告：{count}',
@@ -1062,6 +1085,15 @@ const messages = {
   operations: {
     title: '操作记录',
     kind: '类型',
+    kinds: {
+      restore: '恢复',
+      verify: '校验',
+    },
+    statuses: {
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+    },
     startedAt: '开始时间',
     endedAt: '结束时间',
     restore: {

@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import { bulkOperationItemStatusLabel, bulkOperationKindLabel, bulkOperationStatusLabel } from '@/lib/bulkOperations'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { formatToastError } from '@/lib/errors'
 import { useUiStore } from '@/stores/ui'
@@ -110,12 +111,13 @@ const columns = computed<DataTableColumns<BulkOperationListItem>>(() => [
   {
     title: t('bulk.columns.kind'),
     key: 'kind',
-    render: (row) => row.kind,
+    render: (row) => bulkOperationKindLabel(t, row.kind),
   },
   {
     title: t('bulk.columns.status'),
     key: 'status',
-    render: (row) => h(NTag, { type: statusTagType(row.status), size: 'small' }, { default: () => row.status }),
+    render: (row) =>
+      h(NTag, { type: statusTagType(row.status), size: 'small' }, { default: () => bulkOperationStatusLabel(t, row.status) }),
   },
   {
     title: t('bulk.columns.progress'),
@@ -148,7 +150,8 @@ const itemColumns = computed<DataTableColumns<BulkOperationItemDetail>>(() => [
   {
     title: t('bulk.columns.status'),
     key: 'status',
-    render: (row) => h(NTag, { type: itemStatusTagType(row.status), size: 'small' }, { default: () => row.status }),
+    render: (row) =>
+      h(NTag, { type: itemStatusTagType(row.status), size: 'small' }, { default: () => bulkOperationItemStatusLabel(t, row.status) }),
   },
   {
     title: t('bulk.columns.attempts'),
@@ -206,12 +209,12 @@ watch(
         <div v-if="detail" class="space-y-2">
           <div class="text-sm">
             <span class="opacity-70">{{ t('bulk.columns.kind') }}:</span>
-            <span class="ml-2">{{ detail.kind }}</span>
+            <span class="ml-2">{{ bulkOperationKindLabel(t, detail.kind) }}</span>
           </div>
           <div class="text-sm">
             <span class="opacity-70">{{ t('bulk.columns.status') }}:</span>
             <span class="ml-2">
-              <n-tag :type="statusTagType(detail.status)" size="small">{{ detail.status }}</n-tag>
+              <n-tag :type="statusTagType(detail.status)" size="small">{{ bulkOperationStatusLabel(t, detail.status) }}</n-tag>
             </span>
           </div>
           <div class="text-sm">
@@ -236,4 +239,3 @@ watch(
     </n-modal>
   </div>
 </template>
-

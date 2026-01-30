@@ -8,6 +8,7 @@ import { useUiStore } from '@/stores/ui'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatBytes } from '@/lib/format'
+import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
 
 export type OperationModalExpose = {
   open: (opId: string) => Promise<void>
@@ -184,8 +185,8 @@ defineExpose<OperationModalExpose>({ open })
       <div class="text-sm opacity-70">{{ opId }}</div>
 
       <div v-if="op" class="flex items-center gap-2">
-        <n-tag :type="opStatusTagType(op.status)">{{ op.status }}</n-tag>
-        <span class="text-sm opacity-70">{{ t('operations.kind') }}: {{ op.kind }}</span>
+        <n-tag :type="opStatusTagType(op.status)">{{ operationStatusLabel(t, op.status) }}</n-tag>
+        <span class="text-sm opacity-70">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
         <span class="text-sm opacity-70">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
         <span v-if="op.ended_at" class="text-sm opacity-70">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
       </div>
