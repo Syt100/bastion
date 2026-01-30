@@ -21,7 +21,7 @@ This page defines the core concepts used throughout Bastion and the Web UI.
 An **operation** is a long-running action started from a successful run:
 
 - **Restore**: restore some or all files from a snapshot into a local directory or a WebDAV destination.
-- **Verify**: a “restore drill” that restores into a temporary directory and verifies file hashes (and SQLite integrity when applicable).
+- **Verify**: restores into a temporary directory and verifies file hashes (and SQLite integrity when applicable).
 
 Operations have their own progress and event logs in the run detail view.
 
@@ -35,7 +35,6 @@ Bastion stores credentials as **encrypted secrets** in the Hub database.
 
 ## Bulk operations
 
-A **bulk operation** is an async action applied to many agents (e.g., add/remove labels, sync config now, distribute WebDAV credentials, deploy a job).
+A **bulk operation** is an async action applied to many agents (e.g., add/remove labels, sync config, distribute WebDAV credentials, deploy a job).
 
 - Each bulk operation contains per-agent **items** with their own status and error information.
-

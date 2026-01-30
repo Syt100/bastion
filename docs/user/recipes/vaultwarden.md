@@ -42,11 +42,11 @@ What Bastion backs up:
 - SQLite database: `<data_dir>/db.sqlite3` (snapshotted via SQLite online backup API)
 - Vaultwarden data directory contents needed for restore (e.g. attachments/keys and related files)
 
-## Restore drill
+## Verify (recommended)
 
-Use **Restore drill** in the UI to verify end-to-end integrity:
+Use **Verify** in the UI to run an end-to-end integrity check:
 
-- Downloads the backup
+- Downloads the snapshot
 - Restores it into a temporary directory
 - Verifies file hashes
 - Runs `PRAGMA integrity_check` for SQLite backups

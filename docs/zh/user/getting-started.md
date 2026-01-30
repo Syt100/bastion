@@ -75,9 +75,9 @@
 
 ## 4. 下一步
 
-- （可选）[接入 Agents](/zh/user/agents)，在其他机器上执行备份。
-- 创建 [Jobs（作业）](/zh/user/jobs)。
-- 关注 [Runs（运行记录）](/zh/user/runs)，并通过 [恢复与校验](/zh/user/restore-verify) 做恢复演练。
+- （可选）[接入客户端](/zh/user/agents)，在其他机器上执行备份。
+- 创建 [备份任务](/zh/user/jobs)。
+- 关注 [运行记录](/zh/user/runs)，并通过 [恢复与校验](/zh/user/restore-verify) 做恢复与完整性校验。
 - 如果需要远端存储，配置 [存储（WebDAV）](/zh/user/storage)。
 - 在 [备份快照](/zh/user/backup-snapshots) 中管理备份产物（固定/删除/保留策略）。
 - （可选）配置 [通知](/zh/user/operations/notifications)。

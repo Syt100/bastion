@@ -163,7 +163,7 @@ From a job, you can open:
 Successful runs support:
 
 - **Restore**: restore a run (full or selected entries) to a local directory or WebDAV destination
-- **Verify**: a “restore drill” to a temporary directory + file hash verification; also runs SQLite integrity checks when applicable
+- **Verify**: restores into a temporary directory and verifies file hashes; also runs SQLite integrity checks when applicable
 
 See:
 

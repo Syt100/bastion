@@ -28,7 +28,7 @@ The run detail page includes:
 For successful runs, you can also start:
 
 - **Restore** (restore files to a destination)
-- **Verify** (restore drill + hash verification)
+- **Verify** (restores into a temporary directory and verifies file hashes)
 
 See: [Restore and verify](/user/restore-verify).
 
@@ -42,4 +42,3 @@ Important behavior:
 - If you delete a snapshot (or it is fully deleted by retention), the corresponding run record can later be pruned when it becomes older than the retention cutoff.
 
 See: [Runtime config](/user/operations/runtime-config).
-

@@ -54,9 +54,9 @@ You can restore:
 - everything (default), or
 - only selected files/directories from the run entries list
 
-## Verify (restore drill)
+## Verify
 
-Verify is a safety check:
+Verify is a restore-based integrity check:
 
 1. Fetches the snapshot
 2. Restores it into a **temporary directory**
@@ -72,5 +72,4 @@ If verification fails, the operation is marked as **failed** and the event log i
   - WebDAV snapshots are verifiable as long as the Hub has the WebDAV secret.
   - Local directory snapshots produced on an Agent are typically **not** verifiable from the Hub unless the snapshot directory is accessible to the Hub (e.g., a shared mount).
 
-If you care about Hub-side verify drills in a multi-node setup, prefer using **WebDAV** as the target.
-
+If you care about Hub-side verification in a multi-node setup, prefer using **WebDAV** as the target.
