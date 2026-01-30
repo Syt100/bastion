@@ -380,7 +380,7 @@ const messages = {
     },
     retention: {
       title: '保留策略',
-      help: '自动清理快照：保留最近 N 份、和/或保留最近 N 天内的快照；已固定（Pinned）的快照不会被自动删除。',
+      help: '自动清理快照：保留最近 N 份和/或最近 N 天；已固定的快照不会被自动删除。',
       keepLast: '保留最近 N 份（0 表示不设置）',
       keepDays: '保留最近 N 天（0 表示不设置）',
       maxDeletePerTick: '每次最多删除（份）',
@@ -1055,7 +1055,7 @@ const messages = {
   verify: {
     title: '校验',
     helpTitle: '执行完整的恢复校验',
-    helpBody: '系统会下载快照、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
+    helpBody: '下载快照、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
     actions: {
       start: '开始校验',
     },
@@ -1226,7 +1226,7 @@ const messages = {
     webdavSecretRequired: '请选择 WebDAV 凭据',
     webdavPrefixRequired: 'WebDAV 目标前缀不能为空',
     webdavBrowseRequiresBaseUrlAndSecret: '请先填写 WebDAV 地址并选择 WebDAV 凭据',
-    webdavPrefixRootNotAllowed: '请先选择一个子目录（不允许选择根目录）',
+    webdavPrefixRootNotAllowed: '根目录不可用，请选择子目录',
     localBaseDirRequired: '备份目录不能为空',
     partSizeInvalid: '分卷大小必须为正数',
     encryptionKeyNameRequired: '加密密钥名称不能为空',
