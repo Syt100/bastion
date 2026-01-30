@@ -2,7 +2,12 @@
 
 Bastion is a self-hosted backup orchestrator (Hub + optional Agents) with a Web UI.
 
-This repository is an MVP and is still evolving: expect breaking changes until a stable release process is in place.
+Documentation:
+
+- In-app (served by the Hub): `/docs/`
+- Source files: `docs/` (EN) and `docs/zh/` (ZH)
+
+This project is early-stage. Breaking changes may occur before the first stable release.
 
 ## Components
 
@@ -28,7 +33,7 @@ This repository is an MVP and is still evolving: expect breaking changes until a
 - Rust `1.92+` (workspace `rust-version = 1.92`)
 - Node.js `20.19+` or `22.12+` (see `ui/package.json`)
 
-### Run Hub (API only)
+### Run Hub (backend)
 
 ```bash
 cargo run -p bastion
@@ -122,32 +127,27 @@ Agents store their enrollment identity in their own data directory (see `BASTION
 
 ## Configuration
 
-### Common Hub options
+Most settings can be configured via CLI flags or environment variables (CLI takes precedence).
 
-You can use CLI flags or env vars:
+Reference:
+
+- Defaults + precedence: `docs/user/operations/defaults.md`
+- Full CLI reference (generated): `docs/user/reference/cli.md`
+
+Common Hub options:
 
 - `--host` / `BASTION_HOST` (default `127.0.0.1`)
 - `--port` / `BASTION_PORT` (default `9876`)
 - `--data-dir` / `BASTION_DATA_DIR`
-- `--insecure-http` / `BASTION_INSECURE_HTTP` (dev/LAN only)
-- `--hub-timezone` / `BASTION_HUB_TIMEZONE` (IANA; default: local system timezone)
+- `--insecure-http` / `BASTION_INSECURE_HTTP` (LAN/dev only)
 - `--trusted-proxy` / `BASTION_TRUSTED_PROXIES` (repeatable / comma-separated CIDRs)
-- `--run-retention-days` / `BASTION_RUN_RETENTION_DAYS` (default `180`)
-- `--incomplete-cleanup-days` / `BASTION_INCOMPLETE_CLEANUP_DAYS` (default `7`, `0` disables)
 
-Logging:
-- `--log` / `BASTION_LOG` / `RUST_LOG`
-- `--log-file` / `BASTION_LOG_FILE`
-- `--log-rotation` / `BASTION_LOG_ROTATION` (`daily|hourly|never`)
-- `--log-keep-files` / `BASTION_LOG_KEEP_FILES`
-
-### Agent options
+Common Agent options:
 
 - `--hub-url` / `BASTION_HUB_URL`
-- `--enroll-token` / `BASTION_AGENT_ENROLL_TOKEN` (only for first-time enrollment)
+- `--enroll-token` / `BASTION_AGENT_ENROLL_TOKEN` (first-time enrollment)
 - `--name` / `BASTION_AGENT_NAME`
 - `--data-dir` / `BASTION_DATA_DIR`
-- `--heartbeat-seconds` / `BASTION_AGENT_HEARTBEAT_SECONDS` (default `15`)
 
 ## Security notes
 
