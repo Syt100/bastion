@@ -32,9 +32,10 @@ bastion keypack export --out /secure/location/bastion-keypack.json --password-st
 
 - 服务是否在运行（systemd / Windows 服务 / 容器状态）
 - Web UI 是否可打开
+- （如使用客户端）客户端是否能重新连接
 - 健康检查接口：
-  - `GET /api/health`（liveness）
-  - `GET /api/ready`（readiness）
+  - `GET /api/health`（存活）
+  - `GET /api/ready`（就绪）
 - 在宿主机上运行 `bastion doctor`（如果可用），排查常见部署问题
 
 ## 按安装方式升级

@@ -2,8 +2,8 @@
 
 For small deployments, the most useful observability is:
 
-- simple liveness/readiness probes
-- consistent request IDs to correlate UI errors with server logs
+- liveness/readiness probes
+- request IDs to correlate UI errors with server logs
 - clear log locations (console/journald/file)
 
 ## Health endpoints
@@ -45,6 +45,8 @@ When reporting a bug, include:
 - relevant log lines around that request ID
 
 This makes it much easier to correlate client-side errors with server logs.
+
+Tip: the Web UI shows a request ID in error dialogs; include it in bug reports.
 
 ## Logs
 

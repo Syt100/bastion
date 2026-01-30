@@ -4,13 +4,14 @@ Bastion 自身可以同时提供 HTTP 与 WebSocket。对外提供服务时，�
 
 ## 注意事项
 
-- Bastion 默认会对非 loopback 流量强制 HTTPS。反向代理在 TLS 终止后，必须设置 `X-Forwarded-Proto: https`。
-- 如果反向代理不在同一台机器上，需配置 trusted proxies：
+- Bastion 默认会对非本机回环（loopback）流量强制 HTTPS。如果在反向代理处终止 TLS，必须设置 `X-Forwarded-Proto: https`。
+- 如果反向代理不在同一台机器上，需配置 **可信代理**：
   - `--trusted-proxy <proxy-ip>/32`（可重复指定）
   - 或 `BASTION_TRUSTED_PROXIES=10.0.0.10/32,10.0.0.0/24`
-- WebSocket 端点（需要允许 upgrade）：
-  - `/agent/ws`（Agent <-> Hub）
-  - `/api/runs/<id>/events/ws`（run 的实时事件）
+- WebSocket 端点（需要允许升级 upgrade）：
+  - `/agent/ws`（客户端 <-> Hub）
+  - `/api/runs/<id>/events/ws`（运行事件实时推送）
+- 如果你依赖 `/docs` 的自动语言选择，请确保反向代理转发 `Accept-Language` 与 `Cookie`（多数反向代理默认会转发）。
 
 ## Nginx（TLS 终止）
 
@@ -64,4 +65,3 @@ bastion.example.com {
 ```bash
 BASTION_HOST=0.0.0.0 BASTION_PORT=9876 BASTION_INSECURE_HTTP=1 ./bastion
 ```
-

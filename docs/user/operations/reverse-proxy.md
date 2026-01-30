@@ -4,13 +4,14 @@ Bastion itself can serve HTTP and WebSocket traffic. For public access, deploy i
 
 ## Notes
 
-- Bastion enforces HTTPS by default for non-loopback traffic. The reverse proxy MUST set `X-Forwarded-Proto: https` for TLS-terminated requests.
+- Bastion enforces HTTPS by default for non-loopback traffic. If you terminate TLS at the proxy, it MUST set `X-Forwarded-Proto: https`.
 - If your reverse proxy is not on the same host as Bastion, configure trusted proxies:
   - `--trusted-proxy <proxy-ip>/32` (repeatable)
   - or `BASTION_TRUSTED_PROXIES=10.0.0.10/32,10.0.0.0/24`
 - WebSocket endpoints (must allow upgrade):
   - `/agent/ws` (Agent <-> Hub)
   - `/api/runs/<id>/events/ws` (live run events)
+- If you rely on automatic language selection for `/docs`, ensure the proxy forwards `Accept-Language` and `Cookie` headers (most proxies do by default).
 
 ## Nginx (TLS termination)
 
@@ -64,4 +65,3 @@ For LAN/dev (no TLS), run Bastion with `--insecure-http` or `BASTION_INSECURE_HT
 ```bash
 BASTION_HOST=0.0.0.0 BASTION_PORT=9876 BASTION_INSECURE_HTTP=1 ./bastion
 ```
-

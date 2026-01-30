@@ -1,6 +1,6 @@
 # Data directory layout and key management
 
-Bastion stores its state and secrets in a configurable data directory.
+Bastion stores its state (SQLite) and encrypted credentials in a configurable data directory.
 
 ## Where is the data directory?
 
@@ -24,8 +24,8 @@ Notes:
 
 Common files/directories:
 
-- `bastion.db` — SQLite database (jobs, runs, secrets metadata, etc.)
-- `master.key` — local master keyring (used to encrypt secrets at rest in `bastion.db`)
+- `bastion.db` — SQLite database (jobs, runs, settings, encrypted credentials, etc.)
+- `master.key` — local master keyring (encrypts credentials stored in `bastion.db`)
 - `runs/` — temporary per-run staging directories while building/uploading artifacts
   - Incomplete runs may remain if the process is interrupted.
 
@@ -40,7 +40,7 @@ At minimum, you SHOULD back up:
 - `master.key`
 - `bastion.db`
 
-If you lose `master.key`, you will not be able to decrypt existing encrypted secrets stored in the database (WebDAV credentials, SMTP, WeCom webhooks, backup encryption identities, etc.).
+If you lose `master.key`, you will not be able to decrypt existing encrypted credentials stored in the database (WebDAV credentials, SMTP, WeCom webhooks, backup encryption identities, etc.).
 
 ## Keypack export/import (recommended for backups)
 
@@ -49,19 +49,19 @@ Bastion provides a password-encrypted “keypack” export for `master.key`.
 Export keypack:
 
 ```bash
-./bastion keypack export --out /secure/location/bastion-keypack.json --password-stdin
+bastion keypack export --out /secure/location/bastion-keypack.json --password-stdin
 ```
 
 Import keypack:
 
 ```bash
-./bastion keypack import --in /secure/location/bastion-keypack.json --password-stdin
+bastion keypack import --in /secure/location/bastion-keypack.json --password-stdin
 ```
 
 Import with overwrite (dangerous):
 
 ```bash
-./bastion keypack import --in /secure/location/bastion-keypack.json --password-stdin --force
+bastion keypack import --in /secure/location/bastion-keypack.json --password-stdin --force
 ```
 
 After importing or rotating `master.key`, restart the service to ensure the new keyring is loaded.
@@ -71,7 +71,7 @@ After importing or rotating `master.key`, restart the service to ensure the new 
 Rotate the active key in `master.key`:
 
 ```bash
-./bastion keypack rotate
+bastion keypack rotate
 ```
 
-Rotation keeps old keys so existing secrets remain decryptable; new secrets use the new active key.
+Rotation keeps old keys so existing credentials remain decryptable; new credentials use the new active key.

@@ -117,7 +117,7 @@ export default defineConfig(({ command }) => {
         label: '简体中文',
         lang: 'zh-CN',
         title: 'Bastion',
-        description: '自托管备份编排器（Hub + 可选 Agents），带 Web UI。',
+        description: '自托管备份编排器（Hub + 可选客户端），带 Web UI。',
         themeConfig: {
           nav: [
             { text: '首页', link: withLocale('/zh', '/') },
@@ -147,9 +147,9 @@ export default defineConfig(({ command }) => {
               {
                 text: '使用 Bastion',
                 items: [
-                  { text: 'Agents（代理）', link: '/zh/user/agents' },
-                  { text: 'Jobs（作业）', link: '/zh/user/jobs' },
-                  { text: 'Runs（运行记录）', link: '/zh/user/runs' },
+                  { text: '客户端（Agents）', link: '/zh/user/agents' },
+                  { text: '备份任务（Jobs）', link: '/zh/user/jobs' },
+                  { text: '运行记录（Runs）', link: '/zh/user/runs' },
                   { text: '恢复与校验', link: '/zh/user/restore-verify' },
                   { text: '备份快照', link: '/zh/user/backup-snapshots' },
                   { text: '批量操作', link: '/zh/user/bulk-operations' },
@@ -164,7 +164,7 @@ export default defineConfig(({ command }) => {
                   { text: '运行时配置', link: '/zh/user/operations/runtime-config' },
                   { text: '通知', link: '/zh/user/operations/notifications' },
                   { text: '日志', link: '/zh/user/operations/logging' },
-                  { text: '维护', link: '/zh/user/operations/maintenance' },
+                  { text: '不完整运行清理', link: '/zh/user/operations/maintenance' },
                   { text: '数据目录', link: '/zh/user/operations/data-directory' },
                   { text: '反向代理', link: '/zh/user/operations/reverse-proxy' },
                   { text: '可观测性', link: '/zh/user/operations/observability' },

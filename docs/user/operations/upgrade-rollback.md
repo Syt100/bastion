@@ -30,6 +30,7 @@ After upgrade, verify:
 
 - The service is running (systemd / Windows Service / container status).
 - The Web UI loads.
+- Agents reconnect (if you use them).
 - Health endpoints:
   - `GET /api/health` (liveness)
   - `GET /api/ready` (readiness)

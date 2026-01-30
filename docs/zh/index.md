@@ -9,8 +9,8 @@
 - [用户手册](/zh/user/)
 - [概念与术语](/zh/user/concepts)
 - [快速开始](/zh/user/getting-started)
-- [Jobs（作业）](/zh/user/jobs)
-- [Runs（运行记录）](/zh/user/runs)
+- [备份任务（Jobs）](/zh/user/jobs)
+- [运行记录（Runs）](/zh/user/runs)
 - [恢复与校验](/zh/user/restore-verify)
 
 ## 开发文档
@@ -20,4 +20,3 @@
 - [开发文档](/zh/dev/)
 - [构建与运行](/zh/dev/build)
 - [文档站（VitePress + 内置到产品）](/zh/dev/docs-site)
-

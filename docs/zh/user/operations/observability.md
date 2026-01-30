@@ -2,7 +2,7 @@
 
 对小规模部署来说，最实用的可观测性通常是：
 
-- 简单的 liveness/readiness 探针
+- 存活/就绪探针
 - 稳定的请求 ID（把 UI 看到的错误与服务端日志关联起来）
 - 清晰的日志位置（控制台 / journald / 文件）
 
@@ -10,13 +10,13 @@
 
 这些接口都会返回一个很小的 JSON，并包含 `ok` 布尔值。
 
-### Liveness：`GET /api/health`
+### 存活（Liveness）：`GET /api/health`
 
 回答的问题是：“进程是否还活着？”
 
 - 期望：`200` + `{ "ok": true }`
 
-### Readiness：`GET /api/ready`
+### 就绪（Readiness）：`GET /api/ready`
 
 回答的问题是：“Hub 是否已准备好对外服务？”
 
@@ -45,6 +45,8 @@ Bastion 会在 HTTP 响应头中返回 `x-request-id`。
 - 日志中与该 request-id 相关的片段
 
 这样更容易把客户端错误与服务端日志对应起来。
+
+提示：Web UI 的错误弹窗会展示 request ID，反馈问题时建议一并提供。
 
 ## 日志
 
