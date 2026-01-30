@@ -167,7 +167,7 @@ const messages = {
     },
     tokenModal: {
       title: 'Create enrollment token',
-      ttl: 'TTL (seconds)',
+      ttl: 'Expires in (seconds)',
       remainingUses: 'Remaining uses (optional)',
       create: 'Create',
       help: 'Use this token to enroll an agent',
@@ -225,7 +225,7 @@ const messages = {
     subtitle: 'Monitor and manage bulk operations across agents',
     detailTitle: 'Bulk operation',
     columns: {
-      kind: 'Kind',
+      kind: 'Type',
       status: 'Status',
       progress: 'Progress',
       createdAt: 'Created',
@@ -913,15 +913,15 @@ const messages = {
       overviewTitle: 'Overview',
       duration: 'Duration',
       target: 'Target',
-      entries: 'Entries {count}',
-      parts: 'Parts {count}',
-      warnings: 'Warnings {count}',
-      errors: 'Errors {count}',
+      entries: 'Entries: {count}',
+      parts: 'Parts: {count}',
+      warnings: 'Warnings: {count}',
+      errors: 'Errors: {count}',
       noOperations: 'No linked operations',
       summaryTitle: 'Summary',
-      summaryHelp: 'Highlights (expand to view raw JSON)',
+      summaryHelp: 'Structured summary (expand for raw JSON)',
       summaryHighlights: 'Highlights',
-      summaryDetails: 'More',
+      summaryDetails: 'Details',
       rawJson: 'Raw JSON',
     },
     progress: {
@@ -943,18 +943,18 @@ const messages = {
       },
       help: {
         scanTitle: 'Scan',
-        scanBody: 'Scan the source to compute totals (files/dirs/bytes) for progress and ETA (optional).',
+        scanBody: 'Scans the source to estimate totals (files/directories/size) for progress and ETA (optional).',
         packagingTitle: 'Packaging',
         packagingBody:
-          'Build backup artifacts.\n- archive: pack/compress (optional encryption) and generate index\n- raw_tree: copy files into staging and compute hashes + generate index',
+          'Builds backup artifacts.\n- archive: pack/compress (optional encryption) and generate an index\n- raw_tree: copy files to a temporary directory, compute hashes, and generate an index',
         uploadTitle: 'Upload',
         uploadBody: 'Write the artifacts to the target storage (e.g. WebDAV, local directory).',
       },
       source: {
         title: 'Source',
         files: 'Files',
-        dirs: 'Dirs',
-        bytes: 'Bytes',
+        dirs: 'Directories',
+        bytes: 'Size',
       },
       transfer: {
         title: 'Transfer',
@@ -984,7 +984,7 @@ const messages = {
     noEvents: 'No events yet',
     filters: {
       level: 'Level',
-      kind: 'Kind',
+      kind: 'Type',
     },
     badges: {
       newCount: 'New {count}',
@@ -993,7 +993,7 @@ const messages = {
       follow: 'Follow',
       latest: 'Latest',
       firstError: 'First error',
-      firstWarn: 'First warn',
+      firstWarn: 'First warning',
       details: 'Details',
       reconnect: 'Reconnect',
       export: 'Export JSON',
@@ -1040,31 +1040,31 @@ const messages = {
     actions: {
       start: 'Start restore',
       browse: 'Browse',
-      pick: 'Pick files/directories',
+      pick: 'Select files/directories',
       clearSelection: 'Clear selection',
     },
     pick: {
-      title: 'Pick files/directories to restore',
+      title: 'Select files/directories to restore',
       currentPrefix: 'Current path (inside archive)',
       searchPlaceholder: 'Search (name)',
       search: 'Search',
       kindAll: 'All types',
       confirm: 'Confirm',
     },
-    selectionSummary: 'Selected: {files} files, {dirs} dirs',
+    selectionSummary: 'Selected: {files} files, {dirs} directories',
   },
   verify: {
     title: 'Verify',
     helpTitle: 'End-to-end verification',
     helpBody:
-      'Downloads the snapshot, restores it into a temporary directory, and verifies file hashes. For SQLite, it also runs PRAGMA integrity_check.',
+      'Downloads the snapshot, restores it to a temporary directory, and verifies file hashes. For SQLite, also runs PRAGMA integrity_check.',
     actions: {
       start: 'Start verification',
     },
   },
   operations: {
-    title: 'Operation',
-    kind: 'Kind',
+    title: 'Operations',
+    kind: 'Type',
     startedAt: 'Started',
     endedAt: 'Ended',
     restore: {

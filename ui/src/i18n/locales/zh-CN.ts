@@ -912,10 +912,10 @@ const messages = {
       overviewTitle: '概览',
       duration: '耗时',
       target: '目标',
-      entries: '条目 {count}',
-      parts: '分片 {count}',
-      warnings: '警告 {count}',
-      errors: '错误 {count}',
+      entries: '条目：{count}',
+      parts: '分片：{count}',
+      warnings: '警告：{count}',
+      errors: '错误：{count}',
       noOperations: '暂无关联操作',
       summaryTitle: '摘要',
       summaryHelp: '结构化摘要（可展开查看原始 JSON）',
@@ -942,10 +942,10 @@ const messages = {
       },
       help: {
         scanTitle: '扫描',
-        scanBody: '扫描数据源以计算总文件数、目录数与总大小，用于进度与 ETA（可选）。',
+        scanBody: '扫描数据源以估算文件数、目录数与总大小，用于进度与 ETA（可选）。',
         packagingTitle: '构建',
         packagingBody:
-          '构建备份产物。\n- archive 模式：打包/压缩（可选加密）并生成索引\n- raw_tree 模式：复制文件到 staging 并计算 hash + 生成索引',
+          '构建备份产物。\n- archive 模式：打包/压缩（可选加密）并生成索引\n- raw_tree 模式：复制文件到临时目录，计算哈希并生成索引',
         uploadTitle: '上传',
         uploadBody: '将备份产物写入目标存储（例如 WebDAV、本地目录等）。',
       },
@@ -953,7 +953,7 @@ const messages = {
         title: '源数据',
         files: '文件',
         dirs: '目录',
-        bytes: '数据量',
+        bytes: '大小',
       },
       transfer: {
         title: '传输',
@@ -1029,7 +1029,7 @@ const messages = {
       webdavMetaNote: '会在该前缀下创建 .bastion-meta/ 目录，用于记录元数据，便于后续恢复。',
       conflictPolicy: '冲突策略',
       selection: '恢复内容（可选）',
-      selectionHelp: '不选择表示恢复全部；选择目录表示恢复其下所有文件',
+      selectionHelp: '不选择表示恢复全部；选择目录表示恢复其下所有文件。',
     },
     conflict: {
       overwrite: '覆盖',
@@ -1055,13 +1055,13 @@ const messages = {
   verify: {
     title: '校验',
     helpTitle: '端到端校验',
-    helpBody: '下载快照、恢复到临时目录并校验文件哈希；若包含 SQLite，将执行 PRAGMA integrity_check',
+    helpBody: '下载快照，恢复到临时目录并校验文件哈希；若包含 SQLite，还会执行 PRAGMA integrity_check。',
     actions: {
       start: '开始校验',
     },
   },
   operations: {
-    title: '操作',
+    title: '操作记录',
     kind: '类型',
     startedAt: '开始时间',
     endedAt: '结束时间',
