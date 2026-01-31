@@ -11,11 +11,13 @@ import {
   NInput,
   NModal,
   NPopover,
+  NSelect,
   NSpace,
   NSpin,
   NTag,
   useMessage,
   type DataTableColumns,
+  type DropdownOption,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { PinOutline } from '@vicons/ionicons5'
@@ -23,13 +25,24 @@ import { PinOutline } from '@vicons/ionicons5'
 import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
-import { useJobsStore, type JobDetail, type RunArtifact, type SnapshotDeleteEvent, type SnapshotDeleteTaskDetail } from '@/stores/jobs'
+import ListToolbar from '@/components/list/ListToolbar.vue'
+import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
+import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
+import {
+  useJobsStore,
+  type JobDetail,
+  type RunArtifact,
+  type SnapshotDeleteEvent,
+  type SnapshotDeleteTaskDetail,
+  type SnapshotStatus,
+} from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
 import { formatBytes } from '@/lib/format'
+import { useLatestRequest } from '@/lib/latest'
 
 const props = defineProps<{
   embedded?: boolean
@@ -51,9 +64,20 @@ const nodeIdOrHub = computed(() => nodeId.value ?? 'hub')
 const jobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
 
 const job = ref<JobDetail | null>(null)
-const loading = ref<boolean>(false)
+const searchText = ref<string>('')
+const statusFilter = ref<SnapshotStatus | 'all'>('all')
+const pinnedFilter = ref<'all' | 'pinned' | 'unpinned'>('all')
+const targetFilter = ref<'all' | 'local_dir' | 'webdav'>('all')
+
+const listLoading = ref<boolean>(false)
+const listLoadingKind = ref<'refresh' | 'more' | null>(null)
 const items = ref<RunArtifact[]>([])
+const nextCursor = ref<number | null>(null)
+
 const checkedRowKeys = ref<string[]>([])
+
+const PAGE_SIZE = 50
+const latest = useLatestRequest()
 
 const deleteConfirmOpen = ref(false)
 const deleteConfirmBusy = ref(false)
@@ -139,19 +163,138 @@ function formatDeleteTaskExecutor(row: RunArtifact): string | null {
   return t('snapshots.deleteTaskExecutor', { node: id })
 }
 
-async function refresh(): Promise<void> {
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return error.name === 'AbortError'
+  return 'name' in error && (error as { name?: unknown }).name === 'AbortError'
+}
+
+const loadingTable = computed(() => listLoading.value && listLoadingKind.value === 'refresh')
+const loadingMore = computed(() => listLoading.value && listLoadingKind.value === 'more')
+
+const statusOptions = computed(() => [
+  { label: t('snapshots.filters.statusAll'), value: 'all' },
+  { label: t('snapshots.status.present'), value: 'present' },
+  { label: t('snapshots.status.deleting'), value: 'deleting' },
+  { label: t('snapshots.status.deleted'), value: 'deleted' },
+  { label: t('snapshots.status.missing'), value: 'missing' },
+  { label: t('snapshots.status.error'), value: 'error' },
+])
+
+const pinnedOptions = computed(() => [
+  { label: t('snapshots.filters.pinnedAll'), value: 'all' },
+  { label: t('snapshots.filters.pinnedOnly'), value: 'pinned' },
+  { label: t('snapshots.filters.unpinnedOnly'), value: 'unpinned' },
+])
+
+const targetOptions = computed(() => [
+  { label: t('snapshots.filters.targetAll'), value: 'all' },
+  { label: t('snapshots.targets.localDir'), value: 'local_dir' },
+  { label: t('snapshots.targets.webdav'), value: 'webdav' },
+])
+
+const filteredItems = computed<RunArtifact[]>(() => {
+  const q = searchText.value.trim().toLowerCase()
+
+  return items.value.filter((row) => {
+    if (pinnedFilter.value === 'pinned' && row.pinned_at == null) return false
+    if (pinnedFilter.value === 'unpinned' && row.pinned_at != null) return false
+    if (targetFilter.value !== 'all' && row.target_type !== targetFilter.value) return false
+
+    if (!q) return true
+    const runId = row.run_id.toLowerCase()
+    const fmt = (row.artifact_format ?? '').toLowerCase()
+    const target = formatTarget(row).toLowerCase()
+    return runId.includes(q) || fmt.includes(q) || target.includes(q)
+  })
+})
+
+function clearFilters(): void {
+  searchText.value = ''
+  statusFilter.value = 'all'
+  pinnedFilter.value = 'all'
+  targetFilter.value = 'all'
+}
+
+async function refreshJob(): Promise<void> {
   const id = jobId.value
   if (!id) return
-  loading.value = true
   try {
-    job.value = await jobs.getJob(id)
-    const res = await jobs.listJobSnapshots(id, { limit: 200 })
-    items.value = res.items
+    const res = await jobs.getJob(id)
+    if (jobId.value !== id) return
+    job.value = res
   } catch (error) {
+    message.error(formatToastError(t('errors.fetchJobFailed'), error, t))
+  }
+}
+
+async function refreshSnapshots(): Promise<void> {
+  const id = jobId.value
+  if (!id) return
+
+  const req = latest.next()
+  listLoading.value = true
+  listLoadingKind.value = 'refresh'
+
+  try {
+    const params: { cursor: number; limit: number; status?: string; signal?: AbortSignal } = {
+      cursor: 0,
+      limit: PAGE_SIZE,
+      signal: req.signal,
+    }
+    if (statusFilter.value !== 'all') params.status = statusFilter.value
+
+    const res = await jobs.listJobSnapshots(id, params)
+    if (req.isStale()) return
+    items.value = res.items
+    nextCursor.value = res.next_cursor ?? null
+    checkedRowKeys.value = []
+  } catch (error) {
+    if (req.isStale() || isAbortError(error)) return
     message.error(formatToastError(t('errors.fetchSnapshotsFailed'), error, t))
   } finally {
-    loading.value = false
+    if (req.isStale()) return
+    listLoading.value = false
+    listLoadingKind.value = null
   }
+}
+
+async function loadMoreSnapshots(): Promise<void> {
+  const id = jobId.value
+  const cursor = nextCursor.value
+  if (!id || cursor == null) return
+
+  const req = latest.next()
+  listLoading.value = true
+  listLoadingKind.value = 'more'
+
+  try {
+    const params: { cursor: number; limit: number; status?: string; signal?: AbortSignal } = {
+      cursor,
+      limit: PAGE_SIZE,
+      signal: req.signal,
+    }
+    if (statusFilter.value !== 'all') params.status = statusFilter.value
+
+    const res = await jobs.listJobSnapshots(id, params)
+    if (req.isStale()) return
+
+    const existing = new Set(items.value.map((it) => it.run_id))
+    const append = res.items.filter((it) => !existing.has(it.run_id))
+    items.value = items.value.concat(append)
+    nextCursor.value = res.next_cursor ?? null
+  } catch (error) {
+    if (req.isStale() || isAbortError(error)) return
+    message.error(formatToastError(t('errors.fetchSnapshotsFailed'), error, t))
+  } finally {
+    if (req.isStale()) return
+    listLoading.value = false
+    listLoadingKind.value = null
+  }
+}
+
+async function refresh(): Promise<void> {
+  await Promise.all([refreshJob(), refreshSnapshots()])
 }
 
 onMounted(() => {
@@ -160,6 +303,10 @@ onMounted(() => {
 
 watch(jobId, () => {
   void refresh()
+})
+
+watch(statusFilter, () => {
+  void refreshSnapshots()
 })
 
 const rowById = computed(() => new Map(items.value.map((r) => [r.run_id, r] as const)))
@@ -215,7 +362,7 @@ async function confirmDelete(): Promise<void> {
     message.success(t('messages.snapshotDeleteQueued'))
     deleteConfirmOpen.value = false
     checkedRowKeys.value = []
-    await refresh()
+    await refreshSnapshots()
   } catch (error) {
     message.error(formatToastError(t('errors.deleteSnapshotsFailed'), error, t))
   } finally {
@@ -229,7 +376,7 @@ async function pinSnapshot(runId: string): Promise<void> {
   try {
     await jobs.pinJobSnapshot(id, runId)
     message.success(t('messages.snapshotPinned'))
-    await refresh()
+    await refreshSnapshots()
   } catch (error) {
     message.error(formatToastError(t('errors.pinSnapshotFailed'), error, t))
   }
@@ -241,7 +388,7 @@ async function unpinSnapshot(runId: string): Promise<void> {
   try {
     await jobs.unpinJobSnapshot(id, runId)
     message.success(t('messages.snapshotUnpinned'))
-    await refresh()
+    await refreshSnapshots()
   } catch (error) {
     message.error(formatToastError(t('errors.unpinSnapshotFailed'), error, t))
   }
@@ -278,7 +425,7 @@ async function retryDeleteNow(): Promise<void> {
   try {
     await jobs.retryJobSnapshotDeleteNow(id, runId)
     message.success(t('messages.snapshotDeleteRetryQueued'))
-    await refresh()
+    await refreshSnapshots()
     await openDeleteLog(runId)
   } catch (error) {
     message.error(formatToastError(t('errors.retrySnapshotDeleteFailed'), error, t))
@@ -293,10 +440,51 @@ async function ignoreDeleteTask(): Promise<void> {
     const reason = ignoreReason.value.trim() || undefined
     await jobs.ignoreJobSnapshotDeleteTask(id, runId, reason)
     message.success(t('messages.snapshotDeleteIgnored'))
-    await refresh()
+    await refreshSnapshots()
     await openDeleteLog(runId)
   } catch (error) {
     message.error(formatToastError(t('errors.ignoreSnapshotDeleteFailed'), error, t))
+  }
+}
+
+function snapshotOverflowOptions(row: RunArtifact): DropdownOption[] {
+  const opts: DropdownOption[] = []
+
+  if (row.status === 'present') {
+    opts.push({
+      label: row.pinned_at != null ? t('snapshots.actions.unpin') : t('snapshots.actions.pin'),
+      key: 'pin_toggle',
+    })
+  }
+
+  if (row.delete_task) {
+    if (opts.length) opts.push({ type: 'divider', key: '__d0' })
+    opts.push({ label: t('snapshots.actions.deleteLog'), key: 'delete_log' })
+  }
+
+  if (row.status === 'present') {
+    if (opts.length) opts.push({ type: 'divider', key: '__d1' })
+    opts.push({
+      label: t('snapshots.actions.delete'),
+      key: 'delete',
+      props: { style: 'color: var(--app-danger);' },
+    })
+  }
+
+  return opts
+}
+
+function onSelectSnapshotOverflow(row: RunArtifact, key: string | number): void {
+  if (key === 'pin_toggle') {
+    void (row.pinned_at != null ? unpinSnapshot(row.run_id) : pinSnapshot(row.run_id))
+    return
+  }
+  if (key === 'delete_log') {
+    void openDeleteLog(row.run_id)
+    return
+  }
+  if (key === 'delete') {
+    openDeleteSingle(row.run_id)
   }
 }
 
@@ -388,45 +576,31 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
     {
       title: t('snapshots.columns.actions'),
       key: 'actions',
-      render: (row) =>
-        h(
+      render: (row) => {
+        const opts = snapshotOverflowOptions(row)
+
+        return h(
           NSpace,
           { size: 8 },
           {
-            default: () => [
-              h(
-                NButton,
-                { size: 'small', onClick: () => openRunDetail(row.run_id) },
-                { default: () => t('snapshots.actions.viewRun') },
-              ),
-              row.status === 'present'
-                ? h(
-                    NButton,
-                    {
+            default: () =>
+              [
+                h(
+                  NButton,
+                  { tertiary: true, size: 'small', onClick: () => openRunDetail(row.run_id) },
+                  { default: () => t('snapshots.actions.viewRun') },
+                ),
+                opts.length
+                  ? h(OverflowActionsButton, {
                       size: 'small',
-                      quaternary: true,
-                      onClick: () => (row.pinned_at != null ? unpinSnapshot(row.run_id) : pinSnapshot(row.run_id)),
-                    },
-                    { default: () => (row.pinned_at != null ? t('snapshots.actions.unpin') : t('snapshots.actions.pin')) },
-                  )
-                : null,
-              row.status === 'present'
-                ? h(
-                    NButton,
-                    { size: 'small', type: 'error', onClick: () => openDeleteSingle(row.run_id) },
-                    { default: () => t('snapshots.actions.delete') },
-                  )
-                : null,
-              row.delete_task
-                ? h(
-                    NButton,
-                    { size: 'small', onClick: () => openDeleteLog(row.run_id) },
-                    { default: () => t('snapshots.actions.deleteLog') },
-                  )
-                : null,
-            ],
+                      options: opts,
+                      onSelect: (key: string | number) => onSelectSnapshotOverflow(row, key),
+                    })
+                  : null,
+              ].filter(Boolean),
           },
-        ),
+        )
+      },
     },
   ]
   return cols
@@ -443,25 +617,69 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <template #prefix>
         <NodeContextTag :node-id="nodeIdOrHub" />
       </template>
-      <n-button v-if="checkedRowKeys.length" type="error" @click="openDeleteSelected">
-        {{ t('snapshots.actions.deleteSelected', { count: checkedRowKeys.length }) }}
-      </n-button>
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button @click="$router.push(`/n/${encodeURIComponent(nodeIdOrHub)}/jobs`)">{{ t('common.return') }}</n-button>
     </PageHeader>
 
-    <div v-else class="flex items-center justify-end gap-2">
-      <n-button v-if="checkedRowKeys.length" type="error" @click="openDeleteSelected">
-        {{ t('snapshots.actions.deleteSelected', { count: checkedRowKeys.length }) }}
-      </n-button>
-      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-    </div>
+    <SelectionToolbar
+      :count="checkedRowKeys.length"
+      :hint="t('common.selectionLoadedHint')"
+      @clear="checkedRowKeys = []"
+    >
+      <template #actions>
+        <n-button size="small" type="error" @click="openDeleteSelected">
+          {{ t('snapshots.actions.deleteSelectedShort') }}
+        </n-button>
+      </template>
+    </SelectionToolbar>
+
+    <ListToolbar>
+      <template #search>
+        <n-input
+          v-model:value="searchText"
+          size="small"
+          clearable
+          :placeholder="t('snapshots.filters.searchPlaceholder')"
+        />
+      </template>
+
+      <template #filters>
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="statusFilter"
+            size="small"
+            :options="statusOptions"
+          />
+        </div>
+
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="pinnedFilter"
+            size="small"
+            :options="pinnedOptions"
+          />
+        </div>
+
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="targetFilter"
+            size="small"
+            :options="targetOptions"
+          />
+        </div>
+      </template>
+
+      <template #actions>
+        <n-button v-if="props.embedded" size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
+        <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+      </template>
+    </ListToolbar>
 
     <div v-if="!isDesktop" class="space-y-3">
-      <AppEmptyState v-if="loading && items.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!loading && items.length === 0" :title="t('common.noData')" />
+      <AppEmptyState v-if="listLoading && filteredItems.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!listLoading && filteredItems.length === 0" :title="t('common.noData')" />
 
-      <n-card v-for="row in items" :key="row.run_id" size="small" class="app-card">
+      <n-card v-for="row in filteredItems" :key="row.run_id" size="small" class="app-card">
         <template #header>
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -523,20 +741,12 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
         <template #footer>
           <div class="flex justify-end gap-2">
             <n-button size="small" @click="openRunDetail(row.run_id)">{{ t('snapshots.actions.viewRun') }}</n-button>
-            <n-button
-              v-if="row.status === 'present'"
+            <OverflowActionsButton
+              v-if="snapshotOverflowOptions(row).length"
               size="small"
-              quaternary
-              @click="row.pinned_at != null ? unpinSnapshot(row.run_id) : pinSnapshot(row.run_id)"
-            >
-              {{ row.pinned_at != null ? t('snapshots.actions.unpin') : t('snapshots.actions.pin') }}
-            </n-button>
-            <n-button v-if="row.status === 'present'" size="small" type="error" @click="openDeleteSingle(row.run_id)">
-              {{ t('snapshots.actions.delete') }}
-            </n-button>
-            <n-button v-if="row.delete_task" size="small" @click="openDeleteLog(row.run_id)">
-              {{ t('snapshots.actions.deleteLog') }}
-            </n-button>
+              :options="snapshotOverflowOptions(row)"
+              @select="(key) => onSelectSnapshotOverflow(row, key)"
+            />
           </div>
         </template>
       </n-card>
@@ -546,15 +756,21 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <n-card class="app-card">
         <div class="overflow-x-auto">
           <n-data-table
-            :loading="loading"
+            :loading="loadingTable"
             :columns="columns"
-            :data="items"
+            :data="filteredItems"
             :row-key="(row) => row.run_id"
             :checked-row-keys="checkedRowKeys"
             @update:checked-row-keys="updateCheckedRowKeys"
           />
         </div>
       </n-card>
+    </div>
+
+    <div v-if="nextCursor != null" class="flex justify-center">
+      <n-button size="small" :disabled="listLoading" :loading="loadingMore" @click="loadMoreSnapshots">
+        {{ t('common.loadMore') }}
+      </n-button>
     </div>
 
     <n-modal v-model:show="deleteConfirmOpen" :mask-closable="!deleteConfirmBusy" preset="card" :style="{ width: isDesktop ? '720px' : '92vw' }">

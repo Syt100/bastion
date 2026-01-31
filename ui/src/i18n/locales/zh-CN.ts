@@ -918,6 +918,14 @@ const messages = {
     title: '快照',
     subtitle: '查看任务的历史快照',
     subtitlePrefix: '任务',
+    filters: {
+      searchPlaceholder: '搜索运行 ID / 目标 / 格式',
+      statusAll: '全部状态',
+      pinnedAll: '固定 + 未固定',
+      pinnedOnly: '仅固定',
+      unpinnedOnly: '仅未固定',
+      targetAll: '全部目标',
+    },
     targets: {
       localDir: '本地目录',
       webdav: 'WebDAV',
@@ -956,6 +964,7 @@ const messages = {
       unpin: '取消固定',
       delete: '删除',
       deleteSelected: '删除已选（{count}）',
+      deleteSelectedShort: '删除所选',
       confirmDelete: '确认删除',
       deleteLog: '删除日志',
       retryNow: '立即重试',

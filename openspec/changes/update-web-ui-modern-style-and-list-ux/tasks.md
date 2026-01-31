@@ -19,7 +19,7 @@
 ## 4. Web UI - Apply List UX + Action Hierarchy
 - [x] 4.1 Agents: add search + status quick filters; move most row actions into overflow; make dangerous actions consistently confirmed
 - [x] 4.2 Jobs: add search/filter/sort; standardize primary vs secondary actions; make row click open detail (desktop)
-- [ ] 4.3 Snapshots: cursor pagination ("Load more"); add filters (status/pinned/target); improve selection + bulk delete flow
+- [x] 4.3 Snapshots: cursor pagination ("Load more"); add filters (status/pinned/target); improve selection + bulk delete flow
 - [ ] 4.4 Align Bulk Operations / Notifications queue / Maintenance cleanup toolbars to the shared ListToolbar visuals
 - [ ] 4.5 Commit list UX + action hierarchy updates (detailed message)
 

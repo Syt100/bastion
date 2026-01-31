@@ -265,14 +265,16 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function listJobSnapshots(
     jobId: string,
-    params?: { cursor?: number; limit?: number; status?: string },
+    params?: { cursor?: number; limit?: number; status?: string; signal?: AbortSignal },
   ): Promise<ListJobSnapshotsResponse> {
     const q = new URLSearchParams()
     if (params?.cursor !== undefined) q.set('cursor', String(params.cursor))
     if (params?.limit !== undefined) q.set('limit', String(params.limit))
     if (params?.status) q.set('status', params.status)
     const suffix = q.toString() ? `?${q.toString()}` : ''
-    return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`)
+    return await apiFetch<ListJobSnapshotsResponse>(`/api/jobs/${encodeURIComponent(jobId)}/snapshots${suffix}`, {
+      signal: params?.signal,
+    })
   }
 
   async function getJobRetention(jobId: string): Promise<RetentionPolicy> {

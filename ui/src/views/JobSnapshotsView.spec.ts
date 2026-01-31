@@ -11,7 +11,7 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['value', 'show', 'loading', 'columns', 'data', 'title', 'subtitle'],
+      props: ['value', 'show', 'loading', 'columns', 'data', 'title', 'subtitle', 'options'],
       emits: ['update:value', 'update:show'],
       setup(_, { slots }) {
         return () => vue.h('div', { 'data-stub': name }, slots.default?.())
@@ -49,16 +49,39 @@ vi.mock('naive-ui', async () => {
     },
   })
 
+  const dropdown = vue.defineComponent({
+    name: 'NDropdown',
+    props: ['options'],
+    emits: ['select'],
+    setup(props, { slots, emit }) {
+      return () =>
+        vue.h('div', { 'data-stub': 'NDropdown' }, [
+          slots.default?.(),
+          ...(((props as any).options as any[]) ?? [])
+            .filter((o) => o && typeof o === 'object' && (o as any).type !== 'divider' && 'key' in o)
+            .map((o) =>
+              vue.h(
+                'button',
+                { onClick: () => emit('select', (o as any).key) },
+                (o as any).label ?? String((o as any).key),
+              ),
+            ),
+        ])
+    },
+  })
+
   return {
     NButton: button,
     NCard: card,
     NCheckbox: stub('NCheckbox'),
     NCode: stub('NCode'),
     NDataTable: stub('NDataTable'),
+    NDropdown: dropdown,
     NIcon: stub('NIcon'),
     NInput: stub('NInput'),
     NModal: modal,
     NPopover: stub('NPopover'),
+    NSelect: stub('NSelect'),
     NSpace: stub('NSpace'),
     NSpin: stub('NSpin'),
     NTag: stub('NTag'),
@@ -136,7 +159,7 @@ describe('JobSnapshotsView', () => {
     mount(JobSnapshotsView)
     expect(jobsApi.getJob).toHaveBeenCalledWith('j1')
     await flushPromises()
-    expect(jobsApi.listJobSnapshots).toHaveBeenCalledWith('j1', { limit: 200 })
+    expect(jobsApi.listJobSnapshots).toHaveBeenCalledWith('j1', expect.objectContaining({ cursor: 0, limit: 50 }))
   })
 
   it('shows desktop table when viewport is >= md', () => {

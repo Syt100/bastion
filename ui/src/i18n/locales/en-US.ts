@@ -918,6 +918,14 @@ const messages = {
     title: 'Snapshots',
     subtitle: 'Browse historical backup snapshots for this job',
     subtitlePrefix: 'Job',
+    filters: {
+      searchPlaceholder: 'Search run ID / target / format',
+      statusAll: 'All statuses',
+      pinnedAll: 'Pinned + unpinned',
+      pinnedOnly: 'Pinned only',
+      unpinnedOnly: 'Unpinned only',
+      targetAll: 'All targets',
+    },
     targets: {
       localDir: 'Local directory',
       webdav: 'WebDAV',
@@ -956,6 +964,7 @@ const messages = {
       unpin: 'Unpin',
       delete: 'Delete',
       deleteSelected: 'Delete selected ({count})',
+      deleteSelectedShort: 'Delete selected',
       confirmDelete: 'Confirm delete',
       deleteLog: 'Delete log',
       retryNow: 'Retry now',
