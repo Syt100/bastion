@@ -9,17 +9,17 @@
 - [x] 2.3 Add `bastion-http` tests for auth + response shape
 
 ## 3. Web UI (Dashboard)
-- [ ] 3.1 Add a dashboard store/api client for the overview payload
-- [ ] 3.2 Update Dashboard view to render:
+- [x] 3.1 Add a dashboard store/api client for the overview payload
+- [x] 3.2 Update Dashboard view to render:
   - KPI cards
   - 7-day trend chart
   - recent runs list/table with links
-- [ ] 3.3 Update i18n keys (en-US + zh-CN) and any existing unit tests
+- [x] 3.3 Update i18n keys (en-US + zh-CN) and any existing unit tests
 
 ## 4. Validation
 - [x] 4.1 Run `cargo test -p bastion-http`
-- [ ] 4.2 Run `npm test --prefix ui`
+- [x] 4.2 Run `npm test --prefix ui`
 - [ ] 4.3 (Optional) Run `bash scripts/ci.sh` if changes touch multiple layers
 
 ## 5. Commits
-- [ ] 5.1 Commit implementation changes (detailed message with Modules/Tests)
+- [x] 5.1 Commit implementation changes (detailed message with Modules/Tests)

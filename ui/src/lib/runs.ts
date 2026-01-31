@@ -2,7 +2,7 @@ import type { RunStatus } from '@/stores/jobs'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
-export function runStatusLabel(t: TranslateFn, status: RunStatus): string {
+export function runStatusLabel(t: TranslateFn, status: RunStatus | string): string {
   const key = `runs.statuses.${status}`
   const v = t(key)
   // Fallback for unknown/new statuses if translations are missing.
@@ -16,4 +16,3 @@ export function runTargetTypeLabel(t: TranslateFn, targetType: string | null | u
   // Fallback for unknown/new target types.
   return targetType
 }
-
