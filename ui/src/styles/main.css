@@ -8,6 +8,7 @@
   --app-primary-pressed: #2563eb;
   --app-primary-soft: rgba(59, 130, 246, 0.14);
   --app-primary-2: #06b6d4;
+  --app-primary-2-soft: rgba(6, 182, 212, 0.12);
   --app-accent-1: #6366f1;
   --app-accent-2: #8b5cf6;
 
@@ -58,6 +59,7 @@
   --app-primary-pressed: #3b82f6;
   --app-primary-soft: rgba(96, 165, 250, 0.20);
   --app-primary-2: #22d3ee;
+  --app-primary-2-soft: rgba(34, 211, 238, 0.18);
   --app-accent-1: #818cf8;
   --app-accent-2: #a78bfa;
 
@@ -213,6 +215,12 @@ body {
 }
 
 .app-topbar {
+  box-shadow: var(--app-shadow-sm);
+}
+
+.app-selection-toolbar {
+  background: linear-gradient(90deg, var(--app-primary-soft), var(--app-primary-2-soft));
+  border: 1px solid var(--app-border);
   box-shadow: var(--app-shadow-sm);
 }
 

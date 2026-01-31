@@ -11,10 +11,10 @@
 - [x] 2.5 Commit visual foundations (detailed message)
 
 ## 3. Web UI - Shared List UX Components
-- [ ] 3.1 Add a shared `ListToolbar` component (search/filters/sort/view toggle/actions; responsive layout)
-- [ ] 3.2 Add a shared `SelectionToolbar` component (selected count + bulk actions + scope hint)
-- [ ] 3.3 Add a shared overflow actions pattern for secondary/danger actions
-- [ ] 3.4 Commit shared list UX components (detailed message)
+- [x] 3.1 Add a shared `ListToolbar` component (search/filters/sort/view toggle/actions; responsive layout)
+- [x] 3.2 Add a shared `SelectionToolbar` component (selected count + bulk actions + scope hint)
+- [x] 3.3 Add a shared overflow actions pattern for secondary/danger actions
+- [x] 3.4 Commit shared list UX components (detailed message)
 
 ## 4. Web UI - Apply List UX + Action Hierarchy
 - [ ] 4.1 Agents: add search + status quick filters; move most row actions into overflow; make dangerous actions consistently confirmed
