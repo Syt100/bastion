@@ -82,6 +82,12 @@ const filteredJobs = computed<JobListItem[]>(() => {
   return sorted
 })
 
+function clearFilters(): void {
+  searchText.value = ''
+  showArchived.value = false
+  sortKey.value = 'updated_desc'
+}
+
 function formatJobNode(agentId: string | null): string {
   if (!agentId) return t('jobs.nodes.hub')
   const agent = agents.items.find((a) => a.id === agentId)
@@ -392,7 +398,20 @@ watch(showArchived, () => {
 
     <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
       <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!jobs.loading && filteredJobs.length === 0" :title="t('common.noData')" />
+      <AppEmptyState
+        v-else-if="!jobs.loading && filteredJobs.length === 0"
+        :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
+        :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
+      >
+        <template #actions>
+          <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
+            {{ t('jobs.actions.create') }}
+          </n-button>
+          <n-button v-else size="small" @click="clearFilters">
+            {{ t('common.clear') }}
+          </n-button>
+        </template>
+      </AppEmptyState>
 
       <n-card
         v-for="job in filteredJobs"
@@ -445,7 +464,23 @@ watch(showArchived, () => {
     </div>
 
     <div v-else data-testid="jobs-table">
-      <n-card class="app-card">
+      <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState
+        v-else-if="!jobs.loading && filteredJobs.length === 0"
+        :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
+        :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
+      >
+        <template #actions>
+          <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
+            {{ t('jobs.actions.create') }}
+          </n-button>
+          <n-button v-else size="small" @click="clearFilters">
+            {{ t('common.clear') }}
+          </n-button>
+        </template>
+      </AppEmptyState>
+
+      <n-card v-else class="app-card">
         <div class="overflow-x-auto">
           <n-data-table
             :loading="jobs.loading"

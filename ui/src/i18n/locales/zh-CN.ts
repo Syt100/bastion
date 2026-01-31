@@ -110,6 +110,12 @@ const messages = {
       running: '运行中',
       queued: '排队中',
     },
+    health: {
+      offlineAgents: '离线客户端',
+      viewOfflineAgents: '查看客户端',
+      notificationFailures: '通知失败',
+      viewNotificationQueue: '查看队列',
+    },
     recent: {
       title: '最近运行',
       empty: '暂无运行记录',
@@ -159,6 +165,10 @@ const messages = {
   agents: {
     title: '客户端',
     subtitle: '管理已接入 Hub 的客户端',
+    empty: {
+      title: '暂无客户端',
+      description: '先创建接入令牌并接入第一个客户端。',
+    },
     newToken: '创建接入令牌',
     bulkLabels: '批量编辑标签',
     bulkSync: '同步配置',
@@ -306,6 +316,10 @@ const messages = {
   jobs: {
     title: '备份任务',
     subtitle: '创建并调度备份任务',
+    empty: {
+      title: '暂无任务',
+      description: '先创建一个任务以开始运行备份。',
+    },
     detail: {
       title: '任务',
       subtitle: '任务详情',

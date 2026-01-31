@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NButton,
   NCard,
@@ -24,6 +25,7 @@ import { usePersistentColumnWidths } from '@/lib/columnWidths'
 
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 
 const ui = useUiStore()
 const notifications = useNotificationsStore()
@@ -45,6 +47,37 @@ const total = ref(0)
 const items = ref<NotificationQueueItem[]>([])
 
 const latest = useLatestRequest()
+
+function parseQueryList(value: unknown): string[] {
+  const split = (raw: string): string[] =>
+    raw
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0)
+
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === 'string').flatMap(split)
+  }
+  if (typeof value === 'string') return split(value)
+  return []
+}
+
+function isQueueStatus(value: string): value is QueueStatus {
+  return value === 'queued' || value === 'sending' || value === 'sent' || value === 'failed' || value === 'canceled'
+}
+
+function isChannel(value: string): value is NotificationChannel {
+  return value === 'wecom_bot' || value === 'email'
+}
+
+function applyRouteFilters(): void {
+  const statuses = parseQueryList(route.query.status).filter(isQueueStatus)
+  const channels = parseQueryList(route.query.channel).filter(isChannel)
+  statusFilter.value = statuses
+  channelFilter.value = channels
+}
+
+applyRouteFilters()
 
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -134,6 +167,11 @@ async function cancel(id: string): Promise<void> {
     message.error(formatToastError(t('errors.notificationCancelFailed'), e, t))
   }
 }
+
+watch(
+  () => [route.query.status, route.query.channel],
+  () => applyRouteFilters(),
+)
 
 watch([statusFilter, channelFilter], () => {
   page.value = 1

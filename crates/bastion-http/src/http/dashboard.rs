@@ -22,6 +22,7 @@ pub(in crate::http) struct DashboardStats {
     agents: DashboardAgentsStats,
     jobs: DashboardJobsStats,
     runs: DashboardRunsStats,
+    notifications: DashboardNotificationsStats,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,6 +47,14 @@ pub(in crate::http) struct DashboardRunsStats {
     success_24h: i64,
     failed_24h: i64,
     rejected_24h: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct DashboardNotificationsStats {
+    queued: i64,
+    sending: i64,
+    failed: i64,
+    canceled: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,14 +98,14 @@ pub(in crate::http) async fn get_overview(
         r#"
         SELECT
           COUNT(1) AS total,
-          SUM(CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END) AS active,
-          SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS revoked,
-          SUM(
+          COALESCE(SUM(CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END), 0) AS active,
+          COALESCE(SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS revoked,
+          COALESCE(SUM(
             CASE
               WHEN revoked_at IS NULL AND last_seen_at IS NOT NULL AND last_seen_at >= ? THEN 1
               ELSE 0
             END
-          ) AS online
+          ), 0) AS online
         FROM agents
         "#,
     )
@@ -114,8 +123,8 @@ pub(in crate::http) async fn get_overview(
     let row = sqlx::query(
         r#"
         SELECT
-          SUM(CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END) AS active,
-          SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) AS archived
+          COALESCE(SUM(CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END), 0) AS active,
+          COALESCE(SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS archived
         FROM jobs
         "#,
     )
@@ -129,11 +138,11 @@ pub(in crate::http) async fn get_overview(
     let row = sqlx::query(
         r#"
         SELECT
-          SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
-          SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
-          SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'success' THEN 1 ELSE 0 END) AS success_24h,
-          SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'failed' THEN 1 ELSE 0 END) AS failed_24h,
-          SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'rejected' THEN 1 ELSE 0 END) AS rejected_24h
+          COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running,
+          COALESCE(SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+          COALESCE(SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'success' THEN 1 ELSE 0 END), 0) AS success_24h,
+          COALESCE(SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_24h,
+          COALESCE(SUM(CASE WHEN ended_at IS NOT NULL AND ended_at >= ? AND status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejected_24h
         FROM runs
         "#,
     )
@@ -148,6 +157,26 @@ pub(in crate::http) async fn get_overview(
     let runs_success_24h = row.get::<i64, _>("success_24h");
     let runs_failed_24h = row.get::<i64, _>("failed_24h");
     let runs_rejected_24h = row.get::<i64, _>("rejected_24h");
+
+    // Notifications queue (exclude sent).
+    let row = sqlx::query(
+        r#"
+        SELECT
+          COALESCE(SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+          COALESCE(SUM(CASE WHEN status = 'sending' THEN 1 ELSE 0 END), 0) AS sending,
+          COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
+          COALESCE(SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END), 0) AS canceled
+        FROM notifications
+        WHERE status IN ('queued', 'sending', 'failed', 'canceled')
+        "#,
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    let notifications_queued = row.get::<i64, _>("queued");
+    let notifications_sending = row.get::<i64, _>("sending");
+    let notifications_failed = row.get::<i64, _>("failed");
+    let notifications_canceled = row.get::<i64, _>("canceled");
 
     // Trend: last 7 days (UTC), inclusive.
     let today = now.date();
@@ -268,6 +297,12 @@ pub(in crate::http) async fn get_overview(
                 success_24h: runs_success_24h,
                 failed_24h: runs_failed_24h,
                 rejected_24h: runs_rejected_24h,
+            },
+            notifications: DashboardNotificationsStats {
+                queued: notifications_queued,
+                sending: notifications_sending,
+                failed: notifications_failed,
+                canceled: notifications_canceled,
             },
         },
         trend_7d,

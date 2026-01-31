@@ -110,6 +110,12 @@ const messages = {
       running: 'Running',
       queued: 'Queued',
     },
+    health: {
+      offlineAgents: 'Offline agents',
+      viewOfflineAgents: 'View agents',
+      notificationFailures: 'Notification failures',
+      viewNotificationQueue: 'View queue',
+    },
     recent: {
       title: 'Recent runs',
       empty: 'No runs yet',
@@ -159,6 +165,10 @@ const messages = {
   agents: {
     title: 'Agents',
     subtitle: 'Manage connected agents',
+    empty: {
+      title: 'No agents yet',
+      description: 'Create an enrollment token to connect your first agent.',
+    },
     newToken: 'Create enrollment token',
     bulkLabels: 'Bulk edit labels',
     bulkSync: 'Sync config',
@@ -306,6 +316,10 @@ const messages = {
   jobs: {
     title: 'Jobs',
     subtitle: 'Create and schedule backup jobs',
+    empty: {
+      title: 'No jobs yet',
+      description: 'Create your first job to start running backups.',
+    },
     detail: {
       title: 'Job',
       subtitle: 'Job details',

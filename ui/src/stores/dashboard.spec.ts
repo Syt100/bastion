@@ -17,6 +17,7 @@ describe('useDashboardStore', () => {
             agents: { total: 2, active: 2, online: 1, offline: 1, revoked: 0 },
             jobs: { active: 3, archived: 1 },
             runs: { running: 1, queued: 2, success_24h: 5, failed_24h: 1, rejected_24h: 0 },
+            notifications: { queued: 0, sending: 0, failed: 0, canceled: 0 },
           },
           trend_7d: [{ day: '2026-01-31', success: 1, failed: 0 }],
           recent_runs: [
@@ -44,4 +45,3 @@ describe('useDashboardStore', () => {
     expect(dashboard.overview?.recent_runs[0]?.run_id).toBe('r1')
   })
 })
-

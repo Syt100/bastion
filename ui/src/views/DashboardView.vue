@@ -26,6 +26,8 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const overview = computed(() => dashboard.overview)
+const offlineAgents = computed(() => overview.value?.stats.agents.offline ?? 0)
+const failedNotifications = computed(() => overview.value?.stats.notifications.failed ?? 0)
 
 async function refresh(): Promise<void> {
   try {
@@ -59,6 +61,14 @@ function nodeLabel(row: { node_id: string; node_name?: string | null }): string 
 
 function openRun(row: { run_id: string; node_id: string }): void {
   void router.push(`/n/${encodeURIComponent(row.node_id)}/runs/${encodeURIComponent(row.run_id)}`)
+}
+
+function openOfflineAgents(): void {
+  void router.push({ path: '/agents', query: { status: 'offline' } })
+}
+
+function openNotificationFailures(): void {
+  void router.push({ path: '/settings/notifications/queue', query: { status: 'failed' } })
 }
 
 type RecentRun = DashboardOverviewResponse['recent_runs'][number]
@@ -116,6 +126,32 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
     <PageHeader :title="t('dashboard.title')" :subtitle="t('dashboard.subtitle')">
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
     </PageHeader>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <n-card size="small" class="app-card">
+        <div class="text-sm opacity-70">{{ t('dashboard.health.offlineAgents') }}</div>
+        <div class="mt-2 flex items-baseline justify-between gap-3">
+          <div class="text-3xl font-semibold tabular-nums">
+            {{ offlineAgents }}
+          </div>
+          <n-button size="small" tertiary @click="openOfflineAgents">
+            {{ t('dashboard.health.viewOfflineAgents') }}
+          </n-button>
+        </div>
+      </n-card>
+
+      <n-card size="small" class="app-card">
+        <div class="text-sm opacity-70">{{ t('dashboard.health.notificationFailures') }}</div>
+        <div class="mt-2 flex items-baseline justify-between gap-3">
+          <div class="text-3xl font-semibold tabular-nums">
+            {{ failedNotifications }}
+          </div>
+          <n-button size="small" tertiary @click="openNotificationFailures">
+            {{ t('dashboard.health.viewNotificationQueue') }}
+          </n-button>
+        </div>
+      </n-card>
+    </div>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
       <n-card size="small" class="app-card">

@@ -24,6 +24,12 @@ export type DashboardOverviewResponse = {
       failed_24h: number
       rejected_24h: number
     }
+    notifications: {
+      queued: number
+      sending: number
+      failed: number
+      canceled: number
+    }
   }
   trend_7d: Array<{
     day: string

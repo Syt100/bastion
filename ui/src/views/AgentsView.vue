@@ -20,7 +20,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
@@ -39,6 +39,7 @@ import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 const router = useRouter()
 
 const ui = useUiStore()
@@ -73,6 +74,17 @@ const selectedAgentIds = ref<string[]>([])
 
 const searchText = ref<string>('')
 const statusFilter = ref<'all' | 'online' | 'offline' | 'revoked'>('all')
+
+function applyRouteFilters(): void {
+  const raw = route.query.status
+  if (typeof raw !== 'string') return
+  const value = raw.trim()
+  if (value === 'all' || value === 'online' || value === 'offline' || value === 'revoked') {
+    statusFilter.value = value
+  }
+}
+
+applyRouteFilters()
 
 const labelsModalOpen = ref<boolean>(false)
 const labelsSaving = ref<boolean>(false)
@@ -559,6 +571,10 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
 ])
 
 watch([selectedLabels, labelsMode], refresh, { deep: true })
+watch(
+  () => route.query.status,
+  () => applyRouteFilters(),
+)
 watch(detailModalOpen, (open) => {
   if (open) return
   detailLoading.value = false
@@ -659,7 +675,25 @@ onMounted(async () => {
 
     <div v-if="!isDesktop" class="space-y-3">
       <AppEmptyState v-if="agents.loading && visibleAgents.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!agents.loading && visibleAgents.length === 0" :title="t('common.noData')" />
+      <AppEmptyState
+        v-else-if="!agents.loading && visibleAgents.length === 0"
+        :title="agents.items.length === 0 ? t('agents.empty.title') : t('common.noData')"
+        :description="agents.items.length === 0 ? t('agents.empty.description') : undefined"
+      >
+        <template #actions>
+          <n-button
+            v-if="agents.items.length === 0"
+            type="primary"
+            size="small"
+            @click="openTokenModal"
+          >
+            {{ t('agents.newToken') }}
+          </n-button>
+          <n-button v-else size="small" @click="clearFilters">
+            {{ t('common.clear') }}
+          </n-button>
+        </template>
+      </AppEmptyState>
 
       <n-card
         v-for="agent in visibleAgents"
@@ -730,7 +764,28 @@ onMounted(async () => {
     </div>
 
     <div v-else>
-      <n-card class="app-card">
+      <AppEmptyState v-if="agents.loading && visibleAgents.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState
+        v-else-if="!agents.loading && visibleAgents.length === 0"
+        :title="agents.items.length === 0 ? t('agents.empty.title') : t('common.noData')"
+        :description="agents.items.length === 0 ? t('agents.empty.description') : undefined"
+      >
+        <template #actions>
+          <n-button
+            v-if="agents.items.length === 0"
+            type="primary"
+            size="small"
+            @click="openTokenModal"
+          >
+            {{ t('agents.newToken') }}
+          </n-button>
+          <n-button v-else size="small" @click="clearFilters">
+            {{ t('common.clear') }}
+          </n-button>
+        </template>
+      </AppEmptyState>
+
+      <n-card v-else class="app-card">
         <div class="overflow-x-auto">
           <n-data-table
             v-model:checked-row-keys="selectedAgentIds"

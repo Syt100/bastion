@@ -24,9 +24,9 @@
 - [x] 4.5 Commit list UX + action hierarchy updates (detailed message)
 
 ## 5. Web UI - Dashboard as Status Center
-- [ ] 5.1 Add top-level health summary cards with actionable links
-- [ ] 5.2 Improve empty-state CTAs for common first-run flows (Agents/Jobs)
-- [ ] 5.3 Commit dashboard status center updates (detailed message)
+- [x] 5.1 Add top-level health summary cards with actionable links
+- [x] 5.2 Improve empty-state CTAs for common first-run flows (Agents/Jobs)
+- [x] 5.3 Commit dashboard status center updates (detailed message)
 
 ## 6. Web UI - Node Context Clarity
 - [ ] 6.1 Clarify node picker semantics (current view vs preference) and improve node-scoped page indicators

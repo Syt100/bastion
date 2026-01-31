@@ -39,8 +39,12 @@ vi.mock('vue-i18n', () => ({
 const routerApi = {
   push: vi.fn(),
 }
+const routeApi = {
+  query: {} as Record<string, unknown>,
+}
 vi.mock('vue-router', () => ({
   useRouter: () => routerApi,
+  useRoute: () => routeApi,
 }))
 
 vi.mock('@/lib/media', async () => {
@@ -161,4 +165,3 @@ describe('AgentsView enrollment token modal', () => {
     expect(command!).toContain('--enroll-token tok1')
   })
 })
-
