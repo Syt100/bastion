@@ -10,13 +10,13 @@ import {
   NInput,
   NInputNumber,
   NModal,
-  NPopconfirm,
   NRadioButton,
   NRadioGroup,
   NSelect,
   NSpace,
   NTag,
   useMessage,
+  type DropdownOption,
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -26,6 +26,9 @@ import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentsLabels
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import ListToolbar from '@/components/list/ListToolbar.vue'
+import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
+import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -55,14 +58,21 @@ const enrollCommand = computed(() => {
 })
 
 const rotateModalOpen = ref<boolean>(false)
-const rotateRotating = ref<boolean>(false)
 const rotateResult = ref<{ agent_id: string; agent_key: string } | null>(null)
+
+const confirmOpen = ref<boolean>(false)
+const confirmBusy = ref<boolean>(false)
+const confirmKind = ref<'rotate_key' | 'revoke'>('revoke')
+const confirmAgent = ref<AgentListItem | null>(null)
 
 const labelIndexLoading = ref<boolean>(false)
 const labelIndex = ref<{ label: string; count: number }[]>([])
 const selectedLabels = ref<string[]>([])
 const labelsMode = ref<AgentsLabelsMode>('and')
 const selectedAgentIds = ref<string[]>([])
+
+const searchText = ref<string>('')
+const statusFilter = ref<'all' | 'online' | 'offline' | 'revoked'>('all')
 
 const labelsModalOpen = ref<boolean>(false)
 const labelsSaving = ref<boolean>(false)
@@ -98,6 +108,35 @@ const labelOptions = computed(() =>
     value: it.label,
   })),
 )
+
+const statusOptions = computed(() => [
+  { label: t('agents.filters.statusAll'), value: 'all' },
+  { label: t('agents.status.online'), value: 'online' },
+  { label: t('agents.status.offline'), value: 'offline' },
+  { label: t('agents.status.revoked'), value: 'revoked' },
+])
+
+const visibleAgents = computed<AgentListItem[]>(() => {
+  const q = searchText.value.trim().toLowerCase()
+
+  return agents.items.filter((a) => {
+    if (statusFilter.value === 'revoked' && !a.revoked) return false
+    if (statusFilter.value === 'online' && (a.revoked || !a.online)) return false
+    if (statusFilter.value === 'offline' && (a.revoked || a.online)) return false
+
+    if (!q) return true
+    const name = (a.name ?? '').toLowerCase()
+    const id = a.id.toLowerCase()
+    return name.includes(q) || id.includes(q)
+  })
+})
+
+function clearFilters(): void {
+  searchText.value = ''
+  statusFilter.value = 'all'
+  selectedLabels.value = []
+  labelsMode.value = 'and'
+}
 
 async function refresh(): Promise<void> {
   try {
@@ -168,15 +207,43 @@ async function revokeAgent(agentId: string): Promise<void> {
 }
 
 async function rotateAgentKey(agentId: string): Promise<void> {
-  rotateRotating.value = true
   try {
     rotateResult.value = await agents.rotateAgentKey(agentId)
     rotateModalOpen.value = true
     message.success(t('messages.agentKeyRotated'))
   } catch (error) {
     message.error(formatToastError(t('errors.rotateAgentKeyFailed'), error, t))
+  }
+}
+
+const confirmTitle = computed(() =>
+  confirmKind.value === 'rotate_key' ? t('agents.actions.rotateKey') : t('agents.actions.revoke'),
+)
+
+const confirmBody = computed(() =>
+  confirmKind.value === 'rotate_key' ? t('agents.rotateConfirm') : t('agents.revokeConfirm'),
+)
+
+function openConfirm(kind: 'rotate_key' | 'revoke', agent: AgentListItem): void {
+  confirmKind.value = kind
+  confirmAgent.value = agent
+  confirmOpen.value = true
+}
+
+async function confirmDangerAction(): Promise<void> {
+  const agent = confirmAgent.value
+  if (!agent) return
+  confirmBusy.value = true
+  try {
+    if (confirmKind.value === 'rotate_key') {
+      await rotateAgentKey(agent.id)
+    } else {
+      await revokeAgent(agent.id)
+    }
+    confirmOpen.value = false
+    confirmAgent.value = null
   } finally {
-    rotateRotating.value = false
+    confirmBusy.value = false
   }
 }
 
@@ -366,6 +433,35 @@ async function saveAgentLabels(): Promise<void> {
   }
 }
 
+function agentOverflowOptions(row: AgentListItem): DropdownOption[] {
+  return [
+    { label: t('agents.actions.storage'), key: 'storage' },
+    { label: t('agents.actions.details'), key: 'details' },
+    { label: t('agents.actions.labels'), key: 'labels' },
+    { type: 'divider', key: '__d1' },
+    {
+      label: t('agents.actions.rotateKey'),
+      key: 'rotate_key',
+      disabled: row.revoked,
+      props: { style: 'color: var(--app-warning);' },
+    },
+    {
+      label: t('agents.actions.revoke'),
+      key: 'revoke',
+      disabled: row.revoked,
+      props: { style: 'color: var(--app-danger);' },
+    },
+  ]
+}
+
+function onSelectAgentOverflow(row: AgentListItem, key: string | number): void {
+  if (key === 'storage') return openAgentStorage(row.id)
+  if (key === 'details') return void openAgentDetail(row.id)
+  if (key === 'labels') return openLabelsModal(row)
+  if (key === 'rotate_key') return openConfirm('rotate_key', row)
+  if (key === 'revoke') return openConfirm('revoke', row)
+}
+
 const columns = computed<DataTableColumns<AgentListItem>>(() => [
   ...(isDesktop.value ? [{ type: 'selection' as const }] : []),
   {
@@ -442,16 +538,6 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
             ),
             h(
               NButton,
-              { tertiary: true, size: 'small', onClick: () => openAgentStorage(row.id) },
-              { default: () => t('agents.actions.storage') },
-            ),
-            h(
-              NButton,
-              { tertiary: true, size: 'small', onClick: () => openAgentDetail(row.id) },
-              { default: () => t('agents.actions.details') },
-            ),
-            h(
-              NButton,
               {
                 tertiary: true,
                 size: 'small',
@@ -461,53 +547,11 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
               },
               { default: () => t('agents.actions.syncNow') },
             ),
-            h(
-              NButton,
-              { tertiary: true, size: 'small', onClick: () => openLabelsModal(row) },
-              { default: () => t('agents.actions.labels') },
-            ),
-            h(
-              NPopconfirm,
-              {
-                onPositiveClick: () => rotateAgentKey(row.id),
-                positiveText: t('agents.actions.rotateKey'),
-                negativeText: t('common.cancel'),
-                disabled: row.revoked,
-              },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    {
-                      tertiary: true,
-                      size: 'small',
-                      type: 'warning',
-                      loading: rotateRotating.value,
-                      disabled: row.revoked,
-                    },
-                    { default: () => t('agents.actions.rotateKey') },
-                  ),
-                default: () => t('agents.rotateConfirm'),
-              },
-            ),
-            h(
-              NPopconfirm,
-              {
-                onPositiveClick: () => revokeAgent(row.id),
-                positiveText: t('agents.actions.revoke'),
-                negativeText: t('common.cancel'),
-                disabled: row.revoked,
-              },
-              {
-                trigger: () =>
-                  h(
-                    NButton,
-                    { tertiary: true, size: 'small', type: 'error', disabled: row.revoked },
-                    { default: () => t('agents.actions.revoke') },
-                  ),
-                default: () => t('agents.revokeConfirm'),
-              },
-            ),
+            h(OverflowActionsButton, {
+              size: 'small',
+              options: agentOverflowOptions(row),
+              onSelect: (key: string | number) => onSelectAgentOverflow(row, key),
+            }),
           ],
         },
       ),
@@ -520,6 +564,11 @@ watch(detailModalOpen, (open) => {
   detailLoading.value = false
   detail.value = null
 })
+watch(confirmOpen, (open) => {
+  if (open) return
+  confirmBusy.value = false
+  confirmAgent.value = null
+})
 
 onMounted(async () => {
   await refreshLabelIndex()
@@ -531,27 +580,35 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="t('agents.title')" :subtitle="t('agents.subtitle')">
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-      <n-button
-        :disabled="selectedAgentIds.length === 0 && selectedLabels.length === 0"
-        @click="openBulkLabelsModal"
-      >
-        {{ t('agents.bulkLabels') }}
-      </n-button>
-      <n-button
-        :disabled="selectedAgentIds.length === 0 && selectedLabels.length === 0"
-        @click="openBulkSyncModal"
-      >
-        {{ t('agents.bulkSync') }}
-      </n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
 
-    <n-card class="app-card">
-      <div class="flex flex-col gap-3 md:flex-row md:items-end">
-        <div class="flex-1 min-w-0">
-          <div class="text-sm opacity-70 mb-1">{{ t('agents.filters.labels') }}</div>
+    <SelectionToolbar
+      :count="selectedAgentIds.length"
+      :hint="t('common.selectionLoadedHint')"
+      @clear="selectedAgentIds = []"
+    >
+      <template #actions>
+        <n-button size="small" @click="openBulkLabelsModal">{{ t('agents.bulkLabels') }}</n-button>
+        <n-button size="small" @click="openBulkSyncModal">{{ t('agents.bulkSync') }}</n-button>
+      </template>
+    </SelectionToolbar>
+
+    <ListToolbar>
+      <template #search>
+        <n-input
+          v-model:value="searchText"
+          size="small"
+          clearable
+          :placeholder="t('agents.filters.searchPlaceholder')"
+        />
+      </template>
+
+      <template #filters>
+        <div class="min-w-[14rem] flex-1 md:flex-none md:w-72">
           <n-select
             v-model:value="selectedLabels"
+            size="small"
             multiple
             filterable
             clearable
@@ -560,25 +617,52 @@ onMounted(async () => {
             :placeholder="t('agents.filters.labelsPlaceholder')"
           />
         </div>
-        <div class="shrink-0">
-          <div class="text-sm opacity-70 mb-1">{{ t('agents.filters.mode') }}</div>
+
+        <div class="shrink-0 flex items-center gap-2">
+          <span class="text-sm opacity-70">{{ t('agents.filters.mode') }}</span>
           <n-radio-group v-model:value="labelsMode" size="small">
             <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
             <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
           </n-radio-group>
         </div>
-        <div class="shrink-0 flex justify-end">
-          <n-button @click="selectedLabels = []">{{ t('common.clear') }}</n-button>
+
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select
+            v-model:value="statusFilter"
+            size="small"
+            :options="statusOptions"
+          />
         </div>
-      </div>
-    </n-card>
+      </template>
+
+      <template #actions>
+        <n-button
+          v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
+          size="small"
+          @click="openBulkLabelsModal"
+        >
+          {{ t('agents.bulkLabels') }}
+        </n-button>
+        <n-button
+          v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
+          size="small"
+          @click="openBulkSyncModal"
+        >
+          {{ t('agents.bulkSync') }}
+        </n-button>
+
+        <n-button size="small" @click="clearFilters">
+          {{ t('common.clear') }}
+        </n-button>
+      </template>
+    </ListToolbar>
 
     <div v-if="!isDesktop" class="space-y-3">
-      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!agents.loading && agents.items.length === 0" :title="t('common.noData')" />
+      <AppEmptyState v-if="agents.loading && visibleAgents.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!agents.loading && visibleAgents.length === 0" :title="t('common.noData')" />
 
       <n-card
-        v-for="agent in agents.items"
+        v-for="agent in visibleAgents"
         :key="agent.id"
         size="small"
         class="app-card"
@@ -627,8 +711,6 @@ onMounted(async () => {
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
             <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
-            <n-button size="small" tertiary @click="openAgentStorage(agent.id)">{{ t('agents.actions.storage') }}</n-button>
-            <n-button size="small" tertiary @click="openAgentDetail(agent.id)">{{ t('agents.actions.details') }}</n-button>
             <n-button
               size="small"
               tertiary
@@ -638,35 +720,10 @@ onMounted(async () => {
             >
               {{ t('agents.actions.syncNow') }}
             </n-button>
-            <n-button size="small" tertiary @click="openLabelsModal(agent)">{{ t('agents.actions.labels') }}</n-button>
-
-            <n-popconfirm
-              :positive-text="t('agents.actions.rotateKey')"
-              :negative-text="t('common.cancel')"
-              :disabled="agent.revoked"
-              @positive-click="rotateAgentKey(agent.id)"
-            >
-              <template #trigger>
-                <n-button size="small" type="warning" tertiary :loading="rotateRotating" :disabled="agent.revoked">
-                  {{ t('agents.actions.rotateKey') }}
-                </n-button>
-              </template>
-              {{ t('agents.rotateConfirm') }}
-            </n-popconfirm>
-
-            <n-popconfirm
-              :positive-text="t('agents.actions.revoke')"
-              :negative-text="t('common.cancel')"
-              :disabled="agent.revoked"
-              @positive-click="revokeAgent(agent.id)"
-            >
-              <template #trigger>
-                <n-button size="small" type="error" tertiary :disabled="agent.revoked">
-                  {{ t('agents.actions.revoke') }}
-                </n-button>
-              </template>
-              {{ t('agents.revokeConfirm') }}
-            </n-popconfirm>
+            <OverflowActionsButton
+              :options="agentOverflowOptions(agent)"
+              @select="(key) => onSelectAgentOverflow(agent, key)"
+            />
           </div>
         </template>
       </n-card>
@@ -680,11 +737,39 @@ onMounted(async () => {
             :row-key="(row) => row.id"
             :loading="agents.loading"
             :columns="columns"
-            :data="agents.items"
+            :data="visibleAgents"
           />
         </div>
       </n-card>
     </div>
+
+    <n-modal
+      v-model:show="confirmOpen"
+      :mask-closable="!confirmBusy"
+      preset="card"
+      :style="{ width: MODAL_WIDTH.sm }"
+      :title="confirmTitle"
+    >
+      <div class="space-y-4">
+        <div class="text-sm opacity-80">{{ confirmBody }}</div>
+
+        <div v-if="confirmAgent" class="text-sm">
+          <span class="opacity-70">{{ t('agents.columns.id') }}:</span>
+          <span class="font-mono ml-2">{{ confirmAgent.id }}</span>
+        </div>
+
+        <n-space justify="end">
+          <n-button :disabled="confirmBusy" @click="confirmOpen = false">{{ t('common.cancel') }}</n-button>
+          <n-button
+            :type="confirmKind === 'revoke' ? 'error' : 'warning'"
+            :loading="confirmBusy"
+            @click="confirmDangerAction"
+          >
+            {{ confirmKind === 'revoke' ? t('agents.actions.revoke') : t('agents.actions.rotateKey') }}
+          </n-button>
+        </n-space>
+      </div>
+    </n-modal>
 
     <n-modal v-model:show="tokenModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.tokenModal.title')">
       <div class="space-y-4">

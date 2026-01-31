@@ -200,6 +200,8 @@ const messages = {
       labels: '标签',
       labelsPlaceholder: '选择标签',
       mode: '模式',
+      statusAll: '全部状态',
+      searchPlaceholder: '按名称或 ID 搜索',
     },
     tokenModal: {
       title: '创建接入令牌',

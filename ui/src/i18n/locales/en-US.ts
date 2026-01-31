@@ -200,6 +200,8 @@ const messages = {
       labels: 'Labels',
       labelsPlaceholder: 'Select labels',
       mode: 'Mode',
+      statusAll: 'All statuses',
+      searchPlaceholder: 'Search by name or ID',
     },
     tokenModal: {
       title: 'Create enrollment token',
