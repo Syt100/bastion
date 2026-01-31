@@ -136,13 +136,13 @@ export const webdavPickerDataSource: PickerDataSource = {
     if (!v) return ''
     return `${v.nodeId}|${v.baseUrl.trim()}|${v.secretName.trim()}`
   },
-  defaultPath: (_ctx: unknown) => '/',
+  defaultPath: () => '/',
 
-  normalizePath: (path: string, _ctx: unknown) => normalizePath(path),
-  parentPath: (path: string, _ctx: unknown) => parentPath(path),
-  joinPath: (base: string, child: string, _ctx: unknown) => joinPath(base, child),
+  normalizePath: (path: string) => normalizePath(path),
+  parentPath: (path: string) => parentPath(path),
+  joinPath: (base: string, child: string) => joinPath(base, child),
 
-  capabilities: (_ctx: unknown): PathPickerCapabilities => ({
+  capabilities: (): PathPickerCapabilities => ({
     search: true,
     kindFilter: { values: ['dir', 'file'], default: 'all' },
     hideDotfiles: true,
@@ -161,7 +161,8 @@ export const webdavPickerDataSource: PickerDataSource = {
     return await listOnce(v, req)
   },
 
-  mapError: (error: unknown, _ctx: unknown, t?: Translator): PathPickerErrorInfo => {
+  mapError: (error: unknown, ctx: unknown, t?: Translator): PathPickerErrorInfo => {
+    void ctx
     const info = toApiErrorInfo(error, t)
     const kind = mapErrorKind(info)
     return { kind, message: info.message, code: info.code }
@@ -171,4 +172,3 @@ export const webdavPickerDataSource: PickerDataSource = {
 export function webdavPickerCtx(nodeId: 'hub' | string, baseUrl: string, secretName: string): WebdavPickerContext {
   return { nodeId, baseUrl, secretName }
 }
-

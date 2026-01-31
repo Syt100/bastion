@@ -185,8 +185,8 @@ const overlapLabel = computed(() => {
       <n-button @click="backToJobs">{{ t('common.return') }}</n-button>
     </PageHeader>
 
-    <AppEmptyState v-if="loading && !job" :title="t('common.loading')" loading />
-    <AppEmptyState v-else-if="!loading && !job" :title="t('common.noData')" />
+	    <AppEmptyState v-if="loading && !job" :title="t('common.loading')" loading />
+	    <AppEmptyState v-else-if="!job" :title="t('common.noData')" />
 
     <template v-else>
       <n-card size="small" class="app-card" :bordered="false">

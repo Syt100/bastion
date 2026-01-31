@@ -154,13 +154,13 @@ export const fsPickerDataSource: PickerDataSource = {
   persistenceNamespace: 'fsPicker',
 
   contextKey: (ctx: unknown) => nodeIdFromCtx(ctx),
-  defaultPath: (_ctx: unknown) => '/',
+  defaultPath: () => '/',
 
-  normalizePath: (path: string, _ctx: unknown) => path.trim(),
-  parentPath: (path: string, _ctx: unknown) => computeParentPath(path),
-  joinPath: (base: string, child: string, _ctx: unknown) => joinPath(base, child),
+  normalizePath: (path: string) => path.trim(),
+  parentPath: (path: string) => computeParentPath(path),
+  joinPath: (base: string, child: string) => joinPath(base, child),
 
-  capabilities: (_ctx: unknown): PathPickerCapabilities => ({
+  capabilities: (): PathPickerCapabilities => ({
     search: true,
     kindFilter: { values: ['dir', 'file', 'symlink'], default: 'all' },
     hideDotfiles: true,
@@ -189,7 +189,8 @@ export const fsPickerDataSource: PickerDataSource = {
     }
   },
 
-  mapError: (error: unknown, _ctx: unknown, t?: Translator): PathPickerErrorInfo => {
+  mapError: (error: unknown, ctx: unknown, t?: Translator): PathPickerErrorInfo => {
+    void ctx
     const info = toApiErrorInfo(error, t)
     const kind = mapErrorKind(info)
     return { kind, message: info.message, code: info.code }
@@ -199,4 +200,3 @@ export const fsPickerDataSource: PickerDataSource = {
 export function fsPickerCtx(nodeId: 'hub' | string): FsPickerContext {
   return { nodeId }
 }
-

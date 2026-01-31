@@ -73,7 +73,7 @@ vi.mock('naive-ui', async () => {
           'button',
           {
             'data-stub': 'NButton',
-            onClick: (attrs as any).onClick,
+            onClick: (attrs as { onClick?: ((evt: MouseEvent) => void) | undefined }).onClick,
           },
           slots.default?.(),
         )
@@ -85,7 +85,7 @@ vi.mock('naive-ui', async () => {
     props: ['show'],
     emits: ['update:show'],
     setup(props, { slots }) {
-      return () => ((props as any).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
+      return () => ((props as { show?: boolean }).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
     },
   })
 
@@ -106,8 +106,10 @@ vi.mock('naive-ui', async () => {
     props: ['value', 'type', 'readonly'],
     setup(props) {
       return () => {
-        const tag = (props as any).type === 'textarea' ? 'textarea' : 'input'
-        return vue.h(tag, { 'data-stub': 'NInput', value: (props as any).value ?? '' })
+        const type = (props as { type?: string }).type
+        const value = (props as { value?: string }).value
+        const tag = type === 'textarea' ? 'textarea' : 'input'
+        return vue.h(tag, { 'data-stub': 'NInput', value: value ?? '' })
       }
     },
   })

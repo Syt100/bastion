@@ -253,13 +253,6 @@ const hasAnySearchOrFilters = computed(
   () => (supportsSearch.value && searchApplied.value.trim().length > 0) || activeFilterCount.value > 0,
 )
 
-function sizeUnitMultiplier(unit: PathPickerSizeUnit): number {
-  if (unit === 'KB') return 1024
-  if (unit === 'MB') return 1024 * 1024
-  if (unit === 'GB') return 1024 * 1024 * 1024
-  return 1
-}
-
 function formatSizeRange(min: number | null, max: number | null, unit: PathPickerSizeUnit): string {
   const u = unit
   if (min != null && max != null) return `${min}–${max} ${u}`

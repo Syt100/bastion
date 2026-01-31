@@ -29,7 +29,7 @@ vi.mock('naive-ui', async () => {
           'button',
           {
             'data-stub': 'NButton',
-            onClick: (attrs as any).onClick,
+            onClick: (attrs as { onClick?: ((evt: MouseEvent) => void) | undefined }).onClick,
           },
           slots.default?.(),
         )
@@ -45,7 +45,7 @@ vi.mock('naive-ui', async () => {
         vue.h('label', { 'data-stub': 'NCheckbox' }, [
           vue.h('input', {
             type: 'checkbox',
-            checked: !!(props as any).checked,
+            checked: !!(props as { checked?: boolean }).checked,
             onChange: (e: Event) => emit('update:checked', (e.target as HTMLInputElement).checked),
           }),
           slots.default?.(),
@@ -58,7 +58,7 @@ vi.mock('naive-ui', async () => {
     props: ['show'],
     emits: ['update:show'],
     setup(props, { slots }) {
-      return () => ((props as any).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
+      return () => ((props as { show?: boolean }).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
     },
   })
 

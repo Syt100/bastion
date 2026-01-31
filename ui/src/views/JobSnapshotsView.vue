@@ -95,16 +95,20 @@ function openRunDetail(runId: string): void {
   void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/runs/${encodeURIComponent(runId)}`)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object'
+}
+
 function formatTarget(row: RunArtifact): string {
-  const snap = row.target_snapshot as any
-  const target = snap?.target
+  const snap = row.target_snapshot
+  const target = isRecord(snap) ? snap.target : null
 
   if (row.target_type === 'local_dir') {
-    const baseDir = typeof target?.base_dir === 'string' ? target.base_dir : ''
+    const baseDir = isRecord(target) && typeof target.base_dir === 'string' ? target.base_dir : ''
     return baseDir ? `${t('snapshots.targets.localDir')}: ${baseDir}` : t('snapshots.targets.localDir')
   }
   if (row.target_type === 'webdav') {
-    const baseUrl = typeof target?.base_url === 'string' ? target.base_url : ''
+    const baseUrl = isRecord(target) && typeof target.base_url === 'string' ? target.base_url : ''
     return baseUrl ? `${t('snapshots.targets.webdav')}: ${baseUrl}` : t('snapshots.targets.webdav')
   }
   return row.target_type
@@ -352,15 +356,16 @@ async function confirmDelete(): Promise<void> {
   if (!runIds.length) return
 
   deleteConfirmBusy.value = true
-  try {
-    const force = deleteConfirmPinnedCount.value > 0 ? deleteConfirmForcePinned.value : false
-    if (runIds.length === 1) {
-      await jobs.deleteJobSnapshot(id, runIds[0], { force })
-    } else {
-      await jobs.deleteJobSnapshotsBulk(id, runIds, { force })
-    }
-    message.success(t('messages.snapshotDeleteQueued'))
-    deleteConfirmOpen.value = false
+	  try {
+	    const force = deleteConfirmPinnedCount.value > 0 ? deleteConfirmForcePinned.value : false
+	    if (runIds.length === 1) {
+	      const runId = runIds[0]!
+	      await jobs.deleteJobSnapshot(id, runId, { force })
+	    } else {
+	      await jobs.deleteJobSnapshotsBulk(id, runIds, { force })
+	    }
+	    message.success(t('messages.snapshotDeleteQueued'))
+	    deleteConfirmOpen.value = false
     checkedRowKeys.value = []
     await refreshSnapshots()
   } catch (error) {

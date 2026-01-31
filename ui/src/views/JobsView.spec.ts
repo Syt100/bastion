@@ -28,7 +28,7 @@ vi.mock('naive-ui', async () => {
           'button',
           {
             'data-stub': 'NButton',
-            onClick: (attrs as any).onClick,
+            onClick: (attrs as { onClick?: ((evt: MouseEvent) => void) | undefined }).onClick,
           },
           slots.default?.(),
         )
@@ -44,7 +44,7 @@ vi.mock('naive-ui', async () => {
         vue.h('label', { 'data-stub': 'NCheckbox' }, [
           vue.h('input', {
             type: 'checkbox',
-            checked: !!(props as any).checked,
+            checked: !!(props as { checked?: boolean }).checked,
             onChange: (e: Event) => emit('update:checked', (e.target as HTMLInputElement).checked),
           }),
           slots.default?.(),
@@ -64,7 +64,7 @@ vi.mock('naive-ui', async () => {
     props: ['show'],
     emits: ['update:show'],
     setup(props, { slots }) {
-      return () => ((props as any).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
+      return () => ((props as { show?: boolean }).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
     },
   })
 
@@ -73,23 +73,29 @@ vi.mock('naive-ui', async () => {
     props: ['options'],
     emits: ['select'],
     setup(props, { slots, emit }) {
-      const opts = () => (Array.isArray((props as any).options) ? (props as any).options : [])
+      const opts = (): unknown[] => {
+        const raw = (props as { options?: unknown }).options
+        return Array.isArray(raw) ? raw : []
+      }
       return () =>
         vue.h('div', { 'data-stub': 'NDropdown' }, [
           slots.default?.(),
           ...opts()
-            .filter((o: any) => o && o.type !== 'divider')
-            .map((o: any) =>
-              vue.h(
+            .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
+            .filter((o) => o.type !== 'divider')
+            .map((o) => {
+              const key = typeof o.key === 'string' || typeof o.key === 'number' ? o.key : String(o.key)
+              const label = typeof o.label === 'string' ? o.label : String(key)
+              return vue.h(
                 'button',
                 {
                   'data-stub': 'NDropdownOption',
                   disabled: !!o.disabled,
-                  onClick: () => emit('select', o.key),
+                  onClick: () => emit('select', key),
                 },
-                String(o.label ?? o.key),
-              ),
-            ),
+                label,
+              )
+            }),
         ])
     },
   })

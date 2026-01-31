@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
 
-let routeState = reactive<{ path: string; params: Record<string, unknown> }>({ path: '/', params: {} })
+const routeState = reactive<{ path: string; params: Record<string, unknown> }>({ path: '/', params: {} })
 const routerPush = vi.fn()
 
 const uiStore = {

@@ -33,7 +33,7 @@
 - [x] 6.2 Commit node context clarity updates (detailed message)
 
 ## 7. Validation
-- [ ] 7.1 Run `npm test --prefix ui`
-- [ ] 7.2 Run `npm run lint --prefix ui`
-- [ ] 7.3 Run `npm run build --prefix ui`
-- [ ] 7.4 Run `bash scripts/ci.sh`
+- [x] 7.1 Run `npm test --prefix ui`
+- [x] 7.2 Run `npm run lint --prefix ui`
+- [x] 7.3 Run `npm run build --prefix ui`
+- [x] 7.4 Run `bash scripts/ci.sh`

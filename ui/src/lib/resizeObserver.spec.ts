@@ -3,10 +3,16 @@ import { ref } from 'vue'
 
 import { useObservedElementHeightPx } from './resizeObserver'
 
+type ResizeObserverCtor = new (cb: ResizeObserverCallback) => ResizeObserver
+type GlobalWithResizeObserver = { ResizeObserver?: ResizeObserverCtor }
+
+// Override the global type so the tests can temporarily unset ResizeObserver.
+const g = globalThis as unknown as GlobalWithResizeObserver
+
 describe('useObservedElementHeightPx', () => {
   it('measures height even when ResizeObserver is unavailable', () => {
-    const original = (globalThis as any).ResizeObserver
-    ;(globalThis as any).ResizeObserver = undefined
+    const original = g.ResizeObserver
+    g.ResizeObserver = undefined
 
     try {
       const el = {
@@ -19,19 +25,19 @@ describe('useObservedElementHeightPx', () => {
       start()
       expect(heightPx.value).toBe(123)
     } finally {
-      ;(globalThis as any).ResizeObserver = original
+      g.ResizeObserver = original
     }
   })
 
   it('updates height when the ResizeObserver callback runs', () => {
-    const original = (globalThis as any).ResizeObserver
+    const original = g.ResizeObserver
 
-    const instances: Array<{ cb: () => void; disconnected: boolean }> = []
+    const instances: Array<{ cb: ResizeObserverCallback; disconnected: boolean }> = []
 
     class MockResizeObserver {
       disconnected = false
-      cb: () => void
-      constructor(cb: () => void) {
+      cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) {
         this.cb = cb
         instances.push(this)
       }
@@ -43,7 +49,7 @@ describe('useObservedElementHeightPx', () => {
       }
     }
 
-    ;(globalThis as any).ResizeObserver = MockResizeObserver
+    g.ResizeObserver = MockResizeObserver as unknown as ResizeObserverCtor
 
     try {
       let height = 100
@@ -62,25 +68,26 @@ describe('useObservedElementHeightPx', () => {
 
       height = 240
       const inst = instances[0]!
-      inst.cb()
+      inst.cb([], inst as unknown as ResizeObserver)
       expect(heightPx.value).toBe(240)
 
       stop()
       expect(inst.disconnected).toBe(true)
     } finally {
-      ;(globalThis as any).ResizeObserver = original
+      g.ResizeObserver = original
       vi.restoreAllMocks()
     }
   })
 
   it('disconnects the previous observer when start() is called again', () => {
-    const original = (globalThis as any).ResizeObserver
+    const original = g.ResizeObserver
 
     const instances: Array<{ disconnected: boolean }> = []
 
     class MockResizeObserver {
       disconnected = false
-      constructor(_cb: () => void) {
+      constructor(cb: ResizeObserverCallback) {
+        void cb
         instances.push(this)
       }
       observe(): void {
@@ -91,7 +98,7 @@ describe('useObservedElementHeightPx', () => {
       }
     }
 
-    ;(globalThis as any).ResizeObserver = MockResizeObserver
+    g.ResizeObserver = MockResizeObserver as unknown as ResizeObserverCtor
 
     try {
       const el = {
@@ -107,7 +114,7 @@ describe('useObservedElementHeightPx', () => {
       expect(instances).toHaveLength(2)
       expect(instances[0]!.disconnected).toBe(true)
     } finally {
-      ;(globalThis as any).ResizeObserver = original
+      g.ResizeObserver = original
     }
   })
 })

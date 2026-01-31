@@ -8,7 +8,7 @@ import NodeContextTag from '@/components/NodeContextTag.vue'
 import type { RunStatus } from '@/stores/jobs'
 import { runStatusLabel } from '@/lib/runs'
 
-const props = defineProps<{
+defineProps<{
   runId: string | null
   nodeId: string
   status: RunStatus | null

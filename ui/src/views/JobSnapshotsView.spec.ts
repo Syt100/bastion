@@ -26,7 +26,7 @@ vi.mock('naive-ui', async () => {
           'button',
           {
             'data-stub': 'NButton',
-            onClick: (attrs as any).onClick,
+            onClick: (attrs as { onClick?: ((evt: MouseEvent) => void) | undefined }).onClick,
           },
           slots.default?.(),
         )
@@ -57,15 +57,18 @@ vi.mock('naive-ui', async () => {
       return () =>
         vue.h('div', { 'data-stub': 'NDropdown' }, [
           slots.default?.(),
-          ...(((props as any).options as any[]) ?? [])
-            .filter((o) => o && typeof o === 'object' && (o as any).type !== 'divider' && 'key' in o)
-            .map((o) =>
-              vue.h(
-                'button',
-                { onClick: () => emit('select', (o as any).key) },
-                (o as any).label ?? String((o as any).key),
-              ),
-            ),
+          ...(() => {
+            const raw = (props as { options?: unknown }).options
+            const list = Array.isArray(raw) ? raw : []
+            return list
+              .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
+              .filter((o) => o.type !== 'divider' && 'key' in o)
+              .map((o) => {
+                const key = typeof o.key === 'string' || typeof o.key === 'number' ? o.key : String(o.key)
+                const label = typeof o.label === 'string' ? o.label : String(key)
+                return vue.h('button', { onClick: () => emit('select', key) }, label)
+              })
+          })(),
         ])
     },
   })
