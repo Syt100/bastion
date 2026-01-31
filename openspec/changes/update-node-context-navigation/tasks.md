@@ -14,4 +14,4 @@
 - [x] 3.2 Run `npm test --prefix ui`
 
 ## 4. Commits
-- [ ] 4.1 Commit implementation changes (detailed message)
+- [x] 4.1 Commit implementation changes (detailed message)
