@@ -186,10 +186,13 @@ const messages = {
     actions: {
       copy: 'Copy',
       copyToken: 'Copy token',
+      copyCommand: 'Copy command',
       copyKey: 'Copy key',
       details: 'Details',
+      jobs: 'Jobs',
       labels: 'Labels',
       syncNow: 'Sync now',
+      storage: 'Storage',
       revoke: 'Revoke',
       rotateKey: 'Rotate key',
     },
@@ -205,6 +208,7 @@ const messages = {
       create: 'Create',
       help: 'Use this token to enroll an agent',
       token: 'Token',
+      enrollCommand: 'Enroll command',
       expiresAt: 'Expires at',
     },
     rotateModal: {

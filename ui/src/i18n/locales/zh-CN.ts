@@ -186,10 +186,13 @@ const messages = {
     actions: {
       copy: '复制',
       copyToken: '复制令牌',
+      copyCommand: '复制命令',
       copyKey: '复制密钥',
       details: '详情',
+      jobs: '任务',
       labels: '标签',
       syncNow: '立即同步',
+      storage: '存储',
       revoke: '撤销',
       rotateKey: '轮换密钥',
     },
@@ -205,6 +208,7 @@ const messages = {
       create: '创建',
       help: '客户端接入时使用该令牌完成绑定',
       token: '令牌',
+      enrollCommand: '接入命令',
       expiresAt: '过期时间',
     },
     rotateModal: {

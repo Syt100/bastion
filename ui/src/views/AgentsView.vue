@@ -48,6 +48,11 @@ const tokenCreating = ref<boolean>(false)
 const tokenResult = ref<EnrollmentToken | null>(null)
 const ttlSeconds = ref<number>(60 * 60)
 const remainingUses = ref<number | null>(null)
+const hubUrl = computed(() => window.location.origin)
+const enrollCommand = computed(() => {
+  if (!tokenResult.value) return null
+  return `bastion agent --hub-url ${hubUrl.value} --enroll-token ${tokenResult.value.token} --name "<friendly-name>"`
+})
 
 const rotateModalOpen = ref<boolean>(false)
 const rotateRotating = ref<boolean>(false)
@@ -142,6 +147,14 @@ async function copyToClipboard(value: string): Promise<void> {
   } else {
     message.error(t('errors.copyFailed'))
   }
+}
+
+function openAgentJobs(agentId: string): void {
+  void router.push(`/n/${encodeURIComponent(agentId)}/jobs`)
+}
+
+function openAgentStorage(agentId: string): void {
+  void router.push(`/n/${encodeURIComponent(agentId)}/settings/storage`)
 }
 
 async function revokeAgent(agentId: string): Promise<void> {
@@ -424,6 +437,16 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
           default: () => [
             h(
               NButton,
+              { tertiary: true, size: 'small', onClick: () => openAgentJobs(row.id) },
+              { default: () => t('agents.actions.jobs') },
+            ),
+            h(
+              NButton,
+              { tertiary: true, size: 'small', onClick: () => openAgentStorage(row.id) },
+              { default: () => t('agents.actions.storage') },
+            ),
+            h(
+              NButton,
               { tertiary: true, size: 'small', onClick: () => openAgentDetail(row.id) },
               { default: () => t('agents.actions.details') },
             ),
@@ -603,6 +626,8 @@ onMounted(async () => {
 
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
+            <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
+            <n-button size="small" tertiary @click="openAgentStorage(agent.id)">{{ t('agents.actions.storage') }}</n-button>
             <n-button size="small" tertiary @click="openAgentDetail(agent.id)">{{ t('agents.actions.details') }}</n-button>
             <n-button
               size="small"
@@ -686,6 +711,14 @@ onMounted(async () => {
             <n-form-item :label="t('agents.tokenModal.token')">
               <n-input :value="tokenResult.token" readonly />
             </n-form-item>
+            <n-form-item :label="t('agents.tokenModal.enrollCommand')">
+              <n-input
+                :value="enrollCommand ?? ''"
+                readonly
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+              />
+            </n-form-item>
             <n-form-item :label="t('agents.tokenModal.expiresAt')">
               <n-input :value="formatUnixSeconds(tokenResult.expires_at)" readonly />
             </n-form-item>
@@ -693,6 +726,7 @@ onMounted(async () => {
 
           <n-space>
             <n-button @click="copyToClipboard(tokenResult.token)">{{ t('agents.actions.copyToken') }}</n-button>
+            <n-button v-if="enrollCommand" @click="copyToClipboard(enrollCommand)">{{ t('agents.actions.copyCommand') }}</n-button>
           </n-space>
         </div>
       </div>
