@@ -19,7 +19,7 @@
 ## 4. Validation
 - [x] 4.1 Run `cargo test -p bastion-http`
 - [x] 4.2 Run `npm test --prefix ui`
-- [ ] 4.3 (Optional) Run `bash scripts/ci.sh` if changes touch multiple layers
+- [x] 4.3 (Optional) Run `bash scripts/ci.sh` if changes touch multiple layers
 
 ## 5. Commits
 - [x] 5.1 Commit implementation changes (detailed message with Modules/Tests)
