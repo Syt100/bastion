@@ -20,6 +20,21 @@ Define tokens as CSS variables (light + dark) and map key Naive UI theme overrid
 - Status: `--app-success`, `--app-warning`, `--app-danger`, `--app-info`
 - Shadows/blur: `--app-shadow-*`, `--app-glass-blur` (use sparingly)
 
+### Proposed palette (initial; subject to tweak during implementation)
+The goal is "fresh + modern" with richer accents while staying B2B-appropriate.
+
+Light mode:
+- Primary: blue `#3b82f6`
+- Primary-2: cyan `#06b6d4` (used for gradients/secondary accents)
+- Accent: indigo `#6366f1` / purple `#8b5cf6` (used sparingly for highlights)
+- Success: `#22c55e`, Warning: `#f59e0b`, Danger: `#ef4444`, Info: `#0ea5e9`
+- Background: very light neutral with subtle color wash (e.g. `#f8fafc` + soft gradients)
+
+Dark mode:
+- Background: deep blue `#0b1220` (already used) with a subtle color wash
+- Surfaces: slightly elevated blue-grays (avoid pure black)
+- Keep accents slightly brighter to preserve contrast against dark surfaces
+
 ### Visual hierarchy rules
 - The page background SHOULD carry subtle color (e.g., soft gradient) to avoid "flat gray".
 - Most content SHOULD sit on solid surfaces (cards/panels) rather than blurred glass.
@@ -60,4 +75,3 @@ Use a consistent dropdown menu pattern:
 - Snapshots: switch to cursor-based pagination ("Load more"); add filters (status/pinned/target); pinned items are easy to identify and protected.
 - Dashboard: add top "Health" summary row with links to remediation surfaces.
 - Node context: visually clarify when a page is node-scoped; node picker labeling reflects whether it changes current view or only preference.
-
