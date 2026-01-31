@@ -12,6 +12,7 @@ import {
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import ListToolbar from '@/components/list/ListToolbar.vue'
 import { useNotificationsStore, type NotificationChannel, type NotificationQueueItem } from '@/stores/notifications'
 import { useUiStore } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
@@ -282,31 +283,38 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 <template>
   <n-card class="app-card" :title="t('settings.notifications.queueTitle')">
     <div class="space-y-4">
-      <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="statusFilter"
-            multiple
-            clearable
-            max-tag-count="responsive"
-            :placeholder="t('settings.notifications.status.all')"
-            :options="statusOptions"
-            class="w-full"
-          />
-        </div>
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="channelFilter"
-            multiple
-            clearable
-            max-tag-count="responsive"
-            :placeholder="t('settings.notifications.channel.all')"
-            :options="channelOptions"
-            class="w-full"
-          />
-        </div>
-        <n-button class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-      </div>
+      <ListToolbar embedded compact>
+        <template #filters>
+          <div class="w-full md:w-56 md:flex-none">
+            <n-select
+              v-model:value="statusFilter"
+              size="small"
+              multiple
+              clearable
+              max-tag-count="responsive"
+              :placeholder="t('settings.notifications.status.all')"
+              :options="statusOptions"
+              class="w-full"
+            />
+          </div>
+          <div class="w-full md:w-56 md:flex-none">
+            <n-select
+              v-model:value="channelFilter"
+              size="small"
+              multiple
+              clearable
+              max-tag-count="responsive"
+              :placeholder="t('settings.notifications.channel.all')"
+              :options="channelOptions"
+              class="w-full"
+            />
+          </div>
+        </template>
+
+        <template #actions>
+          <n-button size="small" class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+        </template>
+      </ListToolbar>
 
       <div v-if="!isDesktop" class="space-y-3">
         <n-card

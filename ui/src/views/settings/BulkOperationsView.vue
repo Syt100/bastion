@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { NButton, NCard, NDataTable, NModal, NRadioButton, NRadioGroup, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import PageHeader from '@/components/PageHeader.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import { bulkOperationItemStatusLabel, bulkOperationKindLabel, bulkOperationStatusLabel, filterBulkOperationItems, type BulkOperationItemFilter } from '@/lib/bulkOperations'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -237,63 +236,63 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-6">
-    <PageHeader :title="t('bulk.title')" :subtitle="t('bulk.subtitle')">
-      <n-button @click="refreshList">{{ t('common.refresh') }}</n-button>
-    </PageHeader>
+  <n-card class="app-card" :title="t('bulk.title')">
+    <template #header-extra>
+      <n-button size="small" :loading="loading" @click="refreshList">{{ t('common.refresh') }}</n-button>
+    </template>
 
-    <div class="space-y-3">
+    <div class="space-y-4">
+      <div class="app-help-text">{{ t('bulk.subtitle') }}</div>
+
       <AppEmptyState v-if="loading && items.length === 0" :title="t('common.loading')" loading />
       <AppEmptyState v-else-if="!loading && items.length === 0" :title="t('common.noData')" />
 
-      <n-card v-else class="app-card">
+      <div v-else class="overflow-x-auto">
+        <n-data-table :columns="columns" :data="items" :loading="loading" />
+      </div>
+    </div>
+  </n-card>
+
+  <n-modal v-model:show="detailOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('bulk.detailTitle')">
+    <div class="space-y-4">
+      <div v-if="detail" class="space-y-2">
+        <div class="text-sm">
+          <span class="opacity-70">{{ t('bulk.columns.kind') }}:</span>
+          <span class="ml-2">{{ bulkOperationKindLabel(t, detail.kind) }}</span>
+        </div>
+        <div class="text-sm">
+          <span class="opacity-70">{{ t('bulk.columns.status') }}:</span>
+          <span class="ml-2">
+            <n-tag :type="statusTagType(detail.status)" size="small">{{ bulkOperationStatusLabel(t, detail.status) }}</n-tag>
+          </span>
+        </div>
+        <div class="text-sm">
+          <span class="opacity-70">{{ t('bulk.columns.progress') }}:</span>
+          <span class="ml-2">{{ detail.success + detail.failed + detail.canceled }}/{{ detail.total }}</span>
+        </div>
+      </div>
+
+      <n-space justify="end">
+        <n-button @click="refreshDetail">{{ t('common.refresh') }}</n-button>
+        <n-button :disabled="!canRetryFailed" @click="retryFailed">{{ t('bulk.actions.retryFailed') }}</n-button>
+        <n-button type="warning" :disabled="!canCancel" @click="cancelOp">{{ t('bulk.actions.cancel') }}</n-button>
+        <n-button @click="closeDetail">{{ t('common.close') }}</n-button>
+      </n-space>
+
+      <n-card size="small" class="app-card">
+        <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div class="text-sm opacity-70">{{ t('bulk.filters.items') }}</div>
+          <n-radio-group v-model:value="detailItemFilter" size="small">
+            <n-radio-button value="all">{{ t('bulk.filters.all') }}</n-radio-button>
+            <n-radio-button value="failed">
+              {{ t('bulk.filters.failedOnly', { count: detail?.failed ?? 0 }) }}
+            </n-radio-button>
+          </n-radio-group>
+        </div>
         <div class="overflow-x-auto">
-          <n-data-table :columns="columns" :data="items" :loading="loading" />
+          <n-data-table :columns="itemColumns" :data="visibleDetailItems" :loading="detailLoading" />
         </div>
       </n-card>
     </div>
-
-    <n-modal v-model:show="detailOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('bulk.detailTitle')">
-      <div class="space-y-4">
-        <div v-if="detail" class="space-y-2">
-          <div class="text-sm">
-            <span class="opacity-70">{{ t('bulk.columns.kind') }}:</span>
-            <span class="ml-2">{{ bulkOperationKindLabel(t, detail.kind) }}</span>
-          </div>
-          <div class="text-sm">
-            <span class="opacity-70">{{ t('bulk.columns.status') }}:</span>
-            <span class="ml-2">
-              <n-tag :type="statusTagType(detail.status)" size="small">{{ bulkOperationStatusLabel(t, detail.status) }}</n-tag>
-            </span>
-          </div>
-          <div class="text-sm">
-            <span class="opacity-70">{{ t('bulk.columns.progress') }}:</span>
-            <span class="ml-2">{{ detail.success + detail.failed + detail.canceled }}/{{ detail.total }}</span>
-          </div>
-        </div>
-
-        <n-space justify="end">
-          <n-button @click="refreshDetail">{{ t('common.refresh') }}</n-button>
-          <n-button :disabled="!canRetryFailed" @click="retryFailed">{{ t('bulk.actions.retryFailed') }}</n-button>
-          <n-button type="warning" :disabled="!canCancel" @click="cancelOp">{{ t('bulk.actions.cancel') }}</n-button>
-          <n-button @click="closeDetail">{{ t('common.close') }}</n-button>
-        </n-space>
-
-        <n-card size="small" class="app-card">
-          <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <div class="text-sm opacity-70">{{ t('bulk.filters.items') }}</div>
-            <n-radio-group v-model:value="detailItemFilter" size="small">
-              <n-radio-button value="all">{{ t('bulk.filters.all') }}</n-radio-button>
-              <n-radio-button value="failed">
-                {{ t('bulk.filters.failedOnly', { count: detail?.failed ?? 0 }) }}
-              </n-radio-button>
-            </n-radio-group>
-          </div>
-          <div class="overflow-x-auto">
-            <n-data-table :columns="itemColumns" :data="visibleDetailItems" :loading="detailLoading" />
-          </div>
-        </n-card>
-      </div>
-    </n-modal>
-  </div>
+  </n-modal>
 </template>
