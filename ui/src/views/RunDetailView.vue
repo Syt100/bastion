@@ -243,6 +243,7 @@ onBeforeUnmount(() => {
   <div class="space-y-3" data-testid="run-detail">
     <run-detail-header
       :run-id="runId"
+      :node-id="nodeId"
       :status="run?.status ?? null"
       :loading="loading"
       :can-restore="run?.status === 'success'"

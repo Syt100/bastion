@@ -95,6 +95,13 @@ vi.mock('@/stores/operations', () => ({
   useOperationsStore: () => operationsApi,
 }))
 
+const agentsApi = {
+  items: [],
+}
+vi.mock('@/stores/agents', () => ({
+  useAgentsStore: () => agentsApi,
+}))
+
 vi.mock('@/stores/ui', () => ({
   useUiStore: () => ({ locale: 'zh-CN' }),
 }))

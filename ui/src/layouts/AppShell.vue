@@ -62,7 +62,7 @@ const nodeSuffix = computed(() => {
   return suffix === '' ? '/jobs' : suffix
 })
 const selectedNodeId = computed({
-  get: () => nodeIdParam.value ?? 'hub',
+  get: () => nodeIdParam.value ?? ui.preferredNodeId ?? 'hub',
   set: (value: string) => void onSelectNode(value),
 })
 
@@ -190,6 +190,11 @@ async function onLogout(): Promise<void> {
 }
 
 async function onSelectNode(nodeId: string): Promise<void> {
+  ui.setPreferredNodeId(nodeId)
+
+  // On global pages, the node picker sets the preferred node only.
+  if (!route.path.startsWith('/n/')) return
+
   const suffix = nodeSuffix.value ?? '/jobs'
   const target = `/n/${encodeURIComponent(nodeId)}/${suffix.replace(/^\/+/, '')}`
   if (route.path === target) return
@@ -223,6 +228,11 @@ onMounted(async () => {
   } catch (error) {
     message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
   }
+})
+
+watch(nodeIdParam, (value) => {
+  if (!value) return
+  ui.setPreferredNodeId(value)
 })
 </script>
 

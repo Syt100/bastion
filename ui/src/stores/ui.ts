@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { persistLocalePreference, resolveInitialLocale, type SupportedLocale, setI18nLocale } from '@/i18n'
 
 const STORAGE_KEY = 'bastion.ui.darkMode'
+const PREFERRED_NODE_KEY = 'bastion.ui.preferredNodeId'
 
 export const useUiStore = defineStore('ui', () => {
   function detectSystemDarkMode(): boolean {
@@ -14,6 +15,7 @@ export const useUiStore = defineStore('ui', () => {
   const storedDarkMode = localStorage.getItem(STORAGE_KEY)
   const darkMode = ref<boolean>(storedDarkMode === null ? detectSystemDarkMode() : storedDarkMode === 'true')
   const locale = ref<SupportedLocale>(resolveInitialLocale())
+  const preferredNodeId = ref<string>(localStorage.getItem(PREFERRED_NODE_KEY) || 'hub')
   const themeMode = computed(() => (darkMode.value ? 'dark' : 'light'))
 
   // Ensure i18n and docs entrypoint use the same initial locale preference.
@@ -35,5 +37,20 @@ export const useUiStore = defineStore('ui', () => {
     setDarkMode(!darkMode.value)
   }
 
-  return { darkMode, locale, themeMode, setDarkMode, setLocale, toggleDarkMode }
+  function setPreferredNodeId(value: string): void {
+    const v = value.trim() || 'hub'
+    preferredNodeId.value = v
+    localStorage.setItem(PREFERRED_NODE_KEY, v)
+  }
+
+  return {
+    darkMode,
+    locale,
+    preferredNodeId,
+    themeMode,
+    setDarkMode,
+    setLocale,
+    setPreferredNodeId,
+    toggleDarkMode,
+  }
 })

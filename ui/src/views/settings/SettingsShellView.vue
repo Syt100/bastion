@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
+import NodeContextTag from '@/components/NodeContextTag.vue'
 import MobileTopBar from '@/components/MobileTopBar.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -12,6 +13,7 @@ const { t } = useI18n()
 const route = useRoute()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
+const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
 
 type MobileTopBarMeta = {
   titleKey: string
@@ -38,7 +40,11 @@ const mobileTitle = computed(() => t(mobileTopBarMeta.value.titleKey))
 <template>
   <div class="space-y-6">
     <MobileTopBar v-if="!isDesktop" :title="mobileTitle" :back-to="mobileTopBarMeta.backTo" />
-    <PageHeader v-else :title="t('settings.title')" :subtitle="t('settings.subtitle')" />
+    <PageHeader v-else :title="t('settings.title')" :subtitle="t('settings.subtitle')">
+      <template v-if="nodeId" #prefix>
+        <NodeContextTag :node-id="nodeId" />
+      </template>
+    </PageHeader>
     <router-view />
   </div>
 </template>

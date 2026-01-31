@@ -21,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 import { PinOutline } from '@vicons/ionicons5'
 
 import PageHeader from '@/components/PageHeader.vue'
+import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import { useJobsStore, type JobDetail, type RunArtifact, type SnapshotDeleteEvent, type SnapshotDeleteTaskDetail } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
@@ -434,6 +435,9 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       :title="t('snapshots.title')"
       :subtitle="job ? `${t('snapshots.subtitlePrefix')}: ${job.name}` : t('snapshots.subtitle')"
     >
+      <template #prefix>
+        <NodeContextTag :node-id="nodeIdOrHub" />
+      </template>
       <n-button v-if="checkedRowKeys.length" type="error" @click="openDeleteSelected">
         {{ t('snapshots.actions.deleteSelected', { count: checkedRowKeys.length }) }}
       </n-button>

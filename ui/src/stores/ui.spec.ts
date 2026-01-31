@@ -40,4 +40,14 @@ describe('useUiStore', () => {
     expect(ui.darkMode).toBe(true)
     expect(localStorage.getItem('bastion.ui.darkMode')).toBe('true')
   })
+
+  it('persists preferred node id', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.preferredNodeId).toBe('hub')
+
+    ui.setPreferredNodeId('agent1')
+    expect(ui.preferredNodeId).toBe('agent1')
+    expect(localStorage.getItem('bastion.ui.preferredNodeId')).toBe('agent1')
+  })
 })

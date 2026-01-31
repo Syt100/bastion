@@ -4,11 +4,13 @@ import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
+import NodeContextTag from '@/components/NodeContextTag.vue'
 import type { RunStatus } from '@/stores/jobs'
 import { runStatusLabel } from '@/lib/runs'
 
 const props = defineProps<{
   runId: string | null
+  nodeId: string
   status: RunStatus | null
   loading: boolean
   canRestore: boolean
@@ -36,6 +38,9 @@ function statusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 'de
 
 <template>
   <page-header :title="t('runs.title')">
+    <template #prefix>
+      <NodeContextTag :node-id="nodeId" />
+    </template>
     <template #subtitle>
       <div v-if="runId" class="flex items-center gap-2 text-sm opacity-70 min-w-0">
         <span class="font-mono tabular-nums truncate">{{ runId }}</span>
@@ -71,4 +76,3 @@ function statusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 'de
     </n-dropdown>
   </page-header>
 </template>
-

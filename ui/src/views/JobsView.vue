@@ -9,6 +9,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import NodeContextTag from '@/components/NodeContextTag.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
@@ -342,6 +343,9 @@ watch(showArchived, () => {
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('jobs.title')" :subtitle="t('jobs.subtitle')">
+      <template #prefix>
+        <NodeContextTag :node-id="nodeIdOrHub" />
+      </template>
       <div class="flex items-center gap-2">
         <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
         <n-switch v-model:value="showArchived" />
