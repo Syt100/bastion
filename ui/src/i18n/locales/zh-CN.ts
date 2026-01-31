@@ -87,6 +87,12 @@ const messages = {
     jobs: '备份任务',
     agents: '客户端',
     settings: '设置',
+    nodePicker: {
+      currentLabel: '当前节点',
+      preferredLabel: '偏好节点',
+      hintCurrent: '切换节点会切换当前页面的节点范围。',
+      hintPreferred: '用于打开节点范围页面（任务/存储等）。',
+    },
   },
   dashboard: {
     title: '概览',

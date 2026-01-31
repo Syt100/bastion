@@ -66,6 +66,14 @@ const selectedNodeId = computed({
   set: (value: string) => void onSelectNode(value),
 })
 
+const isNodeScoped = computed(() => route.path.startsWith('/n/'))
+const nodePickerLabel = computed(() =>
+  isNodeScoped.value ? t('nav.nodePicker.currentLabel') : t('nav.nodePicker.preferredLabel'),
+)
+const nodePickerHint = computed(() =>
+  isNodeScoped.value ? t('nav.nodePicker.hintCurrent') : t('nav.nodePicker.hintPreferred'),
+)
+
 const activeKey = computed(() => {
   const ordered = [...menuRouteKeys].sort((a, b) => b.length - a.length)
   for (const key of ordered) {
@@ -252,7 +260,9 @@ watch(nodeIdParam, (value) => {
       </div>
 
       <div class="px-4 py-3 border-b border-black/5 dark:border-white/10">
+        <div class="text-xs opacity-70 mb-1">{{ nodePickerLabel }}</div>
         <n-select v-model:value="selectedNodeId" :options="nodeOptions" filterable />
+        <div class="text-xs opacity-70 mt-2">{{ nodePickerHint }}</div>
       </div>
 
       <n-menu
@@ -326,12 +336,14 @@ watch(nodeIdParam, (value) => {
       </n-card>
 
       <n-card class="mb-3" :bordered="false">
+        <div class="text-xs opacity-70 mb-2">{{ nodePickerLabel }}</div>
         <n-select
           v-model:value="selectedNodeId"
           :options="nodeOptions"
           filterable
           @update:value="mobileMenuOpen = false"
         />
+        <div class="text-xs opacity-70 mt-2">{{ nodePickerHint }}</div>
       </n-card>
 
       <n-menu

@@ -87,6 +87,12 @@ const messages = {
     jobs: 'Jobs',
     agents: 'Agents',
     settings: 'Settings',
+    nodePicker: {
+      currentLabel: 'Current node',
+      preferredLabel: 'Preferred node',
+      hintCurrent: 'Switching node changes the current page scope.',
+      hintPreferred: 'Used when opening node-scoped pages (Jobs, Storage, etc.).',
+    },
   },
   dashboard: {
     title: 'Dashboard',

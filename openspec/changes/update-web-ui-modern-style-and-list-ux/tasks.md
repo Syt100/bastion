@@ -29,8 +29,8 @@
 - [x] 5.3 Commit dashboard status center updates (detailed message)
 
 ## 6. Web UI - Node Context Clarity
-- [ ] 6.1 Clarify node picker semantics (current view vs preference) and improve node-scoped page indicators
-- [ ] 6.2 Commit node context clarity updates (detailed message)
+- [x] 6.1 Clarify node picker semantics (current view vs preference) and improve node-scoped page indicators
+- [x] 6.2 Commit node context clarity updates (detailed message)
 
 ## 7. Validation
 - [ ] 7.1 Run `npm test --prefix ui`
