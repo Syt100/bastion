@@ -4,15 +4,15 @@
 ## bastion
 
 ```text
-Bastion backup server
+Self-hosted backup orchestrator
 
 Usage: bastion [OPTIONS] [COMMAND]
 
 Commands:
-  agent    Run a Bastion Agent and connect it to a Hub
-  config   Inspect effective Hub configuration (values + sources)
+  agent    Run an Agent and connect it to the Hub
+  config   Show effective Hub configuration (values + sources)
   doctor   Run diagnostics for common setup issues
-  keypack  Manage secrets keypacks in the Hub data directory
+  keypack  Manage keypacks in the Hub data directory
 
 Options:
       --log <LOG>
@@ -55,7 +55,7 @@ Options:
           [default: 9876]
 
       --data-dir <DATA_DIR>
-          Override the data directory (also supports BASTION_DATA_DIR)
+          Data directory (also supports BASTION_DATA_DIR)
           
           [env: BASTION_DATA_DIR=]
 
@@ -78,7 +78,7 @@ Options:
           [default: 180]
 
       --incomplete-cleanup-days <INCOMPLETE_CLEANUP_DAYS>
-          Cleanup incomplete runs (missing complete.json) older than N days (default: 7, 0 disables)
+          Cleanup incomplete runs older than N days (default: 7, 0 disables)
           
           [env: BASTION_INCOMPLETE_CLEANUP_DAYS=]
           [default: 7]
@@ -107,7 +107,7 @@ Options:
 ## bastion agent
 
 ```text
-Run a Bastion Agent and connect it to a Hub
+Run an Agent and connect it to the Hub
 
 Usage: bastion agent [OPTIONS] --hub-url <HUB_URL>
 
@@ -118,12 +118,12 @@ Options:
           [env: BASTION_HUB_URL=]
 
       --enroll-token <ENROLL_TOKEN>
-          Enrollment token (only required when the agent is not enrolled yet)
+          Enrollment token (only required for first-time enrollment)
           
           [env: BASTION_AGENT_ENROLL_TOKEN=]
 
       --name <NAME>
-          Friendly agent name (stored on the Hub, optional)
+          Agent name (optional; stored on the Hub)
           
           [env: BASTION_AGENT_NAME=]
 
@@ -145,13 +145,13 @@ Options:
 ## bastion config
 
 ```text
-Inspect effective Hub configuration (values + sources)
+Show effective Hub configuration (values + sources)
 
 Usage: bastion config [OPTIONS]
 
 Options:
       --json
-          Output JSON instead of human-readable text
+          Output JSON (useful for scripts/CI)
 
   -h, --help
           Print help
@@ -166,7 +166,7 @@ Usage: bastion doctor [OPTIONS]
 
 Options:
       --json
-          Output JSON instead of human-readable text
+          Output JSON (useful for scripts/CI)
 
   -h, --help
           Print help
@@ -175,7 +175,7 @@ Options:
 ## bastion keypack
 
 ```text
-Manage secrets keypacks in the Hub data directory
+Manage keypacks in the Hub data directory
 
 Usage: bastion keypack <COMMAND>
 
@@ -224,7 +224,7 @@ Options:
           Input path of the password-encrypted keypack
 
       --force
-          Overwrite existing data_dir/master.key
+          Overwrite existing master.key (dangerous)
 
       --password <PASSWORD>
           Keypack password (not recommended to pass via CLI args; prefer --password-stdin)

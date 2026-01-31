@@ -35,12 +35,12 @@ pub(super) async fn build_context(
 
     let Some(row) = row else {
         return Ok(TemplateContext {
-            title: "Bastion 备份完成".to_string(),
+            title: "Bastion backup completed".to_string(),
             job_id: "-".to_string(),
             job_name: "-".to_string(),
             run_id: run_id.to_string(),
             status: "unknown".to_string(),
-            status_text: "未知".to_string(),
+            status_text: "Unknown".to_string(),
             started_at: "-".to_string(),
             ended_at: "-".to_string(),
             target_type: "-".to_string(),
@@ -68,10 +68,19 @@ pub(super) async fn build_context(
         .unwrap_or_else(|| job_id.clone());
 
     let (title, status_text) = match status.as_str() {
-        "success" => ("Bastion 备份成功".to_string(), "备份成功".to_string()),
-        "failed" => ("Bastion 备份失败".to_string(), "备份失败".to_string()),
-        "rejected" => ("Bastion 备份被拒绝".to_string(), "备份被拒绝".to_string()),
-        other => (format!("Bastion 备份完成 ({other})"), other.to_string()),
+        "success" => (
+            "Bastion backup succeeded".to_string(),
+            "Succeeded".to_string(),
+        ),
+        "failed" => ("Bastion backup failed".to_string(), "Failed".to_string()),
+        "rejected" => (
+            "Bastion backup rejected".to_string(),
+            "Rejected".to_string(),
+        ),
+        other => (
+            format!("Bastion backup completed ({other})"),
+            other.to_string(),
+        ),
     };
 
     let started_at_str = format_ts(started_at);

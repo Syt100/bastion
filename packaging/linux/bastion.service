@@ -1,5 +1,5 @@
 [Unit]
-Description=Bastion backup server
+Description=Bastion - self-hosted backup orchestrator
 Wants=network-online.target
 After=network-online.target
 

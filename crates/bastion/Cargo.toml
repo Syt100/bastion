@@ -3,7 +3,7 @@ name = "bastion"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "Bastion backup server"
+description = "Self-hosted backup orchestrator"
 repository = "https://github.com/Syt100/bastion"
 
 [dependencies]

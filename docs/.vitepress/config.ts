@@ -33,7 +33,7 @@ export default defineConfig(({ command }) => {
         label: 'English',
         lang: 'en-US',
         title: 'Bastion',
-        description: 'Self-hosted backup orchestrator (Hub + optional Agents) with a Web UI.',
+        description: 'Self-hosted backup orchestrator with a Web UI.',
         themeConfig: {
           nav: [
             { text: 'Home', link: '/' },
@@ -117,7 +117,7 @@ export default defineConfig(({ command }) => {
         label: '简体中文',
         lang: 'zh-CN',
         title: 'Bastion',
-        description: '自托管备份编排器（Hub + 可选客户端），带 Web UI。',
+        description: '自托管备份编排器，带 Web UI。',
         themeConfig: {
           nav: [
             { text: '首页', link: withLocale('/zh', '/') },

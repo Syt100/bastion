@@ -138,7 +138,7 @@ pub(in crate::http) async fn test_destination(
             }
             let payload: Payload = serde_json::from_slice(&secret)?;
             let content = format!(
-                "**Bastion 测试通知**\n> Destination: {}\n> Time: {}\n",
+                "**Bastion test notification**\n> Destination: {}\n> Time: {}\n",
                 name.trim(),
                 ts
             );
@@ -155,7 +155,7 @@ pub(in crate::http) async fn test_destination(
             .await?
             .ok_or_else(|| AppError::not_found("destination_not_found", "Destination not found"))?;
             let payload: smtp::SmtpSecretPayload = serde_json::from_slice(&secret)?;
-            let subject = "Bastion 测试通知".to_string();
+            let subject = "Bastion test notification".to_string();
             let body = format!(
                 "Bastion test notification\n\nDestination: {}\nTime: {}\n",
                 name.trim(),

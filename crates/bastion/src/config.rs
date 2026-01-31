@@ -11,7 +11,7 @@ use ipnet::IpNet;
 #[command(
     name = "bastion",
     version,
-    about = "Bastion backup server",
+    about = "Self-hosted backup orchestrator",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -27,16 +27,16 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Run a Bastion Agent and connect it to a Hub.
+    /// Run an Agent and connect it to the Hub.
     Agent(AgentArgs),
-    /// Inspect effective Hub configuration (values + sources).
+    /// Show effective Hub configuration (values + sources).
     Config(ConfigArgs),
     /// Run diagnostics for common setup issues.
     Doctor(DoctorArgs),
     /// Run Bastion as a Windows Service (used by the MSI installer).
     #[cfg(windows)]
     Service(ServiceArgs),
-    /// Manage secrets keypacks in the Hub data directory.
+    /// Manage keypacks in the Hub data directory.
     Keypack {
         #[command(subcommand)]
         command: KeypackCommand,
@@ -60,14 +60,14 @@ pub enum ServiceCommand {
 
 #[derive(Debug, Args, Clone)]
 pub struct ConfigArgs {
-    /// Output JSON instead of human-readable text.
+    /// Output JSON (useful for scripts/CI).
     #[arg(long)]
     pub json: bool,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct DoctorArgs {
-    /// Output JSON instead of human-readable text.
+    /// Output JSON (useful for scripts/CI).
     #[arg(long)]
     pub json: bool,
 }
@@ -82,7 +82,7 @@ pub struct HubArgs {
     #[arg(long, default_value_t = 9876, env = "BASTION_PORT")]
     pub port: u16,
 
-    /// Override the data directory (also supports BASTION_DATA_DIR).
+    /// Data directory (also supports BASTION_DATA_DIR).
     #[arg(long, env = "BASTION_DATA_DIR")]
     pub data_dir: Option<PathBuf>,
 
@@ -100,7 +100,7 @@ pub struct HubArgs {
     #[arg(long, default_value_t = 180, env = "BASTION_RUN_RETENTION_DAYS")]
     pub run_retention_days: i64,
 
-    /// Cleanup incomplete runs (missing complete.json) older than N days (default: 7, 0 disables).
+    /// Cleanup incomplete runs older than N days (default: 7, 0 disables).
     #[arg(long, default_value_t = 7, env = "BASTION_INCOMPLETE_CLEANUP_DAYS")]
     pub incomplete_cleanup_days: i64,
 
@@ -153,11 +153,11 @@ pub struct AgentArgs {
     #[arg(long, env = "BASTION_HUB_URL")]
     pub hub_url: String,
 
-    /// Enrollment token (only required when the agent is not enrolled yet).
+    /// Enrollment token (only required for first-time enrollment).
     #[arg(long, env = "BASTION_AGENT_ENROLL_TOKEN")]
     pub enroll_token: Option<String>,
 
-    /// Friendly agent name (stored on the Hub, optional).
+    /// Agent name (optional; stored on the Hub).
     #[arg(long, env = "BASTION_AGENT_NAME")]
     pub name: Option<String>,
 
@@ -201,7 +201,7 @@ pub struct KeypackImportArgs {
     #[arg(long)]
     pub r#in: PathBuf,
 
-    /// Overwrite existing data_dir/master.key.
+    /// Overwrite existing master.key (dangerous).
     #[arg(long)]
     pub force: bool,
 

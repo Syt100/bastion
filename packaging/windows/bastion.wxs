@@ -35,7 +35,7 @@
           Id="BastionServiceInstall"
           Name="Bastion"
           DisplayName="Bastion"
-          Description="Bastion backup server"
+          Description="Bastion - self-hosted backup orchestrator"
           Type="ownProcess"
           Start="demand"
           ErrorControl="normal"

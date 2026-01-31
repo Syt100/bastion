@@ -4,7 +4,7 @@
 ## bastion
 
 ```text
-Bastion 备份服务器
+自托管备份编排器
 
 用法: bastion [OPTIONS] [COMMAND]
 
@@ -49,7 +49,7 @@ Bastion 备份服务器
           [default: 9876]
 
       --data-dir <DATA_DIR>
-          覆盖数据目录（也支持 BASTION_DATA_DIR）。
+          数据目录（也支持 BASTION_DATA_DIR）。
           
           [env: BASTION_DATA_DIR=]
 
@@ -72,7 +72,7 @@ Bastion 备份服务器
           [default: 180]
 
       --incomplete-cleanup-days <INCOMPLETE_CLEANUP_DAYS>
-          清理超过 N 天的未完成运行（缺少 complete.json）（默认：7，0 表示禁用）。
+          清理超过 N 天的未完成运行（默认：7，0 表示禁用）。
           
           [env: BASTION_INCOMPLETE_CLEANUP_DAYS=]
           [default: 7]
@@ -98,16 +98,16 @@ Bastion 备份服务器
           Print version
 
 命令:
-  agent    运行 Bastion Agent 并连接到 Hub。
+  agent    运行 Bastion 客户端（Agent）并连接到 Hub。
   config   查看 Hub 生效配置（值与来源）。
   doctor   运行常见部署问题的诊断。
-  keypack  管理 Hub 数据目录中的 secrets keypack。
+  keypack  管理 Hub 数据目录中的 keypack（master.key）。
 ```
 
 ## bastion agent
 
 ```text
-运行 Bastion Agent 并连接到 Hub。
+运行 Bastion 客户端（Agent）并连接到 Hub。
 
 用法: bastion agent [OPTIONS] --hub-url <HUB_URL>
 
@@ -118,12 +118,12 @@ Bastion 备份服务器
           [env: BASTION_HUB_URL=]
 
       --enroll-token <ENROLL_TOKEN>
-          接入令牌（仅当 Agent 尚未接入 Hub 时需要）。
+          接入令牌（仅首次接入 Hub 时需要）。
           
           [env: BASTION_AGENT_ENROLL_TOKEN=]
 
       --name <NAME>
-          友好的 Agent 名称（存储在 Hub 上，可选）。
+          客户端名称（可选，存储在 Hub）。
           
           [env: BASTION_AGENT_NAME=]
 
@@ -175,7 +175,7 @@ Bastion 备份服务器
 ## bastion keypack
 
 ```text
-管理 Hub 数据目录中的 secrets keypack。
+管理 Hub 数据目录中的 keypack（master.key）。
 
 用法: bastion keypack <COMMAND>
 
@@ -197,7 +197,7 @@ Bastion 备份服务器
           密码加密 keypack 的输出路径。
 
       --password <PASSWORD>
-          Keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。
+          keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。
           
           [env: BASTION_KEYPACK_PASSWORD]
 
@@ -220,10 +220,10 @@ Bastion 备份服务器
           密码加密 keypack 的输入路径。
 
       --force
-          覆盖现有的 data_dir/master.key。
+          覆盖现有的 master.key（危险操作）。
 
       --password <PASSWORD>
-          Keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。
+          keypack 密码（不建议通过命令行参数传入；优先使用 --password-stdin）。
           
           [env: BASTION_KEYPACK_PASSWORD]
 
