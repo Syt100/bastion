@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NDropdown, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NInput, NModal, NSelect, NSpace, NSwitch, NTag, useMessage, type DropdownOption, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type OverlapPolicy } from '@/stores/jobs'
@@ -10,6 +10,8 @@ import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
+import ListToolbar from '@/components/list/ListToolbar.vue'
+import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
@@ -43,11 +45,41 @@ const nodeIdOrHub = computed(() => nodeId.value ?? 'hub')
 
 const showArchived = ref<boolean>(false)
 
+type JobSortKey = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc'
+
+const searchText = ref<string>('')
+const sortKey = ref<JobSortKey>('updated_desc')
+
 const visibleJobs = computed(() => {
   const id = nodeId.value
   if (!id) return jobs.items
   if (id === 'hub') return jobs.items.filter((j) => j.agent_id === null)
   return jobs.items.filter((j) => j.agent_id === id)
+})
+
+const sortOptions = computed(() => [
+  { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
+  { label: t('jobs.sort.updatedAsc'), value: 'updated_asc' },
+  { label: t('jobs.sort.nameAsc'), value: 'name_asc' },
+  { label: t('jobs.sort.nameDesc'), value: 'name_desc' },
+])
+
+const filteredJobs = computed<JobListItem[]>(() => {
+  const q = searchText.value.trim().toLowerCase()
+  const list = visibleJobs.value.filter((j) => {
+    if (!q) return true
+    return j.name.toLowerCase().includes(q) || j.id.toLowerCase().includes(q)
+  })
+
+  const sorted = list.slice()
+  sorted.sort((a, b) => {
+    if (sortKey.value === 'updated_asc') return a.updated_at - b.updated_at
+    if (sortKey.value === 'updated_desc') return b.updated_at - a.updated_at
+    if (sortKey.value === 'name_asc') return a.name.localeCompare(b.name)
+    if (sortKey.value === 'name_desc') return b.name.localeCompare(a.name)
+    return 0
+  })
+  return sorted
 })
 
 function formatJobNode(agentId: string | null): string {
@@ -135,6 +167,37 @@ function openJobDetail(jobId: string): void {
 
 function openSnapshots(jobId: string): void {
   void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(jobId)}/snapshots`)
+}
+
+function jobOverflowOptions(row: JobListItem): DropdownOption[] {
+  return [
+    { label: t('common.browse'), key: 'open' },
+    { type: 'divider', key: '__d0' },
+    { label: t('jobs.actions.snapshots'), key: 'snapshots' },
+    { label: t('jobs.retention.title'), key: 'retention' },
+    { type: 'divider', key: '__d1' },
+    { label: t('common.edit'), key: 'edit', disabled: !!row.archived_at },
+    { label: t('jobs.actions.deploy'), key: 'deploy', disabled: !!row.archived_at },
+    row.archived_at
+      ? { label: t('jobs.actions.unarchive'), key: 'unarchive' }
+      : { label: t('jobs.actions.archive'), key: 'archive' },
+    { type: 'divider', key: '__d2' },
+    { label: t('common.delete'), key: 'delete', props: { style: 'color: var(--app-danger);' } },
+  ]
+}
+
+function onSelectJobOverflow(row: JobListItem, key: string | number): void {
+  if (key === 'open') return openJobDetail(row.id)
+  if (key === 'snapshots') return openSnapshots(row.id)
+  if (key === 'retention') {
+    void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(row.id)}/retention`)
+    return
+  }
+  if (key === 'edit') return void openEdit(row.id)
+  if (key === 'deploy') return void openDeploy(row.id)
+  if (key === 'unarchive') return void unarchiveJob(row.id)
+  if (key === 'archive') return void openDelete(row)
+  if (key === 'delete') return void openDelete(row)
 }
 
 const deleteOpen = ref<boolean>(false)
@@ -238,49 +301,24 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
                   size: 'small',
                   type: 'primary',
                   disabled: !!row.archived_at,
-                  onClick: () => void runNow(row.id),
+                  onClick: (e: MouseEvent) => {
+                    e.stopPropagation()
+                    void runNow(row.id)
+                  },
                 },
                 { default: () => t('jobs.actions.runNow') },
               ),
+              // Prevent row click from firing when interacting with the overflow trigger.
               h(
-                NButton,
-                { size: 'small', onClick: () => openJobDetail(row.id) },
-                { default: () => t('common.browse') },
-              ),
-              h(
-                NDropdown,
-                {
-                  trigger: 'click',
-                  options: [
-                    { label: t('jobs.actions.snapshots'), key: 'snapshots' },
-                    { label: t('jobs.retention.title'), key: 'retention' },
-                    { type: 'divider', key: '__d1' },
-                    { label: t('common.edit'), key: 'edit', disabled: !!row.archived_at },
-                    { label: t('jobs.actions.deploy'), key: 'deploy', disabled: !!row.archived_at },
-                    row.archived_at
-                      ? { label: t('jobs.actions.unarchive'), key: 'unarchive' }
-                      : { label: t('jobs.actions.archive'), key: 'archive' },
-                    { type: 'divider', key: '__d2' },
-                    { label: t('common.delete'), key: 'delete' },
-                  ],
-                  onSelect: (key: string | number) => {
-                    if (key === 'snapshots') return void openSnapshots(row.id)
-                    if (key === 'retention') return void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(row.id)}/retention`)
-                    if (key === 'edit') return void openEdit(row.id)
-                    if (key === 'deploy') return void openDeploy(row.id)
-                    if (key === 'unarchive') return void unarchiveJob(row.id)
-                    if (key === 'archive') return void openDelete(row)
-                    if (key === 'delete') return void openDelete(row)
-                  },
-                },
-                {
-                  default: () =>
-                    h(
-                      NButton,
-                      { size: 'small', tertiary: true },
-                      { default: () => t('common.more') },
-                    ),
-                },
+                'div',
+                { onClick: (e: MouseEvent) => e.stopPropagation() },
+                [
+                  h(OverflowActionsButton, {
+                    size: 'small',
+                    options: jobOverflowOptions(row),
+                    onSelect: (key: string | number) => onSelectJobOverflow(row, key),
+                  }),
+                ],
               ),
             ],
           },
@@ -324,20 +362,40 @@ watch(showArchived, () => {
       <template #prefix>
         <NodeContextTag :node-id="nodeIdOrHub" />
       </template>
-      <div class="flex items-center gap-2">
-        <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
-        <n-switch v-model:value="showArchived" />
-      </div>
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
     </PageHeader>
 
+    <ListToolbar>
+      <template #search>
+        <n-input
+          v-model:value="searchText"
+          size="small"
+          clearable
+          :placeholder="t('jobs.filters.searchPlaceholder')"
+        />
+      </template>
+
+      <template #filters>
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
+          <n-switch v-model:value="showArchived" />
+        </div>
+      </template>
+
+      <template #sort>
+        <div class="w-full md:w-56 md:flex-none">
+          <n-select v-model:value="sortKey" size="small" :options="sortOptions" />
+        </div>
+      </template>
+    </ListToolbar>
+
     <div v-if="!isDesktop" class="space-y-3" data-testid="jobs-cards">
-      <AppEmptyState v-if="jobs.loading && visibleJobs.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!jobs.loading && visibleJobs.length === 0" :title="t('common.noData')" />
+      <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!jobs.loading && filteredJobs.length === 0" :title="t('common.noData')" />
 
       <n-card
-        v-for="job in visibleJobs"
+        v-for="job in filteredJobs"
         :key="job.id"
         size="small"
         class="app-card"
@@ -376,34 +434,11 @@ watch(showArchived, () => {
           <div class="flex flex-wrap justify-end gap-2">
             <n-button size="small" type="primary" :disabled="!!job.archived_at" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
             <n-button size="small" @click="openJobDetail(job.id)">{{ t('common.browse') }}</n-button>
-            <n-dropdown
-              trigger="click"
-              :options="[
-                { label: t('jobs.actions.snapshots'), key: 'snapshots' },
-                { label: t('jobs.retention.title'), key: 'retention' },
-                { type: 'divider', key: '__d1' },
-                { label: t('common.edit'), key: 'edit', disabled: !!job.archived_at },
-                { label: t('jobs.actions.deploy'), key: 'deploy', disabled: !!job.archived_at },
-                job.archived_at
-                  ? { label: t('jobs.actions.unarchive'), key: 'unarchive' }
-                  : { label: t('jobs.actions.archive'), key: 'archive' },
-                { type: 'divider', key: '__d2' },
-                { label: t('common.delete'), key: 'delete' },
-              ]"
-              @select="
-                (key) => {
-                  if (key === 'snapshots') return openSnapshots(job.id)
-                  if (key === 'retention') return router.push(`/n/${encodeURIComponent(nodeIdOrHub)}/jobs/${encodeURIComponent(job.id)}/retention`)
-                  if (key === 'edit') return openEdit(job.id)
-                  if (key === 'deploy') return openDeploy(job.id)
-                  if (key === 'unarchive') return unarchiveJob(job.id)
-                  if (key === 'archive') return openDelete(job)
-                  if (key === 'delete') return openDelete(job)
-                }
-              "
-            >
-              <n-button size="small" tertiary>{{ t('common.more') }}</n-button>
-            </n-dropdown>
+            <OverflowActionsButton
+              show-label
+              :options="jobOverflowOptions(job)"
+              @select="(key) => onSelectJobOverflow(job, key)"
+            />
           </div>
         </template>
       </n-card>
@@ -412,7 +447,12 @@ watch(showArchived, () => {
     <div v-else data-testid="jobs-table">
       <n-card class="app-card">
         <div class="overflow-x-auto">
-          <n-data-table :loading="jobs.loading" :columns="columns" :data="visibleJobs" />
+          <n-data-table
+            :loading="jobs.loading"
+            :columns="columns"
+            :data="filteredJobs"
+            :row-props="(row) => ({ style: { cursor: 'pointer' }, onClick: () => openJobDetail(row.id) })"
+          />
         </div>
       </n-card>
     </div>

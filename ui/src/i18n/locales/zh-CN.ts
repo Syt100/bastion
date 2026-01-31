@@ -365,6 +365,15 @@ const messages = {
     archiveCascadeHelp: '会为现有快照创建删除任务（后台执行）；已固定的快照会被跳过。',
     archived: '已归档',
     showArchived: '显示已归档',
+    filters: {
+      searchPlaceholder: '按名称或 ID 搜索',
+    },
+    sort: {
+      updatedDesc: '修改时间（新到旧）',
+      updatedAsc: '修改时间（旧到新）',
+      nameAsc: '名称（A-Z）',
+      nameDesc: '名称（Z-A）',
+    },
     fields: {
       name: '名称',
       node: '执行节点',

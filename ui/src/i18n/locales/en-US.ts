@@ -365,6 +365,15 @@ const messages = {
     archiveCascadeHelp: 'Queues deletion tasks for existing snapshots. Pinned snapshots are skipped.',
     archived: 'Archived',
     showArchived: 'Show archived',
+    filters: {
+      searchPlaceholder: 'Search by name or ID',
+    },
+    sort: {
+      updatedDesc: 'Updated (newest)',
+      updatedAsc: 'Updated (oldest)',
+      nameAsc: 'Name (A-Z)',
+      nameDesc: 'Name (Z-A)',
+    },
     fields: {
       name: 'Name',
       node: 'Node',
