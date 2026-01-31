@@ -31,6 +31,10 @@ import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
 import { formatBytes } from '@/lib/format'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
 const { t } = useI18n()
 const message = useMessage()
 
@@ -432,6 +436,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
 <template>
   <div class="space-y-6">
     <PageHeader
+      v-if="!props.embedded"
       :title="t('snapshots.title')"
       :subtitle="job ? `${t('snapshots.subtitlePrefix')}: ${job.name}` : t('snapshots.subtitle')"
     >
@@ -444,6 +449,13 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button @click="$router.push(`/n/${encodeURIComponent(nodeIdOrHub)}/jobs`)">{{ t('common.return') }}</n-button>
     </PageHeader>
+
+    <div v-else class="flex items-center justify-end gap-2">
+      <n-button v-if="checkedRowKeys.length" type="error" @click="openDeleteSelected">
+        {{ t('snapshots.actions.deleteSelected', { count: checkedRowKeys.length }) }}
+      </n-button>
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+    </div>
 
     <div v-if="!isDesktop" class="space-y-3">
       <AppEmptyState v-if="loading && items.length === 0" :title="t('common.loading')" loading />

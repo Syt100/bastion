@@ -5,6 +5,10 @@ const AgentsView = () => import('@/views/AgentsView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
 const JobsView = () => import('@/views/JobsView.vue')
 const JobSnapshotsView = () => import('@/views/JobSnapshotsView.vue')
+const JobDetailShellView = () => import('@/views/jobs/JobDetailShellView.vue')
+const JobDetailRunsView = () => import('@/views/jobs/JobDetailRunsView.vue')
+const JobDetailRetentionView = () => import('@/views/jobs/JobDetailRetentionView.vue')
+const JobDetailSettingsView = () => import('@/views/jobs/JobDetailSettingsView.vue')
 const RunDetailView = () => import('@/views/RunDetailView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
@@ -41,7 +45,17 @@ const router = createRouter({
           children: [
             { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
             { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
-            { path: 'jobs/:jobId/snapshots', component: JobSnapshotsView, meta: { titleKey: 'snapshots.title' } },
+            {
+              path: 'jobs/:jobId',
+              component: JobDetailShellView,
+              meta: { titleKey: 'jobs.detail.title' },
+              children: [
+                { path: '', component: JobDetailRunsView, meta: { titleKey: 'runs.title' } },
+                { path: 'snapshots', component: JobSnapshotsView, props: { embedded: true }, meta: { titleKey: 'snapshots.title' } },
+                { path: 'retention', component: JobDetailRetentionView, meta: { titleKey: 'jobs.retention.title' } },
+                { path: 'settings', component: JobDetailSettingsView, meta: { titleKey: 'jobs.detail.tabs.settings' } },
+              ],
+            },
             { path: 'runs/:runId', component: RunDetailView, meta: { titleKey: 'runs.title' } },
             {
               path: 'settings',

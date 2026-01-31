@@ -304,6 +304,19 @@ const messages = {
   jobs: {
     title: 'Jobs',
     subtitle: 'Create and schedule backup jobs',
+    detail: {
+      title: 'Job',
+      subtitle: 'Job details',
+      tabs: {
+        runs: 'Runs',
+        snapshots: 'Snapshots',
+        retention: 'Retention',
+        settings: 'Settings',
+      },
+      sections: {
+        actions: 'Actions',
+      },
+    },
     createTitle: 'Create job',
     editTitle: 'Edit job',
     steps: {
@@ -1162,6 +1175,7 @@ const messages = {
     jobDeleted: 'Job deleted',
     jobArchived: 'Job archived',
     jobUnarchived: 'Job unarchived',
+    retentionSaved: 'Retention settings saved',
     runQueued: 'Run queued',
     runRejected: 'Rejected by overlap policy',
     webdavSecretSaved: 'WebDAV credential saved',

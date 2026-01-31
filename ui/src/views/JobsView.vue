@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NDropdown, NModal, NSpace, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type JobListItem, type OverlapPolicy } from '@/stores/jobs'
@@ -18,11 +18,6 @@ import { MODAL_WIDTH } from '@/lib/modal'
 
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/JobDeployModal.vue'
-import JobRunsModal, { type JobRunsModalExpose } from '@/components/jobs/JobRunsModal.vue'
-import RunEventsModal, { type RunEventsModalExpose } from '@/components/jobs/RunEventsModal.vue'
-import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
-import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
-import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
@@ -39,11 +34,6 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 
 const editorModal = ref<JobEditorModalExpose | null>(null)
 const deployModal = ref<JobDeployModalExpose | null>(null)
-const runsModal = ref<JobRunsModalExpose | null>(null)
-const runEventsModal = ref<RunEventsModalExpose | null>(null)
-const restoreModal = ref<RestoreWizardModalExpose | null>(null)
-const verifyModal = ref<VerifyWizardModalExpose | null>(null)
-const opModal = ref<OperationModalExpose | null>(null)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -135,36 +125,16 @@ async function openEdit(jobId: string): Promise<void> {
   await editorModal.value?.openEdit(jobId, currentNode ? { nodeId: currentNode } : undefined)
 }
 
-async function openRuns(jobId: string): Promise<void> {
-  await runsModal.value?.open(jobId)
-}
-
 async function openDeploy(jobId: string): Promise<void> {
   await deployModal.value?.open(jobId)
 }
 
-async function openRunEvents(runId: string): Promise<void> {
-  await runEventsModal.value?.open(runId)
-}
-
-function openRunDetail(runId: string): void {
-  void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/runs/${encodeURIComponent(runId)}`)
+function openJobDetail(jobId: string): void {
+  void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(jobId)}`)
 }
 
 function openSnapshots(jobId: string): void {
   void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(jobId)}/snapshots`)
-}
-
-function openRestoreWizard(runId: string): void {
-  restoreModal.value?.open(runId, { defaultNodeId: nodeIdOrHub.value })
-}
-
-function openVerifyWizard(runId: string): void {
-  verifyModal.value?.open(runId)
-}
-
-async function openOperation(opId: string): Promise<void> {
-  await opModal.value?.open(opId)
 }
 
 const deleteOpen = ref<boolean>(false)
@@ -274,35 +244,43 @@ const columns = computed<DataTableColumns<JobListItem>>(() => {
               ),
               h(
                 NButton,
-                { size: 'small', onClick: () => void openRuns(row.id) },
-                { default: () => t('jobs.actions.runs') },
+                { size: 'small', onClick: () => openJobDetail(row.id) },
+                { default: () => t('common.browse') },
               ),
               h(
-                NButton,
-                { size: 'small', onClick: () => openSnapshots(row.id) },
-                { default: () => t('jobs.actions.snapshots') },
-              ),
-              h(
-                NButton,
-                { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
-                { default: () => t('common.edit') },
-              ),
-              h(
-                NButton,
-                { size: 'small', disabled: !!row.archived_at, onClick: () => void openDeploy(row.id) },
-                { default: () => t('jobs.actions.deploy') },
-              ),
-              row.archived_at
-                ? h(
-                    NButton,
-                    { size: 'small', onClick: () => void unarchiveJob(row.id) },
-                    { default: () => t('jobs.actions.unarchive') },
-                  )
-                : null,
-              h(
-                NButton,
-                { size: 'small', type: 'error', tertiary: true, onClick: () => openDelete(row) },
-                { default: () => t('common.delete') },
+                NDropdown,
+                {
+                  trigger: 'click',
+                  options: [
+                    { label: t('jobs.actions.snapshots'), key: 'snapshots' },
+                    { label: t('jobs.retention.title'), key: 'retention' },
+                    { type: 'divider', key: '__d1' },
+                    { label: t('common.edit'), key: 'edit', disabled: !!row.archived_at },
+                    { label: t('jobs.actions.deploy'), key: 'deploy', disabled: !!row.archived_at },
+                    row.archived_at
+                      ? { label: t('jobs.actions.unarchive'), key: 'unarchive' }
+                      : { label: t('jobs.actions.archive'), key: 'archive' },
+                    { type: 'divider', key: '__d2' },
+                    { label: t('common.delete'), key: 'delete' },
+                  ],
+                  onSelect: (key: string | number) => {
+                    if (key === 'snapshots') return void openSnapshots(row.id)
+                    if (key === 'retention') return void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(row.id)}/retention`)
+                    if (key === 'edit') return void openEdit(row.id)
+                    if (key === 'deploy') return void openDeploy(row.id)
+                    if (key === 'unarchive') return void unarchiveJob(row.id)
+                    if (key === 'archive') return void openDelete(row)
+                    if (key === 'delete') return void openDelete(row)
+                  },
+                },
+                {
+                  default: () =>
+                    h(
+                      NButton,
+                      { size: 'small', tertiary: true },
+                      { default: () => t('common.more') },
+                    ),
+                },
               ),
             ],
           },
@@ -397,12 +375,35 @@ watch(showArchived, () => {
         <template #footer>
           <div class="flex flex-wrap justify-end gap-2">
             <n-button size="small" type="primary" :disabled="!!job.archived_at" @click="runNow(job.id)">{{ t('jobs.actions.runNow') }}</n-button>
-            <n-button size="small" @click="openRuns(job.id)">{{ t('jobs.actions.runs') }}</n-button>
-            <n-button size="small" @click="openSnapshots(job.id)">{{ t('jobs.actions.snapshots') }}</n-button>
-            <n-button size="small" :disabled="!!job.archived_at" @click="openEdit(job.id)">{{ t('common.edit') }}</n-button>
-            <n-button size="small" :disabled="!!job.archived_at" @click="openDeploy(job.id)">{{ t('jobs.actions.deploy') }}</n-button>
-            <n-button v-if="job.archived_at" size="small" @click="unarchiveJob(job.id)">{{ t('jobs.actions.unarchive') }}</n-button>
-            <n-button size="small" type="error" tertiary @click="openDelete(job)">{{ t('common.delete') }}</n-button>
+            <n-button size="small" @click="openJobDetail(job.id)">{{ t('common.browse') }}</n-button>
+            <n-dropdown
+              trigger="click"
+              :options="[
+                { label: t('jobs.actions.snapshots'), key: 'snapshots' },
+                { label: t('jobs.retention.title'), key: 'retention' },
+                { type: 'divider', key: '__d1' },
+                { label: t('common.edit'), key: 'edit', disabled: !!job.archived_at },
+                { label: t('jobs.actions.deploy'), key: 'deploy', disabled: !!job.archived_at },
+                job.archived_at
+                  ? { label: t('jobs.actions.unarchive'), key: 'unarchive' }
+                  : { label: t('jobs.actions.archive'), key: 'archive' },
+                { type: 'divider', key: '__d2' },
+                { label: t('common.delete'), key: 'delete' },
+              ]"
+              @select="
+                (key) => {
+                  if (key === 'snapshots') return openSnapshots(job.id)
+                  if (key === 'retention') return router.push(`/n/${encodeURIComponent(nodeIdOrHub)}/jobs/${encodeURIComponent(job.id)}/retention`)
+                  if (key === 'edit') return openEdit(job.id)
+                  if (key === 'deploy') return openDeploy(job.id)
+                  if (key === 'unarchive') return unarchiveJob(job.id)
+                  if (key === 'archive') return openDelete(job)
+                  if (key === 'delete') return openDelete(job)
+                }
+              "
+            >
+              <n-button size="small" tertiary>{{ t('common.more') }}</n-button>
+            </n-dropdown>
           </div>
         </template>
       </n-card>
@@ -419,22 +420,6 @@ watch(showArchived, () => {
     <JobEditorModal ref="editorModal" @saved="refresh" />
 
     <JobDeployModal ref="deployModal" />
-
-    <JobRunsModal
-      ref="runsModal"
-      @open-detail="openRunDetail"
-      @open-events="(id) => void openRunEvents(id)"
-      @open-restore="openRestoreWizard"
-      @open-verify="openVerifyWizard"
-    />
-
-    <RunEventsModal ref="runEventsModal" />
-
-    <RestoreWizardModal ref="restoreModal" @started="(id) => void openOperation(id)" />
-
-    <VerifyWizardModal ref="verifyModal" @started="(id) => void openOperation(id)" />
-
-    <OperationModal ref="opModal" />
 
     <n-modal v-model:show="deleteOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('jobs.deleteTitle')">
       <div class="space-y-3">

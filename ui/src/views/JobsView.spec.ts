@@ -68,6 +68,32 @@ vi.mock('naive-ui', async () => {
     },
   })
 
+  const dropdown = vue.defineComponent({
+    name: 'NDropdown',
+    props: ['options'],
+    emits: ['select'],
+    setup(props, { slots, emit }) {
+      const opts = () => (Array.isArray((props as any).options) ? (props as any).options : [])
+      return () =>
+        vue.h('div', { 'data-stub': 'NDropdown' }, [
+          slots.default?.(),
+          ...opts()
+            .filter((o: any) => o && o.type !== 'divider')
+            .map((o: any) =>
+              vue.h(
+                'button',
+                {
+                  'data-stub': 'NDropdownOption',
+                  disabled: !!o.disabled,
+                  onClick: () => emit('select', o.key),
+                },
+                String(o.label ?? o.key),
+              ),
+            ),
+        ])
+    },
+  })
+
   return {
     NAlert: stub('NAlert'),
     NBadge: stub('NBadge'),
@@ -76,7 +102,7 @@ vi.mock('naive-ui', async () => {
     NCheckbox: checkbox,
     NCode: stub('NCode'),
     NDataTable: stub('NDataTable'),
-    NDropdown: stub('NDropdown'),
+    NDropdown: dropdown,
     NDrawer: stub('NDrawer'),
     NDrawerContent: stub('NDrawerContent'),
     NForm: stub('NForm'),
@@ -231,6 +257,21 @@ describe('JobsView responsive lists', () => {
     expect(wrapper.find('[data-testid=\"jobs-table\"]').exists()).toBe(false)
   })
 
+  it('navigates to Job Detail from the mobile list', async () => {
+    stubMatchMedia(false)
+    routeApi.params = { nodeId: 'hub' }
+    jobsApi.items = [
+      { id: 'j1', name: 'Job', agent_id: null, schedule: null, overlap_policy: 'queue', updated_at: 0 },
+    ]
+
+    const wrapper = mount(JobsView)
+    const openBtn = wrapper.findAll('button').find((b) => b.text() === 'common.browse')
+    expect(openBtn).toBeTruthy()
+
+    await openBtn!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/j1')
+  })
+
   it('filters jobs by node context', () => {
     routeApi.params = { nodeId: 'hub' }
     jobsApi.items = [
@@ -289,7 +330,10 @@ describe('JobsView responsive lists', () => {
     await cb.setValue(true)
     await wrapper.vm.$nextTick()
 
-    const archiveBtn = wrapper.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
+    const modal = wrapper.find('[data-stub=\"NModal\"]')
+    expect(modal.exists()).toBe(true)
+
+    const archiveBtn = modal.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
     expect(archiveBtn).toBeTruthy()
     await archiveBtn!.trigger('click')
 

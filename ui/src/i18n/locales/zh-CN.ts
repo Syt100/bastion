@@ -304,6 +304,19 @@ const messages = {
   jobs: {
     title: '备份任务',
     subtitle: '创建并调度备份任务',
+    detail: {
+      title: '任务',
+      subtitle: '任务详情',
+      tabs: {
+        runs: '运行记录',
+        snapshots: '快照',
+        retention: '保留策略',
+        settings: '设置',
+      },
+      sections: {
+        actions: '操作',
+      },
+    },
     createTitle: '创建任务',
     editTitle: '编辑任务',
     steps: {
@@ -1161,6 +1174,7 @@ const messages = {
     jobDeleted: '任务已删除',
     jobArchived: '任务已归档',
     jobUnarchived: '任务已取消归档',
+    retentionSaved: '保留策略已保存',
     runQueued: '已加入队列',
     runRejected: '因重叠策略被拒绝',
     webdavSecretSaved: 'WebDAV 凭据已保存',
