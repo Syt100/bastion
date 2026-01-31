@@ -4,11 +4,11 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Web UI - Visual Foundations (Tokens + Chrome)
-- [ ] 2.1 Introduce design tokens (CSS variables) for background/surfaces/text/accents/status colors (light + dark)
-- [ ] 2.2 Map Naive UI theme overrides to the tokens (primary + status + surfaces) for consistent component colors
-- [ ] 2.3 Refresh shared surface utilities (`app-card`, `app-glass`, `app-icon-tile`, tables/list rows) to reduce "industrial" weight
-- [ ] 2.4 Refresh AppShell chrome (sider/header/menu active states) to match the new modern style
-- [ ] 2.5 Commit visual foundations (detailed message)
+- [x] 2.1 Introduce design tokens (CSS variables) for background/surfaces/text/accents/status colors (light + dark)
+- [x] 2.2 Map Naive UI theme overrides to the tokens (primary + status + surfaces) for consistent component colors
+- [x] 2.3 Refresh shared surface utilities (`app-card`, `app-glass`, `app-icon-tile`, tables/list rows) to reduce "industrial" weight
+- [x] 2.4 Refresh AppShell chrome (sider/header/menu active states) to match the new modern style
+- [x] 2.5 Commit visual foundations (detailed message)
 
 ## 3. Web UI - Shared List UX Components
 - [ ] 3.1 Add a shared `ListToolbar` component (search/filters/sort/view toggle/actions; responsive layout)

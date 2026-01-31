@@ -1,6 +1,98 @@
 @import 'tailwindcss';
 @config '../../tailwind.config.js';
 
+:root {
+  /* --- Brand + accents (light) --- */
+  --app-primary: #3b82f6;
+  --app-primary-hover: #60a5fa;
+  --app-primary-pressed: #2563eb;
+  --app-primary-soft: rgba(59, 130, 246, 0.14);
+  --app-primary-2: #06b6d4;
+  --app-accent-1: #6366f1;
+  --app-accent-2: #8b5cf6;
+
+  /* --- Status --- */
+  --app-info: #0ea5e9;
+  --app-success: #22c55e;
+  --app-warning: #f59e0b;
+  --app-danger: #ef4444;
+
+  /* --- Text + chrome --- */
+  --app-text: #0f172a;
+  --app-text-muted: rgba(15, 23, 42, 0.72);
+  --app-border: rgba(15, 23, 42, 0.09);
+  --app-hover: rgba(15, 23, 42, 0.04);
+  --app-pressed: rgba(15, 23, 42, 0.06);
+
+  /* --- Surfaces --- */
+  --app-bg-solid: #f8fafc;
+  --app-surface: #ffffff;
+  --app-surface-2: #f1f5f9;
+
+  /* --- Depth --- */
+  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.08);
+  --app-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.10);
+  --app-shadow-lg: 0 18px 50px rgba(15, 23, 42, 0.14);
+
+  /* --- Glass (use sparingly; mostly for chrome) --- */
+  --app-glass-bg: rgba(255, 255, 255, 0.62);
+  --app-glass-soft-bg: rgba(255, 255, 255, 0.45);
+  --app-glass-border: rgba(15, 23, 42, 0.08);
+  --app-glass-blur: 18px;
+
+  /* --- Components --- */
+  --app-icon-tile-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(6, 182, 212, 0.10));
+  --app-focus: rgba(59, 130, 246, 0.95);
+
+  /* Layered page background for a modern, fresh look. */
+  --app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(1000px 520px at 100% 0%, rgba(6, 182, 212, 0.14), transparent 55%),
+    radial-gradient(900px 600px at 50% 100%, rgba(139, 92, 246, 0.12), transparent 55%),
+    var(--app-bg-solid);
+}
+
+.dark {
+  /* --- Brand + accents (dark) --- */
+  --app-primary: #60a5fa;
+  --app-primary-hover: #93c5fd;
+  --app-primary-pressed: #3b82f6;
+  --app-primary-soft: rgba(96, 165, 250, 0.20);
+  --app-primary-2: #22d3ee;
+  --app-accent-1: #818cf8;
+  --app-accent-2: #a78bfa;
+
+  /* --- Text + chrome --- */
+  --app-text: #e5e7eb;
+  --app-text-muted: rgba(229, 231, 235, 0.74);
+  --app-border: rgba(255, 255, 255, 0.11);
+  --app-hover: rgba(255, 255, 255, 0.06);
+  --app-pressed: rgba(255, 255, 255, 0.08);
+
+  /* --- Surfaces --- */
+  --app-bg-solid: #0b1220;
+  --app-surface: #111827;
+  --app-surface-2: rgba(17, 24, 39, 0.72);
+
+  /* --- Depth --- */
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.22);
+  --app-shadow-md: 0 12px 28px rgba(0, 0, 0, 0.34);
+  --app-shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.42);
+
+  /* --- Glass --- */
+  --app-glass-bg: rgba(11, 18, 32, 0.70);
+  --app-glass-soft-bg: rgba(11, 18, 32, 0.50);
+  --app-glass-border: rgba(255, 255, 255, 0.10);
+
+  /* --- Components --- */
+  --app-icon-tile-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(34, 211, 238, 0.16));
+  --app-focus: rgba(96, 165, 250, 0.95);
+
+  --app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(59, 130, 246, 0.22), transparent 60%),
+    radial-gradient(1000px 520px at 100% 0%, rgba(34, 211, 238, 0.16), transparent 55%),
+    radial-gradient(900px 600px at 50% 100%, rgba(167, 139, 250, 0.14), transparent 55%),
+    var(--app-bg-solid);
+}
+
 html,
 body,
 #app {
@@ -23,135 +115,109 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.dark body {
-  background: #0b1220;
-  color: #e5e7eb;
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
 .app-card {
-  @apply shadow-sm border border-black/5 dark:border-white/10;
+  box-shadow: var(--app-shadow-sm);
 }
 
 .app-border-subtle {
-  @apply border border-black/5 dark:border-white/10;
+  border: 1px solid var(--app-border);
 }
 
 .app-help-text {
-  @apply text-sm opacity-70;
+  @apply text-sm;
+  color: var(--app-text-muted);
 }
 
 .app-icon-tile {
-  @apply w-10 h-10 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center shrink-0;
+  @apply w-10 h-10 rounded-lg flex items-center justify-center shrink-0;
+  background: var(--app-icon-tile-bg);
+  border: 1px solid var(--app-border);
 }
 
 .app-list-row {
   @apply w-full text-left px-3 py-3 flex items-center justify-between gap-3 transition;
-  @apply hover:bg-black/5 dark:hover:bg-white/5;
+  @apply rounded-lg;
+}
+
+.app-list-row:hover {
+  background: var(--app-hover);
 }
 
 .app-picker-table {
-  --n-border-color: rgba(0, 0, 0, 0.06);
-  --n-border-color-modal: rgba(0, 0, 0, 0.06);
-  --n-border-color-popover: rgba(0, 0, 0, 0.06);
+  --n-border-color: var(--app-border);
+  --n-border-color-modal: var(--app-border);
+  --n-border-color-popover: var(--app-border);
 
-  --n-th-color: rgba(0, 0, 0, 0.02);
-  --n-th-color-hover: rgba(0, 0, 0, 0.02);
-  --n-th-color-sorting: rgba(0, 0, 0, 0.02);
-  --n-th-color-modal: rgba(0, 0, 0, 0.02);
-  --n-th-color-hover-modal: rgba(0, 0, 0, 0.02);
-  --n-th-color-sorting-modal: rgba(0, 0, 0, 0.02);
-  --n-th-color-popover: rgba(0, 0, 0, 0.02);
-  --n-th-color-hover-popover: rgba(0, 0, 0, 0.02);
-  --n-th-color-sorting-popover: rgba(0, 0, 0, 0.02);
+  --n-th-color: var(--app-surface-2);
+  --n-th-color-hover: var(--app-surface-2);
+  --n-th-color-sorting: var(--app-surface-2);
+  --n-th-color-modal: var(--app-surface-2);
+  --n-th-color-hover-modal: var(--app-surface-2);
+  --n-th-color-sorting-modal: var(--app-surface-2);
+  --n-th-color-popover: var(--app-surface-2);
+  --n-th-color-hover-popover: var(--app-surface-2);
+  --n-th-color-sorting-popover: var(--app-surface-2);
 
   --n-td-color: transparent;
-  --n-td-color-hover: rgba(0, 0, 0, 0.03);
-  --n-td-color-sorting: rgba(0, 0, 0, 0.03);
-  --n-td-color-striped: rgba(0, 0, 0, 0.015);
+  --n-td-color-hover: var(--app-hover);
+  --n-td-color-sorting: var(--app-hover);
+  --n-td-color-striped: rgba(15, 23, 42, 0.02);
   --n-td-color-modal: transparent;
-  --n-td-color-hover-modal: rgba(0, 0, 0, 0.03);
-  --n-td-color-sorting-modal: rgba(0, 0, 0, 0.03);
-  --n-td-color-striped-modal: rgba(0, 0, 0, 0.015);
+  --n-td-color-hover-modal: var(--app-hover);
+  --n-td-color-sorting-modal: var(--app-hover);
+  --n-td-color-striped-modal: rgba(15, 23, 42, 0.02);
   --n-td-color-popover: transparent;
-  --n-td-color-hover-popover: rgba(0, 0, 0, 0.03);
-  --n-td-color-sorting-popover: rgba(0, 0, 0, 0.03);
-  --n-td-color-striped-popover: rgba(0, 0, 0, 0.015);
+  --n-td-color-hover-popover: var(--app-hover);
+  --n-td-color-sorting-popover: var(--app-hover);
+  --n-td-color-striped-popover: rgba(15, 23, 42, 0.02);
 }
 
 .dark .app-picker-table {
-  --n-border-color: rgba(255, 255, 255, 0.12);
-  --n-border-color-modal: rgba(255, 255, 255, 0.12);
-  --n-border-color-popover: rgba(255, 255, 255, 0.12);
-
-  --n-th-color: rgba(255, 255, 255, 0.04);
-  --n-th-color-hover: rgba(255, 255, 255, 0.04);
-  --n-th-color-sorting: rgba(255, 255, 255, 0.04);
-  --n-th-color-modal: rgba(255, 255, 255, 0.04);
-  --n-th-color-hover-modal: rgba(255, 255, 255, 0.04);
-  --n-th-color-sorting-modal: rgba(255, 255, 255, 0.04);
-  --n-th-color-popover: rgba(255, 255, 255, 0.04);
-  --n-th-color-hover-popover: rgba(255, 255, 255, 0.04);
-  --n-th-color-sorting-popover: rgba(255, 255, 255, 0.04);
-
-  --n-td-color: transparent;
-  --n-td-color-hover: rgba(255, 255, 255, 0.05);
-  --n-td-color-sorting: rgba(255, 255, 255, 0.05);
-  --n-td-color-striped: rgba(255, 255, 255, 0.02);
-  --n-td-color-modal: transparent;
-  --n-td-color-hover-modal: rgba(255, 255, 255, 0.05);
-  --n-td-color-sorting-modal: rgba(255, 255, 255, 0.05);
-  --n-td-color-striped-modal: rgba(255, 255, 255, 0.02);
-  --n-td-color-popover: transparent;
-  --n-td-color-hover-popover: rgba(255, 255, 255, 0.05);
-  --n-td-color-sorting-popover: rgba(255, 255, 255, 0.05);
-  --n-td-color-striped-popover: rgba(255, 255, 255, 0.02);
+  --n-td-color-striped: rgba(255, 255, 255, 0.03);
+  --n-td-color-striped-modal: rgba(255, 255, 255, 0.03);
+  --n-td-color-striped-popover: rgba(255, 255, 255, 0.03);
 }
 
 .app-picker-table :where(.app-picker-row--checked > .n-data-table-td) {
-  background-color: rgba(59, 130, 246, 0.08) !important;
-}
-
-.app-picker-table :where(.app-picker-row--checked > .n-data-table-td--hover) {
   background-color: rgba(59, 130, 246, 0.12) !important;
 }
 
-.dark .app-picker-table :where(.app-picker-row--checked > .n-data-table-td) {
+.app-picker-table :where(.app-picker-row--checked > .n-data-table-td--hover) {
   background-color: rgba(59, 130, 246, 0.16) !important;
 }
 
+.dark .app-picker-table :where(.app-picker-row--checked > .n-data-table-td) {
+  background-color: rgba(96, 165, 250, 0.18) !important;
+}
+
 .dark .app-picker-table :where(.app-picker-row--checked > .n-data-table-td--hover) {
-  background-color: rgba(59, 130, 246, 0.2) !important;
-}
-
-:root {
-  --app-glass-bg: rgba(255, 255, 255, 0.7);
-  --app-glass-soft-bg: rgba(255, 255, 255, 0.6);
-  --app-glass-blur: 16px;
-}
-
-.dark {
-  --app-glass-bg: rgba(11, 18, 32, 0.6);
-  --app-glass-soft-bg: rgba(11, 18, 32, 0.3);
+  background-color: rgba(96, 165, 250, 0.22) !important;
 }
 
 .app-glass {
   background: var(--app-glass-bg);
-  backdrop-filter: blur(var(--app-glass-blur));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur));
+  backdrop-filter: blur(var(--app-glass-blur)) saturate(1.15);
+  -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.15);
+  border-color: var(--app-glass-border);
 }
 
 .app-glass-soft {
   background: var(--app-glass-soft-bg);
-  backdrop-filter: blur(var(--app-glass-blur));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur));
+  backdrop-filter: blur(var(--app-glass-blur)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.1);
+  border-color: var(--app-glass-border);
+}
+
+.app-topbar {
+  box-shadow: var(--app-shadow-sm);
 }
 
 :where(a, button, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.9);
+  outline: 2px solid var(--app-focus);
   outline-offset: 2px;
 }
 

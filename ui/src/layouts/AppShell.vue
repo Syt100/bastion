@@ -267,7 +267,7 @@ watch(nodeIdParam, (value) => {
     <n-layout class="bg-transparent">
       <n-layout-header
         bordered
-        class="app-glass px-4 sticky top-0 z-50"
+        class="app-glass app-topbar px-4 sticky top-0 z-50"
       >
         <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
           <div class="flex items-center gap-3">

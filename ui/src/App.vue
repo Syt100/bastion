@@ -50,15 +50,86 @@ const naiveDateLocale = computed(() => NAIVE_UI_DATE_LOCALES[ui.locale])
 
 const themeOverrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    // Primary: light blue (modern, calm, B2B-friendly)
-    primaryColor: '#3b82f6',
-    primaryColorHover: '#60a5fa',
-    primaryColorPressed: '#2563eb',
-    primaryColorSuppl: '#3b82f6',
-    borderRadius: '10px',
+    // Tokens are defined in `ui/src/styles/main.css` and switch with `.dark`.
+    primaryColor: 'var(--app-primary)',
+    primaryColorHover: 'var(--app-primary-hover)',
+    primaryColorPressed: 'var(--app-primary-pressed)',
+    primaryColorSuppl: 'var(--app-primary)',
+
+    infoColor: 'var(--app-info)',
+    infoColorHover: 'var(--app-info)',
+    infoColorPressed: 'var(--app-info)',
+    infoColorSuppl: 'var(--app-info)',
+
+    successColor: 'var(--app-success)',
+    successColorHover: 'var(--app-success)',
+    successColorPressed: 'var(--app-success)',
+    successColorSuppl: 'var(--app-success)',
+
+    warningColor: 'var(--app-warning)',
+    warningColorHover: 'var(--app-warning)',
+    warningColorPressed: 'var(--app-warning)',
+    warningColorSuppl: 'var(--app-warning)',
+
+    errorColor: 'var(--app-danger)',
+    errorColorHover: 'var(--app-danger)',
+    errorColorPressed: 'var(--app-danger)',
+    errorColorSuppl: 'var(--app-danger)',
+
+    textColorBase: 'var(--app-text)',
+    textColor1: 'var(--app-text)',
+    textColor2: 'var(--app-text-muted)',
+    textColor3: 'var(--app-text-muted)',
+    placeholderColor: 'var(--app-text-muted)',
+
+    dividerColor: 'var(--app-border)',
+    borderColor: 'var(--app-border)',
+    hoverColor: 'var(--app-hover)',
+    pressedColor: 'var(--app-pressed)',
+
+    // Let the body show the gradient background from `body { background: var(--app-bg) }`.
+    bodyColor: 'transparent',
+
+    // Make surface colors consistent across overlays.
+    cardColor: 'var(--app-surface)',
+    popoverColor: 'var(--app-surface)',
+    modalColor: 'var(--app-surface)',
+    inputColor: 'var(--app-surface)',
+
+    // Tables should generally blend into the surrounding card.
+    tableColor: 'transparent',
+    tableHeaderColor: 'var(--app-surface-2)',
+    tableColorHover: 'var(--app-hover)',
+
+    boxShadow1: 'var(--app-shadow-sm)',
+    boxShadow2: 'var(--app-shadow-md)',
+    boxShadow3: 'var(--app-shadow-lg)',
+
+    borderRadius: '12px',
+    borderRadiusSmall: '10px',
   },
   Card: {
-    borderRadius: '14px',
+    borderRadius: '16px',
+    borderColor: 'var(--app-border)',
+  },
+  Menu: {
+    color: 'transparent',
+    groupTextColor: 'var(--app-text-muted)',
+    dividerColor: 'var(--app-border)',
+
+    itemColorHover: 'var(--app-hover)',
+    itemColorActive: 'var(--app-primary-soft)',
+    itemColorActiveHover: 'var(--app-primary-soft)',
+
+    itemTextColor: 'var(--app-text)',
+    itemTextColorHover: 'var(--app-text)',
+    itemTextColorActive: 'var(--app-primary)',
+    itemTextColorActiveHover: 'var(--app-primary)',
+
+    itemIconColor: 'var(--app-text-muted)',
+    itemIconColorHover: 'var(--app-text)',
+    itemIconColorActive: 'var(--app-primary)',
+    itemIconColorActiveHover: 'var(--app-primary)',
   },
 }))
 
