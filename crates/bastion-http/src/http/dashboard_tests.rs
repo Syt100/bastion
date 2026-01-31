@@ -102,24 +102,28 @@ async fn dashboard_overview_returns_stats_trend_and_recent_runs() {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let key = bastion_core::agent::generate_token_b64_urlsafe(32);
     let key_hash = bastion_core::agent::sha256_urlsafe_token(&key).expect("hash");
-    sqlx::query("INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)")
-        .bind("agent1")
-        .bind("Agent One")
-        .bind(key_hash.clone())
-        .bind(now)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .expect("insert agent1");
-    sqlx::query("INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)")
-        .bind("agent2")
-        .bind("Agent Two")
-        .bind(key_hash.clone())
-        .bind(now)
-        .bind(now - 120)
-        .execute(&pool)
-        .await
-        .expect("insert agent2");
+    sqlx::query(
+        "INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind("agent1")
+    .bind("Agent One")
+    .bind(key_hash.clone())
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert agent1");
+    sqlx::query(
+        "INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind("agent2")
+    .bind("Agent Two")
+    .bind(key_hash.clone())
+    .bind(now)
+    .bind(now - 120)
+    .execute(&pool)
+    .await
+    .expect("insert agent2");
     sqlx::query("INSERT INTO agents (id, name, key_hash, created_at, revoked_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind("agent3")
         .bind("Revoked")
@@ -246,15 +250,21 @@ async fn dashboard_overview_returns_stats_trend_and_recent_runs() {
     // Stats shape.
     assert!(body.get("stats").is_some());
     assert_eq!(
-        body["stats"]["agents"]["online"].as_i64().unwrap_or_default(),
+        body["stats"]["agents"]["online"]
+            .as_i64()
+            .unwrap_or_default(),
         1
     );
     assert_eq!(
-        body["stats"]["jobs"]["archived"].as_i64().unwrap_or_default(),
+        body["stats"]["jobs"]["archived"]
+            .as_i64()
+            .unwrap_or_default(),
         1
     );
     assert_eq!(
-        body["stats"]["runs"]["failed_24h"].as_i64().unwrap_or_default(),
+        body["stats"]["runs"]["failed_24h"]
+            .as_i64()
+            .unwrap_or_default(),
         1
     );
 
@@ -265,11 +275,13 @@ async fn dashboard_overview_returns_stats_trend_and_recent_runs() {
     // Recent runs include our latest failed run and preserve executed_offline.
     let recent = body["recent_runs"].as_array().expect("recent runs");
     assert!(!recent.is_empty());
-    let found = recent.iter().find(|r| r["run_id"] == failed.id).expect("failed run present");
+    let found = recent
+        .iter()
+        .find(|r| r["run_id"] == failed.id)
+        .expect("failed run present");
     assert_eq!(found["executed_offline"].as_bool(), Some(true));
     assert_eq!(found["node_id"].as_str(), Some("agent1"));
     assert_eq!(found["job_name"].as_str(), Some("Agent Job"));
 
     server.abort();
 }
-

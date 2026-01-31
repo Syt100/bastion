@@ -274,4 +274,3 @@ pub(in crate::http) async fn get_overview(
         recent_runs,
     }))
 }
-
