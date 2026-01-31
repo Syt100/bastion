@@ -972,6 +972,7 @@ const messages = {
   },
   runs: {
     title: 'Runs',
+    latestRun: 'Latest run',
     statuses: {
       queued: 'Queued',
       running: 'Running',
@@ -1043,6 +1044,7 @@ const messages = {
     },
     columns: {
       status: 'Status',
+      id: 'Run',
       startedAt: 'Started',
       endedAt: 'Ended',
       error: 'Error',

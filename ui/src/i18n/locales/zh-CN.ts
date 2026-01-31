@@ -972,6 +972,7 @@ const messages = {
   },
   runs: {
     title: '运行记录',
+    latestRun: '最近一次运行',
     statuses: {
       queued: '排队中',
       running: '运行中',
@@ -1043,6 +1044,7 @@ const messages = {
     },
     columns: {
       status: '状态',
+      id: '运行',
       startedAt: '开始时间',
       endedAt: '结束时间',
       error: '错误',

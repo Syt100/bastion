@@ -44,6 +44,17 @@ function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'wa
   return 'default'
 }
 
+const successCount = computed(() => runs.value.filter((r) => r.status === 'success').length)
+const failedCount = computed(() => runs.value.filter((r) => r.status === 'failed').length)
+const rejectedCount = computed(() => runs.value.filter((r) => r.status === 'rejected').length)
+const latestRun = computed(() => {
+  let best: RunListItem | null = null
+  for (const run of runs.value) {
+    if (!best || run.started_at > best.started_at) best = run
+  }
+  return best
+})
+
 async function refresh(): Promise<void> {
   const id = ctx.jobId.value
   if (!id) return
@@ -104,6 +115,19 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
         },
       ),
   },
+  {
+    title: t('runs.columns.id'),
+    key: 'id',
+    render: (row) =>
+      h(
+        'span',
+        {
+          class: 'font-mono tabular-nums text-xs truncate block max-w-[12rem]',
+          title: row.id,
+        },
+        row.id,
+      ),
+  },
   { title: t('runs.columns.startedAt'), key: 'started_at', render: (row) => h('span', { class: 'font-mono tabular-nums' }, formatUnixSeconds(row.started_at)) },
   { title: t('runs.columns.endedAt'), key: 'ended_at', render: (row) => h('span', { class: 'font-mono tabular-nums' }, formatUnixSeconds(row.ended_at)) },
   { title: t('runs.columns.error'), key: 'error', render: (row) => row.error ?? '-' },
@@ -137,6 +161,38 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
 
 <template>
   <div class="space-y-3">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <n-card size="small" class="app-card" :bordered="false">
+        <div class="text-xs opacity-70">{{ t('jobs.detail.tabs.runs') }}</div>
+        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ runs.length }}</div>
+      </n-card>
+
+      <n-card size="small" class="app-card" :bordered="false">
+        <div class="text-xs opacity-70">{{ runStatusLabel(t, 'success') }}</div>
+        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ successCount }}</div>
+      </n-card>
+
+      <n-card size="small" class="app-card" :bordered="false">
+        <div class="text-xs opacity-70">{{ runStatusLabel(t, 'failed') }}</div>
+        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ failedCount }}</div>
+      </n-card>
+
+      <n-card size="small" class="app-card" :bordered="false">
+        <div class="text-xs opacity-70">{{ t('runs.latestRun') }}</div>
+        <div class="mt-2 flex items-center justify-between gap-3">
+          <n-tag size="small" :bordered="false" :type="latestRun ? statusTagType(latestRun.status) : 'default'">
+            {{ latestRun ? runStatusLabel(t, latestRun.status) : '-' }}
+          </n-tag>
+          <div class="font-mono tabular-nums text-sm truncate">
+            {{ latestRun ? formatUnixSeconds(latestRun.started_at) : '-' }}
+          </div>
+        </div>
+        <div v-if="rejectedCount > 0" class="mt-2 text-xs opacity-70 tabular-nums">
+          {{ runStatusLabel(t, 'rejected') }}: {{ rejectedCount }}
+        </div>
+      </n-card>
+    </div>
+
     <div class="flex items-center justify-end gap-2">
       <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
     </div>
@@ -196,4 +252,3 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
     <OperationModal ref="opModal" />
   </div>
 </template>
-
