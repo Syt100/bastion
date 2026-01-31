@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { bulkOperationItemStatusLabel, bulkOperationKindLabel, bulkOperationStatusLabel } from './bulkOperations'
+import { bulkOperationItemStatusLabel, bulkOperationKindLabel, bulkOperationStatusLabel, filterBulkOperationItems } from './bulkOperations'
 
 describe('bulk operations labels', () => {
   it('falls back to raw values when translations are missing', () => {
@@ -23,3 +23,40 @@ describe('bulk operations labels', () => {
   })
 })
 
+describe('bulk operations filters', () => {
+  it('filters failed items', () => {
+    const items = [
+      {
+        op_id: 'op1',
+        agent_id: 'a1',
+        agent_name: null,
+        status: 'failed',
+        attempts: 1,
+        created_at: 1,
+        updated_at: 1,
+        started_at: 1,
+        ended_at: 1,
+        last_error_kind: 'error',
+        last_error: 'nope',
+      },
+      {
+        op_id: 'op1',
+        agent_id: 'a2',
+        agent_name: null,
+        status: 'success',
+        attempts: 1,
+        created_at: 1,
+        updated_at: 1,
+        started_at: 1,
+        ended_at: 1,
+        last_error_kind: null,
+        last_error: null,
+      },
+    ] as const
+
+    expect(filterBulkOperationItems([...items], 'all').length).toBe(2)
+    const failed = filterBulkOperationItems([...items], 'failed')
+    expect(failed.length).toBe(1)
+    expect(failed[0]!.agent_id).toBe('a1')
+  })
+})

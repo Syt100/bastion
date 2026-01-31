@@ -295,6 +295,11 @@ const messages = {
       retryFailed: 'Retry failed items',
       cancel: 'Cancel',
     },
+    filters: {
+      items: 'Items',
+      all: 'All',
+      failedOnly: 'Failed ({count})',
+    },
   },
   jobs: {
     title: 'Jobs',

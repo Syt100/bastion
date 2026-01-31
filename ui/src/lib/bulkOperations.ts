@@ -1,4 +1,4 @@
-import type { BulkOperationItemStatus, BulkOperationStatus } from '@/stores/bulkOperations'
+import type { BulkOperationItemDetail, BulkOperationItemStatus, BulkOperationStatus } from '@/stores/bulkOperations'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -23,3 +23,12 @@ export function bulkOperationItemStatusLabel(t: TranslateFn, status: BulkOperati
   return v === key ? status : v
 }
 
+export type BulkOperationItemFilter = 'all' | 'failed'
+
+export function filterBulkOperationItems(
+  items: BulkOperationItemDetail[],
+  filter: BulkOperationItemFilter,
+): BulkOperationItemDetail[] {
+  if (filter === 'failed') return items.filter((it) => it.status === 'failed')
+  return items
+}

@@ -295,6 +295,11 @@ const messages = {
       retryFailed: '重试失败项',
       cancel: '取消',
     },
+    filters: {
+      items: '条目',
+      all: '全部',
+      failedOnly: '仅失败（{count}）',
+    },
   },
   jobs: {
     title: '备份任务',
