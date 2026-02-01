@@ -11,10 +11,9 @@ import ListToolbar from '@/components/list/ListToolbar.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
-import { useUiStore } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
-import { formatUnixSecondsYmdHm, useUnixSecondsFormatter } from '@/lib/datetime'
+import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
@@ -30,9 +29,6 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 
 const jobs = useJobsStore()
 const agents = useAgentsStore()
-const ui = useUiStore()
-
-const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 const selectedJobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
@@ -232,7 +228,7 @@ watch(showArchived, () => void refresh())
                     <div
                       v-if="job.latest_run_started_at != null"
                       class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
-                      :title="formatUnixSeconds(job.latest_run_started_at)"
+                      :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
                     >
                       {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
                     </div>
@@ -342,7 +338,7 @@ watch(showArchived, () => void refresh())
                 <div
                   v-if="job.latest_run_started_at != null"
                   class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
-                  :title="formatUnixSeconds(job.latest_run_started_at)"
+                  :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
                 >
                   {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
                 </div>
