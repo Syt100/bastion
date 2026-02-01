@@ -113,7 +113,7 @@ watch(showArchived, () => void refresh())
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-6 h-full min-h-0">
     <PageHeader
       v-if="isDesktop || !selectedJobId"
       :title="t('jobs.title')"
@@ -128,8 +128,8 @@ watch(showArchived, () => void refresh())
     </PageHeader>
 
     <template v-if="isDesktop">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-        <n-card class="app-card" :bordered="false">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,360px)_minmax(0,1fr)] flex-1 min-h-0">
+        <n-card class="app-card flex flex-col min-h-0" :bordered="false">
           <ListToolbar compact embedded>
             <template #search>
               <n-input
@@ -158,7 +158,7 @@ watch(showArchived, () => void refresh())
             </template>
           </ListToolbar>
 
-          <div class="mt-3">
+          <div class="mt-3 flex-1 min-h-0">
             <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
             <AppEmptyState
               v-else-if="!jobs.loading && filteredJobs.length === 0"
@@ -175,7 +175,11 @@ watch(showArchived, () => void refresh())
               </template>
             </AppEmptyState>
 
-            <div v-else class="divide-y divide-black/5 dark:divide-white/10">
+            <div
+              v-else
+              data-testid="jobs-list-scroll"
+              class="h-full min-h-0 overflow-y-auto divide-y divide-black/5 dark:divide-white/10"
+            >
               <button
                 v-for="job in filteredJobs"
                 :key="job.id"
@@ -203,8 +207,10 @@ watch(showArchived, () => void refresh())
           </div>
         </n-card>
 
-        <div class="min-w-0">
-          <router-view v-if="selectedJobId" />
+        <div class="min-w-0 min-h-0 flex flex-col">
+          <div v-if="selectedJobId" class="flex-1 min-h-0">
+            <router-view />
+          </div>
           <AppEmptyState
             v-else
             :title="t('jobs.workspace.emptyTitle')"

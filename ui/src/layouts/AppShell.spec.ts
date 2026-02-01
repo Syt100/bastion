@@ -148,4 +148,30 @@ describe('AppShell node selector', () => {
     expect(uiStore.setPreferredNodeId).toHaveBeenCalledWith('agent1')
     expect(routerPush).toHaveBeenCalledWith('/n/agent1/jobs')
   })
+
+  it('uses a scrollable content region on desktop for normal pages', () => {
+    routeState.path = '/agents'
+    routeState.params = {}
+
+    const wrapper = mount(AppShell, {
+      global: {
+        stubs: { 'router-view': { template: '<div />' } },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="app-shell-content"]').classes()).toContain('overflow-y-auto')
+  })
+
+  it('uses workbench mode (no outer scroll) for Jobs workspace pages on desktop', () => {
+    routeState.path = '/n/hub/jobs'
+    routeState.params = { nodeId: 'hub' }
+
+    const wrapper = mount(AppShell, {
+      global: {
+        stubs: { 'router-view': { template: '<div />' } },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="app-shell-content"]').classes()).toContain('overflow-hidden')
+  })
 })

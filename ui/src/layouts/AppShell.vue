@@ -90,6 +90,12 @@ const activeKey = computed(() => {
 })
 const mobileMenuOpen = ref(false)
 const isDesktop = useMediaQuery(MQ.mdUp)
+const isJobsWorkbench = computed(
+  () =>
+    isDesktop.value &&
+    route.path.startsWith('/n/') &&
+    (menuPath.value === '/jobs' || menuPath.value.startsWith('/jobs/')),
+)
 
 watch(isDesktop, (value) => {
   if (value) {
@@ -248,11 +254,15 @@ watch(nodeIdParam, (value) => {
 </script>
 
 <template>
-  <n-layout has-sider class="min-h-screen bg-transparent">
+  <n-layout
+    has-sider
+    class="bg-transparent"
+    :class="isDesktop ? 'h-screen overflow-hidden' : 'min-h-screen'"
+  >
     <n-layout-sider
       v-if="isDesktop"
       bordered
-      class="app-glass"
+      class="app-glass flex flex-col"
       collapse-mode="width"
       :collapsed-width="LAYOUT.siderCollapsedWidth"
       :width="LAYOUT.siderWidth"
@@ -268,19 +278,22 @@ watch(nodeIdParam, (value) => {
         <div class="text-xs opacity-70 mt-2">{{ nodePickerHint }}</div>
       </div>
 
-      <n-menu
-        :value="activeKey"
-        :options="menuOptions"
-        :expanded-keys="expandedKeys"
-        @update:value="navigateMenu"
-        @update:expanded-keys="onUpdateExpandedKeys"
-      />
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <n-menu
+          :value="activeKey"
+          :options="menuOptions"
+          :expanded-keys="expandedKeys"
+          @update:value="navigateMenu"
+          @update:expanded-keys="onUpdateExpandedKeys"
+        />
+      </div>
     </n-layout-sider>
 
-    <n-layout class="bg-transparent">
+    <n-layout class="bg-transparent" :class="isDesktop ? 'h-full min-h-0' : ''">
       <n-layout-header
         bordered
-        class="app-glass app-topbar px-4 sticky top-0 z-50"
+        class="app-glass app-topbar px-4"
+        :class="isDesktop ? 'shrink-0' : 'sticky top-0 z-50'"
       >
         <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
           <div class="flex items-center gap-3">
@@ -320,12 +333,29 @@ watch(nodeIdParam, (value) => {
         </div>
       </n-layout-header>
 
-      <n-layout content-style="padding: 16px" class="bg-transparent">
-        <div class="max-w-7xl mx-auto">
-          <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
-          <router-view />
+      <div
+        data-testid="app-shell-content"
+        class="bg-transparent"
+        :class="
+          isDesktop
+            ? isJobsWorkbench
+              ? 'flex-1 min-h-0 overflow-hidden'
+              : 'flex-1 min-h-0 overflow-y-auto'
+            : ''
+        "
+      >
+        <div class="p-4" :class="isDesktop && isJobsWorkbench ? 'h-full min-h-0 flex flex-col' : ''">
+          <div
+            class="max-w-7xl mx-auto w-full"
+            :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0 flex flex-col' : ''"
+          >
+            <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
+            <div :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0' : ''">
+              <router-view />
+            </div>
+          </div>
         </div>
-      </n-layout>
+      </div>
     </n-layout>
   </n-layout>
 

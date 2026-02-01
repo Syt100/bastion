@@ -210,7 +210,7 @@ function onSelectMore(key: string | number): void {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div :class="isDesktop ? 'h-full min-h-0 flex flex-col gap-4' : 'space-y-4'">
     <MobileTopBar v-if="!isDesktop" :title="job?.name ?? t('jobs.detail.title')" :back-to="`/n/${encodeURIComponent(nodeId)}/jobs`" />
 
     <n-card class="app-card" :bordered="false">
@@ -256,8 +256,10 @@ function onSelectMore(key: string | number): void {
       </n-tabs>
     </n-card>
 
-    <router-view v-if="jobId" />
-    <AppEmptyState v-else :title="t('common.noData')" />
+    <div data-testid="job-section-scroll" :class="isDesktop ? 'flex-1 min-h-0 overflow-y-auto' : ''">
+      <router-view v-if="jobId" />
+      <AppEmptyState v-else :title="t('common.noData')" />
+    </div>
 
     <n-modal v-model:show="inspectOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('common.json')">
       <div class="space-y-3">

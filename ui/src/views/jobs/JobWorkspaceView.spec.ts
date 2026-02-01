@@ -131,6 +131,24 @@ describe('JobWorkspaceView run drawer routing', () => {
     })
   })
 
+  it('uses an internal scroll region for section content on desktop', async () => {
+    const wrapper = mount(JobWorkspaceView, {
+      global: {
+        stubs: {
+          NodeContextTag: true,
+          MobileTopBar: true,
+          JobEditorModal: true,
+          JobDeployModal: true,
+          RunDetailPanel: { template: '<div />' },
+          'router-view': true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="job-section-scroll"]').classes()).toContain('overflow-y-auto')
+  })
+
   it('opens the run drawer when runId is present in the route', async () => {
     const wrapper = mount(JobWorkspaceView, {
       global: {
