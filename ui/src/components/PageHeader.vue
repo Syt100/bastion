@@ -12,7 +12,10 @@ defineProps<{
         <slot name="prefix" />
       </div>
       <div class="space-y-1 min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
+        <div class="flex items-center gap-2 flex-wrap">
+          <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
+          <slot name="titleSuffix" />
+        </div>
         <div v-if="$slots.subtitle" class="min-w-0">
           <slot name="subtitle" />
         </div>

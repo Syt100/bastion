@@ -119,7 +119,7 @@ watch(showArchived, () => void refresh())
       :title="t('jobs.title')"
       :subtitle="t('jobs.subtitle')"
     >
-      <template #prefix>
+      <template #titleSuffix>
         <NodeContextTag :node-id="nodeId" />
       </template>
 
@@ -158,43 +158,48 @@ watch(showArchived, () => void refresh())
             </template>
           </ListToolbar>
 
-          <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
-          <AppEmptyState
-            v-else-if="!jobs.loading && filteredJobs.length === 0"
-            :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
-            :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
-          >
-            <template #actions>
-              <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
-                {{ t('jobs.actions.create') }}
-              </n-button>
-              <n-button v-else size="small" @click="clearFilters">
-                {{ t('common.clear') }}
-              </n-button>
-            </template>
-          </AppEmptyState>
-
-          <div v-else class="divide-y divide-black/5 dark:divide-white/10">
-            <button
-              v-for="job in filteredJobs"
-              :key="job.id"
-              type="button"
-              class="app-list-row"
-              :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
-              @click="openJob(job.id)"
+          <div class="mt-3">
+            <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
+            <AppEmptyState
+              v-else-if="!jobs.loading && filteredJobs.length === 0"
+              :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
+              :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
             >
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="font-medium truncate">{{ job.name }}</div>
-                  <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                    {{ t('jobs.archived') }}
-                  </n-tag>
+              <template #actions>
+                <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
+                  {{ t('jobs.actions.create') }}
+                </n-button>
+                <n-button v-else size="small" @click="clearFilters">
+                  {{ t('common.clear') }}
+                </n-button>
+              </template>
+            </AppEmptyState>
+
+            <div v-else class="divide-y divide-black/5 dark:divide-white/10">
+              <button
+                v-for="job in filteredJobs"
+                :key="job.id"
+                type="button"
+                class="app-list-row"
+                :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
+                @click="openJob(job.id)"
+              >
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <div class="font-medium truncate">{{ job.name }}</div>
+                    <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                      {{ t('jobs.archived') }}
+                    </n-tag>
+                  </div>
+                  <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
+                    <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                      {{ formatNodeLabel(job.agent_id) }}
+                    </n-tag>
+                    <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
+                  </div>
                 </div>
-                <div class="text-xs opacity-70 mt-0.5 truncate">
-                  {{ formatNodeLabel(job.agent_id) }} · {{ job.schedule ?? t('jobs.scheduleMode.manual') }}
-                </div>
-              </div>
-            </button>
+              </button>
+            </div>
           </div>
         </n-card>
 
@@ -271,8 +276,11 @@ watch(showArchived, () => void refresh())
                     {{ t('jobs.archived') }}
                   </n-tag>
                 </div>
-                <div class="text-xs opacity-70 mt-0.5 truncate">
-                  {{ formatNodeLabel(job.agent_id) }} · {{ job.schedule ?? t('jobs.scheduleMode.manual') }}
+                <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
+                  <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                    {{ formatNodeLabel(job.agent_id) }}
+                  </n-tag>
+                  <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
                 </div>
               </div>
             </button>
@@ -286,4 +294,3 @@ watch(showArchived, () => void refresh())
     <JobEditorModal ref="editorModal" @saved="refresh" />
   </div>
 </template>
-
