@@ -1,33 +1,33 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { NSpin, useMessage } from 'naive-ui'
+import { NButton, NDropdown, NIcon, NSpin, NTag, useMessage } from 'naive-ui'
+import { EllipsisHorizontal } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type RunDetail, type RunEvent } from '@/stores/jobs'
 import { useOperationsStore, type Operation } from '@/stores/operations'
 import { formatToastError } from '@/lib/errors'
 import { copyText } from '@/lib/clipboard'
-
+import NodeContextTag from '@/components/NodeContextTag.vue'
+import RunDetailSummaryCard from '@/components/runs/RunDetailSummaryCard.vue'
+import RunDetailDetailsTabs from '@/components/runs/RunDetailDetailsTabs.vue'
 import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/jobs/RestoreWizardModal.vue'
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
 import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
-import RunDetailHeader from '@/components/runs/RunDetailHeader.vue'
-import RunDetailSummaryCard from '@/components/runs/RunDetailSummaryCard.vue'
-import RunDetailDetailsTabs from '@/components/runs/RunDetailDetailsTabs.vue'
+import { runStatusLabel } from '@/lib/runs'
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
+
+const props = defineProps<{
+  nodeId: string
+  runId: string
+}>()
 
 const { t } = useI18n()
 const message = useMessage()
 
 const jobs = useJobsStore()
 const operationsStore = useOperationsStore()
-const route = useRoute()
-const router = useRouter()
-
-const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
-const runId = computed(() => (typeof route.params.runId === 'string' ? route.params.runId : null))
 
 const loading = ref<boolean>(false)
 const run = ref<RunDetail | null>(null)
@@ -130,17 +130,14 @@ function connectWs(id: string, afterSeq: number, isReconnect: boolean): void {
 }
 
 async function refreshRunAndOps(): Promise<void> {
-  const id = runId.value
-  if (!id) return
+  const id = props.runId
   const [nextRun, nextOps] = await Promise.all([jobs.getRun(id), operationsStore.listRunOperations(id)])
   run.value = nextRun
   ops.value = nextOps
 }
 
 async function loadAll(): Promise<void> {
-  const id = runId.value
-  if (!id) return
-
+  const id = props.runId
   loading.value = true
   run.value = null
   ops.value = []
@@ -186,29 +183,21 @@ async function loadAll(): Promise<void> {
 }
 
 function openRestore(): void {
-  const id = runId.value
-  if (!id) return
-  restoreModal.value?.open(id, { defaultNodeId: nodeId.value })
+  restoreModal.value?.open(props.runId, { defaultNodeId: props.nodeId })
 }
 
 function openVerify(): void {
-  const id = runId.value
-  if (!id) return
-  verifyModal.value?.open(id)
+  verifyModal.value?.open(props.runId)
 }
 
 function reconnectEventsWs(): void {
-  const id = runId.value
-  if (!id) return
   reconnectAttempts = 0
   allowReconnect = true
-  connectWs(id, lastSeq, true)
+  connectWs(props.runId, lastSeq, true)
 }
 
 async function copyRunId(): Promise<void> {
-  const id = runId.value
-  if (!id) return
-  const ok = await copyText(id)
+  const ok = await copyText(props.runId)
   if (ok) message.success(t('messages.copied'))
   else message.error(t('errors.copyFailed'))
 }
@@ -217,12 +206,8 @@ async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
 
-function backToJobs(): void {
-  void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs`)
-}
-
 watch(
-  runId,
+  () => props.runId,
   (id) => {
     allowReconnect = false
     closeSocket()
@@ -237,23 +222,62 @@ onBeforeUnmount(() => {
   closeSocket()
   stopPolling()
 })
+
+const canRestore = computed(() => run.value?.status === 'success')
+const canVerify = computed(() => run.value?.status === 'success')
+
+function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'rejected') return 'warning'
+  if (status === 'running') return 'warning'
+  return 'default'
+}
 </script>
 
 <template>
-  <div class="space-y-3" data-testid="run-detail">
-    <run-detail-header
-      :run-id="runId"
-      :node-id="nodeId"
-      :status="run?.status ?? null"
-      :loading="loading"
-      :can-restore="run?.status === 'success'"
-      :can-verify="run?.status === 'success'"
-      @back="backToJobs"
-      @refresh="loadAll"
-      @restore="openRestore"
-      @verify="openVerify"
-      @copy-run-id="copyRunId"
-    />
+  <div class="space-y-3" data-testid="run-detail-panel">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <NodeContextTag :node-id="props.nodeId" />
+          <n-tag v-if="run?.status" size="small" :bordered="false" :type="statusTagType(run.status)">
+            {{ runStatusLabel(t, run.status) }}
+          </n-tag>
+        </div>
+
+        <div class="mt-2 flex items-center gap-2 min-w-0 text-sm opacity-70">
+          <span class="font-mono tabular-nums truncate">{{ props.runId }}</span>
+          <n-button size="tiny" quaternary @click="copyRunId">{{ t('common.copy') }}</n-button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <n-button size="small" :loading="loading" @click="loadAll">{{ t('common.refresh') }}</n-button>
+        <n-button size="small" type="primary" :disabled="!canRestore" @click="openRestore">
+          {{ t('runs.actions.restore') }}
+        </n-button>
+
+        <n-dropdown
+          trigger="click"
+          :options="[
+            {
+              label: t('runs.actions.verify'),
+              key: 'verify',
+              disabled: !canVerify,
+            },
+          ]"
+          @select="(key) => (key === 'verify' ? openVerify() : null)"
+        >
+          <n-button size="small" quaternary>
+            <template #icon>
+              <n-icon :component="EllipsisHorizontal" />
+            </template>
+            {{ t('common.more') }}
+          </n-button>
+        </n-dropdown>
+      </div>
+    </div>
 
     <n-spin v-if="loading" size="small" />
 
@@ -266,7 +290,7 @@ onBeforeUnmount(() => {
       </div>
 
       <run-detail-details-tabs
-        :run-id="runId"
+        :run-id="props.runId"
         :events="events"
         :ops="ops"
         :ws-status="wsStatus"
@@ -281,3 +305,4 @@ onBeforeUnmount(() => {
     <operation-modal ref="opModal" />
   </div>
 </template>
+

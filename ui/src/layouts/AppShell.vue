@@ -59,6 +59,9 @@ const menuPath = computed(() => (route.path.startsWith('/n/') ? route.path.repla
 const nodeSuffix = computed(() => {
   if (!route.path.startsWith('/n/')) return null
   const suffix = route.path.replace(/^\/n\/[^/]+/, '')
+  // Job-scoped URLs include job/run ids which are not meaningful across nodes.
+  // When switching node from within a job context, return to the node-scoped jobs workspace.
+  if (suffix.startsWith('/jobs/')) return '/jobs'
   return suffix === '' ? '/jobs' : suffix
 })
 const selectedNodeId = computed({

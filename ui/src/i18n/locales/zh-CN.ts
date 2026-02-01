@@ -322,6 +322,16 @@ const messages = {
   jobs: {
     title: '备份任务',
     subtitle: '创建并调度备份任务',
+    workspace: {
+      emptyTitle: '请选择一个任务',
+      emptyDescription: '从列表中选择任务以进入任务工作台。',
+      quickLinks: '快捷入口',
+      sections: {
+        overview: '概览',
+        history: '历史',
+        data: '数据',
+      },
+    },
     empty: {
       title: '暂无任务',
       description: '先创建一个任务以开始运行备份。',

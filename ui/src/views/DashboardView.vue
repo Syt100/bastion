@@ -59,8 +59,10 @@ function nodeLabel(row: { node_id: string; node_name?: string | null }): string 
   return row.node_name?.trim() || row.node_id
 }
 
-function openRun(row: { run_id: string; node_id: string }): void {
-  void router.push(`/n/${encodeURIComponent(row.node_id)}/runs/${encodeURIComponent(row.run_id)}`)
+function openRun(row: { run_id: string; node_id: string; job_id: string }): void {
+  void router.push(
+    `/n/${encodeURIComponent(row.node_id)}/jobs/${encodeURIComponent(row.job_id)}/history/runs/${encodeURIComponent(row.run_id)}`,
+  )
 }
 
 function openOfflineAgents(): void {

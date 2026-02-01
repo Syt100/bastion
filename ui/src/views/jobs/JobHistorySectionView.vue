@@ -78,7 +78,11 @@ watch(
 )
 
 function openRunDetail(runId: string): void {
-  void router.push(`/n/${encodeURIComponent(ctx.nodeId.value)}/runs/${encodeURIComponent(runId)}`)
+  const jobId = ctx.jobId.value
+  if (!jobId) return
+  void router.push(
+    `/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(jobId)}/history/runs/${encodeURIComponent(runId)}`,
+  )
 }
 
 async function openRunEvents(runId: string): Promise<void> {
@@ -107,7 +111,11 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
         { size: 8, align: 'center', wrapItem: false },
         {
           default: () => [
-            h(NTag, { type: statusTagType(row.status), size: 'small', bordered: false }, { default: () => runStatusLabel(t, row.status) }),
+            h(
+              NTag,
+              { type: statusTagType(row.status), size: 'small', bordered: false },
+              { default: () => runStatusLabel(t, row.status) },
+            ),
             row.executed_offline
               ? h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => t('runs.badges.offline') })
               : null,
@@ -163,7 +171,7 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
   <div class="space-y-3">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
       <n-card size="small" class="app-card" :bordered="false">
-        <div class="text-xs opacity-70">{{ t('jobs.detail.tabs.runs') }}</div>
+        <div class="text-xs opacity-70">{{ t('jobs.workspace.sections.history') }}</div>
         <div class="mt-2 text-3xl font-semibold tabular-nums">{{ runs.length }}</div>
       </n-card>
 
@@ -252,3 +260,4 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
     <OperationModal ref="opModal" />
   </div>
 </template>
+

@@ -3,13 +3,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 const AppShell = () => import('@/layouts/AppShell.vue')
 const AgentsView = () => import('@/views/AgentsView.vue')
 const DashboardView = () => import('@/views/DashboardView.vue')
-const JobsView = () => import('@/views/JobsView.vue')
-const JobSnapshotsView = () => import('@/views/JobSnapshotsView.vue')
-const JobDetailShellView = () => import('@/views/jobs/JobDetailShellView.vue')
-const JobDetailRunsView = () => import('@/views/jobs/JobDetailRunsView.vue')
-const JobDetailRetentionView = () => import('@/views/jobs/JobDetailRetentionView.vue')
-const JobDetailSettingsView = () => import('@/views/jobs/JobDetailSettingsView.vue')
-const RunDetailView = () => import('@/views/RunDetailView.vue')
+const JobsWorkspaceShellView = () => import('@/views/jobs/JobsWorkspaceShellView.vue')
+const JobWorkspaceView = () => import('@/views/jobs/JobWorkspaceView.vue')
+const JobOverviewSectionView = () => import('@/views/jobs/JobOverviewSectionView.vue')
+const JobHistorySectionView = () => import('@/views/jobs/JobHistorySectionView.vue')
+const JobDataSectionView = () => import('@/views/jobs/JobDataSectionView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
 const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
@@ -29,6 +27,8 @@ const SetupView = () => import('@/views/SetupView.vue')
 import { pinia } from '@/pinia'
 import { useAuthStore } from '@/stores/auth'
 
+const EmptyView = { render: () => null }
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -44,19 +44,39 @@ const router = createRouter({
           path: 'n/:nodeId',
           children: [
             { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
-            { path: 'jobs', component: JobsView, meta: { titleKey: 'jobs.title' } },
             {
-              path: 'jobs/:jobId',
-              component: JobDetailShellView,
-              meta: { titleKey: 'jobs.detail.title' },
+              path: 'jobs',
+              component: JobsWorkspaceShellView,
+              meta: { titleKey: 'jobs.title' },
               children: [
-                { path: '', component: JobDetailRunsView, meta: { titleKey: 'runs.title' } },
-                { path: 'snapshots', component: JobSnapshotsView, props: { embedded: true }, meta: { titleKey: 'snapshots.title' } },
-                { path: 'retention', component: JobDetailRetentionView, meta: { titleKey: 'jobs.retention.title' } },
-                { path: 'settings', component: JobDetailSettingsView, meta: { titleKey: 'jobs.detail.tabs.settings' } },
+                {
+                  path: ':jobId',
+                  component: JobWorkspaceView,
+                  meta: { titleKey: 'jobs.detail.title' },
+                  children: [
+                    { path: '', redirect: 'overview' },
+                    {
+                      path: 'overview',
+                      component: JobOverviewSectionView,
+                      meta: { titleKey: 'jobs.workspace.sections.overview' },
+                      children: [{ path: 'runs/:runId', component: EmptyView, meta: { titleKey: 'runs.title' } }],
+                    },
+                    {
+                      path: 'history',
+                      component: JobHistorySectionView,
+                      meta: { titleKey: 'jobs.workspace.sections.history' },
+                      children: [{ path: 'runs/:runId', component: EmptyView, meta: { titleKey: 'runs.title' } }],
+                    },
+                    {
+                      path: 'data',
+                      component: JobDataSectionView,
+                      meta: { titleKey: 'jobs.workspace.sections.data' },
+                      children: [{ path: 'runs/:runId', component: EmptyView, meta: { titleKey: 'runs.title' } }],
+                    },
+                  ],
+                },
               ],
             },
-            { path: 'runs/:runId', component: RunDetailView, meta: { titleKey: 'runs.title' } },
             {
               path: 'settings',
               component: SettingsShellView,

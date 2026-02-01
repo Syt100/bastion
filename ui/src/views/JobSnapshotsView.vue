@@ -92,7 +92,11 @@ const deleteLogEvents = ref<SnapshotDeleteEvent[]>([])
 const ignoreReason = ref('')
 
 function openRunDetail(runId: string): void {
-  void router.push(`/n/${encodeURIComponent(nodeIdOrHub.value)}/runs/${encodeURIComponent(runId)}`)
+  const job = jobId.value
+  if (!job) return
+  void router.push(
+    `/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(job)}/data/runs/${encodeURIComponent(runId)}`,
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

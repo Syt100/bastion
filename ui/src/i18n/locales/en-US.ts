@@ -322,6 +322,16 @@ const messages = {
   jobs: {
     title: 'Jobs',
     subtitle: 'Create and schedule backup jobs',
+    workspace: {
+      emptyTitle: 'Select a job',
+      emptyDescription: 'Choose a job from the list to view its workspace.',
+      quickLinks: 'Quick links',
+      sections: {
+        overview: 'Overview',
+        history: 'History',
+        data: 'Data',
+      },
+    },
     empty: {
       title: 'No jobs yet',
       description: 'Create your first job to start running backups.',
