@@ -168,14 +168,12 @@ watch(
 <template>
   <n-card class="app-card" :bordered="false" data-testid="job-retention-panel">
     <template #header>
-      <div class="flex items-center justify-between gap-3">
-        <div class="text-sm font-medium">{{ t('jobs.retention.title') }}</div>
-        <n-switch v-model:value="form.enabled" />
-      </div>
+      <div class="text-sm font-medium">{{ t('jobs.retention.title') }}</div>
     </template>
 
     <template #header-extra>
       <div class="flex items-center gap-2">
+        <n-switch v-model:value="form.enabled" />
         <n-button
           data-testid="job-retention-refresh"
           size="small"
