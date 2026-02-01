@@ -1039,6 +1039,7 @@ const messages = {
   runs: {
     title: 'Runs',
     latestRun: 'Latest run',
+    neverRan: 'Never ran',
     statuses: {
       queued: 'Queued',
       running: 'Running',

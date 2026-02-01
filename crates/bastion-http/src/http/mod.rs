@@ -475,4 +475,7 @@ mod jobs_archive_tests;
 mod retention_tests;
 
 #[cfg(test)]
+mod jobs_list_tests;
+
+#[cfg(test)]
 mod dashboard_tests;

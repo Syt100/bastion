@@ -1039,6 +1039,7 @@ const messages = {
   runs: {
     title: '运行记录',
     latestRun: '最近一次运行',
+    neverRan: '从未运行',
     statuses: {
       queued: '排队中',
       running: '运行中',

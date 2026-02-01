@@ -18,6 +18,10 @@ export type JobListItem = {
   created_at: number
   updated_at: number
   archived_at?: number | null
+  latest_run_id?: string | null
+  latest_run_status?: RunStatus | null
+  latest_run_started_at?: number | null
+  latest_run_ended_at?: number | null
 }
 
 export type JobDetail = JobListItem & {

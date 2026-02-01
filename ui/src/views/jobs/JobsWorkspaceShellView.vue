@@ -8,11 +8,14 @@ import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
-import { useJobsStore, type JobListItem } from '@/stores/jobs'
+import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
+import { useUiStore } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { formatUnixSecondsYmdHm, useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 
 type JobSortKey = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc'
@@ -26,6 +29,9 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 
 const jobs = useJobsStore()
 const agents = useAgentsStore()
+const ui = useUiStore()
+
+const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 const selectedJobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
@@ -97,6 +103,13 @@ function formatNodeLabel(agentId: string | null): string {
   if (!agentId) return t('jobs.nodes.hub')
   const agent = agents.items.find((a) => a.id === agentId)
   return agent?.name ?? agentId
+}
+
+function runStatusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'rejected') return 'warning'
+  return 'default'
 }
 
 onMounted(async () => {
@@ -202,6 +215,28 @@ watch(showArchived, () => void refresh())
                     <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
                   </div>
                 </div>
+
+                <div class="shrink-0 flex flex-col items-end gap-1 text-right">
+                  <n-tag
+                    v-if="job.latest_run_status"
+                    size="small"
+                    :bordered="false"
+                    :type="runStatusTagType(job.latest_run_status)"
+                  >
+                    {{ runStatusLabel(t, job.latest_run_status) }}
+                  </n-tag>
+                  <n-tag v-else size="small" :bordered="false">
+                    {{ t('runs.neverRan') }}
+                  </n-tag>
+
+                  <div
+                    v-if="job.latest_run_started_at != null"
+                    class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
+                    :title="formatUnixSeconds(job.latest_run_started_at)"
+                  >
+                    {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                  </div>
+                </div>
               </button>
             </div>
           </div>
@@ -287,6 +322,28 @@ watch(showArchived, () => void refresh())
                     {{ formatNodeLabel(job.agent_id) }}
                   </n-tag>
                   <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
+                </div>
+              </div>
+
+              <div class="shrink-0 flex flex-col items-end gap-1 text-right">
+                <n-tag
+                  v-if="job.latest_run_status"
+                  size="small"
+                  :bordered="false"
+                  :type="runStatusTagType(job.latest_run_status)"
+                >
+                  {{ runStatusLabel(t, job.latest_run_status) }}
+                </n-tag>
+                <n-tag v-else size="small" :bordered="false">
+                  {{ t('runs.neverRan') }}
+                </n-tag>
+
+                <div
+                  v-if="job.latest_run_started_at != null"
+                  class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
+                  :title="formatUnixSeconds(job.latest_run_started_at)"
+                >
+                  {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
                 </div>
               </div>
             </button>

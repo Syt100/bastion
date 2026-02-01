@@ -7,6 +7,7 @@ use tower_cookies::Cookies;
 
 use bastion_storage::hub_runtime_config_repo;
 use bastion_storage::jobs_repo;
+use bastion_storage::runs_repo;
 use bastion_storage::{artifact_delete_repo, run_artifacts_repo};
 
 use super::super::agents::send_node_config_snapshot;
@@ -120,6 +121,10 @@ pub(in crate::http) struct JobListItem {
     created_at: i64,
     updated_at: i64,
     archived_at: Option<i64>,
+    latest_run_id: Option<String>,
+    latest_run_status: Option<runs_repo::RunStatus>,
+    latest_run_started_at: Option<i64>,
+    latest_run_ended_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,27 +140,98 @@ pub(in crate::http) async fn list_jobs(
     let _session = require_session(&state, &cookies).await?;
 
     let include_archived = q.include_archived.unwrap_or(false);
-    let jobs = if include_archived {
-        jobs_repo::list_jobs_including_archived(&state.db).await?
+
+    let rows = if include_archived {
+        sqlx::query(
+            r#"
+            SELECT
+              j.id,
+              j.name,
+              j.agent_id,
+              j.schedule,
+              j.schedule_timezone,
+              j.overlap_policy,
+              j.created_at,
+              j.updated_at,
+              j.archived_at,
+              r.id AS latest_run_id,
+              r.status AS latest_run_status,
+              r.started_at AS latest_run_started_at,
+              r.ended_at AS latest_run_ended_at
+            FROM jobs j
+            LEFT JOIN runs r
+              ON r.id = (
+                SELECT id FROM runs
+                WHERE job_id = j.id
+                ORDER BY started_at DESC
+                LIMIT 1
+              )
+            ORDER BY j.created_at DESC
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await?
     } else {
-        jobs_repo::list_jobs(&state.db).await?
+        sqlx::query(
+            r#"
+            SELECT
+              j.id,
+              j.name,
+              j.agent_id,
+              j.schedule,
+              j.schedule_timezone,
+              j.overlap_policy,
+              j.created_at,
+              j.updated_at,
+              j.archived_at,
+              r.id AS latest_run_id,
+              r.status AS latest_run_status,
+              r.started_at AS latest_run_started_at,
+              r.ended_at AS latest_run_ended_at
+            FROM jobs j
+            LEFT JOIN runs r
+              ON r.id = (
+                SELECT id FROM runs
+                WHERE job_id = j.id
+                ORDER BY started_at DESC
+                LIMIT 1
+              )
+            WHERE j.archived_at IS NULL
+            ORDER BY j.created_at DESC
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await?
     };
 
-    Ok(Json(
-        jobs.into_iter()
-            .map(|j| JobListItem {
-                id: j.id,
-                name: j.name,
-                agent_id: j.agent_id,
-                schedule: j.schedule,
-                schedule_timezone: j.schedule_timezone,
-                overlap_policy: j.overlap_policy,
-                created_at: j.created_at,
-                updated_at: j.updated_at,
-                archived_at: j.archived_at,
-            })
-            .collect(),
-    ))
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let overlap_policy = row
+            .get::<String, _>("overlap_policy")
+            .parse::<jobs_repo::OverlapPolicy>()?;
+        let latest_run_status = row
+            .get::<Option<String>, _>("latest_run_status")
+            .map(|s| s.parse::<runs_repo::RunStatus>())
+            .transpose()?;
+
+        out.push(JobListItem {
+            id: row.get::<String, _>("id"),
+            name: row.get::<String, _>("name"),
+            agent_id: row.get::<Option<String>, _>("agent_id"),
+            schedule: row.get::<Option<String>, _>("schedule"),
+            schedule_timezone: row.get::<String, _>("schedule_timezone"),
+            overlap_policy,
+            created_at: row.get::<i64, _>("created_at"),
+            updated_at: row.get::<i64, _>("updated_at"),
+            archived_at: row.get::<Option<i64>, _>("archived_at"),
+            latest_run_id: row.get::<Option<String>, _>("latest_run_id"),
+            latest_run_status,
+            latest_run_started_at: row.get::<Option<i64>, _>("latest_run_started_at"),
+            latest_run_ended_at: row.get::<Option<i64>, _>("latest_run_ended_at"),
+        });
+    }
+
+    Ok(Json(out))
 }
 
 pub(in crate::http) async fn create_job(
