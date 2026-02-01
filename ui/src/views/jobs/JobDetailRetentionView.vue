@@ -4,6 +4,7 @@ import {
   NAlert,
   NButton,
   NCard,
+  NIcon,
   NForm,
   NFormItem,
   NInputNumber,
@@ -11,6 +12,7 @@ import {
   NSpin,
   useMessage,
 } from 'naive-ui'
+import { RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import { useJobsStore, type RetentionPolicy, type RetentionPreviewResponse } from '@/stores/jobs'
@@ -164,18 +166,41 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-3">
-    <div class="flex items-center justify-end gap-2">
-      <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-      <n-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</n-button>
-    </div>
+  <n-card class="app-card" :bordered="false" data-testid="job-retention-panel">
+    <template #header>
+      <div class="flex items-center justify-between gap-3">
+        <div class="text-sm font-medium">{{ t('jobs.retention.title') }}</div>
+        <n-switch v-model:value="form.enabled" />
+      </div>
+    </template>
 
-    <n-card class="app-card">
-      <div class="space-y-3">
-        <div class="flex items-center justify-between gap-3">
-          <div class="text-sm font-medium">{{ t('jobs.retention.title') }}</div>
-          <n-switch v-model:value="form.enabled" />
-        </div>
+    <template #header-extra>
+      <div class="flex items-center gap-2">
+        <n-button
+          data-testid="job-retention-refresh"
+          size="small"
+          tertiary
+          :loading="loading"
+          :title="t('common.refresh')"
+          @click="refresh"
+        >
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+        </n-button>
+        <n-button
+          data-testid="job-retention-save"
+          size="small"
+          type="primary"
+          :loading="saving"
+          @click="save"
+        >
+          {{ t('common.save') }}
+        </n-button>
+      </div>
+    </template>
+
+    <div class="space-y-3">
 
         <div class="text-sm opacity-70">{{ t('jobs.retention.help') }}</div>
 
@@ -247,6 +272,5 @@ watch(
           </div>
         </div>
       </div>
-    </n-card>
-  </div>
+  </n-card>
 </template>

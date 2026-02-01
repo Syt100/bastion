@@ -326,6 +326,11 @@ const messages = {
       emptyTitle: '请选择一个任务',
       emptyDescription: '从列表中选择任务以进入任务工作台。',
       quickLinks: '快捷入口',
+      overview: {
+        runs7dTitle: '近7天运行',
+        runs7dTotal: '总计：{n}',
+        runs7dEmpty: '近7天暂无运行记录',
+      },
       sections: {
         overview: '概览',
         history: '历史',

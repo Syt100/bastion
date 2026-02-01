@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NDataTable, NIcon, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import AppEmptyState from '@/components/AppEmptyState.vue'
@@ -43,17 +44,6 @@ function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'wa
   if (status === 'rejected') return 'warning'
   return 'default'
 }
-
-const successCount = computed(() => runs.value.filter((r) => r.status === 'success').length)
-const failedCount = computed(() => runs.value.filter((r) => r.status === 'failed').length)
-const rejectedCount = computed(() => runs.value.filter((r) => r.status === 'rejected').length)
-const latestRun = computed(() => {
-  let best: RunListItem | null = null
-  for (const run of runs.value) {
-    if (!best || run.started_at > best.started_at) best = run
-  }
-  return best
-})
 
 async function refresh(): Promise<void> {
   const id = ctx.jobId.value
@@ -169,89 +159,78 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
 
 <template>
   <div class="space-y-3">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-      <n-card size="small" class="app-card" :bordered="false">
-        <div class="text-xs opacity-70">{{ t('jobs.workspace.sections.history') }}</div>
-        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ runs.length }}</div>
-      </n-card>
+    <n-card size="small" class="app-card" :bordered="false" data-testid="job-history-panel">
+      <template #header>
+        <div class="text-sm font-medium">{{ t('runs.title') }}</div>
+      </template>
 
-      <n-card size="small" class="app-card" :bordered="false">
-        <div class="text-xs opacity-70">{{ runStatusLabel(t, 'success') }}</div>
-        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ successCount }}</div>
-      </n-card>
+      <template #header-extra>
+        <n-button
+          data-testid="job-history-refresh"
+          size="small"
+          tertiary
+          :loading="loading"
+          :title="t('common.refresh')"
+          @click="refresh"
+        >
+          <template #icon>
+            <n-icon :component="RefreshOutline" />
+          </template>
+          <span v-if="isDesktop">{{ t('common.refresh') }}</span>
+        </n-button>
+      </template>
 
-      <n-card size="small" class="app-card" :bordered="false">
-        <div class="text-xs opacity-70">{{ runStatusLabel(t, 'failed') }}</div>
-        <div class="mt-2 text-3xl font-semibold tabular-nums">{{ failedCount }}</div>
-      </n-card>
+      <template v-if="!isDesktop">
+        <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
+        <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
 
-      <n-card size="small" class="app-card" :bordered="false">
-        <div class="text-xs opacity-70">{{ t('runs.latestRun') }}</div>
-        <div class="mt-2 flex items-center justify-between gap-3">
-          <n-tag size="small" :bordered="false" :type="latestRun ? statusTagType(latestRun.status) : 'default'">
-            {{ latestRun ? runStatusLabel(t, latestRun.status) : '-' }}
-          </n-tag>
-          <div class="font-mono tabular-nums text-sm truncate">
-            {{ latestRun ? formatUnixSeconds(latestRun.started_at) : '-' }}
-          </div>
-        </div>
-        <div v-if="rejectedCount > 0" class="mt-2 text-xs opacity-70 tabular-nums">
-          {{ runStatusLabel(t, 'rejected') }}: {{ rejectedCount }}
-        </div>
-      </n-card>
-    </div>
-
-    <div class="flex items-center justify-end gap-2">
-      <n-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-    </div>
-
-    <div v-if="!isDesktop" class="space-y-3">
-      <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
-
-      <n-card
-        v-for="row in runs"
-        :key="row.id"
-        size="small"
-        class="app-card"
-      >
-        <template #header>
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="font-mono tabular-nums truncate">{{ row.id }}</div>
-              <div class="text-xs opacity-70 mt-0.5">
-                {{ formatUnixSeconds(row.started_at) }}
-                <span class="mx-1">→</span>
-                {{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}
+        <div v-else class="space-y-3">
+          <n-card
+            v-for="row in runs"
+            :key="row.id"
+            size="small"
+            class="app-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-mono tabular-nums truncate">{{ row.id }}</div>
+                  <div class="text-xs opacity-70 mt-0.5">
+                    {{ formatUnixSeconds(row.started_at) }}
+                    <span class="mx-1">→</span>
+                    {{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}
+                  </div>
+                </div>
+                <div class="flex flex-wrap justify-end gap-1">
+                  <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
+                  <n-tag v-if="row.executed_offline" size="small" :bordered="false" type="info">{{ t('runs.badges.offline') }}</n-tag>
+                </div>
               </div>
-            </div>
-            <div class="flex flex-wrap justify-end gap-1">
-              <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
-              <n-tag v-if="row.executed_offline" size="small" :bordered="false" type="info">{{ t('runs.badges.offline') }}</n-tag>
-            </div>
-          </div>
-        </template>
+            </template>
 
-        <div v-if="row.error" class="text-xs text-red-600 truncate">{{ row.error }}</div>
+            <div v-if="row.error" class="text-xs text-red-600 truncate">{{ row.error }}</div>
 
-        <template #footer>
-          <div class="flex flex-wrap justify-end gap-2">
-            <n-button size="small" @click="openRunDetail(row.id)">{{ t('runs.actions.detail') }}</n-button>
-            <n-button size="small" @click="openRunEvents(row.id)">{{ t('runs.actions.events') }}</n-button>
-            <n-button size="small" :disabled="row.status !== 'success'" @click="openRestoreWizard(row.id)">{{ t('runs.actions.restore') }}</n-button>
-            <n-button size="small" :disabled="row.status !== 'success'" @click="openVerifyWizard(row.id)">{{ t('runs.actions.verify') }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </div>
+            <template #footer>
+              <div class="flex flex-wrap justify-end gap-2">
+                <n-button size="small" @click="openRunDetail(row.id)">{{ t('runs.actions.detail') }}</n-button>
+                <n-button size="small" @click="openRunEvents(row.id)">{{ t('runs.actions.events') }}</n-button>
+                <n-button size="small" :disabled="row.status !== 'success'" @click="openRestoreWizard(row.id)">{{ t('runs.actions.restore') }}</n-button>
+                <n-button size="small" :disabled="row.status !== 'success'" @click="openVerifyWizard(row.id)">{{ t('runs.actions.verify') }}</n-button>
+              </div>
+            </template>
+          </n-card>
+        </div>
+      </template>
 
-    <n-card v-else class="app-card">
-      <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
+      <template v-else>
+        <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
+        <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
 
-      <div v-else class="overflow-x-auto">
-        <n-data-table :loading="loading" :columns="columns" :data="runs" />
-      </div>
+        <div v-else class="overflow-x-auto">
+          <n-data-table :loading="loading" :columns="columns" :data="runs" />
+        </div>
+      </template>
     </n-card>
 
     <RunEventsModal ref="runEventsModal" />
@@ -260,4 +239,3 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
     <OperationModal ref="opModal" />
   </div>
 </template>
-
