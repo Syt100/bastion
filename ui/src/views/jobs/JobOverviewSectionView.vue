@@ -112,7 +112,6 @@ const metaArtifactFormat = computed<MetaCard>(() => {
     label: t('jobs.workspace.overview.cards.backupFormat'),
     value,
     tagType: value === 'archive_v1' ? 'info' : 'default',
-    mono: true,
   }
 })
 
