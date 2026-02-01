@@ -27,13 +27,6 @@ const job = computed(() => ctx.job.value)
 const runsLoading = ref<boolean>(false)
 const runs = ref<RunListItem[]>([])
 
-const overlapLabel = computed(() => {
-  const policy = job.value?.overlap_policy
-  if (policy === 'queue') return t('jobs.overlap.queue')
-  if (policy === 'reject') return t('jobs.overlap.reject')
-  return '-'
-})
-
 function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
@@ -82,6 +75,66 @@ const runs7dSuccess = computed(() => runs7d.value.filter((r) => r.status === 'su
 const runs7dFailed = computed(() => runs7d.value.filter((r) => r.status === 'failed').length)
 const runs7dRejected = computed(() => runs7d.value.filter((r) => r.status === 'rejected').length)
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+type MetaCard = {
+  label: string
+  value: string
+  tagType: 'default' | 'info' | 'success' | 'warning' | 'error'
+  hint?: string
+}
+
+const metaSourceType = computed<MetaCard>(() => {
+  const type = job.value?.spec?.type
+  if (type === 'filesystem') return { label: t('jobs.workspace.overview.cards.sourceType'), value: t('jobs.types.filesystem'), tagType: 'info' }
+  if (type === 'sqlite') return { label: t('jobs.workspace.overview.cards.sourceType'), value: t('jobs.types.sqlite'), tagType: 'warning' }
+  if (type === 'vaultwarden') return { label: t('jobs.workspace.overview.cards.sourceType'), value: t('jobs.types.vaultwarden'), tagType: 'default' }
+  return { label: t('jobs.workspace.overview.cards.sourceType'), value: type ? String(type) : '-', tagType: 'default' }
+})
+
+const metaTargetType = computed<MetaCard>(() => {
+  const spec = job.value?.spec as Record<string, unknown> | undefined
+  const target = isRecord(spec?.target) ? spec?.target : null
+  const type = isRecord(target) && typeof target.type === 'string' ? target.type : null
+  if (type === 'webdav') return { label: t('jobs.workspace.overview.cards.targetType'), value: t('jobs.targets.webdav'), tagType: 'info' }
+  if (type === 'local_dir') return { label: t('jobs.workspace.overview.cards.targetType'), value: t('jobs.targets.localDir'), tagType: 'default' }
+  return { label: t('jobs.workspace.overview.cards.targetType'), value: type ? String(type) : '-', tagType: 'default' }
+})
+
+const metaArtifactFormat = computed<MetaCard>(() => {
+  const spec = job.value?.spec as Record<string, unknown> | undefined
+  const pipeline = isRecord(spec?.pipeline) ? spec?.pipeline : null
+  const formatRaw = isRecord(pipeline) && typeof pipeline.format === 'string' ? pipeline.format : 'archive_v1'
+  const value = formatRaw === 'raw_tree_v1' ? 'raw_tree_v1' : 'archive_v1'
+  return {
+    label: t('jobs.workspace.overview.cards.backupFormat'),
+    value,
+    tagType: value === 'archive_v1' ? 'info' : 'default',
+    mono: true,
+  }
+})
+
+const metaEncryption = computed<MetaCard>(() => {
+  const spec = job.value?.spec as Record<string, unknown> | undefined
+  const pipeline = isRecord(spec?.pipeline) ? spec?.pipeline : null
+  const formatRaw = isRecord(pipeline) && typeof pipeline.format === 'string' ? pipeline.format : 'archive_v1'
+  const format = formatRaw === 'raw_tree_v1' ? 'raw_tree_v1' : 'archive_v1'
+
+  const enc = isRecord(pipeline) && isRecord(pipeline.encryption) ? pipeline.encryption : null
+  const encType = isRecord(enc) && typeof enc.type === 'string' ? enc.type : 'none'
+  const enabled = format !== 'raw_tree_v1' && encType === 'age_x25519'
+  const keyName = enabled && isRecord(enc) && typeof enc.key_name === 'string' && enc.key_name.trim() ? enc.key_name.trim() : 'default'
+
+  return {
+    label: t('jobs.workspace.overview.cards.encryption'),
+    value: enabled ? t('jobs.workspace.overview.encryption.enabled') : t('jobs.workspace.overview.encryption.disabled'),
+    tagType: enabled ? 'success' : 'default',
+    hint: enabled ? t('jobs.workspace.overview.encryption.key', { name: keyName }) : undefined,
+  }
+})
+
 function openLatestRun(): void {
   const id = ctx.jobId.value
   const r = latestRun.value
@@ -89,18 +142,6 @@ function openLatestRun(): void {
   void router.push(
     `/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(id)}/overview/runs/${encodeURIComponent(r.id)}`,
   )
-}
-
-function goHistory(): void {
-  const id = ctx.jobId.value
-  if (!id) return
-  void router.push(`/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(id)}/history`)
-}
-
-function goData(): void {
-  const id = ctx.jobId.value
-  if (!id) return
-  void router.push(`/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(id)}/data`)
 }
 </script>
 
@@ -169,30 +210,48 @@ function goData(): void {
         </div>
       </n-card>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <n-card size="small" class="app-card" :bordered="false">
-          <div class="text-xs opacity-70">{{ t('jobs.columns.schedule') }}</div>
-          <div class="mt-2 font-mono tabular-nums truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</div>
-          <div class="mt-1 text-xs opacity-70 truncate">{{ job.schedule_timezone }}</div>
-        </n-card>
-
-        <n-card size="small" class="app-card" :bordered="false">
-          <div class="text-xs opacity-70">{{ t('jobs.columns.overlap') }}</div>
-          <div class="mt-2 flex items-center gap-2">
-            <n-tag size="small" :bordered="false">{{ overlapLabel }}</n-tag>
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-source">
+          <div class="text-xs opacity-70">{{ metaSourceType.label }}</div>
+          <div class="mt-2">
+            <n-tag size="medium" :bordered="false" :type="metaSourceType.tagType" class="text-base">
+              {{ metaSourceType.value }}
+            </n-tag>
           </div>
         </n-card>
 
-        <n-card size="small" class="app-card" :bordered="false">
-          <div class="text-xs opacity-70">{{ t('jobs.columns.node') }}</div>
-          <div class="mt-2 font-medium truncate">{{ ctx.nodeId.value === 'hub' ? t('jobs.nodes.hub') : ctx.nodeId.value }}</div>
+        <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-target">
+          <div class="text-xs opacity-70">{{ metaTargetType.label }}</div>
+          <div class="mt-2">
+            <n-tag size="medium" :bordered="false" :type="metaTargetType.tagType" class="text-base">
+              {{ metaTargetType.value }}
+            </n-tag>
+          </div>
         </n-card>
 
-        <n-card size="small" class="app-card" :bordered="false">
-          <div class="text-xs opacity-70">{{ t('jobs.workspace.quickLinks') }}</div>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <n-button size="small" @click="goHistory">{{ t('jobs.workspace.sections.history') }}</n-button>
-            <n-button size="small" @click="goData">{{ t('jobs.workspace.sections.data') }}</n-button>
+        <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-format">
+          <div class="text-xs opacity-70">{{ metaArtifactFormat.label }}</div>
+          <div class="mt-2">
+            <n-tag
+              size="medium"
+              :bordered="false"
+              :type="metaArtifactFormat.tagType"
+              class="text-base font-mono"
+            >
+              {{ metaArtifactFormat.value }}
+            </n-tag>
+          </div>
+        </n-card>
+
+        <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-encryption">
+          <div class="text-xs opacity-70">{{ metaEncryption.label }}</div>
+          <div class="mt-2">
+            <n-tag size="medium" :bordered="false" :type="metaEncryption.tagType" class="text-base">
+              {{ metaEncryption.value }}
+            </n-tag>
+          </div>
+          <div v-if="metaEncryption.hint" class="mt-1 text-xs opacity-70 font-mono truncate">
+            {{ metaEncryption.hint }}
           </div>
         </n-card>
       </div>

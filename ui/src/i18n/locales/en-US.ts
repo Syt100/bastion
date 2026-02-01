@@ -330,6 +330,17 @@ const messages = {
         runs7dTitle: 'Runs (Last 7 Days)',
         runs7dTotal: 'Total: {n}',
         runs7dEmpty: 'No runs in the last 7 days',
+        cards: {
+          sourceType: 'Source',
+          targetType: 'Target',
+          backupFormat: 'Format',
+          encryption: 'Encryption',
+        },
+        encryption: {
+          enabled: 'Encrypted',
+          disabled: 'Unencrypted',
+          key: 'Key: {name}',
+        },
       },
       sections: {
         overview: 'Overview',

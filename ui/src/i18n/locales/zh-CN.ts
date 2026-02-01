@@ -330,6 +330,17 @@ const messages = {
         runs7dTitle: '近7天运行',
         runs7dTotal: '总计：{n}',
         runs7dEmpty: '近7天暂无运行记录',
+        cards: {
+          sourceType: '源类型',
+          targetType: '目标类型',
+          backupFormat: '备份格式',
+          encryption: '加密',
+        },
+        encryption: {
+          enabled: '已加密',
+          disabled: '未加密',
+          key: '密钥：{name}',
+        },
       },
       sections: {
         overview: '概览',

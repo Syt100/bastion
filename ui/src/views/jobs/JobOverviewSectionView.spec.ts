@@ -142,6 +142,50 @@ describe('JobOverviewSectionView run summary', () => {
     expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/job1/overview/runs/run1')
   })
 
+  it('renders config metadata cards and removes quick links', async () => {
+    jobsApi.listRuns.mockResolvedValue([])
+
+    const wrapper = mount(JobOverviewSectionView, {
+      global: {
+        provide: provideJobContext({
+          job: ref({
+            id: 'job1',
+            name: 'Job 1',
+            agent_id: null,
+            schedule: null,
+            schedule_timezone: 'UTC',
+            overlap_policy: 'queue',
+            created_at: 1,
+            updated_at: 2,
+            archived_at: null,
+            spec: {
+              v: 1,
+              type: 'filesystem',
+              pipeline: { format: 'archive_v1', encryption: { type: 'age_x25519', key_name: 'k1' } },
+              source: { paths: ['/data'] },
+              target: { type: 'webdav', base_url: 'https://dav.example.com', secret_name: 's', part_size_bytes: 1 },
+            },
+          }),
+        }),
+        stubs: {
+          AppEmptyState: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="job-overview-meta-source"]').text()).toContain('jobs.types.filesystem')
+    expect(wrapper.find('[data-testid="job-overview-meta-target"]').text()).toContain('jobs.targets.webdav')
+    expect(wrapper.find('[data-testid="job-overview-meta-format"]').text()).toContain('archive_v1')
+
+    const encryption = wrapper.find('[data-testid="job-overview-meta-encryption"]')
+    expect(encryption.text()).toContain('jobs.workspace.overview.encryption.enabled')
+    expect(encryption.text()).toContain('jobs.workspace.overview.encryption.key:{"name":"k1"}')
+
+    expect(wrapper.text()).not.toContain('jobs.workspace.quickLinks')
+  })
+
   it('shows empty/zero state and disables open action when no runs exist', async () => {
     jobsApi.listRuns.mockResolvedValue([])
 
@@ -162,4 +206,3 @@ describe('JobOverviewSectionView run summary', () => {
     expect(open.attributes('disabled')).toBeDefined()
   })
 })
-
