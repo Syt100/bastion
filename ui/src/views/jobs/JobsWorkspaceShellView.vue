@@ -8,6 +8,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
+import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
 import { useUiStore } from '@/stores/ui'
@@ -190,54 +191,54 @@ watch(showArchived, () => void refresh())
 
             <div
               v-else
-              data-testid="jobs-list-scroll"
-              class="h-full min-h-0 overflow-y-auto divide-y divide-black/5 dark:divide-white/10"
             >
-              <button
-                v-for="job in filteredJobs"
-                :key="job.id"
-                type="button"
-                class="app-list-row"
-                :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
-                @click="openJob(job.id)"
-              >
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <div class="font-medium truncate">{{ job.name }}</div>
-                    <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                      {{ t('jobs.archived') }}
-                    </n-tag>
+              <ScrollShadowPane data-testid="jobs-list-scroll" class="divide-y divide-black/5 dark:divide-white/10">
+                <button
+                  v-for="job in filteredJobs"
+                  :key="job.id"
+                  type="button"
+                  class="app-list-row"
+                  :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
+                  @click="openJob(job.id)"
+                >
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <div class="font-medium truncate">{{ job.name }}</div>
+                      <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                        {{ t('jobs.archived') }}
+                      </n-tag>
+                    </div>
+                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
+                      <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                        {{ formatNodeLabel(job.agent_id) }}
+                      </n-tag>
+                      <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
+                    </div>
                   </div>
-                  <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
-                    <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                      {{ formatNodeLabel(job.agent_id) }}
-                    </n-tag>
-                    <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
-                  </div>
-                </div>
 
-                <div class="shrink-0 flex flex-col items-end gap-1 text-right">
-                  <n-tag
-                    v-if="job.latest_run_status"
-                    size="small"
-                    :bordered="false"
-                    :type="runStatusTagType(job.latest_run_status)"
-                  >
-                    {{ runStatusLabel(t, job.latest_run_status) }}
-                  </n-tag>
-                  <n-tag v-else size="small" :bordered="false">
-                    {{ t('runs.neverRan') }}
-                  </n-tag>
+                  <div class="shrink-0 flex flex-col items-end gap-1 text-right">
+                    <n-tag
+                      v-if="job.latest_run_status"
+                      size="small"
+                      :bordered="false"
+                      :type="runStatusTagType(job.latest_run_status)"
+                    >
+                      {{ runStatusLabel(t, job.latest_run_status) }}
+                    </n-tag>
+                    <n-tag v-else size="small" :bordered="false">
+                      {{ t('runs.neverRan') }}
+                    </n-tag>
 
-                  <div
-                    v-if="job.latest_run_started_at != null"
-                    class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
-                    :title="formatUnixSeconds(job.latest_run_started_at)"
-                  >
-                    {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                    <div
+                      v-if="job.latest_run_started_at != null"
+                      class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
+                      :title="formatUnixSeconds(job.latest_run_started_at)"
+                    >
+                      {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </ScrollShadowPane>
             </div>
           </div>
         </n-card>

@@ -10,7 +10,7 @@ import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
 import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
 import RunEventsModal, { type RunEventsModalExpose } from '@/components/jobs/RunEventsModal.vue'
-import { useJobsStore, type RunListItem } from '@/stores/jobs'
+import { useJobsStore, type RunListItem, type RunStatus } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
@@ -32,6 +32,7 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const loading = ref<boolean>(false)
 const runs = ref<RunListItem[]>([])
+const statusFilter = ref<RunStatus | 'all'>('all')
 
 const restoreModal = ref<RestoreWizardModalExpose | null>(null)
 const verifyModal = ref<VerifyWizardModalExpose | null>(null)
@@ -90,6 +91,29 @@ function openVerifyWizard(runId: string): void {
 async function openOperation(opId: string): Promise<void> {
   await opModal.value?.open(opId)
 }
+
+const visibleRuns = computed<RunListItem[]>(() => {
+  const filter = statusFilter.value
+  if (filter === 'all') return runs.value
+  return runs.value.filter((r) => r.status === filter)
+})
+
+function statusChipButtonType(value: RunStatus | 'all'): 'default' | 'success' | 'error' | 'warning' | 'info' {
+  if (value === 'success') return 'success'
+  if (value === 'failed') return 'error'
+  if (value === 'rejected') return 'warning'
+  if (value === 'running' || value === 'queued') return 'info'
+  return 'default'
+}
+
+const statusChips = computed(() => [
+  { value: 'all' as const, label: t('runs.filters.all') },
+  { value: 'success' as const, label: runStatusLabel(t, 'success') },
+  { value: 'failed' as const, label: runStatusLabel(t, 'failed') },
+  { value: 'running' as const, label: runStatusLabel(t, 'running') },
+  { value: 'queued' as const, label: runStatusLabel(t, 'queued') },
+  { value: 'rejected' as const, label: runStatusLabel(t, 'rejected') },
+])
 
 const columns = computed<DataTableColumns<RunListItem>>(() => [
   {
@@ -161,32 +185,48 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
   <div class="space-y-3">
     <n-card size="small" class="app-card" :bordered="false" data-testid="job-history-panel">
       <template #header>
-        <div class="text-sm font-medium">{{ t('runs.title') }}</div>
-      </template>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="text-sm font-medium">{{ t('runs.title') }}</div>
 
-      <template #header-extra>
-        <n-button
-          data-testid="job-history-refresh"
-          size="small"
-          tertiary
-          :loading="loading"
-          :title="t('common.refresh')"
-          @click="refresh"
-        >
-          <template #icon>
-            <n-icon :component="RefreshOutline" />
-          </template>
-          <span v-if="isDesktop">{{ t('common.refresh') }}</span>
-        </n-button>
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+            <div class="flex flex-wrap justify-end gap-2">
+              <n-button
+                v-for="chip in statusChips"
+                :key="chip.value"
+                size="small"
+                :tertiary="statusFilter !== chip.value"
+                :secondary="statusFilter === chip.value"
+                :type="statusFilter === chip.value ? statusChipButtonType(chip.value) : 'default'"
+                @click="statusFilter = chip.value"
+              >
+                {{ chip.label }}
+              </n-button>
+            </div>
+
+            <n-button
+              data-testid="job-history-refresh"
+              size="small"
+              tertiary
+              :loading="loading"
+              :title="t('common.refresh')"
+              @click="refresh"
+            >
+              <template #icon>
+                <n-icon :component="RefreshOutline" />
+              </template>
+              <span v-if="isDesktop">{{ t('common.refresh') }}</span>
+            </n-button>
+          </div>
+        </div>
       </template>
 
       <template v-if="!isDesktop">
-        <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
-        <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
+        <AppEmptyState v-if="loading && visibleRuns.length === 0" :title="t('common.loading')" loading />
+        <AppEmptyState v-else-if="!loading && visibleRuns.length === 0" :title="t('common.noData')" />
 
         <div v-else class="space-y-3">
           <n-card
-            v-for="row in runs"
+            v-for="row in visibleRuns"
             :key="row.id"
             size="small"
             class="app-card"
@@ -224,11 +264,11 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
       </template>
 
       <template v-else>
-        <AppEmptyState v-if="loading && runs.length === 0" :title="t('common.loading')" loading />
-        <AppEmptyState v-else-if="!loading && runs.length === 0" :title="t('common.noData')" />
+        <AppEmptyState v-if="loading && visibleRuns.length === 0" :title="t('common.loading')" loading />
+        <AppEmptyState v-else-if="!loading && visibleRuns.length === 0" :title="t('common.noData')" />
 
         <div v-else class="overflow-x-auto">
-          <n-data-table :loading="loading" :columns="columns" :data="runs" />
+          <n-data-table :loading="loading" :columns="columns" :data="visibleRuns" />
         </div>
       </template>
     </n-card>

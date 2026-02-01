@@ -330,6 +330,16 @@ const messages = {
         runs7dTitle: 'Runs (Last 7 Days)',
         runs7dTotal: 'Total: {n}',
         runs7dEmpty: 'No runs in the last 7 days',
+        policy: {
+          schedule: 'Schedule',
+          timezone: 'Timezone',
+          overlap: 'Overlap',
+        },
+        format: {
+          archive: 'Archive',
+          rawTree: 'Raw tree',
+          code: 'Code: {code}',
+        },
         cards: {
           sourceType: 'Source',
           targetType: 'Target',
@@ -519,6 +529,7 @@ const messages = {
       maxDeletePerDay: 'Max deletes per day',
       preview: 'Preview',
       applyNow: 'Apply now',
+      guardrail: 'Warning: Apply queues snapshot deletions (this job only).',
       saveFirst: 'Save the job first to preview/apply',
       enableFirst: 'Enable retention first',
       applyOk: 'Queued {n} delete tasks (existing {existing}, skipped {skipped} due to limits)',
@@ -994,6 +1005,7 @@ const messages = {
     },
     deleteTaskExecutor: 'Executor: {node}',
     pinnedTooltip: 'Pinned: excluded from retention. Deleting requires force confirmation.',
+    selectionDeleteHint: 'Permanent delete: selected snapshots (this job only).',
     columns: {
       endedAt: 'Completed',
       status: 'Status',
@@ -1040,6 +1052,9 @@ const messages = {
     title: 'Runs',
     latestRun: 'Latest run',
     neverRan: 'Never ran',
+    filters: {
+      all: 'All',
+    },
     statuses: {
       queued: 'Queued',
       running: 'Running',

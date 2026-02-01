@@ -133,5 +133,37 @@ describe('JobHistorySectionView layout', () => {
     // Regression guard: the removed summary grid referenced the latest run label.
     expect(wrapper.text()).not.toContain('runs.latestRun')
   })
-})
 
+  it('filters runs by status when a filter chip is selected (mobile)', async () => {
+    stubMatchMedia(false)
+    jobsApi.listRuns.mockResolvedValue([
+      { id: 'run1', status: 'success', started_at: 1, ended_at: 2, error: null, executed_offline: false },
+      { id: 'run2', status: 'failed', started_at: 3, ended_at: 4, error: 'boom', executed_offline: false },
+    ])
+
+    const wrapper = mount(JobHistorySectionView, {
+      global: {
+        provide: provideJobContext(),
+        stubs: {
+          AppEmptyState: true,
+          RunEventsModal: true,
+          RestoreWizardModal: true,
+          VerifyWizardModal: true,
+          OperationModal: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('run1')
+    expect(wrapper.text()).toContain('run2')
+
+    const failedChip = wrapper.findAll('button').find((b) => b.text() === 'failed')
+    expect(failedChip).toBeTruthy()
+    await failedChip!.trigger('click')
+
+    expect(wrapper.text()).not.toContain('run1')
+    expect(wrapper.text()).toContain('run2')
+  })
+})

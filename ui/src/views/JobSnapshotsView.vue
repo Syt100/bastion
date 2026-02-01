@@ -632,7 +632,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
 
     <SelectionToolbar
       :count="checkedRowKeys.length"
-      :hint="t('common.selectionLoadedHint')"
+      :hint="t('snapshots.selectionDeleteHint')"
       @clear="checkedRowKeys = []"
     >
       <template #actions>

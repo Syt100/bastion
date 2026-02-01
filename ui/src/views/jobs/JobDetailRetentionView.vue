@@ -236,6 +236,10 @@ watch(
           <div v-if="!form.enabled" class="text-xs opacity-70">{{ t('jobs.retention.enableFirst') }}</div>
         </div>
 
+        <div class="text-xs text-amber-700/90 dark:text-amber-300/90">
+          {{ t('jobs.retention.guardrail') }}
+        </div>
+
         <n-alert v-if="error" type="error" :bordered="false">
           {{ error }}
         </n-alert>

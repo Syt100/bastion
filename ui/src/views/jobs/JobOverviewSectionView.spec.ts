@@ -152,7 +152,7 @@ describe('JobOverviewSectionView run summary', () => {
             id: 'job1',
             name: 'Job 1',
             agent_id: null,
-            schedule: null,
+            schedule: '0 0 * * *',
             schedule_timezone: 'UTC',
             overlap_policy: 'queue',
             created_at: 1,
@@ -175,9 +175,19 @@ describe('JobOverviewSectionView run summary', () => {
 
     await flushPromises()
 
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('jobs.workspace.overview.policy.schedule')
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('0 0 * * *')
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('jobs.workspace.overview.policy.timezone')
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('UTC')
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('jobs.workspace.overview.policy.overlap')
+    expect(wrapper.find('[data-testid="job-overview-policy-strip"]').text()).toContain('jobs.overlap.queue')
+
     expect(wrapper.find('[data-testid="job-overview-meta-source"]').text()).toContain('jobs.types.filesystem')
     expect(wrapper.find('[data-testid="job-overview-meta-target"]').text()).toContain('jobs.targets.webdav')
-    expect(wrapper.find('[data-testid="job-overview-meta-format"]').text()).toContain('archive_v1')
+    const format = wrapper.find('[data-testid="job-overview-meta-format"]')
+    expect(format.text()).toContain('jobs.workspace.overview.format.archive')
+    expect(format.text()).toContain('jobs.workspace.overview.format.code:{"code":"archive_v1"}')
 
     const encryption = wrapper.find('[data-testid="job-overview-meta-encryption"]')
     expect(encryption.text()).toContain('jobs.workspace.overview.encryption.enabled')

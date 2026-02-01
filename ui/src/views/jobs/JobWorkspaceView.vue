@@ -11,6 +11,7 @@ import AppEmptyState from '@/components/AppEmptyState.vue'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/JobDeployModal.vue'
 import RunDetailPanel from '@/components/runs/RunDetailPanel.vue'
+import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import { useJobsStore, type JobDetail } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
@@ -256,7 +257,17 @@ function onSelectMore(key: string | number): void {
       </n-tabs>
     </n-card>
 
-    <div data-testid="job-section-scroll" :class="isDesktop ? 'flex-1 min-h-0 overflow-y-auto' : ''">
+    <ScrollShadowPane
+      v-if="isDesktop"
+      wrapper-class="flex-1 min-h-0"
+      data-testid="job-section-scroll"
+      shadow-from="var(--app-bg-solid)"
+    >
+      <router-view v-if="jobId" />
+      <AppEmptyState v-else :title="t('common.noData')" />
+    </ScrollShadowPane>
+
+    <div v-else>
       <router-view v-if="jobId" />
       <AppEmptyState v-else :title="t('common.noData')" />
     </div>

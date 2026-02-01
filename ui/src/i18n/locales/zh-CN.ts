@@ -330,6 +330,16 @@ const messages = {
         runs7dTitle: '近7天运行',
         runs7dTotal: '总计：{n}',
         runs7dEmpty: '近7天暂无运行记录',
+        policy: {
+          schedule: '计划',
+          timezone: '时区',
+          overlap: '重叠',
+        },
+        format: {
+          archive: '归档',
+          rawTree: '原样文件树',
+          code: '代码：{code}',
+        },
         cards: {
           sourceType: '源类型',
           targetType: '目标类型',
@@ -519,6 +529,7 @@ const messages = {
       maxDeletePerDay: '每天最多删除（份）',
       preview: '预览',
       applyNow: '立即执行',
+      guardrail: '提示：立即执行将为本任务排队删除符合条件的快照。',
       saveFirst: '请先保存任务后再预览/执行',
       enableFirst: '请先启用保留策略',
       applyOk: '已创建 {n} 个删除任务（已有 {existing}，受限跳过 {skipped}）',
@@ -994,6 +1005,7 @@ const messages = {
     },
     deleteTaskExecutor: '执行节点：{node}',
     pinnedTooltip: '已固定：不会被保留策略自动清理；删除需要强制确认。',
+    selectionDeleteHint: '永久删除：所选快照（仅本任务）。',
     columns: {
       endedAt: '完成时间',
       status: '状态',
@@ -1040,6 +1052,9 @@ const messages = {
     title: '运行记录',
     latestRun: '最近一次运行',
     neverRan: '从未运行',
+    filters: {
+      all: '全部',
+    },
     statuses: {
       queued: '排队中',
       running: '运行中',

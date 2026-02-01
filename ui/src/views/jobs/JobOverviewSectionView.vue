@@ -108,10 +108,12 @@ const metaArtifactFormat = computed<MetaCard>(() => {
   const pipeline = isRecord(spec?.pipeline) ? spec?.pipeline : null
   const formatRaw = isRecord(pipeline) && typeof pipeline.format === 'string' ? pipeline.format : 'archive_v1'
   const value = formatRaw === 'raw_tree_v1' ? 'raw_tree_v1' : 'archive_v1'
+  const label = value === 'archive_v1' ? t('jobs.workspace.overview.format.archive') : t('jobs.workspace.overview.format.rawTree')
   return {
     label: t('jobs.workspace.overview.cards.backupFormat'),
-    value,
+    value: label,
     tagType: value === 'archive_v1' ? 'info' : 'default',
+    hint: t('jobs.workspace.overview.format.code', { code: value }),
   }
 })
 
@@ -209,6 +211,25 @@ function openLatestRun(): void {
         </div>
       </n-card>
 
+      <div data-testid="job-overview-policy-strip" class="flex flex-wrap items-center gap-2">
+        <n-tag size="small" :bordered="false">
+          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.schedule') }}:</span>
+          <span class="ml-1 font-mono tabular-nums">
+            {{ job.schedule ?? t('jobs.scheduleMode.manual') }}
+          </span>
+        </n-tag>
+
+        <n-tag v-if="job.schedule" size="small" :bordered="false">
+          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.timezone') }}:</span>
+          <span class="ml-1 font-mono tabular-nums">{{ job.schedule_timezone }}</span>
+        </n-tag>
+
+        <n-tag size="small" :bordered="false">
+          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.overlap') }}:</span>
+          <span class="ml-1">{{ job.overlap_policy === 'queue' ? t('jobs.overlap.queue') : t('jobs.overlap.reject') }}</span>
+        </n-tag>
+      </div>
+
       <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
         <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-source">
           <div class="text-xs opacity-70">{{ metaSourceType.label }}</div>
@@ -235,10 +256,13 @@ function openLatestRun(): void {
               size="medium"
               :bordered="false"
               :type="metaArtifactFormat.tagType"
-              class="text-base font-mono"
+              class="text-base"
             >
               {{ metaArtifactFormat.value }}
             </n-tag>
+          </div>
+          <div v-if="metaArtifactFormat.hint" class="mt-1 text-xs opacity-70 font-mono truncate">
+            {{ metaArtifactFormat.hint }}
           </div>
         </n-card>
 
