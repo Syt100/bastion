@@ -45,3 +45,119 @@ pub(super) fn write_entry_record(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::BufWriter;
+    use std::sync::{Arc, Mutex};
+
+    use tempfile::TempDir;
+
+    use bastion_core::manifest::HashAlgorithm;
+
+    use super::{EntryRecord, write_entry_record};
+
+    #[test]
+    fn write_entry_record_increments_count_and_writes_jsonl() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("entries.jsonl.zst");
+
+        let file = std::fs::File::create(&path).unwrap();
+        let writer = BufWriter::new(file);
+        let mut enc = zstd::Encoder::new(writer, 3).unwrap();
+
+        let mut count = 0u64;
+        write_entry_record(
+            &mut enc,
+            &mut count,
+            EntryRecord {
+                path: "a.txt".to_string(),
+                kind: "file".to_string(),
+                size: 5,
+                hash_alg: Some(HashAlgorithm::Blake3),
+                hash: Some("h".to_string()),
+                mtime: None,
+                mode: None,
+                uid: None,
+                gid: None,
+                xattrs: None,
+                symlink_target: None,
+                hardlink_group: None,
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(count, 1);
+
+        let _ = enc.finish().unwrap();
+
+        let raw = std::fs::read(&path).unwrap();
+        let decoded = zstd::decode_all(std::io::Cursor::new(raw)).unwrap();
+        let lines: Vec<&[u8]> = decoded
+            .split(|b| *b == b'\n')
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(lines.len(), 1);
+
+        let v: serde_json::Value = serde_json::from_slice(lines[0]).unwrap();
+        assert_eq!(v["path"], "a.txt");
+        assert_eq!(v["kind"], "file");
+        assert_eq!(v["size"], 5);
+        assert_eq!(v["hash_alg"], "blake3");
+        assert_eq!(v["hash"], "h");
+    }
+
+    #[test]
+    fn write_entry_record_can_update_progress_counters() {
+        use super::super::{FilesystemBuildProgressCtx, FilesystemBuildProgressUpdate};
+        use bastion_core::progress::ProgressUnitsV1;
+
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("entries.jsonl.zst");
+
+        let file = std::fs::File::create(&path).unwrap();
+        let writer = BufWriter::new(file);
+        let mut enc = zstd::Encoder::new(writer, 3).unwrap();
+
+        let last = Arc::new(Mutex::new(None::<FilesystemBuildProgressUpdate>));
+        let last_for_cb = last.clone();
+        let cb = move |u: FilesystemBuildProgressUpdate| {
+            *last_for_cb.lock().unwrap() = Some(u);
+        };
+
+        let mut progress =
+            FilesystemBuildProgressCtx::new("scan", Some(ProgressUnitsV1::default()), &cb);
+
+        let mut count = 0u64;
+        write_entry_record(
+            &mut enc,
+            &mut count,
+            EntryRecord {
+                path: "dir".to_string(),
+                kind: "dir".to_string(),
+                size: 0,
+                hash_alg: None,
+                hash: None,
+                mtime: None,
+                mode: None,
+                uid: None,
+                gid: None,
+                xattrs: None,
+                symlink_target: None,
+                hardlink_group: None,
+            },
+            Some(&mut progress),
+        )
+        .unwrap();
+        assert_eq!(count, 1);
+
+        // Force emit to avoid time-based throttling in tests.
+        progress.maybe_emit(true);
+
+        let got = last.lock().unwrap().clone().expect("progress update");
+        assert_eq!(got.stage, "scan");
+        assert_eq!(got.done.dirs, 1);
+        assert_eq!(got.done.files, 0);
+        assert_eq!(got.done.bytes, 0);
+    }
+}
