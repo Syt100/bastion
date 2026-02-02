@@ -142,3 +142,184 @@ pub(super) async fn ensure_complete(access: &TargetAccess) -> Result<(), anyhow:
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use bastion_storage::{db, jobs_repo, runs_repo, secrets::SecretsCrypto};
+    use url::Url;
+
+    use super::{TargetAccess, ensure_complete, redact_url, resolve_success_run_access};
+
+    #[test]
+    fn redact_url_strips_credentials_query_and_fragment() {
+        let url =
+            Url::parse("https://user:pass@example.com/base/path?q=1#frag").expect("parse url");
+        let redacted = redact_url(&url);
+        let parsed = Url::parse(&redacted).expect("parse redacted");
+        assert_eq!(parsed.username(), "");
+        assert!(parsed.password().is_none());
+        assert!(parsed.query().is_none());
+        assert!(parsed.fragment().is_none());
+        assert_eq!(parsed.path(), "/base/path");
+    }
+
+    #[tokio::test]
+    async fn ensure_complete_local_dir_requires_complete_marker() {
+        let tmp = TempDir::new().unwrap();
+        let run_dir = tmp.path().join("job1").join("run1");
+        std::fs::create_dir_all(&run_dir).unwrap();
+
+        let err = ensure_complete(&TargetAccess::LocalDir { run_dir })
+            .await
+            .unwrap_err();
+        assert!(format!("{err:#}").contains("complete.json not found"));
+    }
+
+    #[tokio::test]
+    async fn resolve_success_run_access_local_dir_happy_path() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+        let crypto = SecretsCrypto::load_or_create(tmp.path()).unwrap();
+
+        let base_dir = tmp.path().join("artifacts");
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job1",
+            None,
+            None,
+            Some("UTC"),
+            jobs_repo::OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "paths": ["/"] },
+                "target": { "type": "local_dir", "base_dir": base_dir.to_string_lossy().to_string() }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Success,
+            1,
+            Some(2),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let run_dir = base_dir.join(&job.id).join(&run.id);
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join(crate::backup::COMPLETE_NAME), b"{}").unwrap();
+
+        let resolved = resolve_success_run_access(&pool, &crypto, &run.id)
+            .await
+            .unwrap();
+
+        match resolved.access {
+            TargetAccess::LocalDir { run_dir: got } => {
+                assert_eq!(got, run_dir);
+            }
+            other => panic!("unexpected access variant: {other:?}"),
+        }
+        assert_eq!(resolved.run.id, run.id);
+    }
+
+    #[tokio::test]
+    async fn resolve_success_run_access_rejects_non_success_runs() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+        let crypto = SecretsCrypto::load_or_create(tmp.path()).unwrap();
+
+        let base_dir = tmp.path().join("artifacts");
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job1",
+            None,
+            None,
+            Some("UTC"),
+            jobs_repo::OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "paths": ["/"] },
+                "target": { "type": "local_dir", "base_dir": base_dir.to_string_lossy().to_string() }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Failed,
+            1,
+            Some(2),
+            None,
+            Some("boom"),
+        )
+        .await
+        .unwrap();
+
+        let err = resolve_success_run_access(&pool, &crypto, &run.id)
+            .await
+            .err()
+            .expect("expected error");
+        assert!(format!("{err:#}").contains("run is not successful"));
+    }
+
+    #[tokio::test]
+    async fn resolve_success_run_access_webdav_requires_secret() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+        let crypto = SecretsCrypto::load_or_create(tmp.path()).unwrap();
+
+        let job = jobs_repo::create_job(
+            &pool,
+            "job1",
+            None,
+            None,
+            Some("UTC"),
+            jobs_repo::OverlapPolicy::Queue,
+            serde_json::json!({
+                "v": 1,
+                "type": "filesystem",
+                "source": { "paths": ["/"] },
+                "target": {
+                    "type": "webdav",
+                    "base_url": "https://example.com/base/",
+                    "secret_name": "primary"
+                }
+            }),
+        )
+        .await
+        .unwrap();
+
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Success,
+            1,
+            Some(2),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let err = resolve_success_run_access(&pool, &crypto, &run.id)
+            .await
+            .err()
+            .expect("expected error");
+        assert!(format!("{err:#}").contains("missing webdav secret"));
+    }
+}
