@@ -78,3 +78,87 @@ fn normalize_restore_path(path: &str, allow_trailing_slash: bool) -> Option<Stri
     }
     Some(s)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn normalize_restore_path_strips_and_normalizes_separators() {
+        assert_eq!(
+            normalize_restore_path("  ./a\\b/c/  ", false),
+            Some("a/b/c".to_string())
+        );
+        assert_eq!(
+            normalize_restore_path("/a/b/c///", false),
+            Some("a/b/c".to_string())
+        );
+        assert_eq!(
+            normalize_restore_path("/a/b/c///", true),
+            Some("a/b/c".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_restore_path_rejects_empty_and_traversal() {
+        assert_eq!(normalize_restore_path("", false), None);
+        assert_eq!(normalize_restore_path("   ", false), None);
+        assert_eq!(normalize_restore_path("/", false), None);
+        assert_eq!(normalize_restore_path("../etc", false), None);
+        assert_eq!(normalize_restore_path("a/../b", false), None);
+        assert_eq!(normalize_restore_path("a/..", false), None);
+        assert_eq!(normalize_restore_path("..", false), None);
+    }
+
+    #[test]
+    fn normalize_restore_selection_errors_on_empty_after_normalization() {
+        let sel = RestoreSelection {
+            files: vec!["".to_string(), "../a".to_string()],
+            dirs: vec!["/".to_string(), "a/..".to_string()],
+        };
+        assert!(normalize_restore_selection(&sel).is_err());
+    }
+
+    #[test]
+    fn normalize_restore_selection_dedupes_and_sorts_dirs_longest_first()
+    -> Result<(), anyhow::Error> {
+        let sel = RestoreSelection {
+            files: vec![
+                "a/b.txt".to_string(),
+                "./a/b.txt".to_string(),
+                "a\\b.txt".to_string(),
+            ],
+            dirs: vec!["a/".to_string(), "a/b/".to_string(), "/a/b/".to_string()],
+        };
+        let out = normalize_restore_selection(&sel)?;
+
+        assert_eq!(out.files.len(), 1);
+        assert!(out.files.contains("a/b.txt"));
+
+        // Longest first to make prefix checks cheap and deterministic.
+        assert_eq!(out.dirs, vec!["a/b".to_string(), "a".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn matches_respects_file_exact_and_dir_prefix_boundaries() {
+        let mut files = HashSet::new();
+        files.insert("a/file.txt".to_string());
+
+        let sel = NormalizedRestoreSelection {
+            files,
+            dirs: vec!["dir".to_string(), "a".to_string()],
+        };
+
+        assert!(sel.matches("a/file.txt"));
+        assert!(sel.matches("dir"));
+        assert!(sel.matches("dir/sub.txt"));
+
+        // Prefix must be a directory boundary.
+        assert!(!sel.matches("directory/sub.txt"));
+        assert!(!sel.matches("dir2/sub.txt"));
+        assert!(!sel.matches("ab/c.txt"));
+    }
+}
