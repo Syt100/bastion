@@ -193,3 +193,125 @@ fn format_ts(ts: i64) -> String {
         .and_then(|t| t.format(&Rfc3339).ok())
         .unwrap_or_else(|| ts.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use bastion_storage::jobs_repo::OverlapPolicy;
+    use bastion_storage::runs_repo::RunStatus;
+
+    #[test]
+    fn format_ts_renders_rfc3339_and_falls_back_on_invalid_values() {
+        assert_eq!(format_ts(0), "1970-01-01T00:00:00Z");
+        assert_eq!(format_ts(i64::MAX), i64::MAX.to_string());
+    }
+
+    #[test]
+    fn render_template_replaces_known_placeholders() {
+        let ctx = TemplateContext {
+            title: "t".to_string(),
+            job_id: "j".to_string(),
+            job_name: "jn".to_string(),
+            run_id: "r".to_string(),
+            status: "s".to_string(),
+            status_text: "st".to_string(),
+            started_at: "sa".to_string(),
+            ended_at: "ea".to_string(),
+            target_type: "tt".to_string(),
+            target_location: "tl".to_string(),
+            target: "tgt".to_string(),
+            error: "err".to_string(),
+            target_line_wecom: "> Target: tgt\n".to_string(),
+            error_line_wecom: "> Error: err\n".to_string(),
+            target_line_email: "Target: tgt\n".to_string(),
+            error_line_email: "Error: err\n".to_string(),
+        };
+
+        let out = render_template("{{title}} {{job_id}} {{run_id}} {{unknown}}", &ctx);
+        assert_eq!(out, "t j r {{unknown}}");
+    }
+
+    async fn init_test_db() -> Result<(tempfile::TempDir, SqlitePool), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let db = bastion_storage::db::init(dir.path()).await?;
+        Ok((dir, db))
+    }
+
+    #[tokio::test]
+    async fn build_context_returns_defaults_when_run_missing() -> Result<(), anyhow::Error> {
+        let (_dir, db) = init_test_db().await?;
+
+        let ctx = build_context(&db, "run_missing").await?;
+        assert_eq!(ctx.run_id, "run_missing");
+        assert_eq!(ctx.status, "unknown");
+        assert_eq!(ctx.job_id, "-");
+        assert_eq!(ctx.job_name, "-");
+        assert_eq!(ctx.started_at, "-");
+        assert_eq!(ctx.ended_at, "-");
+        assert_eq!(ctx.target, "-");
+        assert_eq!(ctx.error, "");
+        assert_eq!(ctx.target_line_email, "");
+        assert_eq!(ctx.error_line_email, "");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn build_context_builds_target_and_error_lines() -> Result<(), anyhow::Error> {
+        let (_dir, db) = init_test_db().await?;
+
+        let job = bastion_storage::jobs_repo::create_job(
+            &db,
+            "myjob",
+            None,
+            None,
+            None,
+            OverlapPolicy::Reject,
+            serde_json::json!({}),
+        )
+        .await?;
+
+        let summary = serde_json::json!({
+            "target": {
+                "type": "webdav",
+                "run_url": "https://example.invalid/runs/123"
+            }
+        });
+        let run = bastion_storage::runs_repo::create_run(
+            &db,
+            &job.id,
+            RunStatus::Success,
+            0,
+            Some(1),
+            Some(summary),
+            Some("  boom \n"),
+        )
+        .await?;
+
+        let ctx = build_context(&db, &run.id).await?;
+        assert_eq!(ctx.title, "Bastion backup succeeded");
+        assert_eq!(ctx.job_id, job.id);
+        assert_eq!(ctx.job_name, "myjob");
+        assert_eq!(ctx.status, "success");
+        assert_eq!(ctx.status_text, "Succeeded");
+        assert_eq!(ctx.started_at, "1970-01-01T00:00:00Z");
+        assert_eq!(ctx.ended_at, "1970-01-01T00:00:01Z");
+
+        assert_eq!(ctx.target_type, "webdav");
+        assert_eq!(ctx.target_location, "https://example.invalid/runs/123");
+        assert_eq!(ctx.target, "webdav https://example.invalid/runs/123");
+
+        assert_eq!(ctx.error, "boom");
+        assert_eq!(
+            ctx.target_line_wecom,
+            "> Target: webdav https://example.invalid/runs/123\n"
+        );
+        assert_eq!(ctx.error_line_wecom, "> Error: boom\n");
+        assert_eq!(
+            ctx.target_line_email,
+            "Target: webdav https://example.invalid/runs/123\n"
+        );
+        assert_eq!(ctx.error_line_email, "Error: boom\n");
+        Ok(())
+    }
+}
