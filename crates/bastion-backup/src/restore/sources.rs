@@ -281,6 +281,7 @@ fn raw_tree_data_url(run_url: &Url, archive_path: &str) -> Result<Url, anyhow::E
         let mut segs = url
             .path_segments_mut()
             .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+        segs.pop_if_empty();
         segs.push("data");
         for part in archive_path
             .trim()
@@ -293,6 +294,46 @@ fn raw_tree_data_url(run_url: &Url, archive_path: &str) -> Result<Url, anyhow::E
         }
     }
     Ok(url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{raw_tree_data_path, raw_tree_data_url};
+
+    use std::path::Path;
+
+    use url::Url;
+
+    #[test]
+    fn raw_tree_data_path_appends_segments_and_skips_empty_parts() {
+        let run_dir = Path::new("/tmp/run");
+        assert_eq!(
+            raw_tree_data_path(run_dir, "a/b/c.txt"),
+            Path::new("/tmp/run/data/a/b/c.txt")
+        );
+        assert_eq!(
+            raw_tree_data_path(run_dir, "/a//b/"),
+            Path::new("/tmp/run/data/a/b")
+        );
+    }
+
+    #[test]
+    fn raw_tree_data_url_appends_data_prefix_and_trims_segments() -> Result<(), anyhow::Error> {
+        let run_url = Url::parse("https://example.invalid/runs/123")?;
+        let out = raw_tree_data_url(&run_url, "  /a/ b /c.txt  ")?;
+        assert_eq!(
+            out.as_str(),
+            "https://example.invalid/runs/123/data/a/b/c.txt"
+        );
+
+        let run_url = Url::parse("https://example.invalid/runs/123/")?;
+        let out = raw_tree_data_url(&run_url, "a/b/c.txt")?;
+        assert_eq!(
+            out.as_str(),
+            "https://example.invalid/runs/123/data/a/b/c.txt"
+        );
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
