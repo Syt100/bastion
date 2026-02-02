@@ -65,3 +65,24 @@ pub async fn send_plain_text(
 pub fn is_valid_mailbox(addr: &str) -> bool {
     addr.parse::<lettre::message::Mailbox>().is_ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_mailbox;
+
+    #[test]
+    fn mailbox_valid_simple_address() {
+        assert!(is_valid_mailbox("user@example.com"));
+    }
+
+    #[test]
+    fn mailbox_valid_name_addr() {
+        assert!(is_valid_mailbox("User <user@example.com>"));
+    }
+
+    #[test]
+    fn mailbox_rejects_invalid_or_header_injection_like_input() {
+        assert!(!is_valid_mailbox("not-an-email"));
+        assert!(!is_valid_mailbox("a@b.com\nBcc: evil@example.com"));
+    }
+}
