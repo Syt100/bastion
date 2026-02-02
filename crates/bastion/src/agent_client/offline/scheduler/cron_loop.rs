@@ -22,6 +22,42 @@ fn allow_due_for_local_minute(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone as _;
+
+    use super::allow_due_for_local_minute;
+
+    #[test]
+    fn allow_due_for_local_minute_runs_once_on_dst_fold() {
+        let tz: chrono_tz::Tz = "America/New_York".parse().unwrap();
+        let naive = chrono::NaiveDate::from_ymd_opt(2025, 11, 2)
+            .unwrap()
+            .and_hms_opt(1, 30, 0)
+            .unwrap();
+
+        match tz.from_local_datetime(&naive) {
+            chrono::LocalResult::Ambiguous(first, second) => {
+                assert!(allow_due_for_local_minute(tz, first));
+                assert!(!allow_due_for_local_minute(tz, second));
+            }
+            other => panic!("expected DST fold ambiguity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn allow_due_for_local_minute_allows_non_ambiguous_time() {
+        let tz: chrono_tz::Tz = "America/New_York".parse().unwrap();
+        let naive = chrono::NaiveDate::from_ymd_opt(2025, 11, 2)
+            .unwrap()
+            .and_hms_opt(3, 0, 0)
+            .unwrap();
+
+        let dt = tz.from_local_datetime(&naive).single().unwrap();
+        assert!(allow_due_for_local_minute(tz, dt));
+    }
+}
+
 pub(super) async fn offline_cron_loop(
     data_dir: PathBuf,
     agent_id: String,

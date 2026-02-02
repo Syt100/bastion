@@ -34,3 +34,37 @@ impl InFlightCounts {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::InFlightCounts;
+
+    #[test]
+    fn inflight_counts_default_is_zero() {
+        let counts = InFlightCounts::default();
+        assert_eq!(counts.inflight_for_job("job1"), 0);
+    }
+
+    #[test]
+    fn inflight_counts_increments_and_decrements_per_job() {
+        let mut counts = InFlightCounts::default();
+
+        counts.inc_job("job1");
+        assert_eq!(counts.inflight_for_job("job1"), 1);
+        assert_eq!(counts.inflight_for_job("job2"), 0);
+
+        counts.inc_job("job1");
+        counts.inc_job("job2");
+        assert_eq!(counts.inflight_for_job("job1"), 2);
+        assert_eq!(counts.inflight_for_job("job2"), 1);
+
+        counts.dec_job("job1");
+        assert_eq!(counts.inflight_for_job("job1"), 1);
+
+        counts.dec_job("job1");
+        assert_eq!(counts.inflight_for_job("job1"), 0);
+        // Decrementing missing keys should be a no-op.
+        counts.dec_job("job1");
+        assert_eq!(counts.inflight_for_job("job1"), 0);
+    }
+}
