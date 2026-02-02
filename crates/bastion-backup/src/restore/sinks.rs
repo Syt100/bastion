@@ -87,8 +87,6 @@ pub(super) fn remove_existing_path(path: &Path) -> Result<(), anyhow::Error> {
 mod tests {
     use super::remove_existing_path;
 
-    use std::path::Path;
-
     #[test]
     fn remove_existing_path_removes_file() -> Result<(), anyhow::Error> {
         let tmp = tempfile::TempDir::new()?;
@@ -124,10 +122,10 @@ mod tests {
         let link = tmp.path().join("link.txt");
         unix_fs::symlink(&target, &link)?;
 
-        assert!(Path::new(&link).exists());
+        assert!(std::path::Path::new(&link).exists());
         remove_existing_path(&link)?;
-        assert!(!Path::new(&link).exists());
-        assert!(Path::new(&target).exists());
+        assert!(!std::path::Path::new(&link).exists());
+        assert!(std::path::Path::new(&target).exists());
         Ok(())
     }
 }
