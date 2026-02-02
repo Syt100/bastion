@@ -83,6 +83,55 @@ pub(super) fn remove_existing_path(path: &Path) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::remove_existing_path;
+
+    use std::path::Path;
+
+    #[test]
+    fn remove_existing_path_removes_file() -> Result<(), anyhow::Error> {
+        let tmp = tempfile::TempDir::new()?;
+        let path = tmp.path().join("file.txt");
+        std::fs::write(&path, b"hi")?;
+
+        remove_existing_path(&path)?;
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn remove_existing_path_removes_directory_recursively() -> Result<(), anyhow::Error> {
+        let tmp = tempfile::TempDir::new()?;
+        let dir = tmp.path().join("dir");
+        std::fs::create_dir_all(dir.join("nested"))?;
+        std::fs::write(dir.join("nested").join("file.txt"), b"hi")?;
+
+        remove_existing_path(&dir)?;
+        assert!(!dir.exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_existing_path_removes_symlink_without_touching_target() -> Result<(), anyhow::Error> {
+        use std::os::unix::fs as unix_fs;
+
+        let tmp = tempfile::TempDir::new()?;
+        let target = tmp.path().join("target.txt");
+        std::fs::write(&target, b"hi")?;
+
+        let link = tmp.path().join("link.txt");
+        unix_fs::symlink(&target, &link)?;
+
+        assert!(Path::new(&link).exists());
+        remove_existing_path(&link)?;
+        assert!(!Path::new(&link).exists());
+        assert!(Path::new(&target).exists());
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 struct WebdavMetaEntry {
