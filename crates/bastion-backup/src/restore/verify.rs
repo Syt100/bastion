@@ -312,7 +312,7 @@ mod tests {
                 .unwrap();
         }
 
-        let res = verify_sqlite_files(restore_dir, &[rel.clone()]).unwrap();
+        let res = verify_sqlite_files(restore_dir, std::slice::from_ref(&rel)).unwrap();
         assert!(res.ok);
         assert_eq!(res.details["results"][0]["path"], rel);
         assert_eq!(res.details["results"][0]["ok"], true);
