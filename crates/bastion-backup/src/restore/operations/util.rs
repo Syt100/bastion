@@ -95,8 +95,7 @@ mod tests {
         let manifest = manifest_with_encryption("age", None);
         let err = resolve_payload_decryption(&pool, &crypto, &manifest)
             .await
-            .err()
-            .expect("expected error");
+            .expect_err("expected error");
         assert!(format!("{err:#}").contains("missing manifest.pipeline.encryption_key"));
     }
 
@@ -109,8 +108,7 @@ mod tests {
         let manifest = manifest_with_encryption("age", Some("primary"));
         let err = resolve_payload_decryption(&pool, &crypto, &manifest)
             .await
-            .err()
-            .expect("expected error");
+            .expect_err("expected error");
         assert!(format!("{err:#}").contains("missing backup age identity"));
     }
 
