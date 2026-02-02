@@ -617,3 +617,133 @@ where
     };
     send_json(tx, &msg).await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct VecSink {
+        sent: Vec<Message>,
+        fail: bool,
+    }
+
+    impl Sink<Message> for VecSink {
+        type Error = tungstenite::Error;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+            let this = self.get_mut();
+            if this.fail {
+                return Err(tungstenite::Error::ConnectionClosed);
+            }
+            this.sent.push(item);
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn send_json_returns_reconnect_when_sink_errors() -> Result<(), anyhow::Error> {
+        let mut sink = VecSink {
+            fail: true,
+            ..Default::default()
+        };
+
+        let flow = send_json(&mut sink, &serde_json::json!({"type": "ping"})).await?;
+        assert_eq!(flow, HandlerFlow::Reconnect);
+        Ok(())
+    }
+
+    fn identity(agent_id: &str) -> AgentIdentityV1 {
+        AgentIdentityV1 {
+            v: 1,
+            hub_url: "http://localhost:9876/".to_string(),
+            agent_id: agent_id.to_string(),
+            agent_key: "k".to_string(),
+            name: None,
+            enrolled_at: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_config_snapshot_ignores_unexpected_node_id() -> Result<(), anyhow::Error> {
+        let tmp = tempfile::TempDir::new()?;
+        let id = identity("agent1");
+        let mut sink = VecSink::default();
+
+        let flow = handle_config_snapshot(
+            &mut sink,
+            &id,
+            tmp.path(),
+            "agent2".to_string(),
+            "snap1".to_string(),
+            123,
+            Vec::new(),
+        )
+        .await?;
+
+        assert_eq!(flow, HandlerFlow::Continue);
+        assert!(sink.sent.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn handle_config_snapshot_sends_ack_on_success() -> Result<(), anyhow::Error> {
+        let tmp = tempfile::TempDir::new()?;
+        let id = identity("agent1");
+        let mut sink = VecSink::default();
+
+        let flow = handle_config_snapshot(
+            &mut sink,
+            &id,
+            tmp.path(),
+            "agent1".to_string(),
+            "snap1".to_string(),
+            123,
+            Vec::new(),
+        )
+        .await?;
+
+        assert_eq!(flow, HandlerFlow::Continue);
+        assert_eq!(sink.sent.len(), 1);
+
+        let Message::Text(text) = &sink.sent[0] else {
+            anyhow::bail!("expected text message");
+        };
+        let parsed: AgentToHubMessageV1 = serde_json::from_str(text)?;
+        match parsed {
+            AgentToHubMessageV1::ConfigAck { v, snapshot_id } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(snapshot_id, "snap1");
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+
+        Ok(())
+    }
+}
