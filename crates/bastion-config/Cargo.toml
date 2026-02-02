@@ -11,5 +11,8 @@ hex = "0.4.3"
 ipnet.workspace = true
 rand.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
