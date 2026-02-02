@@ -227,3 +227,102 @@ impl JobSpecV1 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::manifest::ArtifactFormatV1;
+
+    #[test]
+    fn filesystem_source_defaults_are_stable() -> Result<(), anyhow::Error> {
+        let src: FilesystemSource = serde_json::from_value(serde_json::json!({}))?;
+        assert!(src.pre_scan);
+        assert!(src.paths.is_empty());
+        assert_eq!(src.root, "");
+        assert!(src.include.is_empty());
+        assert!(src.exclude.is_empty());
+        assert_eq!(src.symlink_policy, FsSymlinkPolicy::Keep);
+        assert_eq!(src.hardlink_policy, FsHardlinkPolicy::Copy);
+        assert_eq!(src.error_policy, FsErrorPolicy::FailFast);
+        Ok(())
+    }
+
+    #[test]
+    fn target_defaults_part_size_bytes_when_missing() -> Result<(), anyhow::Error> {
+        let target: TargetV1 = serde_json::from_value(serde_json::json!({
+            "type": "local_dir",
+            "base_dir": "/tmp"
+        }))?;
+        assert_eq!(target.part_size_bytes(), 256 * 1024 * 1024);
+
+        let target: TargetV1 = serde_json::from_value(serde_json::json!({
+            "type": "webdav",
+            "base_url": "https://example.invalid/",
+            "secret_name": "s",
+            "part_size_bytes": 123
+        }))?;
+        assert_eq!(target.part_size_bytes(), 123);
+        Ok(())
+    }
+
+    #[test]
+    fn pipeline_and_retention_defaults_are_stable() -> Result<(), anyhow::Error> {
+        let p: PipelineV1 = serde_json::from_value(serde_json::json!({}))?;
+        assert_eq!(p.format, ArtifactFormatV1::ArchiveV1);
+        assert!(matches!(p.encryption, EncryptionV1::None));
+
+        let r: RetentionPolicyV1 = serde_json::from_value(serde_json::json!({}))?;
+        assert!(!r.enabled);
+        assert_eq!(r.keep_last, None);
+        assert_eq!(r.keep_days, None);
+        assert_eq!(r.max_delete_per_tick, 50);
+        assert_eq!(r.max_delete_per_day, 200);
+        Ok(())
+    }
+
+    #[test]
+    fn notifications_defaults_are_stable() -> Result<(), anyhow::Error> {
+        let n: NotificationsV1 = serde_json::from_value(serde_json::json!({}))?;
+        assert_eq!(n.mode, NotificationsModeV1::Inherit);
+        assert!(n.wecom_bot.is_empty());
+        assert!(n.email.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn job_spec_parses_with_defaults() -> Result<(), anyhow::Error> {
+        let spec: JobSpecV1 = serde_json::from_value(serde_json::json!({
+            "type": "filesystem",
+            "v": 1,
+            "source": {
+                "paths": ["/tmp"]
+            },
+            "target": {
+                "type": "local_dir",
+                "base_dir": "/tmp"
+            }
+        }))?;
+
+        let JobSpecV1::Filesystem {
+            v,
+            pipeline,
+            notifications,
+            retention,
+            source,
+            target,
+        } = spec
+        else {
+            anyhow::bail!("expected filesystem spec");
+        };
+
+        assert_eq!(v, 1);
+        assert_eq!(pipeline.format, ArtifactFormatV1::ArchiveV1);
+        assert_eq!(notifications.mode, NotificationsModeV1::Inherit);
+        assert_eq!(retention.max_delete_per_day, 200);
+        assert!(source.pre_scan);
+        assert_eq!(source.paths, vec!["/tmp"]);
+        assert_eq!(target.part_size_bytes(), 256 * 1024 * 1024);
+        Ok(())
+    }
+}

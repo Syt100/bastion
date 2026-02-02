@@ -33,3 +33,44 @@ pub struct ProgressSnapshotV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<serde_json::Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_kind_serializes_as_snake_case() -> Result<(), anyhow::Error> {
+        assert_eq!(
+            serde_json::to_value(ProgressKindV1::Backup)?,
+            serde_json::Value::String("backup".to_string())
+        );
+        assert_eq!(
+            serde_json::to_value(ProgressKindV1::Restore)?,
+            serde_json::Value::String("restore".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn progress_snapshot_omits_none_fields() -> Result<(), anyhow::Error> {
+        let snap = ProgressSnapshotV1 {
+            v: 1,
+            kind: ProgressKindV1::Backup,
+            stage: "packaging".to_string(),
+            ts: 1,
+            done: ProgressUnitsV1::default(),
+            total: None,
+            rate_bps: None,
+            eta_seconds: None,
+            detail: None,
+        };
+
+        let v = serde_json::to_value(&snap)?;
+        let obj = v.as_object().expect("object");
+        assert!(!obj.contains_key("total"));
+        assert!(!obj.contains_key("rate_bps"));
+        assert!(!obj.contains_key("eta_seconds"));
+        assert!(!obj.contains_key("detail"));
+        Ok(())
+    }
+}
