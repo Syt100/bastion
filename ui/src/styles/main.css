@@ -48,8 +48,7 @@
   /* Layered page background for a modern, fresh look. */
   --app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(59, 130, 246, 0.18), transparent 60%),
     radial-gradient(1000px 520px at 100% 0%, rgba(6, 182, 212, 0.14), transparent 55%),
-    radial-gradient(900px 600px at 50% 100%, rgba(139, 92, 246, 0.12), transparent 55%),
-    var(--app-bg-solid);
+    radial-gradient(900px 600px at 50% 100%, rgba(139, 92, 246, 0.12), transparent 55%);
 }
 
 .dark {
@@ -91,8 +90,7 @@
 
   --app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(59, 130, 246, 0.22), transparent 60%),
     radial-gradient(1000px 520px at 100% 0%, rgba(34, 211, 238, 0.16), transparent 55%),
-    radial-gradient(900px 600px at 50% 100%, rgba(167, 139, 250, 0.14), transparent 55%),
-    var(--app-bg-solid);
+    radial-gradient(900px 600px at 50% 100%, rgba(167, 139, 250, 0.14), transparent 55%);
 }
 
 /*
@@ -104,6 +102,10 @@
 html,
 body {
   min-height: 100%;
+}
+
+html {
+  background-color: var(--app-bg-solid);
 }
 
 #app {
@@ -126,7 +128,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  background: var(--app-bg);
+  background-color: var(--app-bg-solid);
+  background-image: var(--app-bg);
   color: var(--app-text);
 }
 

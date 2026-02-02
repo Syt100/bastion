@@ -35,7 +35,8 @@ const pageTitle = computed(() => {
 watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.classList.toggle('dark', ui.darkMode)
-  // Apply to <body> as well so CSS variables used by `body { background: var(--app-bg) }`
+  // Apply to <body> as well so CSS variables used by
+  // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`
   // always resolve correctly (some themes/libraries may style <html> separately).
   document.body?.classList.toggle('dark', ui.darkMode)
   document.documentElement.lang = ui.locale
@@ -179,7 +180,8 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => ({
         hoverColor: c.hover,
         pressedColor: c.pressed,
 
-        // Let the body show the gradient background from `body { background: var(--app-bg) }`.
+        // Let the body show the gradient background from
+        // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`.
         bodyColor: 'transparent',
 
         // Make surface colors consistent across overlays.
