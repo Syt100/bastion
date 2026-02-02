@@ -10,8 +10,11 @@ use uuid::Uuid;
 use crate::backup::{BuildPipelineOptions, PayloadEncryption};
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 use bastion_core::manifest::ArtifactFormatV1;
+use bastion_core::progress::ProgressUnitsV1;
 
+use super::FilesystemBuildIssues;
 use super::build_filesystem_run;
+use super::scan::scan_filesystem_source;
 use super::util::archive_prefix_for_path;
 
 fn list_tar_paths(part_path: &Path) -> Vec<String> {
@@ -352,4 +355,131 @@ fn archive_parts_can_be_deleted_during_packaging() {
         .filter(|name| name.starts_with("payload.part"))
         .count();
     assert_eq!(remaining_parts, 0);
+}
+
+#[test]
+fn scan_legacy_root_respects_include_patterns_for_files() -> Result<(), anyhow::Error> {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path().join("root");
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+
+    std::fs::write(root.join("a.txt"), b"ab").unwrap();
+    std::fs::write(root.join("b.log"), b"x").unwrap();
+    std::fs::write(root.join("sub").join("c.txt"), b"cde").unwrap();
+
+    let source = FilesystemSource {
+        pre_scan: true,
+        paths: Vec::new(),
+        root: root.to_string_lossy().to_string(),
+        include: vec!["a.txt".to_string()],
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let mut issues = FilesystemBuildIssues::default();
+    let totals = scan_filesystem_source(&source, &mut issues, None)?;
+    assert_eq!(issues.errors_total, 0);
+
+    // The directory entry is still counted even though its contents are filtered by include globs.
+    assert_eq!(
+        totals,
+        ProgressUnitsV1 {
+            dirs: 1,
+            files: 1,
+            bytes: 2,
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn scan_legacy_root_excludes_directory_and_skips_descendants() -> Result<(), anyhow::Error> {
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path().join("root");
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+
+    std::fs::write(root.join("a.txt"), b"ab").unwrap();
+    std::fs::write(root.join("b.log"), b"x").unwrap();
+    std::fs::write(root.join("sub").join("c.txt"), b"cde").unwrap();
+
+    let source = FilesystemSource {
+        pre_scan: true,
+        paths: Vec::new(),
+        root: root.to_string_lossy().to_string(),
+        include: Vec::new(),
+        exclude: vec!["sub".to_string()],
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let mut issues = FilesystemBuildIssues::default();
+    let totals = scan_filesystem_source(&source, &mut issues, None)?;
+    assert_eq!(issues.errors_total, 0);
+
+    // Excluding a directory should skip the directory entry and everything under it.
+    assert_eq!(
+        totals,
+        ProgressUnitsV1 {
+            dirs: 0,
+            files: 2,
+            bytes: 3,
+        }
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_legacy_root_symlink_policy_skip_ignores_symlink_entries() -> Result<(), anyhow::Error> {
+    use std::os::unix::fs as unix_fs;
+
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path().join("root");
+    std::fs::create_dir_all(&root).unwrap();
+
+    std::fs::write(root.join("real.txt"), b"ab").unwrap();
+    unix_fs::symlink(root.join("real.txt"), root.join("link.txt")).unwrap();
+
+    let source_keep = FilesystemSource {
+        pre_scan: true,
+        paths: Vec::new(),
+        root: root.to_string_lossy().to_string(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+    let mut issues = FilesystemBuildIssues::default();
+    let totals_keep = scan_filesystem_source(&source_keep, &mut issues, None)?;
+    assert_eq!(issues.errors_total, 0);
+    assert_eq!(
+        totals_keep,
+        ProgressUnitsV1 {
+            dirs: 0,
+            files: 2,
+            bytes: 2,
+        }
+    );
+
+    let source_skip = FilesystemSource {
+        symlink_policy: FsSymlinkPolicy::Skip,
+        ..source_keep
+    };
+    let mut issues = FilesystemBuildIssues::default();
+    let totals_skip = scan_filesystem_source(&source_skip, &mut issues, None)?;
+    assert_eq!(issues.errors_total, 0);
+    assert_eq!(
+        totals_skip,
+        ProgressUnitsV1 {
+            dirs: 0,
+            files: 1,
+            bytes: 2,
+        }
+    );
+
+    Ok(())
 }
