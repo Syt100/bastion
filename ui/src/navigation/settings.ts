@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import { CloudOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline, OptionsOutline } from '@vicons/ionicons5'
+import { CloudOutline, ColorPaletteOutline, ConstructOutline, InformationCircleOutline, NotificationsOutline, OptionsOutline } from '@vicons/ionicons5'
 
 export type SettingsNavItem = {
   key: string
@@ -20,6 +20,16 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     showInOverview: false,
     showInSidebar: true,
     order: 0,
+  },
+  {
+    key: 'appearance',
+    to: '/settings/appearance',
+    titleKey: 'settings.menu.appearance',
+    descriptionKey: 'settings.overview.appearanceDesc',
+    icon: ColorPaletteOutline,
+    showInOverview: true,
+    showInSidebar: true,
+    order: 5,
   },
   {
     key: 'storage',

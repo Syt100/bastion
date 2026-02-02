@@ -43,24 +43,27 @@ describe('SettingsIndexView', () => {
   it('navigates to settings pages', async () => {
     const wrapper = mount(SettingsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(6)
+    expect(buttons.length).toBe(7)
 
     await buttons[0]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/storage')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/appearance')
 
     await buttons[1]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/storage')
 
     await buttons[2]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/maintenance')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications')
 
     await buttons[3]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/hub-runtime-config')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/maintenance')
 
     await buttons[4]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/bulk-operations')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/hub-runtime-config')
 
     await buttons[5]!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/settings/bulk-operations')
+
+    await buttons[6]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/settings/about')
   })
 })

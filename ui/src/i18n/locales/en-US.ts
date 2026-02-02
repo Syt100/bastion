@@ -11,6 +11,7 @@ const messages = {
     more: 'More',
     help: 'Help',
     refresh: 'Refresh',
+    preview: 'Preview',
     loading: 'Loading',
     loadMore: 'Load more',
     close: 'Close',
@@ -668,6 +669,7 @@ const messages = {
     subtitle: 'Credentials and global configuration',
     menu: {
       overview: 'Overview',
+      appearance: 'Appearance',
       storage: 'Storage',
       notifications: 'Notifications',
       maintenance: 'Maintenance',
@@ -676,12 +678,26 @@ const messages = {
       about: 'About',
     },
     overview: {
+      appearanceDesc: 'Theme presets and color appearance',
       storageDesc: 'Manage remote storage credentials and related settings',
       notificationsDesc: 'Manage channels, destinations, templates, and queue',
       maintenanceDesc: 'Operational tools for maintenance tasks',
       runtimeConfigDesc: 'Manage Hub runtime policy and logging (restart required)',
       bulkOperationsDesc: 'Track and control bulk operations across agents',
       aboutDesc: 'Version and build information',
+    },
+    appearance: {
+      title: 'Appearance',
+      subtitle: 'Choose a preset color theme (no custom colors yet)',
+      default: 'Default',
+      themes: {
+        mintTeal: 'Mint Teal',
+        oceanBlue: 'Ocean Blue',
+        grapeViolet: 'Grape Violet',
+        sunsetAmber: 'Sunset Amber',
+        berryRose: 'Berry Rose',
+        coralPeach: 'Coral Peach',
+      },
     },
     hubRuntimeConfig: {
       title: 'Hub runtime config',

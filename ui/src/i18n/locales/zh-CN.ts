@@ -11,6 +11,7 @@ const messages = {
     more: '更多',
     help: '帮助',
     refresh: '刷新',
+    preview: '预览',
     loading: '加载中',
     loadMore: '加载更多',
     close: '关闭',
@@ -668,6 +669,7 @@ const messages = {
     subtitle: '凭据与全局配置',
     menu: {
       overview: '概览',
+      appearance: '外观',
       storage: '存储',
       notifications: '通知',
       maintenance: '运维',
@@ -676,12 +678,26 @@ const messages = {
       about: '关于',
     },
     overview: {
+      appearanceDesc: '主题配色与外观',
       storageDesc: '配置远程存储凭据与相关设置',
       notificationsDesc: '配置通知渠道、目的地、模板与队列',
       maintenanceDesc: '运维与维护工具',
       runtimeConfigDesc: '查看并配置 Hub 的运行策略与日志（需重启生效）',
       bulkOperationsDesc: '查看与管理跨客户端的批量操作',
       aboutDesc: '版本与构建信息',
+    },
+    appearance: {
+      title: '外观',
+      subtitle: '选择预设主题配色（暂不支持自定义）',
+      default: '默认',
+      themes: {
+        mintTeal: '薄荷绿青',
+        oceanBlue: '海盐蓝',
+        grapeViolet: '葡萄紫',
+        sunsetAmber: '落日琥珀',
+        berryRose: '莓果玫瑰',
+        coralPeach: '珊瑚蜜桃',
+      },
     },
     hubRuntimeConfig: {
       title: 'Hub 运行配置',

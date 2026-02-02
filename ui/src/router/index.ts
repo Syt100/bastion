@@ -11,6 +11,7 @@ const JobDataSectionView = () => import('@/views/jobs/JobDataSectionView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const SettingsShellView = () => import('@/views/settings/SettingsShellView.vue')
 const SettingsIndexView = () => import('@/views/settings/SettingsIndexView.vue')
+const AppearanceView = () => import('@/views/settings/AppearanceView.vue')
 const SettingsStorageView = () => import('@/views/settings/SettingsStorageView.vue')
 const AboutView = () => import('@/views/settings/AboutView.vue')
 const HubRuntimeConfigView = () => import('@/views/settings/HubRuntimeConfigView.vue')
@@ -98,6 +99,14 @@ const router = createRouter({
           meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } },
           children: [
             { path: '', component: SettingsIndexView, meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } } },
+            {
+              path: 'appearance',
+              component: AppearanceView,
+              meta: {
+                titleKey: 'settings.menu.appearance',
+                mobileTopBar: { titleKey: 'settings.menu.appearance', backTo: '/settings' },
+              },
+            },
             {
               path: 'about',
               component: AboutView,
