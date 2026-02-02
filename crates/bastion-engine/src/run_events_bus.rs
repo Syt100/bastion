@@ -53,7 +53,10 @@ impl RunEventsBus {
 
     pub fn subscribe(&self, run_id: &str) -> broadcast::Receiver<RunEvent> {
         let now = OffsetDateTime::now_utc().unix_timestamp();
-        let mut inner = self.inner.lock().expect("RunEventsBus mutex poisoned");
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         self.maybe_prune_locked(&mut inner, now);
 
         let entry = inner.entry(run_id.to_string()).or_insert_with(|| {
@@ -69,7 +72,10 @@ impl RunEventsBus {
 
     pub fn publish(&self, event: &RunEvent) {
         let now = OffsetDateTime::now_utc().unix_timestamp();
-        let mut inner = self.inner.lock().expect("RunEventsBus mutex poisoned");
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         self.maybe_prune_locked(&mut inner, now);
 
         let entry = inner.entry(event.run_id.clone()).or_insert_with(|| {
@@ -104,6 +110,33 @@ impl RunEventsBus {
 mod tests {
     use super::RunEvent;
     use super::RunEventsBus;
+
+    #[tokio::test]
+    async fn publish_delivers_to_subscribers_after_mutex_poisoning() {
+        let bus = RunEventsBus::new_with_options(8, 60, 1);
+
+        // Simulate a panic while holding the lock, which poisons the mutex.
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = bus.inner.lock().unwrap();
+            panic!("poison");
+        }));
+
+        let mut rx = bus.subscribe("run1");
+
+        bus.publish(&RunEvent {
+            run_id: "run1".to_string(),
+            seq: 1,
+            ts: 100,
+            level: "info".to_string(),
+            kind: "test".to_string(),
+            message: "hello".to_string(),
+            fields: None,
+        });
+
+        let got = rx.recv().await.expect("recv");
+        assert_eq!(got.seq, 1);
+        assert_eq!(got.message, "hello");
+    }
 
     #[tokio::test]
     async fn publish_delivers_to_subscribers() {
