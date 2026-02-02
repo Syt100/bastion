@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url'
 function readMainCss(): string {
   const candidates: string[] = []
 
-  // Preferred: adjacent to this spec file.
+  // Preferred: relative to this test file (works in most runners).
   try {
     const filename = fileURLToPath(import.meta.url)
-    candidates.push(path.resolve(path.dirname(filename), 'main.css'))
+    candidates.push(path.resolve(path.dirname(filename), '../styles/main.css'))
   } catch {
     // Some runners may not provide a `file:` import.meta.url. We'll fall back below.
   }
@@ -31,7 +31,6 @@ const css = readMainCss()
 // Regression test:
 // `background: var(--app-bg)` can't safely include a raw color token as a comma-separated "layer".
 // If it does, the solid base becomes transparent and dark mode can show a white canvas.
-
 describe('main.css background variables', () => {
   it('keeps --app-bg as images-only and sets the solid base on html', () => {
     const bgDefs = [...css.matchAll(/--app-bg:\s*[^;]*;/gs)].map((m) => m[0])
@@ -43,3 +42,4 @@ describe('main.css background variables', () => {
     expect(css).toMatch(/html\s*\{[^}]*background-color:\s*var\(--app-bg-solid\)\s*;?[^}]*\}/s)
   })
 })
+
