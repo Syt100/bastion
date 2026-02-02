@@ -66,3 +66,27 @@ pub(super) async fn store_artifacts_to_resolved_target(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bastion_core::agent_protocol::TargetResolvedV1;
+
+    use super::target_part_size_bytes;
+
+    #[test]
+    fn target_part_size_bytes_reads_from_variant_field() {
+        let webdav = TargetResolvedV1::Webdav {
+            base_url: "https://example.com/".to_string(),
+            username: "u".to_string(),
+            password: "p".to_string(),
+            part_size_bytes: 123,
+        };
+        assert_eq!(target_part_size_bytes(&webdav), 123);
+
+        let local = TargetResolvedV1::LocalDir {
+            base_dir: "/tmp".to_string(),
+            part_size_bytes: 456,
+        };
+        assert_eq!(target_part_size_bytes(&local), 456);
+    }
+}
