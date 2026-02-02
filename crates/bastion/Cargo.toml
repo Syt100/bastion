@@ -15,28 +15,28 @@ bastion-engine = { path = "../bastion-engine" }
 bastion-http = { path = "../bastion-http" }
 bastion-storage = { path = "../bastion-storage" }
 bastion-targets = { path = "../bastion-targets" }
-anyhow = "1.0.100"
-axum = "0.8.6"
+anyhow.workspace = true
+axum.workspace = true
 clap = { version = "4.5.48", features = ["derive", "env"] }
-futures-util = "0.3.31"
-ipnet = "2.11.0"
-reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.225", features = ["derive"] }
-serde_json = "1.0.145"
-time = "0.3.44"
-tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
-tokio-util = { version = "0.7.16", features = ["rt"] }
-tracing = "0.1.41"
+futures-util.workspace = true
+ipnet.workspace = true
+reqwest = { workspace = true, default-features = false, features = ["json", "rustls-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-url = "2.5.7"
-base64 = "0.22.1"
-chrono = "0.4.42"
-chrono-tz = "0.10.4"
-cron = "0.15.0"
-uuid = { version = "1.18.1", features = ["v4"] }
-iana-time-zone = "0.1.64"
+url.workspace = true
+base64.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+cron.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+iana-time-zone.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7.0"
@@ -48,7 +48,7 @@ embed-docs = ["bastion-http/embed-docs"]
 embed-web = ["embed-ui", "embed-docs"]
 
 [dev-dependencies]
-tempfile = "3.23.0"
+tempfile.workspace = true
 
 # Packaging metadata used by GitHub release workflows.
 # We keep packages minimal (just the `bastion` binary + docs).

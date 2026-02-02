@@ -12,30 +12,30 @@ bastion-engine = { path = "../bastion-engine" }
 bastion-notify = { path = "../bastion-notify" }
 bastion-storage = { path = "../bastion-storage" }
 bastion-targets = { path = "../bastion-targets" }
-anyhow = "1.0.100"
-axum = { version = "0.8.6", features = ["ws"] }
-base64 = "0.22.1"
-blake3 = "1.8.2"
-futures-util = "0.3.31"
+anyhow.workspace = true
+axum = { workspace = true, features = ["ws"] }
+base64.workspace = true
+blake3.workspace = true
+futures-util.workspace = true
 include_dir = { version = "0.7.4", optional = true }
 mime_guess = "2.0.5"
-serde = { version = "1.0.225", features = ["derive"] }
-serde_json = "1.0.145"
-chrono-tz = "0.10.4"
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
-time = { version = "0.3.44", features = ["formatting", "macros", "serde"] }
-tokio = { version = "1.47.1", features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
-tokio-util = { version = "0.7.16", features = ["io"] }
+serde.workspace = true
+serde_json.workspace = true
+chrono-tz.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+time = { workspace = true, features = ["formatting", "macros", "serde"] }
+tokio = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true, features = ["io"] }
 tower-cookies = "0.11.0"
 tower-http = { version = "0.6.6", features = ["request-id", "trace"] }
-tracing = "0.1.41"
-url = "2.5.7"
-uuid = { version = "1.18.1", features = ["v4"] }
+tracing.workspace = true
+url.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
-tempfile = "3.23.0"
-tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+reqwest = { workspace = true, default-features = false, features = ["json", "rustls-tls"] }
+tempfile.workspace = true
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tower = "0.5.2"
 
 [features]
