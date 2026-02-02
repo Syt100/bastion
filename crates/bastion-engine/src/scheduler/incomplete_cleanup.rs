@@ -724,3 +724,162 @@ fn classify_error(error: &anyhow::Error) -> ErrorKind {
 
     ErrorKind::Unknown
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use bastion_backup::COMPLETE_NAME;
+    use bastion_backup::MANIFEST_NAME;
+
+    fn dummy_task(attempts: i64, created_at: i64) -> incomplete_cleanup_repo::CleanupTaskRow {
+        incomplete_cleanup_repo::CleanupTaskRow {
+            run_id: "run".to_string(),
+            job_id: "job".to_string(),
+            node_id: "node".to_string(),
+            target_type: incomplete_cleanup_repo::CleanupTargetType::LocalDir,
+            target_snapshot: serde_json::json!({}),
+            attempts,
+            created_at,
+        }
+    }
+
+    #[test]
+    fn should_abandon_respects_attempts_and_age_thresholds() {
+        let now = 1_000_000_i64;
+
+        assert!(should_abandon(&dummy_task(MAX_ATTEMPTS, now), now));
+        assert!(should_abandon(&dummy_task(0, now - MAX_AGE_SECS), now));
+
+        assert!(!should_abandon(
+            &dummy_task(MAX_ATTEMPTS - 1, now - (MAX_AGE_SECS - 1)),
+            now
+        ));
+    }
+
+    #[test]
+    fn sanitize_error_string_replaces_newlines_and_trims() {
+        let s = " \nhello\rworld\n ";
+        assert_eq!(sanitize_error_string(s), "hello world");
+    }
+
+    #[test]
+    fn sanitize_error_string_truncates_and_adds_ellipsis() {
+        let s = "a".repeat(600);
+        let out = sanitize_error_string(&s);
+        assert_eq!(out, format!("{}…", "a".repeat(500)));
+    }
+
+    #[test]
+    fn jitter_seconds_is_deterministic_and_in_range() {
+        assert_eq!(jitter_seconds("run", 1, 0), 0);
+        assert_eq!(jitter_seconds("run", 1, -1), 0);
+
+        let v1 = jitter_seconds("run", 3, 30);
+        let v2 = jitter_seconds("run", 3, 30);
+        assert_eq!(v1, v2);
+        assert!(v1 >= 0 && v1 < 30);
+    }
+
+    #[test]
+    fn backoff_seconds_caps_and_uses_attempts_min_1() {
+        let a0 = backoff_seconds("run", 0, ErrorKind::Network);
+        let a1 = backoff_seconds("run", 1, ErrorKind::Network);
+        assert_eq!(a0, a1);
+
+        let v = backoff_seconds("run", 100, ErrorKind::Network);
+        let cap = 6 * 60 * 60;
+        assert!(v >= cap);
+        assert!(v < cap + 30);
+    }
+
+    #[test]
+    fn classify_error_maps_known_patterns() {
+        assert_eq!(
+            classify_error(&anyhow::anyhow!("missing webdav secret: foo")),
+            ErrorKind::Config
+        );
+        assert_eq!(
+            classify_error(&anyhow::anyhow!("HTTP 401 Unauthorized")),
+            ErrorKind::Auth
+        );
+        assert_eq!(
+            classify_error(&anyhow::anyhow!("HTTP 500 Internal Server Error")),
+            ErrorKind::Http
+        );
+        assert_eq!(
+            classify_error(&anyhow::anyhow!("error sending request")),
+            ErrorKind::Network
+        );
+        assert_eq!(
+            classify_error(&anyhow::anyhow!("other")),
+            ErrorKind::Unknown
+        );
+    }
+
+    #[test]
+    fn cleanup_local_dir_run_handles_missing_complete_and_garbage_dirs() -> Result<(), anyhow::Error>
+    {
+        let base = tempfile::TempDir::new()?;
+        let base_dir = base.path().to_string_lossy().to_string();
+        let job_id = "job1";
+        let run_id = "run1";
+
+        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+        match res {
+            CleanupResult::SkipNotFound { message } => {
+                assert_eq!(message, "local run dir missing; nothing to cleanup")
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+
+        // complete marker => never delete
+        let run_dir = base.path().join(job_id).join(run_id);
+        std::fs::create_dir_all(&run_dir)?;
+        std::fs::write(run_dir.join(COMPLETE_NAME), b"")?;
+        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+        match res {
+            CleanupResult::SkipComplete => {}
+            other => anyhow::bail!("expected SkipComplete, got {other:?}"),
+        }
+        assert!(run_dir.exists());
+
+        // unknown dir contents => skip
+        std::fs::remove_file(run_dir.join(COMPLETE_NAME))?;
+        std::fs::write(run_dir.join("foo.txt"), b"hi")?;
+        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+        match res {
+            CleanupResult::SkipNotFound { message } => {
+                assert_eq!(
+                    message,
+                    "local run dir did not look like bastion data; skip cleanup"
+                )
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+        assert!(run_dir.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn cleanup_local_dir_run_deletes_dirs_that_look_like_bastion_data() -> Result<(), anyhow::Error>
+    {
+        let base = tempfile::TempDir::new()?;
+        let base_dir = base.path().to_string_lossy().to_string();
+        let job_id = "job1";
+        let run_id = "run1";
+
+        let run_dir = base.path().join(job_id).join(run_id);
+        std::fs::create_dir_all(&run_dir)?;
+        std::fs::write(run_dir.join(MANIFEST_NAME), b"{}")?;
+
+        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+        match res {
+            CleanupResult::Deleted => {}
+            other => anyhow::bail!("expected Deleted, got {other:?}"),
+        }
+        assert!(!run_dir.exists());
+        Ok(())
+    }
+}
