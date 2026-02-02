@@ -11,6 +11,7 @@ use bastion_storage::secrets::SecretsCrypto;
 
 use crate::run_events;
 use crate::run_events_bus::RunEventsBus;
+use crate::supervision::spawn_supervised;
 
 use super::send::{SendOutcome, send_one};
 
@@ -25,13 +26,11 @@ pub fn spawn(
     notifications_notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    tokio::spawn(run_loop(
-        db,
-        secrets,
-        run_events_bus,
-        notifications_notify,
-        shutdown,
-    ));
+    spawn_supervised(
+        "notifications.loop",
+        shutdown.clone(),
+        run_loop(db, secrets, run_events_bus, notifications_notify, shutdown),
+    );
 }
 
 async fn run_loop(

@@ -8,6 +8,7 @@ use bastion_storage::secrets::SecretsCrypto;
 
 use crate::agent_manager::AgentManager;
 use crate::run_events_bus::RunEventsBus;
+use crate::supervision::spawn_supervised;
 
 mod artifact_delete;
 mod cron;
@@ -53,16 +54,23 @@ pub fn spawn(args: SchedulerArgs) {
 
     let agent_manager_cron = agent_manager.clone();
     let agent_manager_worker = agent_manager.clone();
-    tokio::spawn(cron::run_cron_loop(
+    spawn_supervised(
+        "scheduler.cron_loop",
+        shutdown.clone(),
+        cron::run_cron_loop(
         db.clone(),
         run_events_bus.clone(),
         run_queue_notify.clone(),
         jobs_notify.clone(),
         agent_manager_cron,
         shutdown.clone(),
-    ));
+    ),
+    );
 
-    tokio::spawn(worker::run_worker_loop(worker::WorkerLoopArgs {
+    spawn_supervised(
+        "scheduler.worker_loop",
+        shutdown.clone(),
+        worker::run_worker_loop(worker::WorkerLoopArgs {
         db: db.clone(),
         data_dir,
         secrets: secrets.clone(),
@@ -71,36 +79,53 @@ pub fn spawn(args: SchedulerArgs) {
         run_queue_notify: run_queue_notify.clone(),
         notifications_notify: notifications_notify.clone(),
         shutdown: shutdown.clone(),
-    }));
+    }),
+    );
 
-    tokio::spawn(retention::run_retention_loop(
+    spawn_supervised(
+        "scheduler.retention_loop",
+        shutdown.clone(),
+        retention::run_retention_loop(
         db.clone(),
         run_retention_days,
         shutdown.clone(),
-    ));
+    ),
+    );
 
-    tokio::spawn(snapshot_retention::run_snapshot_retention_loop(
+    spawn_supervised(
+        "scheduler.snapshot_retention_loop",
+        shutdown.clone(),
+        snapshot_retention::run_snapshot_retention_loop(
         db.clone(),
         artifact_delete_notify.clone(),
         shutdown.clone(),
-    ));
+    ),
+    );
 
-    tokio::spawn(artifact_delete::run_artifact_delete_loop(
+    spawn_supervised(
+        "scheduler.artifact_delete_loop",
+        shutdown.clone(),
+        artifact_delete::run_artifact_delete_loop(
         db.clone(),
         secrets.clone(),
         agent_manager,
         artifact_delete_notify,
         shutdown.clone(),
-    ));
+    ),
+    );
 
     if incomplete_cleanup_days > 0 {
-        tokio::spawn(incomplete_cleanup::run_incomplete_cleanup_loop(
+        spawn_supervised(
+            "scheduler.incomplete_cleanup_loop",
+            shutdown.clone(),
+            incomplete_cleanup::run_incomplete_cleanup_loop(
             db.clone(),
             secrets,
             incomplete_cleanup_days,
             incomplete_cleanup_notify,
             shutdown,
-        ));
+        ),
+        );
     }
 }
 

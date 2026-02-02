@@ -3,6 +3,8 @@ use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::supervision::spawn_supervised;
+
 const LOGIN_THROTTLE_RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -13,7 +15,11 @@ pub struct DbPruneStats {
 }
 
 pub fn spawn(db: SqlitePool, shutdown: CancellationToken) {
-    tokio::spawn(run_loop(db, shutdown));
+    spawn_supervised(
+        "maintenance.loop",
+        shutdown.clone(),
+        run_loop(db, shutdown),
+    );
 }
 
 async fn run_loop(db: SqlitePool, shutdown: CancellationToken) {

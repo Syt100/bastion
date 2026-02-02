@@ -12,6 +12,7 @@ use bastion_storage::{agent_labels_repo, bulk_operations_repo, jobs_repo, secret
 use crate::agent_job_resolver;
 use crate::agent_manager::AgentManager;
 use crate::agent_snapshots::{SendConfigSnapshotOutcome, send_node_config_snapshot_with_outcome};
+use crate::supervision::spawn_supervised;
 
 const BULK_CONCURRENCY: usize = 8;
 
@@ -24,7 +25,8 @@ pub struct BulkOperationsArgs {
 }
 
 pub fn spawn(args: BulkOperationsArgs) {
-    tokio::spawn(run_loop(args));
+    let shutdown = args.shutdown.clone();
+    spawn_supervised("bulk_operations.loop", shutdown, run_loop(args));
 }
 
 async fn run_loop(args: BulkOperationsArgs) {

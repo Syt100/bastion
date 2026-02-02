@@ -4,12 +4,12 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Backend - supervision infrastructure
-- [ ] 2.1 Introduce a small `spawn_supervised(...)` helper for long-running tasks
-- [ ] 2.2 Ensure panics in supervised tasks are logged and cancel the shared shutdown token
-- [ ] 2.3 Add unit tests for the supervision helper
+- [x] 2.1 Introduce a small `spawn_supervised(...)` helper for long-running tasks
+- [x] 2.2 Ensure panics in supervised tasks are logged and cancel the shared shutdown token
+- [x] 2.3 Add unit tests for the supervision helper
 
 ## 3. Backend - apply supervision to critical loops
-- [ ] 3.1 Apply supervision to scheduler loops (`scheduler::spawn`)
-- [ ] 3.2 Apply supervision to notifications/bulk/maintenance long-running loops
-- [ ] 3.3 Ensure `cargo test --workspace` passes
-- [ ] 3.4 Commit task supervision changes (detailed message)
+- [x] 3.1 Apply supervision to scheduler loops (`scheduler::spawn`)
+- [x] 3.2 Apply supervision to notifications/bulk/maintenance long-running loops
+- [x] 3.3 Ensure `cargo test --workspace` passes
+- [x] 3.4 Commit task supervision changes (detailed message)
