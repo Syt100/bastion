@@ -8,6 +8,8 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import { build } from 'esbuild'
 
+import { DEFAULT_UI_THEME_ID, UI_THEME_META_COLORS } from './src/theme/presets'
+
 function readWorkspaceVersion(): string | null {
   try {
     const cargoTomlPath = fileURLToPath(new URL('../Cargo.toml', import.meta.url))
@@ -30,6 +32,7 @@ const uiBuildTimeUnixParsed = uiBuildTimeUnixEnv ? Number.parseInt(uiBuildTimeUn
 const uiBuildTimeUnix = Number.isFinite(uiBuildTimeUnixParsed) ? uiBuildTimeUnixParsed : Math.floor(Date.now() / 1000)
 
 const uiGitSha = (process.env.GITHUB_SHA?.trim() || null)
+const defaultThemeColor = UI_THEME_META_COLORS[DEFAULT_UI_THEME_ID].light
 
 function themeBootstrapPlugin(): Plugin {
   const entryPath = fileURLToPath(new URL('./src/theme/bootstrap.ts', import.meta.url))
@@ -74,7 +77,7 @@ function themeBootstrapPlugin(): Plugin {
             injectTo: 'head-prepend',
             attrs: {
               name: 'theme-color',
-              content: '#0d9488',
+              content: defaultThemeColor,
             },
           },
           {

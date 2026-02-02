@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { UI_THEME_IDS } from '@/theme/presets'
+
 function readMainCss(): string {
   const candidates: string[] = []
 
@@ -41,5 +43,13 @@ describe('main.css background variables', () => {
 
     expect(css).toMatch(/html\s*\{[^}]*background-color:\s*var\(--app-bg-solid\)\s*;?[^}]*\}/s)
   })
-})
 
+  it('defines both light and dark theme token blocks for every theme', () => {
+    for (const themeId of UI_THEME_IDS) {
+      const id = String(themeId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      // Light blocks start at the beginning of a line (no ".dark" prefix).
+      expect(css).toMatch(new RegExp(`(?:^|\\s)\\[data-theme=['"]${id}['"]\\]\\s*\\{`))
+      expect(css).toMatch(new RegExp(`\\.dark\\[data-theme=['"]${id}['"]\\]\\s*\\{`))
+    }
+  })
+})
