@@ -21,6 +21,18 @@ The Web UI SHALL ship with **Mint Teal** as the default theme, targeting a fresh
 - **THEN** Mint Teal is applied automatically
 - **AND** the UI remains readable and visually consistent in both light and dark mode
 
+### Requirement: Higher-Contrast Dark Mode Across Themes
+The Web UI SHALL improve dark mode perceived quality across all theme presets by providing:
+- darker, cleaner base surfaces (reduced gray haze),
+- whiter primary text for readability,
+- and subtle aurora backgrounds that do not reduce legibility.
+
+#### Scenario: Dark mode remains crisp and readable in every theme
+- **GIVEN** the user enables dark mode
+- **WHEN** the user switches between theme presets
+- **THEN** text, cards, and borders maintain clear contrast
+- **AND** the overall palette does not appear muddy or low-contrast
+
 ### Requirement: Theme-Specific Background Aurora
 Each theme preset SHALL be able to define its own background aurora/gradient layers to reinforce the theme personality, while keeping the solid base background color separate.
 
