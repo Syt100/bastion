@@ -118,52 +118,30 @@ impl AgentManager {
         self.inner.write().await.remove(agent_id);
 
         let mut pending = self.pending_fs_list.lock().await;
-        let keys = pending
-            .keys()
-            .filter(|(id, _)| id == agent_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for key in keys {
-            if let Some(tx) = pending.remove(&key) {
-                let _ = tx.send(Err("agent disconnected".to_string()));
-            }
+        for (_key, tx) in pending.extract_if(|key, _| key.0.as_str() == agent_id) {
+            let _ = tx.send(Err("agent disconnected".to_string()));
         }
 
         let mut pending_webdav = self.pending_webdav_list.lock().await;
-        let webdav_keys = pending_webdav
-            .keys()
-            .filter(|(id, _)| id == agent_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for key in webdav_keys {
-            if let Some(tx) = pending_webdav.remove(&key) {
-                let _ = tx.send(Err(WebdavListRemoteError {
-                    code: "agent_offline".to_string(),
-                    message: "agent disconnected".to_string(),
-                }));
-            }
+        for (_key, tx) in pending_webdav.extract_if(|key, _| key.0.as_str() == agent_id) {
+            let _ = tx.send(Err(WebdavListRemoteError {
+                code: "agent_offline".to_string(),
+                message: "agent disconnected".to_string(),
+            }));
         }
 
         let mut pending_open = self.pending_artifact_open.lock().await;
-        let open_keys = pending_open
-            .keys()
-            .filter(|(id, _)| id == agent_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for key in open_keys {
-            let _ = pending_open.remove(&key);
+        for ((_id, stream_id), tx) in pending_open.extract_if(|key, _| key.0.as_str() == agent_id) {
+            let _ = tx.send(ArtifactStreamOpenResultV1 {
+                stream_id: stream_id.to_string(),
+                size: None,
+                error: Some("agent disconnected".to_string()),
+            });
         }
 
         let mut pending_chunk = self.pending_artifact_chunk.lock().await;
-        let chunk_keys = pending_chunk
-            .keys()
-            .filter(|(id, _)| id == agent_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for key in chunk_keys {
-            if let Some(tx) = pending_chunk.remove(&key) {
-                let _ = tx.send(Err("agent disconnected".to_string()));
-            }
+        for (_key, tx) in pending_chunk.extract_if(|key, _| key.0.as_str() == agent_id) {
+            let _ = tx.send(Err("agent disconnected".to_string()));
         }
     }
 
@@ -468,5 +446,83 @@ impl AgentManager {
         if let Some(tx) = tx {
             let _ = tx.send(Ok(chunk));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::sync::mpsc;
+    use uuid::Uuid;
+
+    use super::{AgentManager, ArtifactStreamOpenV1, FsListOptions};
+
+    #[tokio::test]
+    async fn pending_fs_list_page_fails_fast_on_disconnect() {
+        let manager = AgentManager::default();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        manager.register("agent1".to_string(), sender).await;
+
+        let manager_task = manager.clone();
+        let task = tokio::spawn(async move {
+            manager_task
+                .fs_list_page(
+                    "agent1",
+                    "/".to_string(),
+                    FsListOptions {
+                        cursor: None,
+                        limit: None,
+                        q: None,
+                        kind: None,
+                        hide_dotfiles: false,
+                        type_sort: None,
+                        sort_by: None,
+                        sort_dir: None,
+                        size_min_bytes: None,
+                        size_max_bytes: None,
+                    },
+                    Duration::from_secs(30),
+                )
+                .await
+        });
+
+        // Ensure the request has been sent before we unregister (so the pending map is populated).
+        let _ = receiver.recv().await.expect("sent request");
+        manager.unregister("agent1").await;
+
+        let err = task.await.expect("task join").expect_err("should error");
+        assert_eq!(err.to_string(), "agent disconnected");
+    }
+
+    #[tokio::test]
+    async fn pending_artifact_stream_open_returns_structured_error_on_disconnect() {
+        let manager = AgentManager::default();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        manager.register("agent1".to_string(), sender).await;
+
+        let stream_id = Uuid::new_v4().to_string();
+        let req = ArtifactStreamOpenV1 {
+            stream_id: stream_id.clone(),
+            op_id: "op1".to_string(),
+            run_id: "run1".to_string(),
+            artifact: "entries_index".to_string(),
+            path: None,
+        };
+
+        let manager_task = manager.clone();
+        let task = tokio::spawn(async move {
+            manager_task
+                .artifact_stream_open("agent1", req, Duration::from_secs(30))
+                .await
+        });
+
+        // Ensure the request has been sent before we unregister.
+        let _ = receiver.recv().await.expect("sent request");
+        manager.unregister("agent1").await;
+
+        let res = task.await.expect("task join").expect("open result");
+        assert_eq!(res.stream_id, stream_id);
+        assert_eq!(res.error.as_deref(), Some("agent disconnected"));
     }
 }
