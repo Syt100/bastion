@@ -270,3 +270,99 @@ impl HubArgs {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_hub_args(data_dir: PathBuf) -> HubArgs {
+        HubArgs {
+            host: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: 9876,
+            data_dir: Some(data_dir),
+            insecure_http: false,
+            debug_errors: false,
+            run_retention_days: 180,
+            incomplete_cleanup_days: 7,
+            hub_timezone: None,
+            trusted_proxies: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn into_config_sets_bind_and_default_trusted_proxies() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let cfg = base_hub_args(dir.path().to_path_buf()).into_config()?;
+
+        assert_eq!(
+            cfg.bind,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9876)
+        );
+        assert_eq!(cfg.data_dir, dir.path());
+
+        // If not explicitly configured, we should trust local loopback proxies only.
+        assert_eq!(cfg.trusted_proxies.len(), 2);
+        assert!(
+            cfg.trusted_proxies
+                .contains(&"127.0.0.1/32".parse::<IpNet>()?)
+        );
+        assert!(cfg.trusted_proxies.contains(&"::1/128".parse::<IpNet>()?));
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_rejects_non_positive_run_retention_days() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.run_retention_days = 0;
+        let err = args.into_config().expect_err("expected error");
+        assert!(err.to_string().contains("run_retention_days"));
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_rejects_negative_incomplete_cleanup_days() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.incomplete_cleanup_days = -1;
+        let err = args.into_config().expect_err("expected error");
+        assert!(err.to_string().contains("incomplete_cleanup_days"));
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_rejects_blank_or_invalid_timezone() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.hub_timezone = Some("   ".to_string());
+        assert!(args.into_config().is_err());
+
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.hub_timezone = Some("Not/AZone".to_string());
+        let err = args.into_config().expect_err("expected error");
+        assert!(err.to_string().contains("invalid hub_timezone"));
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_trims_timezone_and_keeps_custom_trusted_proxies() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.hub_timezone = Some("  Asia/Shanghai  ".to_string());
+        args.trusted_proxies = vec!["10.0.0.0/8".parse()?];
+
+        let cfg = args.into_config()?;
+        assert_eq!(cfg.hub_timezone, "Asia/Shanghai");
+        assert_eq!(cfg.trusted_proxies, vec!["10.0.0.0/8".parse()?]);
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_default_timezone_is_always_valid() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+        let cfg = base_hub_args(dir.path().to_path_buf()).into_config()?;
+        assert!(cfg.hub_timezone.parse::<chrono_tz::Tz>().is_ok());
+        Ok(())
+    }
+}
