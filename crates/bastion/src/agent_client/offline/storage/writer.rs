@@ -187,3 +187,56 @@ impl OfflineRunWriterHandle {
         .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::{OfflineRunEventV1, OfflineRunFileV1, OfflineRunStatusV1, offline_run_dir};
+    use super::OfflineRunWriterHandle;
+
+    #[tokio::test]
+    async fn offline_run_writer_writes_run_file_and_events() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path();
+
+        let handle = OfflineRunWriterHandle::start(data_dir, "run1", "job1", "job name", 123)
+            .await
+            .unwrap();
+
+        handle
+            .append_event("info", "start", "hello", Some(serde_json::json!({"a": 1})))
+            .unwrap();
+        handle.append_event("warn", "step", "world", None).unwrap();
+
+        handle
+            .finish_success(serde_json::json!({"done": true}))
+            .await
+            .unwrap();
+
+        let run_dir = offline_run_dir(data_dir, "run1");
+
+        let raw = std::fs::read(run_dir.join("run.json")).unwrap();
+        let doc: OfflineRunFileV1 = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(doc.v, 1);
+        assert_eq!(doc.id, "run1");
+        assert_eq!(doc.job_id, "job1");
+        assert_eq!(doc.job_name, "job name");
+        assert_eq!(doc.status, OfflineRunStatusV1::Success);
+        assert_eq!(doc.started_at, 123);
+        assert!(doc.ended_at.is_some());
+        assert_eq!(doc.summary, Some(serde_json::json!({"done": true})));
+        assert_eq!(doc.error, None);
+
+        let text = std::fs::read_to_string(run_dir.join("events.jsonl")).unwrap();
+        let events = text
+            .lines()
+            .map(|line| serde_json::from_str::<OfflineRunEventV1>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].seq, 1);
+        assert_eq!(events[1].seq, 2);
+        assert_eq!(events[0].level, "info");
+        assert_eq!(events[1].level, "warn");
+        assert_eq!(events[0].fields, Some(serde_json::json!({"a": 1})));
+        assert_eq!(events[1].fields, None);
+    }
+}
