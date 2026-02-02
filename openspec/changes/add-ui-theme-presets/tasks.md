@@ -27,7 +27,7 @@
 - [x] 5.3 Commit tests (detailed message)
 
 ## 6. Validation
-- [ ] 6.1 Run `npm test --prefix ui`
-- [ ] 6.2 Run `npm run lint --prefix ui`
-- [ ] 6.3 Run `npm run build --prefix ui`
-- [ ] 6.4 Run `bash scripts/ci.sh`
+- [x] 6.1 Run `npm test --prefix ui`
+- [x] 6.2 Run `npm run lint --prefix ui`
+- [x] 6.3 Run `npm run build --prefix ui`
+- [x] 6.4 Run `bash scripts/ci.sh`
