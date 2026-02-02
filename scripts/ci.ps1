@@ -29,6 +29,22 @@ if (-not $gitleaks) {
 
 gitleaks detect --source $rootDir --redact --no-banner --exit-code 1
 
+Write-Host "==> Rust: forbid tokio/full"
+$cargoTomls = Get-ChildItem -Path (Join-Path $rootDir "crates") -Recurse -Filter Cargo.toml
+$tokioFull = @()
+foreach ($toml in $cargoTomls) {
+  $content = Get-Content -Path $toml.FullName -Raw
+  if ($content -match '(?s)tokio\\s*=\\s*\\{[^}]*features\\s*=\\s*\\[[^\\]]*\"full\"') {
+    $tokioFull += $toml
+  }
+}
+if ($tokioFull.Count -gt 0) {
+  foreach ($toml in $tokioFull) {
+    Write-Host "tokio/full match: $($toml.FullName)"
+  }
+  throw "tokio/full is forbidden. Use explicit minimal tokio features instead."
+}
+
 Write-Host "==> Rust: fmt"
 cargo fmt --check
 
