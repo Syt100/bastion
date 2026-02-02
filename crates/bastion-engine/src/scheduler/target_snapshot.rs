@@ -44,3 +44,72 @@ fn redact_base_url(base_url: &str) -> String {
 
     url.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use url::Url;
+
+    use super::build_run_target_snapshot;
+
+    #[test]
+    fn build_run_target_snapshot_local_dir_includes_node_and_base_dir() {
+        let spec = bastion_core::job_spec::parse_value(&serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "paths": ["/"] },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }))
+        .unwrap();
+
+        let snapshot = build_run_target_snapshot("node1", &spec);
+        assert_eq!(snapshot["node_id"], "node1");
+        assert_eq!(snapshot["target"]["type"], "local_dir");
+        assert_eq!(snapshot["target"]["base_dir"], "/tmp");
+    }
+
+    #[test]
+    fn build_run_target_snapshot_webdav_redacts_credentials_and_normalizes_slash() {
+        let spec = bastion_core::job_spec::parse_value(&serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "paths": ["/"] },
+            "target": {
+                "type": "webdav",
+                "base_url": "https://user:pass@example.com/base?q=1#frag",
+                "secret_name": "primary"
+            }
+        }))
+        .unwrap();
+
+        let snapshot = build_run_target_snapshot("node1", &spec);
+        assert_eq!(snapshot["node_id"], "node1");
+        assert_eq!(snapshot["target"]["type"], "webdav");
+        assert_eq!(snapshot["target"]["secret_name"], "primary");
+
+        let base_url = snapshot["target"]["base_url"].as_str().unwrap();
+        let url = Url::parse(base_url).unwrap();
+        assert_eq!(url.username(), "");
+        assert!(url.password().is_none());
+        assert!(url.query().is_none());
+        assert!(url.fragment().is_none());
+        assert!(url.path().ends_with('/'));
+    }
+
+    #[test]
+    fn build_run_target_snapshot_webdav_keeps_invalid_url_literal() {
+        let spec = bastion_core::job_spec::parse_value(&serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "paths": ["/"] },
+            "target": {
+                "type": "webdav",
+                "base_url": "not a url",
+                "secret_name": "primary"
+            }
+        }))
+        .unwrap();
+
+        let snapshot = build_run_target_snapshot("node1", &spec);
+        assert_eq!(snapshot["target"]["base_url"], "not a url");
+    }
+}
