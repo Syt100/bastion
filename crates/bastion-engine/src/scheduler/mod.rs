@@ -58,60 +58,56 @@ pub fn spawn(args: SchedulerArgs) {
         "scheduler.cron_loop",
         shutdown.clone(),
         cron::run_cron_loop(
-        db.clone(),
-        run_events_bus.clone(),
-        run_queue_notify.clone(),
-        jobs_notify.clone(),
-        agent_manager_cron,
-        shutdown.clone(),
-    ),
+            db.clone(),
+            run_events_bus.clone(),
+            run_queue_notify.clone(),
+            jobs_notify.clone(),
+            agent_manager_cron,
+            shutdown.clone(),
+        ),
     );
 
     spawn_supervised(
         "scheduler.worker_loop",
         shutdown.clone(),
         worker::run_worker_loop(worker::WorkerLoopArgs {
-        db: db.clone(),
-        data_dir,
-        secrets: secrets.clone(),
-        agent_manager: agent_manager_worker,
-        run_events_bus: run_events_bus.clone(),
-        run_queue_notify: run_queue_notify.clone(),
-        notifications_notify: notifications_notify.clone(),
-        shutdown: shutdown.clone(),
-    }),
+            db: db.clone(),
+            data_dir,
+            secrets: secrets.clone(),
+            agent_manager: agent_manager_worker,
+            run_events_bus: run_events_bus.clone(),
+            run_queue_notify: run_queue_notify.clone(),
+            notifications_notify: notifications_notify.clone(),
+            shutdown: shutdown.clone(),
+        }),
     );
 
     spawn_supervised(
         "scheduler.retention_loop",
         shutdown.clone(),
-        retention::run_retention_loop(
-        db.clone(),
-        run_retention_days,
-        shutdown.clone(),
-    ),
+        retention::run_retention_loop(db.clone(), run_retention_days, shutdown.clone()),
     );
 
     spawn_supervised(
         "scheduler.snapshot_retention_loop",
         shutdown.clone(),
         snapshot_retention::run_snapshot_retention_loop(
-        db.clone(),
-        artifact_delete_notify.clone(),
-        shutdown.clone(),
-    ),
+            db.clone(),
+            artifact_delete_notify.clone(),
+            shutdown.clone(),
+        ),
     );
 
     spawn_supervised(
         "scheduler.artifact_delete_loop",
         shutdown.clone(),
         artifact_delete::run_artifact_delete_loop(
-        db.clone(),
-        secrets.clone(),
-        agent_manager,
-        artifact_delete_notify,
-        shutdown.clone(),
-    ),
+            db.clone(),
+            secrets.clone(),
+            agent_manager,
+            artifact_delete_notify,
+            shutdown.clone(),
+        ),
     );
 
     if incomplete_cleanup_days > 0 {
@@ -119,12 +115,12 @@ pub fn spawn(args: SchedulerArgs) {
             "scheduler.incomplete_cleanup_loop",
             shutdown.clone(),
             incomplete_cleanup::run_incomplete_cleanup_loop(
-            db.clone(),
-            secrets,
-            incomplete_cleanup_days,
-            incomplete_cleanup_notify,
-            shutdown,
-        ),
+                db.clone(),
+                secrets,
+                incomplete_cleanup_days,
+                incomplete_cleanup_notify,
+                shutdown,
+            ),
         );
     }
 }

@@ -15,11 +15,7 @@ pub struct DbPruneStats {
 }
 
 pub fn spawn(db: SqlitePool, shutdown: CancellationToken) {
-    spawn_supervised(
-        "maintenance.loop",
-        shutdown.clone(),
-        run_loop(db, shutdown),
-    );
+    spawn_supervised("maintenance.loop", shutdown.clone(), run_loop(db, shutdown));
 }
 
 async fn run_loop(db: SqlitePool, shutdown: CancellationToken) {
