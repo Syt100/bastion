@@ -343,3 +343,124 @@ async fn send_op_progress_snapshot(
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+    use tokio_tungstenite::tungstenite;
+    use tokio_tungstenite::tungstenite::Message;
+
+    use bastion_core::agent_protocol::PROTOCOL_VERSION;
+    use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
+
+    use super::{send_op_event, send_op_progress_snapshot};
+
+    #[derive(Default)]
+    struct VecSink {
+        messages: Vec<Message>,
+    }
+
+    impl Sink<Message> for VecSink {
+        type Error = tungstenite::Error;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+            self.messages.push(item);
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn send_op_event_serializes_operation_event() {
+        let mut sink = VecSink::default();
+        send_op_event(
+            &mut sink,
+            "op1",
+            "info",
+            "start",
+            "start",
+            Some(serde_json::json!({ "k": 1 })),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(sink.messages.len(), 1);
+        let Message::Text(text) = &sink.messages[0] else {
+            panic!("expected text message");
+        };
+
+        let v: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(v["type"], "operation_event");
+        assert_eq!(v["v"], PROTOCOL_VERSION);
+        assert_eq!(v["event"]["op_id"], "op1");
+        assert_eq!(v["event"]["level"], "info");
+        assert_eq!(v["event"]["kind"], "start");
+        assert_eq!(v["event"]["message"], "start");
+        assert_eq!(v["event"]["fields"]["k"], 1);
+    }
+
+    #[tokio::test]
+    async fn send_op_progress_snapshot_wraps_snapshot_as_operation_event() {
+        let mut sink = VecSink::default();
+        let snapshot = ProgressSnapshotV1 {
+            v: 1,
+            kind: ProgressKindV1::Restore,
+            stage: "restore".to_string(),
+            ts: 123,
+            done: ProgressUnitsV1 {
+                bytes: 10,
+                files: 2,
+                dirs: 0,
+            },
+            total: None,
+            rate_bps: None,
+            eta_seconds: None,
+            detail: Some(serde_json::json!({ "x": true })),
+        };
+
+        send_op_progress_snapshot(&mut sink, "op1", snapshot)
+            .await
+            .unwrap();
+
+        assert_eq!(sink.messages.len(), 1);
+        let Message::Text(text) = &sink.messages[0] else {
+            panic!("expected text message");
+        };
+
+        let v: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(v["type"], "operation_event");
+        assert_eq!(v["event"]["op_id"], "op1");
+        assert_eq!(
+            v["event"]["kind"],
+            bastion_core::progress::PROGRESS_SNAPSHOT_EVENT_KIND_V1
+        );
+        assert_eq!(v["event"]["message"], "restore");
+        assert_eq!(v["event"]["fields"]["kind"], "restore");
+        assert_eq!(v["event"]["fields"]["done"]["bytes"], 10);
+        assert_eq!(v["event"]["fields"]["done"]["files"], 2);
+        assert_eq!(v["event"]["fields"]["detail"]["x"], true);
+    }
+}

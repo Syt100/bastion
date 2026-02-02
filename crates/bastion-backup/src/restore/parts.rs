@@ -15,3 +15,30 @@ pub(super) fn hash_file_blake3(path: &Path) -> Result<String, anyhow::Error> {
     }
     Ok(hasher.finalize().to_hex().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::hash_file_blake3;
+
+    #[test]
+    fn hash_file_blake3_matches_expected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("a.bin");
+        std::fs::write(&path, b"hello").unwrap();
+
+        let expected = blake3::hash(b"hello").to_hex().to_string();
+        assert_eq!(hash_file_blake3(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn hash_file_blake3_hashes_empty_file() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("empty.bin");
+        std::fs::write(&path, b"").unwrap();
+
+        let expected = blake3::hash(b"").to_hex().to_string();
+        assert_eq!(hash_file_blake3(&path).unwrap(), expected);
+    }
+}
