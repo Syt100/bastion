@@ -53,3 +53,56 @@ pub fn decode_artifact_chunk_frame_v1(
         payload: &bytes[17..],
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flags_round_trip_and_ignore_unknown_bits() {
+        assert_eq!(
+            ArtifactChunkFrameV1Flags::from_byte(0b0000_0000),
+            ArtifactChunkFrameV1Flags { eof: false }
+        );
+        assert_eq!(
+            ArtifactChunkFrameV1Flags::from_byte(0b0000_0001),
+            ArtifactChunkFrameV1Flags { eof: true }
+        );
+
+        // Unknown bits are ignored.
+        assert_eq!(
+            ArtifactChunkFrameV1Flags::from_byte(0b1111_1111),
+            ArtifactChunkFrameV1Flags { eof: true }
+        );
+
+        let flags = ArtifactChunkFrameV1Flags { eof: true };
+        assert_eq!(ArtifactChunkFrameV1Flags::from_byte(flags.to_byte()), flags);
+    }
+
+    #[test]
+    fn encode_decode_round_trip() -> Result<(), anyhow::Error> {
+        let stream_id = Uuid::new_v4();
+        let flags = ArtifactChunkFrameV1Flags { eof: true };
+        let payload = b"hello";
+
+        let frame = encode_artifact_chunk_frame_v1(&stream_id, flags, payload);
+        assert_eq!(
+            frame.len(),
+            ARTIFACT_CHUNK_FRAME_V1_HEADER_LEN + payload.len()
+        );
+
+        let decoded = decode_artifact_chunk_frame_v1(&frame)?;
+        assert_eq!(decoded.stream_id, stream_id);
+        assert_eq!(decoded.flags, flags);
+        assert_eq!(decoded.payload, payload);
+        Ok(())
+    }
+
+    #[test]
+    fn decode_rejects_too_short_frames() {
+        let err = decode_artifact_chunk_frame_v1(&[0_u8; ARTIFACT_CHUNK_FRAME_V1_HEADER_LEN - 1])
+            .err()
+            .expect("expected error");
+        assert!(err.to_string().contains("too short"));
+    }
+}
