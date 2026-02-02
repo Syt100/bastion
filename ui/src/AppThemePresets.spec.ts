@@ -73,6 +73,12 @@ vi.mock('naive-ui', async (importOriginal) => {
 
 import App from './App.vue'
 
+type ThemeOverridesLike = {
+  common?: {
+    primaryColor?: string
+  }
+}
+
 describe('Theme presets', () => {
   beforeEach(() => {
     uiStore.darkMode = false
@@ -91,16 +97,15 @@ describe('Theme presets', () => {
     })
 
     expect(document.documentElement.dataset.theme).toBe('mint-teal')
-    const overrides1 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as any
-    expect(overrides1.common.primaryColor).toBe('#0d9488')
+    const overrides1 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
+    expect(overrides1.common?.primaryColor).toBe('#0d9488')
 
     uiStore.themeId = 'ocean-blue'
     document.documentElement.style.setProperty('--app-primary', '#0284c7')
     await nextTick()
 
     expect(document.documentElement.dataset.theme).toBe('ocean-blue')
-    const overrides2 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as any
-    expect(overrides2.common.primaryColor).toBe('#0284c7')
+    const overrides2 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
+    expect(overrides2.common?.primaryColor).toBe('#0284c7')
   })
 })
-

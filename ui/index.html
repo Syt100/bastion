@@ -5,6 +5,45 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0d9488">
+    <script>
+      ;(() => {
+        // Apply user theme preferences before CSS loads to avoid a light-mode flash in dark mode.
+        try {
+          const html = document.documentElement
+          const darkMode = localStorage.getItem('bastion.ui.darkMode')
+          if (darkMode === 'true') html.classList.add('dark')
+
+          const allowedThemes = [
+            'mint-teal',
+            'ocean-blue',
+            'grape-violet',
+            'sunset-amber',
+            'berry-rose',
+            'coral-peach',
+          ]
+          let themeId = localStorage.getItem('bastion.ui.themeId') || 'mint-teal'
+          if (!allowedThemes.includes(themeId)) themeId = 'mint-teal'
+          html.dataset.theme = themeId
+
+          const themeColorMeta = document.querySelector('meta[name="theme-color"]')
+          if (themeColorMeta) {
+            const themeColorMap = {
+              'mint-teal': { light: '#0d9488', dark: '#040b0b' },
+              'ocean-blue': { light: '#0284c7', dark: '#050b14' },
+              'grape-violet': { light: '#7c3aed', dark: '#070611' },
+              'sunset-amber': { light: '#d97706', dark: '#0c0704' },
+              'berry-rose': { light: '#e11d48', dark: '#12050b' },
+              'coral-peach': { light: '#f97316', dark: '#0c0604' },
+            }
+            const mode = darkMode === 'true' ? 'dark' : 'light'
+            const color = (themeColorMap[themeId] && themeColorMap[themeId][mode]) || '#0d9488'
+            themeColorMeta.setAttribute('content', color)
+          }
+        } catch (_) {
+          // Ignore (e.g. storage disabled).
+        }
+      })()
+    </script>
     <title>Bastion</title>
   </head>
   <body>
