@@ -218,3 +218,281 @@ impl Read for HubStreamReader {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+
+    use bastion_core::agent_protocol::AgentToHubMessageV1;
+    use bastion_core::agent_protocol::ArtifactStreamOpenV1;
+
+    async fn recv_text_message(
+        rx: &mut mpsc::UnboundedReceiver<Message>,
+    ) -> Result<String, anyhow::Error> {
+        let msg = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .map_err(|_| anyhow::anyhow!("timeout waiting for outbox message"))?
+            .ok_or_else(|| anyhow::anyhow!("outbox closed"))?;
+        let Message::Text(text) = msg else {
+            anyhow::bail!("expected text message");
+        };
+        Ok(text.to_string())
+    }
+
+    #[tokio::test]
+    async fn open_sends_message_and_returns_result() -> Result<(), anyhow::Error> {
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let mgr = HubStreamManager::new(out_tx);
+
+        let stream_id = Uuid::new_v4();
+        let req = ArtifactStreamOpenV1 {
+            stream_id: stream_id.to_string(),
+            op_id: "op".to_string(),
+            run_id: "run".to_string(),
+            artifact: "entries".to_string(),
+            path: None,
+        };
+
+        let mgr_for_open = mgr.clone();
+        let open_task =
+            tokio::spawn(async move { mgr_for_open.open(req, Duration::from_secs(2)).await });
+
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamOpen { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.op_id, "op");
+                assert_eq!(req.run_id, "run");
+                assert_eq!(req.artifact, "entries");
+                assert_eq!(req.path, None);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+
+        mgr.complete_open(ArtifactStreamOpenResultV1 {
+            stream_id: stream_id.to_string(),
+            size: Some(123),
+            error: None,
+        })
+        .await;
+
+        let res = open_task.await??;
+        assert_eq!(res.stream_id, stream_id.to_string());
+        assert_eq!(res.size, Some(123));
+        assert_eq!(res.error, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_fails_fast_when_outbox_is_closed() {
+        let (out_tx, out_rx) = mpsc::unbounded_channel::<Message>();
+        drop(out_rx);
+        let mgr = HubStreamManager::new(out_tx);
+
+        let req = ArtifactStreamOpenV1 {
+            stream_id: Uuid::new_v4().to_string(),
+            op_id: "op".to_string(),
+            run_id: "run".to_string(),
+            artifact: "entries".to_string(),
+            path: None,
+        };
+
+        let err = mgr
+            .open(req, Duration::from_secs(1))
+            .await
+            .expect_err("expected error");
+        assert!(err.to_string().contains("open send failed"));
+    }
+
+    #[tokio::test]
+    async fn pull_sends_message_and_returns_chunk() -> Result<(), anyhow::Error> {
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let mgr = HubStreamManager::new(out_tx);
+
+        let stream_id = Uuid::new_v4();
+        let mgr_for_pull = mgr.clone();
+        let pull_task = tokio::spawn(async move {
+            mgr_for_pull
+                .pull(stream_id, 64, Duration::from_secs(2))
+                .await
+        });
+
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamPull { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.max_bytes, 64);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+
+        mgr.complete_chunk(
+            HubStreamChunk {
+                eof: true,
+                bytes: vec![1, 2, 3],
+            },
+            stream_id,
+        )
+        .await;
+
+        let chunk = pull_task.await??;
+        assert!(chunk.eof);
+        assert_eq!(chunk.bytes, vec![1, 2, 3]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hub_stream_reader_reads_to_eof_across_chunks() -> Result<(), anyhow::Error> {
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let mgr = HubStreamManager::new(out_tx);
+
+        let stream_id = Uuid::new_v4();
+        let handle = tokio::runtime::Handle::current();
+        let mut reader =
+            HubStreamReader::new(handle, mgr.clone(), stream_id, 3, Duration::from_secs(2));
+
+        let read_task = tokio::task::spawn_blocking(move || {
+            let mut out = Vec::new();
+            reader.read_to_end(&mut out)?;
+            Ok::<_, std::io::Error>(out)
+        });
+
+        // First pull -> "hel"
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamPull { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.max_bytes, 3);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+        mgr.complete_chunk(
+            HubStreamChunk {
+                eof: false,
+                bytes: b"hel".to_vec(),
+            },
+            stream_id,
+        )
+        .await;
+
+        // Second pull -> "lo" + eof.
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamPull { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.max_bytes, 3);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+        mgr.complete_chunk(
+            HubStreamChunk {
+                eof: true,
+                bytes: b"lo".to_vec(),
+            },
+            stream_id,
+        )
+        .await;
+
+        let bytes = tokio::time::timeout(Duration::from_secs(2), read_task)
+            .await
+            .map_err(|_| anyhow::anyhow!("timeout waiting for reader"))??;
+        let bytes = bytes?;
+        assert_eq!(bytes, b"hello".to_vec());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_bytes_opens_and_pulls_until_eof() -> Result<(), anyhow::Error> {
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let mgr = HubStreamManager::new(out_tx);
+
+        let mgr_for_read = mgr.clone();
+        let read_task = tokio::spawn(async move {
+            mgr_for_read
+                .read_bytes(
+                    "op",
+                    "run",
+                    "entries",
+                    Duration::from_secs(2),
+                    Duration::from_secs(2),
+                    64,
+                )
+                .await
+        });
+
+        // Open request
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        let stream_id = match msg {
+            AgentToHubMessageV1::ArtifactStreamOpen { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.op_id, "op");
+                assert_eq!(req.run_id, "run");
+                assert_eq!(req.artifact, "entries");
+                Uuid::parse_str(req.stream_id.as_str())?
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        };
+
+        mgr.complete_open(ArtifactStreamOpenResultV1 {
+            stream_id: stream_id.to_string(),
+            size: None,
+            error: None,
+        })
+        .await;
+
+        // Pull 1
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamPull { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.max_bytes, 64);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+        mgr.complete_chunk(
+            HubStreamChunk {
+                eof: false,
+                bytes: b"hi ".to_vec(),
+            },
+            stream_id,
+        )
+        .await;
+
+        // Pull 2 -> eof.
+        let text = recv_text_message(&mut out_rx).await?;
+        let msg: AgentToHubMessageV1 = serde_json::from_str(&text)?;
+        match msg {
+            AgentToHubMessageV1::ArtifactStreamPull { v, req } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(req.stream_id, stream_id.to_string());
+                assert_eq!(req.max_bytes, 64);
+            }
+            other => anyhow::bail!("unexpected message: {other:?}"),
+        }
+        mgr.complete_chunk(
+            HubStreamChunk {
+                eof: true,
+                bytes: b"there".to_vec(),
+            },
+            stream_id,
+        )
+        .await;
+
+        let bytes = read_task.await??;
+        assert_eq!(bytes, b"hi there".to_vec());
+        Ok(())
+    }
+}
