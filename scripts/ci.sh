@@ -27,7 +27,7 @@ fi
 
 echo "==> Rust: forbid tokio/full"
 if command -v rg >/dev/null 2>&1; then
-  if rg -nU --glob 'crates/*/Cargo.toml' 'tokio\\s*=\\s*\\{[^}]*features\\s*=\\s*\\[[^\\]]*"full"' ; then
+  if rg -nU --glob 'crates/*/Cargo.toml' 'tokio\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"full"' ; then
     echo "tokio/full is forbidden. Use explicit minimal tokio features instead." >&2
     exit 1
   fi

@@ -778,7 +778,7 @@ mod tests {
         let v1 = jitter_seconds("run", 3, 30);
         let v2 = jitter_seconds("run", 3, 30);
         assert_eq!(v1, v2);
-        assert!(v1 >= 0 && v1 < 30);
+        assert!((0_i64..30).contains(&v1));
     }
 
     #[test]
