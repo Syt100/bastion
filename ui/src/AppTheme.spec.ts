@@ -6,6 +6,7 @@ import { mount } from '@vue/test-utils'
 
 let uiState = {
   darkMode: false,
+  themeId: 'mint-teal' as const,
   locale: 'en-US' as const,
 }
 
@@ -63,7 +64,7 @@ import App from './App.vue'
 
 describe('App theme overrides', () => {
   it('does not pass CSS var(...) strings into naive-ui theme overrides (light)', () => {
-    uiState = { darkMode: false, locale: 'en-US' }
+    uiState = { darkMode: false, themeId: 'mint-teal', locale: 'en-US' }
     const wrapper = mount(App, {
       global: {
         stubs: { 'router-view': { template: '<div />' } },
@@ -75,7 +76,7 @@ describe('App theme overrides', () => {
   })
 
   it('does not pass CSS var(...) strings into naive-ui theme overrides (dark)', () => {
-    uiState = { darkMode: true, locale: 'en-US' }
+    uiState = { darkMode: true, themeId: 'mint-teal', locale: 'en-US' }
     const wrapper = mount(App, {
       global: {
         stubs: { 'router-view': { template: '<div />' } },

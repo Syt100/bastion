@@ -31,6 +31,27 @@ describe('useUiStore', () => {
     expect(ui.darkMode).toBe(true)
   })
 
+  it('defaults to mint-teal theme when not stored', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.themeId).toBe('mint-teal')
+  })
+
+  it('falls back to default theme when stored value is invalid', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.themeId', 'unknown-theme')
+    const ui = useUiStore()
+    expect(ui.themeId).toBe('mint-teal')
+  })
+
+  it('sets theme and persists', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setThemeId('ocean-blue')
+    expect(ui.themeId).toBe('ocean-blue')
+    expect(localStorage.getItem('bastion.ui.themeId')).toBe('ocean-blue')
+  })
+
   it('toggles dark mode and persists', () => {
     stubMatchMedia(false)
     const ui = useUiStore()

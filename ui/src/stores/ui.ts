@@ -2,9 +2,11 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { persistLocalePreference, resolveInitialLocale, type SupportedLocale, setI18nLocale } from '@/i18n'
+import { DEFAULT_UI_THEME_ID, isUiThemeId, type UiThemeId } from '@/theme/presets'
 
 const STORAGE_KEY = 'bastion.ui.darkMode'
 const PREFERRED_NODE_KEY = 'bastion.ui.preferredNodeId'
+const THEME_KEY = 'bastion.ui.themeId'
 
 export const useUiStore = defineStore('ui', () => {
   function detectSystemDarkMode(): boolean {
@@ -14,6 +16,12 @@ export const useUiStore = defineStore('ui', () => {
 
   const storedDarkMode = localStorage.getItem(STORAGE_KEY)
   const darkMode = ref<boolean>(storedDarkMode === null ? detectSystemDarkMode() : storedDarkMode === 'true')
+  const themeId = ref<UiThemeId>(
+    (() => {
+      const raw = localStorage.getItem(THEME_KEY)
+      return isUiThemeId(raw) ? raw : DEFAULT_UI_THEME_ID
+    })(),
+  )
   const locale = ref<SupportedLocale>(resolveInitialLocale())
   const preferredNodeId = ref<string>(localStorage.getItem(PREFERRED_NODE_KEY) || 'hub')
   const themeMode = computed(() => (darkMode.value ? 'dark' : 'light'))
@@ -37,6 +45,11 @@ export const useUiStore = defineStore('ui', () => {
     setDarkMode(!darkMode.value)
   }
 
+  function setThemeId(value: UiThemeId): void {
+    themeId.value = value
+    localStorage.setItem(THEME_KEY, value)
+  }
+
   function setPreferredNodeId(value: string): void {
     const v = value.trim() || 'hub'
     preferredNodeId.value = v
@@ -45,10 +58,12 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     darkMode,
+    themeId,
     locale,
     preferredNodeId,
     themeMode,
     setDarkMode,
+    setThemeId,
     setLocale,
     setPreferredNodeId,
     toggleDarkMode,

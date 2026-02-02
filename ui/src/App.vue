@@ -34,6 +34,7 @@ const pageTitle = computed(() => {
 
 watchEffect(() => {
   if (typeof document === 'undefined') return
+  document.documentElement.dataset.theme = ui.themeId
   document.documentElement.classList.toggle('dark', ui.darkMode)
   // Apply to <body> as well so CSS variables used by
   // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`
@@ -42,7 +43,11 @@ watchEffect(() => {
   document.documentElement.lang = ui.locale
   document.title = pageTitle.value
 
-  const themeColor = ui.darkMode ? '#0b1220' : '#3b82f6'
+  // Use solid background in dark mode; use primary accent in light mode.
+  const styles = getComputedStyle(document.documentElement)
+  const themeColor = (ui.darkMode
+    ? styles.getPropertyValue('--app-bg-solid').trim()
+    : styles.getPropertyValue('--app-primary').trim()) || (ui.darkMode ? '#040b0b' : '#0d9488')
   const themeMeta = document.querySelector('meta[name="theme-color"]')
   if (themeMeta) {
     themeMeta.setAttribute('content', themeColor)
@@ -53,10 +58,10 @@ const naiveLocale = computed(() => NAIVE_UI_LOCALES[ui.locale])
 const naiveDateLocale = computed(() => NAIVE_UI_DATE_LOCALES[ui.locale])
 
 const FALLBACK_TOKENS_LIGHT = {
-  primary: '#3b82f6',
-  primaryHover: '#60a5fa',
-  primaryPressed: '#2563eb',
-  primarySoft: 'rgba(59, 130, 246, 0.14)',
+  primary: '#0d9488',
+  primaryHover: '#14b8a6',
+  primaryPressed: '#0f766e',
+  primarySoft: 'rgba(20, 184, 166, 0.14)',
 
   info: '#0ea5e9',
   success: '#22c55e',
@@ -78,24 +83,24 @@ const FALLBACK_TOKENS_LIGHT = {
 } as const
 
 const FALLBACK_TOKENS_DARK = {
-  primary: '#60a5fa',
-  primaryHover: '#93c5fd',
-  primaryPressed: '#3b82f6',
-  primarySoft: 'rgba(96, 165, 250, 0.20)',
+  primary: '#2dd4bf',
+  primaryHover: '#5eead4',
+  primaryPressed: '#14b8a6',
+  primarySoft: 'rgba(45, 212, 191, 0.20)',
 
   info: '#0ea5e9',
   success: '#22c55e',
   warning: '#f59e0b',
   danger: '#ef4444',
 
-  text: '#e5e7eb',
-  textMuted: 'rgba(229, 231, 235, 0.74)',
-  border: 'rgba(255, 255, 255, 0.11)',
+  text: '#f8fafc',
+  textMuted: 'rgba(248, 250, 252, 0.74)',
+  border: 'rgba(248, 250, 252, 0.14)',
   hover: 'rgba(255, 255, 255, 0.06)',
   pressed: 'rgba(255, 255, 255, 0.08)',
 
-  surface: '#111827',
-  surface2: 'rgba(17, 24, 39, 0.72)',
+  surface: '#0b1515',
+  surface2: 'rgba(16, 32, 32, 0.72)',
 
   shadowSm: '0 1px 2px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.22)',
   shadowMd: '0 12px 28px rgba(0, 0, 0, 0.34)',
@@ -112,6 +117,8 @@ function cssVar(name: string, fallback: string): string {
 }
 
 const resolvedTokens = computed(() => {
+  // Ensure theme overrides recompute when the theme preset changes.
+  void ui.themeId
   const fb = ui.darkMode ? FALLBACK_TOKENS_DARK : FALLBACK_TOKENS_LIGHT
   return {
     primary: cssVar('--app-primary', fb.primary),
