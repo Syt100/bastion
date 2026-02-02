@@ -24,3 +24,39 @@ pub(super) fn write_json_pretty_atomic(
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::write_json_pretty_atomic;
+
+    #[test]
+    fn write_json_pretty_atomic_writes_file_and_cleans_up_tmp() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let path = tmp.path().join("agent").join("managed").join("config.json");
+        let value = serde_json::json!({
+            "a": 1,
+            "b": "x",
+            "nested": { "c": true },
+        });
+
+        write_json_pretty_atomic(&path, &value).unwrap();
+
+        assert!(path.exists());
+        assert!(path.parent().unwrap().exists());
+
+        let bytes = std::fs::read(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(parsed, value);
+
+        let tmp_path = path.with_extension("json.partial");
+        assert!(!tmp_path.exists());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
+}
