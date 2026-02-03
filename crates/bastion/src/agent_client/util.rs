@@ -58,6 +58,8 @@ pub(super) fn is_ws_error(error: &anyhow::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     #[test]
     fn normalize_base_url_appends_slash() {
         let url = super::normalize_base_url("http://localhost:9876").unwrap();
@@ -69,5 +71,38 @@ mod tests {
         let base = super::normalize_base_url("https://hub.example.com/bastion").unwrap();
         let ws = super::agent_ws_url(&base).unwrap();
         assert_eq!(ws.as_str(), "wss://hub.example.com/bastion/agent/ws");
+    }
+
+    #[test]
+    fn jittered_backoff_is_deterministic_and_in_range() {
+        let base = Duration::from_secs(10);
+        let a = super::jittered_backoff(base, "agent-1", 1);
+        let b = super::jittered_backoff(base, "agent-1", 1);
+        assert_eq!(a, b);
+        assert!(a >= base / 2);
+        assert!(a <= base);
+    }
+
+    #[test]
+    fn jittered_backoff_returns_base_when_half_ms_is_zero() {
+        let base = Duration::from_millis(1);
+        assert_eq!(super::jittered_backoff(base, "agent-1", 1), base);
+    }
+
+    #[test]
+    fn jittered_backoff_zero_base_is_zero() {
+        assert_eq!(
+            super::jittered_backoff(Duration::ZERO, "agent-1", 1),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn is_ws_error_detects_tungstenite_errors_in_chain() {
+        let err = anyhow::Error::new(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+        assert!(super::is_ws_error(&err));
+
+        let err = anyhow::anyhow!("boom");
+        assert!(!super::is_ws_error(&err));
     }
 }
