@@ -196,7 +196,7 @@ async fn persist_offline_rejected_run(
 mod tests {
     use chrono::TimeZone as _;
 
-    use super::allow_due_for_local_minute;
+    use super::{allow_due_for_local_minute, persist_offline_rejected_run};
 
     #[test]
     fn allow_due_for_local_minute_runs_once_on_dst_fold() {
@@ -225,5 +225,54 @@ mod tests {
 
         let dt = tz.from_local_datetime(&naive).single().unwrap();
         assert!(allow_due_for_local_minute(tz, dt));
+    }
+
+    #[tokio::test]
+    async fn persist_offline_rejected_run_writes_run_file_and_event() {
+        use super::super::super::storage::{
+            OfflineRunEventV1, OfflineRunFileV1, OfflineRunStatusV1,
+        };
+
+        let tmp = tempfile::tempdir().unwrap();
+        persist_offline_rejected_run(tmp.path(), "job1", "job name")
+            .await
+            .unwrap();
+
+        let offline_runs_dir = tmp.path().join("agent").join("offline_runs");
+        let mut dirs = std::fs::read_dir(&offline_runs_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().ok().is_some_and(|t| t.is_dir()))
+            .map(|e| e.path())
+            .collect::<Vec<_>>();
+        assert_eq!(dirs.len(), 1);
+        let run_dir = dirs.pop().unwrap();
+
+        let run_raw = std::fs::read(run_dir.join("run.json")).unwrap();
+        let run: OfflineRunFileV1 = serde_json::from_slice(&run_raw).unwrap();
+        assert_eq!(run.v, 1);
+        assert_eq!(run.job_id, "job1");
+        assert_eq!(run.job_name, "job name");
+        assert_eq!(run.status, OfflineRunStatusV1::Rejected);
+        assert!(run.started_at > 0);
+        assert!(run.ended_at.is_some());
+        assert_eq!(
+            run.summary,
+            Some(serde_json::json!({ "executed_offline": true }))
+        );
+        assert_eq!(run.error.as_deref(), Some("overlap_rejected"));
+
+        let events_text = std::fs::read_to_string(run_dir.join("events.jsonl")).unwrap();
+        let events = events_text
+            .lines()
+            .map(|line| serde_json::from_str::<OfflineRunEventV1>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, "rejected");
+        assert_eq!(events[0].message, "rejected");
+        assert_eq!(
+            events[0].fields,
+            Some(serde_json::json!({ "source": "schedule", "executed_offline": true }))
+        );
     }
 }
