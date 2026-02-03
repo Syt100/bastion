@@ -203,3 +203,219 @@ async fn send_run_progress_snapshot(
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        messages: Vec<Message>,
+    }
+
+    impl Sink<Message> for RecordingSink {
+        type Error = tokio_tungstenite::tungstenite::Error;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+            self.messages.push(item);
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn payload_encryption_maps_protocol_variants() {
+        assert!(matches!(
+            payload_encryption(EncryptionResolvedV1::None),
+            backup::PayloadEncryption::None
+        ));
+
+        let enc = payload_encryption(EncryptionResolvedV1::AgeX25519 {
+            recipient: "recipient".to_string(),
+            key_name: "key_name".to_string(),
+        });
+        let backup::PayloadEncryption::AgeX25519 {
+            recipient,
+            key_name,
+        } = enc
+        else {
+            panic!("expected AgeX25519 payload encryption");
+        };
+        assert_eq!(recipient, "recipient");
+        assert_eq!(key_name, "key_name");
+    }
+
+    #[test]
+    fn prepare_archive_part_uploader_skips_non_archive_formats() {
+        let target = bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
+            base_dir: "/tmp".to_string(),
+            part_size_bytes: 1024,
+        };
+        let (hook, handle) = prepare_archive_part_uploader(
+            &target,
+            "job_id",
+            "run_id",
+            bastion_core::manifest::ArtifactFormatV1::RawTreeV1,
+        );
+        assert!(hook.is_none());
+        assert!(handle.is_none());
+    }
+
+    #[tokio::test]
+    async fn prepare_archive_part_uploader_local_dir_uploads_and_deletes_parts()
+    -> Result<(), anyhow::Error> {
+        let base_dir = tempfile::tempdir()?;
+        let stage_dir = tempfile::tempdir()?;
+
+        let local_part_path = stage_dir.path().join("payload.part000001");
+        let local_part_bytes = b"hello world";
+        std::fs::write(&local_part_path, local_part_bytes)?;
+
+        let target = bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
+            base_dir: base_dir.path().to_string_lossy().to_string(),
+            part_size_bytes: 1024,
+        };
+
+        let (hook, handle) = prepare_archive_part_uploader(
+            &target,
+            "job_id",
+            "run_id",
+            bastion_core::manifest::ArtifactFormatV1::ArchiveV1,
+        );
+        let hook = hook.expect("hook");
+        let handle = handle.expect("handle");
+
+        let artifact = backup::LocalArtifact {
+            name: "payload.part000001".to_string(),
+            path: local_part_path.clone(),
+            size: local_part_bytes.len() as u64,
+            hash_alg: bastion_core::manifest::HashAlgorithm::Blake3,
+            hash: "dummy".to_string(),
+        };
+
+        // The hook uses blocking_send(), so run it from a blocking thread.
+        tokio::task::spawn_blocking(move || hook(artifact)).await??;
+        handle.await??;
+
+        let target_part_path = base_dir
+            .path()
+            .join("job_id")
+            .join("run_id")
+            .join("payload.part000001");
+
+        assert_eq!(std::fs::read(target_part_path)?, local_part_bytes);
+        assert!(!local_part_path.exists());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn send_run_event_emits_agent_protocol_run_event() -> Result<(), anyhow::Error> {
+        let mut sink = RecordingSink::default();
+        send_run_event(
+            &mut sink,
+            "run_id",
+            "info",
+            "kind",
+            "message",
+            Some(serde_json::json!({"hello": "world"})),
+        )
+        .await?;
+
+        assert_eq!(sink.messages.len(), 1);
+        let Message::Text(text) = &sink.messages[0] else {
+            anyhow::bail!("expected text frame");
+        };
+
+        let msg: AgentToHubMessageV1 = serde_json::from_str(text.as_ref())?;
+        match msg {
+            AgentToHubMessageV1::RunEvent {
+                v,
+                run_id,
+                level,
+                kind,
+                message,
+                fields,
+            } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(run_id, "run_id");
+                assert_eq!(level, "info");
+                assert_eq!(kind, "kind");
+                assert_eq!(message, "message");
+                assert_eq!(fields, Some(serde_json::json!({"hello": "world"})));
+            }
+            _ => anyhow::bail!("expected RunEvent"),
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn send_run_progress_snapshot_emits_progress_snapshot_run_event()
+    -> Result<(), anyhow::Error> {
+        let mut sink = RecordingSink::default();
+        let snapshot = ProgressSnapshotV1 {
+            v: 1,
+            kind: bastion_core::progress::ProgressKindV1::Backup,
+            stage: "packaging".to_string(),
+            ts: 123,
+            done: bastion_core::progress::ProgressUnitsV1::default(),
+            total: None,
+            rate_bps: None,
+            eta_seconds: None,
+            detail: Some(serde_json::json!({"x": 1})),
+        };
+        let expected_fields = serde_json::to_value(&snapshot)?;
+
+        send_run_progress_snapshot(&mut sink, "run_id", snapshot).await?;
+
+        assert_eq!(sink.messages.len(), 1);
+        let Message::Text(text) = &sink.messages[0] else {
+            anyhow::bail!("expected text frame");
+        };
+
+        let msg: AgentToHubMessageV1 = serde_json::from_str(text.as_ref())?;
+        match msg {
+            AgentToHubMessageV1::RunEvent {
+                v,
+                run_id,
+                level,
+                kind,
+                message,
+                fields,
+            } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(run_id, "run_id");
+                assert_eq!(level, "info");
+                assert_eq!(kind, PROGRESS_SNAPSHOT_EVENT_KIND_V1);
+                assert_eq!(message, "packaging");
+                assert_eq!(fields, Some(expected_fields));
+            }
+            _ => anyhow::bail!("expected RunEvent"),
+        }
+        Ok(())
+    }
+}

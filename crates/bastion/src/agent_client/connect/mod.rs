@@ -489,3 +489,36 @@ pub(super) async fn connect_and_run(
     send_task.abort();
     Ok(action)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn outbox_sink_forwards_messages_to_receiver() -> Result<(), anyhow::Error> {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        let mut sink = OutboxSink { tx };
+
+        sink.send(Message::Text("hello".into()))
+            .await
+            .map_err(anyhow::Error::from)?;
+
+        let msg = rx.recv().await.expect("receive");
+        assert!(matches!(msg, Message::Text(_)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn outbox_sink_returns_connection_closed_when_receiver_dropped() {
+        let (tx, rx) = mpsc::unbounded_channel::<Message>();
+        drop(rx);
+
+        let mut sink = OutboxSink { tx };
+        let err = sink
+            .send(Message::Text("hello".into()))
+            .await
+            .expect_err("send should fail");
+
+        assert!(matches!(err, tungstenite::Error::ConnectionClosed));
+    }
+}
