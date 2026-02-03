@@ -22,6 +22,91 @@ fn allow_due_for_local_minute(
     }
 }
 
+#[derive(Debug)]
+enum CronDecision {
+    Queue {
+        job_id: String,
+        job_name: String,
+        spec: Box<bastion_core::agent_protocol::JobSpecResolvedV1>,
+    },
+    Reject {
+        job_id: String,
+        job_name: String,
+    },
+}
+
+fn decide_cron_minute_jobs(
+    agent_id: &str,
+    minute_start: chrono::DateTime<chrono::Utc>,
+    jobs: Vec<bastion_core::agent_protocol::JobConfigV1>,
+    schedule_cache: &mut std::collections::HashMap<String, cron::Schedule>,
+    inflight_for_job: impl Fn(&str) -> usize,
+) -> Vec<CronDecision> {
+    use chrono::TimeZone as _;
+
+    let mut decisions = Vec::new();
+    for job in jobs {
+        let Some(expr) = job
+            .schedule
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        else {
+            continue;
+        };
+
+        let tz = job
+            .schedule_timezone
+            .as_deref()
+            .unwrap_or("UTC")
+            .parse::<chrono_tz::Tz>();
+        let tz = match tz {
+            Ok(v) => v,
+            Err(_) => {
+                warn!(
+                    agent_id = %agent_id,
+                    timezone = ?job.schedule_timezone,
+                    "invalid schedule timezone; skipping"
+                );
+                continue;
+            }
+        };
+        let local_minute_start = tz.from_utc_datetime(&minute_start.naive_utc());
+        if !allow_due_for_local_minute(tz, local_minute_start) {
+            continue;
+        }
+
+        match cron_matches_minute_cached(expr, local_minute_start, schedule_cache) {
+            Ok(true) => {
+                let should_reject = matches!(job.overlap_policy, OverlapPolicyV1::Reject)
+                    && inflight_for_job(&job.job_id) > 0;
+
+                if should_reject {
+                    decisions.push(CronDecision::Reject {
+                        job_id: job.job_id,
+                        job_name: job.name,
+                    });
+                } else {
+                    decisions.push(CronDecision::Queue {
+                        job_id: job.job_id,
+                        job_name: job.name,
+                        spec: Box::new(job.spec),
+                    });
+                }
+            }
+            Ok(false) => {}
+            Err(error) => {
+                warn!(
+                    agent_id = %agent_id,
+                    error = %error,
+                    "invalid cron schedule; skipping"
+                );
+            }
+        }
+    }
+    decisions
+}
+
 pub(super) async fn offline_cron_loop(
     data_dir: PathBuf,
     agent_id: String,
@@ -29,7 +114,7 @@ pub(super) async fn offline_cron_loop(
     tx: tokio::sync::mpsc::UnboundedSender<OfflineRunTask>,
     inflight: std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
 ) {
-    use chrono::{DateTime, Duration as ChronoDuration, TimeZone as _, Utc};
+    use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use cron::Schedule;
 
     let mut schedule_cache: std::collections::HashMap<String, Schedule> =
@@ -73,68 +158,43 @@ pub(super) async fn offline_cron_loop(
             last_minute = minute;
             match super::super::super::managed::load_managed_config_snapshot(&data_dir, &agent_id) {
                 Ok(Some(snapshot)) => {
-                    for job in snapshot.jobs {
-                        let Some(expr) = job
-                            .schedule
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                        else {
-                            continue;
-                        };
-                        let tz = job
-                            .schedule_timezone
-                            .as_deref()
-                            .unwrap_or("UTC")
-                            .parse::<chrono_tz::Tz>();
-                        let tz = match tz {
-                            Ok(v) => v,
-                            Err(_) => {
-                                warn!(agent_id = %agent_id, timezone = ?job.schedule_timezone, "invalid schedule timezone; skipping");
-                                continue;
-                            }
-                        };
-                        let local_minute_start = tz.from_utc_datetime(&minute_start.naive_utc());
-                        if !allow_due_for_local_minute(tz, local_minute_start) {
-                            continue;
-                        }
-
-                        match cron_matches_minute_cached(
-                            expr,
-                            local_minute_start,
+                    let decisions = {
+                        let state = inflight.lock().await;
+                        decide_cron_minute_jobs(
+                            &agent_id,
+                            minute_start,
+                            snapshot.jobs,
                             &mut schedule_cache,
-                        ) {
-                            Ok(true) => {
-                                let should_reject = {
-                                    let state = inflight.lock().await;
-                                    matches!(job.overlap_policy, OverlapPolicyV1::Reject)
-                                        && state.inflight_for_job(&job.job_id) > 0
-                                };
+                            |job_id| state.inflight_for_job(job_id),
+                        )
+                    };
 
-                                if should_reject {
-                                    if let Err(error) = persist_offline_rejected_run(
-                                        &data_dir,
-                                        &job.job_id,
-                                        &job.name,
-                                    )
-                                    .await
-                                    {
-                                        warn!(
-                                            agent_id = %agent_id,
-                                            job_id = %job.job_id,
-                                            error = %error,
-                                            "failed to persist offline rejected run"
-                                        );
-                                    }
-                                    continue;
+                    for decision in decisions {
+                        match decision {
+                            CronDecision::Reject { job_id, job_name } => {
+                                if let Err(error) =
+                                    persist_offline_rejected_run(&data_dir, &job_id, &job_name)
+                                        .await
+                                {
+                                    warn!(
+                                        agent_id = %agent_id,
+                                        job_id = %job_id,
+                                        error = %error,
+                                        "failed to persist offline rejected run"
+                                    );
                                 }
-
+                            }
+                            CronDecision::Queue {
+                                job_id,
+                                job_name,
+                                spec,
+                            } => {
                                 let run_id = uuid::Uuid::new_v4().to_string();
                                 let task = OfflineRunTask {
                                     run_id,
-                                    job_id: job.job_id,
-                                    job_name: job.name,
-                                    spec: job.spec,
+                                    job_id,
+                                    job_name,
+                                    spec: *spec,
                                 };
 
                                 {
@@ -145,10 +205,6 @@ pub(super) async fn offline_cron_loop(
                                 if tx.send(task).is_err() {
                                     break;
                                 }
-                            }
-                            Ok(false) => {}
-                            Err(error) => {
-                                warn!(agent_id = %agent_id, error = %error, "invalid cron schedule; skipping");
                             }
                         }
                     }
@@ -196,7 +252,9 @@ async fn persist_offline_rejected_run(
 mod tests {
     use chrono::TimeZone as _;
 
-    use super::{allow_due_for_local_minute, persist_offline_rejected_run};
+    use super::{
+        allow_due_for_local_minute, decide_cron_minute_jobs, persist_offline_rejected_run,
+    };
 
     #[test]
     fn allow_due_for_local_minute_runs_once_on_dst_fold() {
@@ -274,5 +332,113 @@ mod tests {
             events[0].fields,
             Some(serde_json::json!({ "source": "schedule", "executed_offline": true }))
         );
+    }
+
+    fn test_job(
+        job_id: &str,
+        schedule: Option<&str>,
+        schedule_timezone: Option<&str>,
+        overlap_policy: bastion_core::agent_protocol::OverlapPolicyV1,
+    ) -> bastion_core::agent_protocol::JobConfigV1 {
+        bastion_core::agent_protocol::JobConfigV1 {
+            job_id: job_id.to_string(),
+            name: format!("job-{job_id}"),
+            schedule: schedule.map(|v| v.to_string()),
+            schedule_timezone: schedule_timezone.map(|v| v.to_string()),
+            overlap_policy,
+            updated_at: 0,
+            spec: bastion_core::agent_protocol::JobSpecResolvedV1::Sqlite {
+                v: 1,
+                pipeline: Default::default(),
+                source: bastion_core::job_spec::SqliteSource {
+                    path: "/db.sqlite".to_string(),
+                    integrity_check: false,
+                },
+                target: bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
+                    base_dir: "/tmp".to_string(),
+                    part_size_bytes: 1024,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn decide_cron_minute_jobs_queues_due_jobs_by_default() {
+        let minute_start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let jobs = vec![test_job(
+            "job1",
+            Some("* * * * *"),
+            Some("UTC"),
+            bastion_core::agent_protocol::OverlapPolicyV1::Queue,
+        )];
+        let mut cache = std::collections::HashMap::new();
+        let decisions = decide_cron_minute_jobs("agent", minute_start, jobs, &mut cache, |_| 0);
+        assert_eq!(decisions.len(), 1);
+        match &decisions[0] {
+            super::CronDecision::Queue { job_id, .. } => assert_eq!(job_id, "job1"),
+            other => panic!("expected Queue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decide_cron_minute_jobs_rejects_when_overlap_reject_and_inflight() {
+        let minute_start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let jobs = vec![test_job(
+            "job1",
+            Some("* * * * *"),
+            Some("UTC"),
+            bastion_core::agent_protocol::OverlapPolicyV1::Reject,
+        )];
+        let mut cache = std::collections::HashMap::new();
+        let decisions = decide_cron_minute_jobs("agent", minute_start, jobs, &mut cache, |_| 1);
+        assert_eq!(decisions.len(), 1);
+        match &decisions[0] {
+            super::CronDecision::Reject { job_id, .. } => assert_eq!(job_id, "job1"),
+            other => panic!("expected Reject, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decide_cron_minute_jobs_skips_invalid_timezone_and_cron() {
+        let minute_start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let jobs = vec![
+            test_job(
+                "job1",
+                Some("* * * * *"),
+                Some("Not/AZone"),
+                bastion_core::agent_protocol::OverlapPolicyV1::Queue,
+            ),
+            test_job(
+                "job2",
+                Some("not cron"),
+                Some("UTC"),
+                bastion_core::agent_protocol::OverlapPolicyV1::Queue,
+            ),
+        ];
+        let mut cache = std::collections::HashMap::new();
+        let decisions = decide_cron_minute_jobs("agent", minute_start, jobs, &mut cache, |_| 0);
+        assert!(decisions.is_empty());
+    }
+
+    #[test]
+    fn decide_cron_minute_jobs_runs_once_on_dst_fold_by_skipping_second_occurrence() {
+        // America/New_York DST ends on 2025-11-02. Local 01:30 happens twice:
+        // - 05:30 UTC (EDT, first occurrence) -> allowed
+        // - 06:30 UTC (EST, second occurrence) -> skipped
+        let jobs = vec![test_job(
+            "job1",
+            Some("* * * * *"),
+            Some("America/New_York"),
+            bastion_core::agent_protocol::OverlapPolicyV1::Queue,
+        )];
+        let mut cache = std::collections::HashMap::new();
+
+        let first = chrono::Utc.with_ymd_and_hms(2025, 11, 2, 5, 30, 0).unwrap();
+        let decisions = decide_cron_minute_jobs("agent", first, jobs.clone(), &mut cache, |_| 0);
+        assert_eq!(decisions.len(), 1);
+
+        let second = chrono::Utc.with_ymd_and_hms(2025, 11, 2, 6, 30, 0).unwrap();
+        let decisions = decide_cron_minute_jobs("agent", second, jobs, &mut cache, |_| 0);
+        assert!(decisions.is_empty());
     }
 }
