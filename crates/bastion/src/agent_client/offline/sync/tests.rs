@@ -130,6 +130,70 @@ async fn sync_offline_runs_ingests_and_removes_dir() {
 }
 
 #[tokio::test]
+async fn sync_offline_runs_returns_error_and_keeps_dir_when_ingest_fails() {
+    use axum::Router;
+    use axum::http::StatusCode;
+    use axum::routing::post;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path();
+
+    let run_id = "run1";
+    let run_dir = offline_run_dir(data_dir, run_id);
+    tokio::fs::create_dir_all(&run_dir).await.unwrap();
+
+    let run_file = super::OfflineRunFileV1 {
+        v: 1,
+        id: run_id.to_string(),
+        job_id: "job1".to_string(),
+        job_name: "job1".to_string(),
+        status: super::OfflineRunStatusV1::Success,
+        started_at: 1,
+        ended_at: Some(2),
+        summary: None,
+        error: None,
+    };
+    tokio::fs::write(
+        run_dir.join("run.json"),
+        serde_json::to_vec(&run_file).unwrap(),
+    )
+    .await
+    .unwrap();
+
+    tokio::fs::write(run_dir.join("events.jsonl"), "")
+        .await
+        .unwrap();
+
+    let app = Router::new().route(
+        "/agent/runs/ingest",
+        post(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "nope") }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            })
+            .await;
+    });
+
+    let base_url = url::Url::parse(&format!("http://{addr}/")).unwrap();
+    let err = sync_offline_runs(&base_url, "agent-key", data_dir)
+        .await
+        .expect_err("expected ingest failure");
+    let _ = shutdown_tx.send(());
+
+    assert!(run_dir.exists());
+    let msg = err.to_string();
+    assert!(msg.contains("ingest failed"));
+    assert!(msg.contains("HTTP 500"));
+    assert!(msg.contains("nope"));
+}
+
+#[tokio::test]
 async fn sync_offline_runs_skips_running_runs_and_keeps_dir() {
     use axum::Router;
     use axum::routing::post;
