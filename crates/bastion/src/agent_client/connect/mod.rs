@@ -18,7 +18,8 @@ use url::Url;
 use uuid::Uuid;
 
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, ArtifactStreamOpenResultV1, HubToAgentMessageV1, PROTOCOL_VERSION,
+    AgentToHubMessageV1, ArtifactStreamOpenResultV1, ArtifactStreamOpenV1, ArtifactStreamPullV1,
+    HubToAgentMessageV1, PROTOCOL_VERSION,
 };
 use bastion_core::agent_stream::{
     ArtifactChunkFrameV1Flags, decode_artifact_chunk_frame_v1, encode_artifact_chunk_frame_v1,
@@ -378,31 +379,11 @@ pub(super) async fn connect_and_run(
                             Ok(HubToAgentMessageV1::ArtifactStreamOpen { v, req })
                                 if v == PROTOCOL_VERSION =>
                             {
-                                let stream_id = match Uuid::parse_str(req.stream_id.trim()) {
-                                    Ok(id) => id,
-                                    Err(_) => continue,
-                                };
-
-                                let (size, error) = match req.path.as_deref().map(str::trim) {
-                                    Some(path) if !path.is_empty() => {
-                                        match tokio::fs::metadata(path).await {
-                                            Ok(meta) => match tokio::fs::File::open(path).await {
-                                                Ok(file) => {
-                                                    hub_pull_streams.insert(stream_id, file);
-                                                    (Some(meta.len()), None)
-                                                }
-                                                Err(e) => (None, Some(e.to_string())),
-                                            },
-                                            Err(e) => (None, Some(e.to_string())),
-                                        }
-                                    }
-                                    _ => (None, Some("missing path".to_string())),
-                                };
-
-                                let res = ArtifactStreamOpenResultV1 {
-                                    stream_id: req.stream_id,
-                                    size,
-                                    error,
+                                let Some(res) =
+                                    build_artifact_stream_open_result(&mut hub_pull_streams, req)
+                                        .await
+                                else {
+                                    continue;
                                 };
                                 let msg = AgentToHubMessageV1::ArtifactStreamOpenResult {
                                     v: PROTOCOL_VERSION,
@@ -419,36 +400,15 @@ pub(super) async fn connect_and_run(
                             Ok(HubToAgentMessageV1::ArtifactStreamPull { v, req })
                                 if v == PROTOCOL_VERSION =>
                             {
-                                let stream_id = match Uuid::parse_str(req.stream_id.trim()) {
-                                    Ok(id) => id,
-                                    Err(_) => continue,
-                                };
-                                let Some(file) = hub_pull_streams.get_mut(&stream_id) else {
+                                let Some(frame) =
+                                    build_artifact_stream_pull_frame(&mut hub_pull_streams, &req)
+                                        .await
+                                else {
                                     continue;
                                 };
 
-                                let max_bytes = req.max_bytes.clamp(1, 1024 * 1024) as usize;
-                                let mut buf = vec![0u8; max_bytes];
-                                let n = match file.read(&mut buf).await {
-                                    Ok(n) => n,
-                                    Err(_) => {
-                                        let _ = hub_pull_streams.remove(&stream_id);
-                                        continue;
-                                    }
-                                };
-                                buf.truncate(n);
-                                let eof = n == 0;
-
-                                let frame = encode_artifact_chunk_frame_v1(
-                                    &stream_id,
-                                    ArtifactChunkFrameV1Flags { eof },
-                                    &buf,
-                                );
                                 if tx.send(Message::Binary(frame.into())).await.is_err() {
                                     break 'main LoopAction::Reconnect;
-                                }
-                                if eof {
-                                    let _ = hub_pull_streams.remove(&stream_id);
                                 }
                             }
                             Ok(HubToAgentMessageV1::ArtifactStreamClose { v, req })
@@ -490,9 +450,77 @@ pub(super) async fn connect_and_run(
     Ok(action)
 }
 
+async fn build_artifact_stream_open_result(
+    hub_pull_streams: &mut HashMap<Uuid, tokio::fs::File>,
+    req: ArtifactStreamOpenV1,
+) -> Option<ArtifactStreamOpenResultV1> {
+    let ArtifactStreamOpenV1 {
+        stream_id,
+        path,
+        op_id: _,
+        run_id: _,
+        artifact: _,
+    } = req;
+
+    let stream_uuid = match Uuid::parse_str(stream_id.trim()) {
+        Ok(id) => id,
+        Err(_) => return None,
+    };
+
+    let (size, error) = match path.as_deref().map(str::trim) {
+        Some(path) if !path.is_empty() => match tokio::fs::metadata(path).await {
+            Ok(meta) => match tokio::fs::File::open(path).await {
+                Ok(file) => {
+                    hub_pull_streams.insert(stream_uuid, file);
+                    (Some(meta.len()), None)
+                }
+                Err(e) => (None, Some(e.to_string())),
+            },
+            Err(e) => (None, Some(e.to_string())),
+        },
+        _ => (None, Some("missing path".to_string())),
+    };
+
+    Some(ArtifactStreamOpenResultV1 {
+        stream_id,
+        size,
+        error,
+    })
+}
+
+async fn build_artifact_stream_pull_frame(
+    hub_pull_streams: &mut HashMap<Uuid, tokio::fs::File>,
+    req: &ArtifactStreamPullV1,
+) -> Option<Vec<u8>> {
+    let stream_id = match Uuid::parse_str(req.stream_id.trim()) {
+        Ok(id) => id,
+        Err(_) => return None,
+    };
+    let file = hub_pull_streams.get_mut(&stream_id)?;
+
+    let max_bytes = req.max_bytes.clamp(1, 1024 * 1024) as usize;
+    let mut buf = vec![0u8; max_bytes];
+    let n = match file.read(&mut buf).await {
+        Ok(n) => n,
+        Err(_) => {
+            let _ = hub_pull_streams.remove(&stream_id);
+            return None;
+        }
+    };
+    buf.truncate(n);
+    let eof = n == 0;
+
+    let frame = encode_artifact_chunk_frame_v1(&stream_id, ArtifactChunkFrameV1Flags { eof }, &buf);
+    if eof {
+        let _ = hub_pull_streams.remove(&stream_id);
+    }
+    Some(frame)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn outbox_sink_forwards_messages_to_receiver() -> Result<(), anyhow::Error> {
@@ -520,5 +548,106 @@ mod tests {
             .expect_err("send should fail");
 
         assert!(matches!(err, tungstenite::Error::ConnectionClosed));
+    }
+
+    #[tokio::test]
+    async fn artifact_stream_open_missing_path_reports_error_and_does_not_insert() {
+        let mut streams = HashMap::<Uuid, tokio::fs::File>::new();
+        let req = ArtifactStreamOpenV1 {
+            stream_id: Uuid::new_v4().to_string(),
+            op_id: "op".to_string(),
+            run_id: "run".to_string(),
+            artifact: "artifact".to_string(),
+            path: None,
+        };
+
+        let res = build_artifact_stream_open_result(&mut streams, req)
+            .await
+            .expect("result");
+        assert_eq!(res.size, None);
+        assert_eq!(res.error.as_deref(), Some("missing path"));
+        assert!(streams.is_empty());
+    }
+
+    #[tokio::test]
+    async fn artifact_stream_open_existing_file_inserts_and_reports_size()
+    -> Result<(), anyhow::Error> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("artifact.bin");
+        let contents = b"hello world";
+        std::fs::write(&file_path, contents)?;
+
+        let stream_id = Uuid::new_v4().to_string();
+        let mut streams = HashMap::<Uuid, tokio::fs::File>::new();
+        let req = ArtifactStreamOpenV1 {
+            stream_id: stream_id.clone(),
+            op_id: "op".to_string(),
+            run_id: "run".to_string(),
+            artifact: "artifact".to_string(),
+            path: Some(file_path.to_string_lossy().to_string()),
+        };
+
+        let res = build_artifact_stream_open_result(&mut streams, req)
+            .await
+            .expect("result");
+        assert_eq!(res.stream_id, stream_id);
+        assert_eq!(res.size, Some(contents.len() as u64));
+        assert_eq!(res.error, None);
+
+        let uuid = Uuid::parse_str(res.stream_id.trim())?;
+        assert!(streams.contains_key(&uuid));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn artifact_stream_pull_sends_chunks_and_eof_then_removes() -> Result<(), anyhow::Error> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("artifact.bin");
+        let contents = b"abcdef";
+        std::fs::write(&file_path, contents)?;
+
+        let stream_id = Uuid::new_v4();
+        let file = tokio::fs::File::open(&file_path).await?;
+
+        let mut streams = HashMap::<Uuid, tokio::fs::File>::new();
+        streams.insert(stream_id, file);
+
+        // Pull 2 bytes at a time.
+        let req = ArtifactStreamPullV1 {
+            stream_id: stream_id.to_string(),
+            max_bytes: 2,
+        };
+
+        let frame = build_artifact_stream_pull_frame(&mut streams, &req)
+            .await
+            .expect("first frame");
+        let decoded = decode_artifact_chunk_frame_v1(&frame)?;
+        assert_eq!(decoded.stream_id, stream_id);
+        assert!(!decoded.flags.eof);
+        assert_eq!(decoded.payload, b"ab");
+
+        let frame = build_artifact_stream_pull_frame(&mut streams, &req)
+            .await
+            .expect("second frame");
+        let decoded = decode_artifact_chunk_frame_v1(&frame)?;
+        assert!(!decoded.flags.eof);
+        assert_eq!(decoded.payload, b"cd");
+
+        let frame = build_artifact_stream_pull_frame(&mut streams, &req)
+            .await
+            .expect("third frame");
+        let decoded = decode_artifact_chunk_frame_v1(&frame)?;
+        assert!(!decoded.flags.eof);
+        assert_eq!(decoded.payload, b"ef");
+
+        // EOF is sent as a final empty frame and stream is removed.
+        let frame = build_artifact_stream_pull_frame(&mut streams, &req)
+            .await
+            .expect("eof frame");
+        let decoded = decode_artifact_chunk_frame_v1(&frame)?;
+        assert!(decoded.flags.eof);
+        assert_eq!(decoded.payload, b"");
+        assert!(!streams.contains_key(&stream_id));
+        Ok(())
     }
 }
