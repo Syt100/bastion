@@ -700,6 +700,7 @@ onMounted(async () => {
         :key="agent.id"
         size="small"
         class="app-card"
+        :bordered="false"
       >
         <template #header>
           <div class="flex items-center justify-between gap-3">
@@ -785,7 +786,7 @@ onMounted(async () => {
         </template>
       </AppEmptyState>
 
-      <n-card v-else class="app-card">
+      <n-card v-else class="app-card" :bordered="false">
         <div class="overflow-x-auto">
           <n-data-table
             v-model:checked-row-keys="selectedAgentIds"
@@ -924,7 +925,7 @@ onMounted(async () => {
             </n-form-item>
           </n-form>
 
-          <n-card size="small" class="app-card" :title="t('agents.detailModal.configSyncTitle')">
+          <n-card size="small" class="app-card" :bordered="false" :title="t('agents.detailModal.configSyncTitle')">
             <n-form label-placement="top">
               <n-form-item :label="t('agents.detailModal.desiredSnapshot')">
                 <n-input :value="detail.desired_config_snapshot_id ?? '-'" readonly />

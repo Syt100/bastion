@@ -419,7 +419,7 @@ const actionHelpItems = computed(() => [
 </script>
 
 <template>
-  <n-card class="app-card" :title="t('settings.maintenance.cleanup.title')">
+  <n-card class="app-card" :bordered="false" :title="t('settings.maintenance.cleanup.title')">
     <div class="space-y-4">
       <ListToolbar embedded compact>
         <template #filters>
@@ -461,6 +461,7 @@ const actionHelpItems = computed(() => [
           :key="row.run_id"
           size="small"
           class="app-card"
+          :bordered="false"
         >
           <template #header>
             <div class="flex items-center justify-between gap-3">
@@ -617,7 +618,7 @@ const actionHelpItems = computed(() => [
         <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.eventsTitle') }}</div>
         <div v-if="detail.events.length === 0" class="text-sm app-text-muted">{{ t('common.noData') }}</div>
         <div v-else class="space-y-2">
-          <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card">
+          <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card" :bordered="false">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-medium truncate">{{ e.kind }}</div>
@@ -710,7 +711,7 @@ const actionHelpItems = computed(() => [
           <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.eventsTitle') }}</div>
           <div v-if="detail.events.length === 0" class="text-sm app-text-muted">{{ t('common.noData') }}</div>
           <div v-else class="space-y-2">
-            <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card">
+            <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card" :bordered="false">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="text-sm font-medium truncate">{{ e.kind }}</div>

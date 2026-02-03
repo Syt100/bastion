@@ -228,7 +228,7 @@ onMounted(refresh)
 </script>
 
 <template>
-  <n-card class="app-card" :title="t('settings.hubRuntimeConfig.title')">
+  <n-card class="app-card" :bordered="false" :title="t('settings.hubRuntimeConfig.title')">
     <template #header-extra>
       <n-space size="small">
         <n-button size="small" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>

@@ -361,14 +361,14 @@ watch(nodeIdParam, (value) => {
 
   <n-drawer v-if="!isDesktop" v-model:show="mobileMenuOpen" placement="left" :width="LAYOUT.mobileDrawerWidth">
     <n-drawer-content>
-      <n-card class="mb-3" :bordered="false">
+      <n-card class="app-card mb-3" :bordered="false">
         <div class="flex items-center justify-between">
           <AppLogo size="sm" />
           <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
         </div>
       </n-card>
 
-      <n-card class="mb-3" :bordered="false">
+      <n-card class="app-card mb-3" :bordered="false">
         <div class="text-xs app-text-muted mb-2">{{ nodePickerLabel }}</div>
         <n-select
           v-model:value="selectedNodeId"

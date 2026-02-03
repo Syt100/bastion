@@ -319,7 +319,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 </script>
 
 <template>
-  <n-card class="app-card" :title="t('settings.notifications.queueTitle')">
+  <n-card class="app-card" :bordered="false" :title="t('settings.notifications.queueTitle')">
     <div class="space-y-4">
       <ListToolbar embedded compact>
         <template #filters>
@@ -360,6 +360,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
           :key="row.id"
           size="small"
           class="app-card"
+          :bordered="false"
         >
           <template #header>
             <div class="flex items-center justify-between gap-3">

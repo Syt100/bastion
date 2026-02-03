@@ -363,7 +363,7 @@ watch(distributeOpen, (open) => {
 
 <template>
   <div class="space-y-6">
-    <n-card class="app-card" :title="t('settings.webdav.title')">
+    <n-card class="app-card" :bordered="false" :title="t('settings.webdav.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>
         <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
@@ -514,7 +514,7 @@ watch(distributeOpen, (open) => {
           </n-button>
         </n-space>
 
-        <n-card v-if="distributePreview" size="small" class="app-card" :title="t('settings.webdav.distribute.previewTitle')">
+        <n-card v-if="distributePreview" size="small" class="app-card" :bordered="false" :title="t('settings.webdav.distribute.previewTitle')">
           <div class="overflow-x-auto">
             <n-data-table :columns="previewColumns" :data="distributePreview.items" size="small" />
           </div>

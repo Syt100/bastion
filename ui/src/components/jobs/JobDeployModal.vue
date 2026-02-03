@@ -236,7 +236,7 @@ defineExpose<JobDeployModalExpose>({ open })
     <div class="space-y-4">
       <div class="text-sm app-text-muted">{{ sourceJobName }}</div>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <n-form label-placement="top">
           <n-form-item :label="t('jobs.deploy.target')" :show-feedback="false">
             <n-radio-group v-model:value="targetMode" size="small">
@@ -286,7 +286,7 @@ defineExpose<JobDeployModalExpose>({ open })
         </n-form>
       </n-card>
 
-      <n-card v-if="preview" size="small" class="app-card">
+      <n-card v-if="preview" size="small" class="app-card" :bordered="false">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div class="text-sm app-text-muted">
             {{ t('jobs.deploy.previewSummary', previewCounts) }}

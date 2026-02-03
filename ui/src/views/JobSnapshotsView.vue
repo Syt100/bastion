@@ -689,7 +689,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <AppEmptyState v-if="listLoading && filteredItems.length === 0" :title="t('common.loading')" loading />
       <AppEmptyState v-else-if="!listLoading && filteredItems.length === 0" :title="t('common.noData')" />
 
-      <n-card v-for="row in filteredItems" :key="row.run_id" size="small" class="app-card">
+      <n-card v-for="row in filteredItems" :key="row.run_id" size="small" class="app-card" :bordered="false">
         <template #header>
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -763,7 +763,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
     </div>
 
     <div v-else>
-      <n-card class="app-card">
+      <n-card class="app-card" :bordered="false">
         <div class="overflow-x-auto">
           <n-data-table
             :loading="loadingTable"

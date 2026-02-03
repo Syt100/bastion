@@ -236,7 +236,7 @@ watch(
 </script>
 
 <template>
-  <n-card class="app-card" :title="t('bulk.title')">
+  <n-card class="app-card" :bordered="false" :title="t('bulk.title')">
     <template #header-extra>
       <n-button size="small" :loading="loading" @click="refreshList">{{ t('common.refresh') }}</n-button>
     </template>
@@ -279,7 +279,7 @@ watch(
         <n-button @click="closeDetail">{{ t('common.close') }}</n-button>
       </n-space>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div class="text-sm app-text-muted">{{ t('bulk.filters.items') }}</div>
           <n-radio-group v-model:value="detailItemFilter" size="small">

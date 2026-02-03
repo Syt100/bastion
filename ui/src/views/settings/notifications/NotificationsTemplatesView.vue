@@ -59,7 +59,7 @@ onMounted(refresh)
 </script>
 
 <template>
-  <n-card class="app-card" :title="t('settings.notifications.templatesTitle')">
+  <n-card class="app-card" :bordered="false" :title="t('settings.notifications.templatesTitle')">
     <div class="space-y-4">
       <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
 

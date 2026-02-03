@@ -130,7 +130,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
     </PageHeader>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.health.offlineAgents') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
@@ -142,7 +142,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         </div>
       </n-card>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.health.notificationFailures') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
@@ -156,7 +156,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
     </div>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.agents') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
@@ -174,7 +174,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         </div>
       </n-card>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.jobs') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
@@ -186,7 +186,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         </div>
       </n-card>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.runs24h') }}</div>
         <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
           <div>
@@ -204,7 +204,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         </div>
       </n-card>
 
-      <n-card size="small" class="app-card">
+      <n-card size="small" class="app-card" :bordered="false">
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.live') }}</div>
         <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
           <div>
@@ -219,7 +219,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
       </n-card>
     </div>
 
-    <n-card class="app-card" :title="t('dashboard.trend7d')">
+    <n-card class="app-card" :bordered="false" :title="t('dashboard.trend7d')">
       <div class="h-64">
         <AppEmptyState v-if="dashboard.loading && !overview" :title="t('common.loading')" loading />
         <div v-else-if="trendDays.length === 0" class="h-full flex items-center justify-center">
@@ -229,7 +229,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
       </div>
     </n-card>
 
-    <n-card class="app-card" :title="t('dashboard.recent.title')">
+    <n-card class="app-card" :bordered="false" :title="t('dashboard.recent.title')">
       <AppEmptyState v-if="dashboard.loading && (overview?.recent_runs?.length ?? 0) === 0" :title="t('common.loading')" loading />
       <AppEmptyState v-else-if="!dashboard.loading && (overview?.recent_runs?.length ?? 0) === 0" :title="t('dashboard.recent.empty')" />
 
@@ -240,6 +240,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
             :key="row.run_id"
             size="small"
             class="app-card"
+            :bordered="false"
           >
             <template #header>
               <div class="flex items-start justify-between gap-3">

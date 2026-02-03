@@ -436,7 +436,7 @@ onMounted(refresh)
 
 <template>
   <div class="space-y-6">
-    <n-card class="app-card" :title="t('settings.wecom.title')">
+    <n-card class="app-card" :bordered="false" :title="t('settings.wecom.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
         <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
@@ -496,7 +496,7 @@ onMounted(refresh)
       </div>
     </n-card>
 
-    <n-card class="app-card" :title="t('settings.smtp.title')">
+    <n-card class="app-card" :bordered="false" :title="t('settings.smtp.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
         <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
