@@ -8,9 +8,9 @@
 - [文档站](/zh/dev/docs-site)
 - [架构](/zh/dev/architecture)
 - [设计说明：备份快照](/zh/dev/design/backup-snapshots)
+- [视觉规范：Web UI](/zh/dev/design/web-ui-style-guide)
 
 ## CI（本地）
 
 - Linux/macOS：`bash scripts/ci.sh`
 - Windows：`powershell -ExecutionPolicy Bypass -File scripts/ci.ps1`
-

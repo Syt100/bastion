@@ -107,7 +107,10 @@ export default defineConfig(({ command }) => {
               },
               {
                 text: 'Design notes',
-                items: [{ text: 'Backup snapshots', link: '/dev/design/backup-snapshots' }],
+                items: [
+                  { text: 'Backup snapshots', link: '/dev/design/backup-snapshots' },
+                  { text: 'Web UI style guide', link: '/dev/design/web-ui-style-guide' },
+                ],
               },
             ],
           },
@@ -191,7 +194,10 @@ export default defineConfig(({ command }) => {
               },
               {
                 text: '设计说明',
-                items: [{ text: '备份快照', link: '/zh/dev/design/backup-snapshots' }],
+                items: [
+                  { text: '备份快照', link: '/zh/dev/design/backup-snapshots' },
+                  { text: 'Web UI 视觉规范', link: '/zh/dev/design/web-ui-style-guide' },
+                ],
               },
             ],
           },

@@ -8,6 +8,7 @@ This section is for contributors and people working on Bastion.
 - [Docs site](/dev/docs-site)
 - [Architecture](/dev/architecture)
 - [Design notes: backup snapshots](/dev/design/backup-snapshots)
+- [Design: Web UI style guide](/dev/design/web-ui-style-guide)
 
 ## CI (local)
 
