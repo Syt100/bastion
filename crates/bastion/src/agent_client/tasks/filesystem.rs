@@ -32,8 +32,15 @@ impl BackupProgressBuilder {
         &mut self,
         update: backup::filesystem::FilesystemBuildProgressUpdate,
     ) -> ProgressSnapshotV1 {
+        self.snapshot_at(time::OffsetDateTime::now_utc().unix_timestamp(), update)
+    }
+
+    fn snapshot_at(
+        &mut self,
+        now_ts: i64,
+        update: backup::filesystem::FilesystemBuildProgressUpdate,
+    ) -> ProgressSnapshotV1 {
         let stage = update.stage;
-        let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
 
         if stage != "upload"
             && let Some(total) = update.total
@@ -427,5 +434,104 @@ mod tests {
                 .unwrap_or_default(),
             transfer_done_bytes
         );
+    }
+
+    #[test]
+    fn backup_progress_snapshot_resets_rate_and_eta_when_stage_changes() {
+        let mut builder = BackupProgressBuilder::new();
+        let total = ProgressUnitsV1 {
+            files: 0,
+            dirs: 0,
+            bytes: 100,
+        };
+
+        let scan_0 = builder.snapshot_at(
+            1000,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "scan",
+                done: ProgressUnitsV1::default(),
+                total: Some(total),
+            },
+        );
+        assert_eq!(scan_0.rate_bps, None);
+        assert_eq!(scan_0.eta_seconds, None);
+
+        let scan_1 = builder.snapshot_at(
+            1010,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "scan",
+                done: ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes: 50,
+                },
+                total: Some(total),
+            },
+        );
+        assert_eq!(scan_1.rate_bps, Some(5));
+        assert_eq!(scan_1.eta_seconds, Some(10));
+
+        // Stage change resets rate/eta even if bytes increased.
+        let packaging_0 = builder.snapshot_at(
+            1020,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "packaging",
+                done: ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes: 60,
+                },
+                total: Some(total),
+            },
+        );
+        assert_eq!(packaging_0.rate_bps, None);
+        assert_eq!(packaging_0.eta_seconds, None);
+
+        let packaging_1 = builder.snapshot_at(
+            1025,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "packaging",
+                done: ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes: 70,
+                },
+                total: Some(total),
+            },
+        );
+        assert_eq!(packaging_1.rate_bps, Some(2));
+        assert_eq!(packaging_1.eta_seconds, Some(15));
+    }
+
+    #[test]
+    fn backup_progress_snapshot_rate_is_never_zero_when_progress_is_made() {
+        let mut builder = BackupProgressBuilder::new();
+        let total = ProgressUnitsV1 {
+            files: 0,
+            dirs: 0,
+            bytes: 10,
+        };
+
+        let _ = builder.snapshot_at(
+            1000,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "scan",
+                done: ProgressUnitsV1::default(),
+                total: Some(total),
+            },
+        );
+        let s = builder.snapshot_at(
+            1010,
+            backup::filesystem::FilesystemBuildProgressUpdate {
+                stage: "scan",
+                done: ProgressUnitsV1 {
+                    files: 0,
+                    dirs: 0,
+                    bytes: 1,
+                },
+                total: Some(total),
+            },
+        );
+        assert_eq!(s.rate_bps, Some(1));
     }
 }
