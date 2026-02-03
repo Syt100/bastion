@@ -4,10 +4,10 @@
 - [x] 1.3 Commit the spec proposal (detailed message)
 
 ## 2. Web UI - Foundation Tokens + Utilities
-- [ ] 2.1 Add global foundation tokens (radii / motion / optional typography helpers) in `ui/src/styles/main.css`
-- [ ] 2.2 Add semantic utility classes for common UI meaning (muted text, divider/border, inset surface, code/mono blocks)
-- [ ] 2.3 Align Naive UI theme overrides with the foundation tokens where applicable (e.g. radii)
-- [ ] 2.4 Commit foundation token + utility changes (detailed message)
+- [x] 2.1 Add global foundation tokens (radii / motion / optional typography helpers) in `ui/src/styles/main.css`
+- [x] 2.2 Add semantic utility classes for common UI meaning (muted text, divider/border, inset surface, code/mono blocks)
+- [x] 2.3 Align Naive UI theme overrides with the foundation tokens where applicable (e.g. radii)
+- [x] 2.4 Commit foundation token + utility changes (detailed message)
 
 ## 3. Web UI - Consistency Refactor (High-Leverage Areas)
 - [ ] 3.1 Replace non-token “visual” colors in shared layout/components (AppShell/AuthLayout/MobileTopBar/PageHeader)

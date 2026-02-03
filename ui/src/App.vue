@@ -209,7 +209,7 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => ({
     })(),
 
     borderRadius: '12px',
-    borderRadiusSmall: '10px',
+    borderRadiusSmall: '8px',
   },
   Card: {
     borderRadius: '16px',
