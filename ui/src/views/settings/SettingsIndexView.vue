@@ -19,7 +19,7 @@ function go(to: string): void {
 
 <template>
   <n-card class="app-card" :bordered="false">
-    <div class="divide-y divide-black/5 dark:divide-white/10">
+    <div class="app-divide-y">
       <button
         v-for="item in items"
         :key="item.key"
@@ -37,11 +37,11 @@ function go(to: string): void {
           </div>
           <div class="min-w-0">
             <div class="font-medium truncate">{{ t(item.titleKey) }}</div>
-            <div class="text-xs opacity-70 mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
+            <div class="text-xs app-text-muted mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
           </div>
         </div>
 
-        <n-icon size="18" class="opacity-60 flex-shrink-0">
+        <n-icon size="18" class="app-text-muted flex-shrink-0">
           <ChevronForwardOutline />
         </n-icon>
       </button>

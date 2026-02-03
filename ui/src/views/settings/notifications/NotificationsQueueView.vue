@@ -370,7 +370,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
             </div>
           </template>
 
-          <div class="text-xs opacity-70 space-y-1">
+          <div class="text-xs app-text-muted space-y-1">
             <div>{{ t('settings.notifications.queue.columns.channel') }}: {{ formatChannel(row.channel) }}</div>
             <div>{{ t('settings.notifications.queue.columns.destination') }}: {{ row.destination }}</div>
             <div v-if="row.status === 'queued'">
@@ -405,10 +405,10 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
       </div>
 
       <div class="flex items-center justify-between text-sm">
-        <div class="opacity-70">{{ t('settings.notifications.queue.total', { total }) }}</div>
+        <div class="app-text-muted">{{ t('settings.notifications.queue.total', { total }) }}</div>
         <div class="flex items-center gap-2">
           <n-button size="small" :disabled="page <= 1" @click="page -= 1; refresh()">{{ t('common.back') }}</n-button>
-          <div class="text-xs opacity-70">{{ page }}</div>
+          <div class="text-xs app-text-muted">{{ page }}</div>
           <n-button
             size="small"
             :disabled="page * pageSize >= total"

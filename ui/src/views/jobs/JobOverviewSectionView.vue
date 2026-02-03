@@ -160,7 +160,7 @@ function openLatestRun(): void {
         <div class="space-y-2">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <div class="text-xs opacity-70">{{ t('runs.latestRun') }}</div>
+              <div class="text-xs app-text-muted">{{ t('runs.latestRun') }}</div>
               <div class="mt-1 flex items-center gap-2 min-w-0">
                 <n-tag
                   size="small"
@@ -173,7 +173,7 @@ function openLatestRun(): void {
                   {{ latestRun ? formatUnixSeconds(latestRun.started_at) : '-' }}
                 </div>
               </div>
-              <div v-if="latestRun?.error" class="mt-1 text-xs text-red-600 truncate">{{ latestRun.error }}</div>
+              <div v-if="latestRun?.error" class="mt-1 text-xs text-[var(--app-danger)] truncate">{{ latestRun.error }}</div>
             </div>
 
             <n-button
@@ -201,7 +201,7 @@ function openLatestRun(): void {
             </n-tag>
           </div>
 
-          <div v-if="!runsLoading && runs7dTotal === 0" class="text-xs opacity-70">
+          <div v-if="!runsLoading && runs7dTotal === 0" class="text-xs app-text-muted">
             {{ t('jobs.workspace.overview.runs7dEmpty') }}
           </div>
 
@@ -213,26 +213,26 @@ function openLatestRun(): void {
 
       <div data-testid="job-overview-policy-strip" class="flex flex-wrap items-center gap-2">
         <n-tag size="small" :bordered="false">
-          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.schedule') }}:</span>
+          <span class="app-text-muted">{{ t('jobs.workspace.overview.policy.schedule') }}:</span>
           <span class="ml-1 font-mono tabular-nums">
             {{ job.schedule ?? t('jobs.scheduleMode.manual') }}
           </span>
         </n-tag>
 
         <n-tag v-if="job.schedule" size="small" :bordered="false">
-          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.timezone') }}:</span>
+          <span class="app-text-muted">{{ t('jobs.workspace.overview.policy.timezone') }}:</span>
           <span class="ml-1 font-mono tabular-nums">{{ job.schedule_timezone }}</span>
         </n-tag>
 
         <n-tag size="small" :bordered="false">
-          <span class="opacity-70">{{ t('jobs.workspace.overview.policy.overlap') }}:</span>
+          <span class="app-text-muted">{{ t('jobs.workspace.overview.policy.overlap') }}:</span>
           <span class="ml-1">{{ job.overlap_policy === 'queue' ? t('jobs.overlap.queue') : t('jobs.overlap.reject') }}</span>
         </n-tag>
       </div>
 
       <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
         <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-source">
-          <div class="text-xs opacity-70">{{ metaSourceType.label }}</div>
+          <div class="text-xs app-text-muted">{{ metaSourceType.label }}</div>
           <div class="mt-2">
             <n-tag size="medium" :bordered="false" :type="metaSourceType.tagType" class="text-base">
               {{ metaSourceType.value }}
@@ -241,7 +241,7 @@ function openLatestRun(): void {
         </n-card>
 
         <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-target">
-          <div class="text-xs opacity-70">{{ metaTargetType.label }}</div>
+          <div class="text-xs app-text-muted">{{ metaTargetType.label }}</div>
           <div class="mt-2">
             <n-tag size="medium" :bordered="false" :type="metaTargetType.tagType" class="text-base">
               {{ metaTargetType.value }}
@@ -250,7 +250,7 @@ function openLatestRun(): void {
         </n-card>
 
         <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-format">
-          <div class="text-xs opacity-70">{{ metaArtifactFormat.label }}</div>
+          <div class="text-xs app-text-muted">{{ metaArtifactFormat.label }}</div>
           <div class="mt-2">
             <n-tag
               size="medium"
@@ -261,19 +261,19 @@ function openLatestRun(): void {
               {{ metaArtifactFormat.value }}
             </n-tag>
           </div>
-          <div v-if="metaArtifactFormat.hint" class="mt-1 text-xs opacity-70 font-mono truncate">
+          <div v-if="metaArtifactFormat.hint" class="mt-1 text-xs app-text-muted font-mono truncate">
             {{ metaArtifactFormat.hint }}
           </div>
         </n-card>
 
         <n-card size="small" class="app-card" :bordered="false" data-testid="job-overview-meta-encryption">
-          <div class="text-xs opacity-70">{{ metaEncryption.label }}</div>
+          <div class="text-xs app-text-muted">{{ metaEncryption.label }}</div>
           <div class="mt-2">
             <n-tag size="medium" :bordered="false" :type="metaEncryption.tagType" class="text-base">
               {{ metaEncryption.value }}
             </n-tag>
           </div>
-          <div v-if="metaEncryption.hint" class="mt-1 text-xs opacity-70 font-mono truncate">
+          <div v-if="metaEncryption.hint" class="mt-1 text-xs app-text-muted font-mono truncate">
             {{ metaEncryption.hint }}
           </div>
         </n-card>

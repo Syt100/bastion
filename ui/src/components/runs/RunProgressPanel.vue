@@ -416,7 +416,7 @@ function progressNumber(pct: number | null): number {
 </script>
 
 <template>
-  <div v-if="!snapshot" class="text-sm opacity-70">-</div>
+  <div v-if="!snapshot" class="text-sm app-text-muted">-</div>
   <div v-else class="space-y-1.5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -425,7 +425,7 @@ function progressNumber(pct: number | null): number {
           <n-tag v-if="failureStage" size="small" type="error" :bordered="false">
             {{ t('runs.progress.failureStage') }}: {{ stageLabel(failureStage) }}
           </n-tag>
-          <div class="text-xs opacity-70 truncate">
+          <div class="text-xs app-text-muted truncate">
             {{ t('runs.progress.updatedAt') }}: {{ formatUnixSeconds(snapshot.ts) }}
           </div>
         </div>
@@ -433,7 +433,7 @@ function progressNumber(pct: number | null): number {
     </div>
 
     <div class="space-y-1">
-      <div class="flex items-center justify-between gap-3 text-xs opacity-70">
+      <div class="flex items-center justify-between gap-3 text-xs app-text-muted">
         <div class="truncate">{{ t('runs.progress.overall') }}</div>
         <div v-if="overallPct != null" class="shrink-0 font-mono tabular-nums whitespace-nowrap">
           {{ Math.round(overallPct) }}%
@@ -450,15 +450,15 @@ function progressNumber(pct: number | null): number {
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
       <div class="flex items-center justify-between gap-2">
-        <span class="opacity-70">{{ t('runs.progress.transfer.done') }}</span>
+        <span class="app-text-muted">{{ t('runs.progress.transfer.done') }}</span>
         <span class="font-mono tabular-nums">{{ transferDoneBytes != null ? formatBytes(transferDoneBytes) : '-' }}</span>
       </div>
       <div class="flex items-center justify-between gap-2">
-        <span class="opacity-70">{{ t('runs.progress.transfer.total') }}</span>
+        <span class="app-text-muted">{{ t('runs.progress.transfer.total') }}</span>
         <span class="font-mono tabular-nums">{{ transferTotalBytes != null ? formatBytes(transferTotalBytes) : '-' }}</span>
       </div>
       <div class="flex items-center justify-between gap-2">
-        <span class="opacity-70">{{ t('runs.progress.transfer.rate') }}</span>
+        <span class="app-text-muted">{{ t('runs.progress.transfer.rate') }}</span>
         <span
           class="font-mono tabular-nums"
           :title="displayPeakRateBps != null ? `${t('runs.progress.transfer.peak')}: ${formatBytes(displayPeakRateBps)}/s` : undefined"
@@ -467,7 +467,7 @@ function progressNumber(pct: number | null): number {
         </span>
       </div>
       <div class="flex items-center justify-between gap-2">
-        <span class="opacity-70">{{ t('runs.progress.transfer.eta') }}</span>
+        <span class="app-text-muted">{{ t('runs.progress.transfer.eta') }}</span>
         <span class="font-mono tabular-nums">{{ formatEta(snapshot.eta_seconds) }}</span>
       </div>
     </div>
@@ -500,7 +500,7 @@ function progressNumber(pct: number | null): number {
             </div>
           </n-popover>
         </div>
-        <div class="text-xs opacity-70 font-mono tabular-nums">
+        <div class="text-xs app-text-muted font-mono tabular-nums">
           {{ t('runs.progress.timeline.total') }}: {{ formatDuration(totalDurationSeconds) }}
         </div>
       </div>
@@ -537,7 +537,7 @@ function progressNumber(pct: number | null): number {
               </div>
             </n-popover>
           </div>
-          <div class="text-xs opacity-70">
+          <div class="text-xs app-text-muted">
             <span v-if="currentStagePct != null">{{ Math.round(currentStagePct) }}%</span>
             <span v-else>-</span>
           </div>
@@ -550,21 +550,21 @@ function progressNumber(pct: number | null): number {
         />
       </div>
     </div>
-    <div v-else class="text-sm opacity-70">{{ stageLabel(stageForLabel) }}</div>
+    <div v-else class="text-sm app-text-muted">{{ stageLabel(stageForLabel) }}</div>
 
-    <div class="rounded border border-black/5 dark:border-white/10 p-2.5">
+    <div class="rounded app-border-subtle p-2.5">
       <div class="text-sm font-medium mb-1">{{ t('runs.progress.source.title') }}</div>
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-xs">
         <div class="flex items-center justify-between gap-2">
-          <span class="opacity-70">{{ t('runs.progress.source.files') }}</span>
+          <span class="app-text-muted">{{ t('runs.progress.source.files') }}</span>
           <span class="font-mono tabular-nums">{{ sourceTotal?.files ?? '-' }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="opacity-70">{{ t('runs.progress.source.dirs') }}</span>
+          <span class="app-text-muted">{{ t('runs.progress.source.dirs') }}</span>
           <span class="font-mono tabular-nums">{{ sourceTotal?.dirs ?? '-' }}</span>
         </div>
         <div class="flex items-center justify-between gap-2 sm:col-span-2 md:col-span-1">
-          <span class="opacity-70">{{ t('runs.progress.source.bytes') }}</span>
+          <span class="app-text-muted">{{ t('runs.progress.source.bytes') }}</span>
           <span class="font-mono tabular-nums">{{ sourceTotal ? formatBytes(sourceTotal.bytes) : '-' }}</span>
         </div>
       </div>

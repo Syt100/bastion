@@ -42,7 +42,7 @@ function statusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 'de
       <NodeContextTag :node-id="nodeId" />
     </template>
     <template #subtitle>
-      <div v-if="runId" class="flex items-center gap-2 text-sm opacity-70 min-w-0">
+      <div v-if="runId" class="flex items-center gap-2 text-sm app-text-muted min-w-0">
         <span class="font-mono tabular-nums truncate">{{ runId }}</span>
         <n-button size="tiny" quaternary @click="emit('copy-run-id')">{{ t('common.copy') }}</n-button>
       </div>

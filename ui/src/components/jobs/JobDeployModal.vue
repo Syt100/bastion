@@ -234,7 +234,7 @@ defineExpose<JobDeployModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('jobs.deploy.title')">
     <div class="space-y-4">
-      <div class="text-sm opacity-70">{{ sourceJobName }}</div>
+      <div class="text-sm app-text-muted">{{ sourceJobName }}</div>
 
       <n-card size="small" class="app-card">
         <n-form label-placement="top">
@@ -281,14 +281,14 @@ defineExpose<JobDeployModalExpose>({ open })
 
           <n-form-item :label="t('jobs.deploy.nameTemplate')" :show-feedback="false">
             <n-input v-model:value="nameTemplate" :placeholder="t('jobs.deploy.nameTemplatePlaceholder')" />
-            <div class="text-xs opacity-70 mt-1">{{ t('jobs.deploy.nameTemplateHelp') }}</div>
+            <div class="text-xs app-text-muted mt-1">{{ t('jobs.deploy.nameTemplateHelp') }}</div>
           </n-form-item>
         </n-form>
       </n-card>
 
       <n-card v-if="preview" size="small" class="app-card">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div class="text-sm opacity-70">
+          <div class="text-sm app-text-muted">
             {{ t('jobs.deploy.previewSummary', previewCounts) }}
           </div>
         </div>
@@ -297,7 +297,7 @@ defineExpose<JobDeployModalExpose>({ open })
         </div>
       </n-card>
 
-      <div v-if="error" class="text-sm text-red-600">
+      <div v-if="error" class="text-sm text-[var(--app-danger)]">
         {{ error }}
       </div>
 

@@ -1118,7 +1118,7 @@ const columns = computed<DataTableColumns<PathPickerEntry>>(() => {
 
       return h('div', { class: 'space-y-1 min-w-0' }, [
         h('div', { class: 'min-w-0' }, [nameNode]),
-        h('div', { class: 'text-xs opacity-70 truncate' }, meta),
+        h('div', { class: 'text-xs app-text-muted truncate' }, meta),
       ])
     },
   } as const
@@ -1493,7 +1493,7 @@ defineExpose<PathPickerModalExpose>({ open })
               </n-button>
             </template>
             <div class="w-96 space-y-2">
-              <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+              <div class="text-xs app-text-muted">{{ t('common.selectionLoadedHint') }}</div>
               <div class="flex flex-wrap gap-2">
                 <n-button size="tiny" secondary @click="selectAllLoadedRows">
                   {{ t('common.selectAllLoaded') }}
@@ -1508,13 +1508,13 @@ defineExpose<PathPickerModalExpose>({ open })
 
               <div
                 v-if="selectedUnique.length > 0"
-                class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+                class="max-h-[40vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1"
               >
                 <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
                   {{ p }}
                 </div>
               </div>
-              <div v-else class="text-xs opacity-60">
+              <div v-else class="text-xs app-text-muted">
                 {{ t('common.noSelection') }}
               </div>
             </div>
@@ -1568,7 +1568,7 @@ defineExpose<PathPickerModalExpose>({ open })
   >
     <n-drawer-content :title="t(`${i18nPrefix}.confirm.selectedItems`, { count: selectedCount })" closable>
       <div class="space-y-2">
-        <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+        <div class="text-xs app-text-muted">{{ t('common.selectionLoadedHint') }}</div>
         <div class="flex flex-wrap gap-2">
           <n-button size="small" secondary @click="selectAllLoadedRows">
             {{ t('common.selectAllLoaded') }}
@@ -1583,13 +1583,13 @@ defineExpose<PathPickerModalExpose>({ open })
 
         <div
           v-if="selectedUnique.length > 0"
-          class="max-h-[55vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+          class="max-h-[55vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1"
         >
           <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
             {{ p }}
           </div>
         </div>
-        <div v-else class="text-xs opacity-60">
+        <div v-else class="text-xs app-text-muted">
           {{ t('common.noSelection') }}
         </div>
       </div>
@@ -1606,15 +1606,13 @@ defineExpose<PathPickerModalExpose>({ open })
   >
     <div class="space-y-3">
       <div class="space-y-1">
-        <div class="text-xs opacity-70">{{ t(`${i18nPrefix}.confirm.currentDir`) }}</div>
-        <div class="font-mono text-xs break-all rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5">
-          {{ currentDirNormalized }}
-        </div>
+        <div class="text-xs app-text-muted">{{ t(`${i18nPrefix}.confirm.currentDir`) }}</div>
+        <div class="app-mono-block break-all">{{ currentDirNormalized }}</div>
       </div>
 
       <div class="space-y-1">
-        <div class="text-xs opacity-70">{{ t(`${i18nPrefix}.confirm.selectedItems`, { count: selectedUnique.length }) }}</div>
-        <div class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1">
+        <div class="text-xs app-text-muted">{{ t(`${i18nPrefix}.confirm.selectedItems`, { count: selectedUnique.length }) }}</div>
+        <div class="max-h-[40vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1">
           <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
             {{ p }}
           </div>
@@ -1639,15 +1637,13 @@ defineExpose<PathPickerModalExpose>({ open })
     <n-drawer-content :title="t(`${i18nPrefix}.confirm.title`)" closable>
       <div class="space-y-3">
         <div class="space-y-1">
-          <div class="text-xs opacity-70">{{ t(`${i18nPrefix}.confirm.currentDir`) }}</div>
-          <div class="font-mono text-xs break-all rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5">
-            {{ currentDirNormalized }}
-          </div>
+          <div class="text-xs app-text-muted">{{ t(`${i18nPrefix}.confirm.currentDir`) }}</div>
+          <div class="app-mono-block break-all">{{ currentDirNormalized }}</div>
         </div>
 
         <div class="space-y-1">
-          <div class="text-xs opacity-70">{{ t(`${i18nPrefix}.confirm.selectedItems`, { count: selectedUnique.length }) }}</div>
-          <div class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1">
+          <div class="text-xs app-text-muted">{{ t(`${i18nPrefix}.confirm.selectedItems`, { count: selectedUnique.length }) }}</div>
+          <div class="max-h-[40vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1">
             <div v-for="p in selectedUnique" :key="p" class="font-mono text-xs break-all">
               {{ p }}
             </div>

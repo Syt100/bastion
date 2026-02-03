@@ -24,7 +24,7 @@ const artifactFormatOptions = computed<SelectOption[]>(() => [
           :options="artifactFormatOptions"
           @update:value="onArtifactFormatChanged"
         />
-        <div class="text-xs opacity-70">
+        <div class="text-xs app-text-muted">
           {{ form.artifactFormat === 'raw_tree_v1' ? t('jobs.fields.artifactFormatRawTreeHelp') : t('jobs.fields.artifactFormatArchiveHelp') }}
         </div>
       </div>
@@ -37,7 +37,7 @@ const artifactFormatOptions = computed<SelectOption[]>(() => [
           :disabled="form.artifactFormat === 'raw_tree_v1'"
           @update:value="onEncryptionEnabledChanged"
         />
-        <div class="text-xs opacity-70">
+        <div class="text-xs app-text-muted">
           {{
             form.artifactFormat === 'raw_tree_v1'
               ? t('jobs.fields.encryptionDisabledByRawTreeHelp')
@@ -60,7 +60,7 @@ const artifactFormatOptions = computed<SelectOption[]>(() => [
             :placeholder="t('jobs.fields.encryptionKeyNamePlaceholder')"
             @update:value="clearFieldError('encryptionKeyName')"
           />
-          <div v-if="!fieldErrors.encryptionKeyName" class="text-xs opacity-70">
+          <div v-if="!fieldErrors.encryptionKeyName" class="text-xs app-text-muted">
             {{ t('jobs.fields.encryptionKeyNameHelp') }}
           </div>
         </div>

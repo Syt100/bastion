@@ -201,7 +201,7 @@ defineExpose<RestoreWizardModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('restore.title')">
     <div class="space-y-4">
-      <div class="text-sm opacity-70">{{ runId }}</div>
+      <div class="text-sm app-text-muted">{{ runId }}</div>
       <n-form label-placement="top">
         <n-form-item :label="t('restore.fields.destinationType')">
           <n-select v-model:value="destinationType" :options="destinationTypeOptions" />
@@ -221,7 +221,7 @@ defineExpose<RestoreWizardModalExpose>({ open })
                 />
                 <n-button @click="openLocalFsDirectoryPicker">{{ t('restore.actions.browse') }}</n-button>
               </div>
-              <div class="text-xs opacity-70">{{ t('restore.fields.destinationDirHelp') }}</div>
+              <div class="text-xs app-text-muted">{{ t('restore.fields.destinationDirHelp') }}</div>
             </div>
           </n-form-item>
         </template>
@@ -243,10 +243,10 @@ defineExpose<RestoreWizardModalExpose>({ open })
                 />
                 <n-button @click="openWebdavPrefixPicker">{{ t('restore.actions.browse') }}</n-button>
               </div>
-              <div class="text-xs opacity-70">{{ t('restore.fields.webdavPrefixHelp') }}</div>
+              <div class="text-xs app-text-muted">{{ t('restore.fields.webdavPrefixHelp') }}</div>
             </div>
           </n-form-item>
-          <div class="text-xs opacity-70">
+          <div class="text-xs app-text-muted">
             {{ t('restore.fields.webdavMetaNote') }}
           </div>
         </template>
@@ -257,7 +257,7 @@ defineExpose<RestoreWizardModalExpose>({ open })
         <n-form-item :label="t('restore.fields.selection')">
           <div class="space-y-2 w-full">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="text-xs opacity-70">{{ t('restore.fields.selectionHelp') }}</div>
+              <div class="text-xs app-text-muted">{{ t('restore.fields.selectionHelp') }}</div>
               <div class="flex items-center gap-2">
                 <n-button size="small" @click="openPicker">{{ t('restore.actions.pick') }}</n-button>
                 <n-button size="small" :disabled="selection == null" @click="clearSelection">

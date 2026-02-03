@@ -256,51 +256,51 @@ onMounted(refresh)
         <div class="space-y-3">
           <div class="flex items-baseline justify-between gap-3 flex-wrap">
             <h3 class="text-base font-semibold">{{ t('settings.hubRuntimeConfig.sections.startup.title') }}</h3>
-            <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.sections.startup.subtitle') }}</div>
+            <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.sections.startup.subtitle') }}</div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.bindHost') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.bindHost') }}</div>
               <div class="font-medium mt-1">{{ data.effective.bind_host }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.bind_host, false) }}
               </div>
             </div>
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.bindPort') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.bindPort') }}</div>
               <div class="font-medium mt-1">{{ data.effective.bind_port }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.bind_port, false) }}
               </div>
             </div>
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.dataDir') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.dataDir') }}</div>
               <div class="font-medium mt-1 break-all">{{ data.effective.data_dir }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.data_dir, false) }}
               </div>
             </div>
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.insecureHttp') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.insecureHttp') }}</div>
               <div class="font-medium mt-1">{{ formatBool(data.effective.insecure_http) }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.insecure_http, false) }}
               </div>
             </div>
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.trustedProxies') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.trustedProxies') }}</div>
               <div class="font-medium mt-1 break-all">
                 {{ data.effective.trusted_proxies.length ? data.effective.trusted_proxies.join(', ') : '-' }}
               </div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.trusted_proxies, false) }}
               </div>
             </div>
             <div class="p-3 rounded-lg app-border-subtle app-glass-soft">
-              <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.fields.debugErrors') }}</div>
+              <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.fields.debugErrors') }}</div>
               <div class="font-medium mt-1">{{ formatBool(data.effective.debug_errors) }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">
                 {{ renderMeta(data.fields.debug_errors, false) }}
               </div>
             </div>
@@ -310,7 +310,7 @@ onMounted(refresh)
         <div class="space-y-3">
           <div class="flex items-baseline justify-between gap-3 flex-wrap">
             <h3 class="text-base font-semibold">{{ t('settings.hubRuntimeConfig.sections.policy.title') }}</h3>
-            <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.sections.policy.subtitle') }}</div>
+            <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.sections.policy.subtitle') }}</div>
           </div>
 
           <n-form label-placement="top">
@@ -321,7 +321,7 @@ onMounted(refresh)
             >
               <div class="space-y-1 w-full">
                 <n-input v-model:value="form.hub_timezone" :disabled="!data.fields.hub_timezone.editable" />
-                <div class="text-xs opacity-70">
+                <div class="text-xs app-text-muted">
                   {{ renderMeta(data.fields.hub_timezone, isPendingString(data.saved.hub_timezone, data.effective.hub_timezone)) }}
                   <span class="ml-1">·</span>
                   <span class="ml-1">{{ t('settings.hubRuntimeConfig.meta.effective') }}: {{ data.effective.hub_timezone }}</span>
@@ -341,7 +341,7 @@ onMounted(refresh)
                     :min="1"
                     :disabled="!data.fields.run_retention_days.editable"
                   />
-                  <div class="text-xs opacity-70">
+                  <div class="text-xs app-text-muted">
                     {{
                       renderMeta(
                         data.fields.run_retention_days,
@@ -365,7 +365,7 @@ onMounted(refresh)
                     :min="0"
                     :disabled="!data.fields.incomplete_cleanup_days.editable"
                   />
-                  <div class="text-xs opacity-70">
+                  <div class="text-xs app-text-muted">
                     {{
                       renderMeta(
                         data.fields.incomplete_cleanup_days,
@@ -384,13 +384,13 @@ onMounted(refresh)
         <div class="space-y-3">
           <div class="flex items-baseline justify-between gap-3 flex-wrap">
             <h3 class="text-base font-semibold">{{ t('settings.hubRuntimeConfig.sections.backupRetention.title') }}</h3>
-            <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.sections.backupRetention.subtitle') }}</div>
+            <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.sections.backupRetention.subtitle') }}</div>
           </div>
 
           <n-form label-placement="top">
             <n-form-item :label="t('settings.hubRuntimeConfig.fields.backupRetentionEnabled')">
               <div class="flex items-center justify-between gap-3 w-full">
-                <div class="text-xs opacity-70">
+                <div class="text-xs app-text-muted">
                   {{ t('settings.hubRuntimeConfig.fields.backupRetentionEnabledHelp') }}
                 </div>
                 <n-switch v-model:value="form.default_backup_retention_enabled" />
@@ -424,14 +424,14 @@ onMounted(refresh)
         <div class="space-y-3">
           <div class="flex items-baseline justify-between gap-3 flex-wrap">
             <h3 class="text-base font-semibold">{{ t('settings.hubRuntimeConfig.sections.logging.title') }}</h3>
-            <div class="text-xs opacity-70">{{ t('settings.hubRuntimeConfig.sections.logging.subtitle') }}</div>
+            <div class="text-xs app-text-muted">{{ t('settings.hubRuntimeConfig.sections.logging.subtitle') }}</div>
           </div>
 
           <n-form label-placement="top">
             <n-form-item :label="t('settings.hubRuntimeConfig.fields.logFilter')">
               <div class="space-y-1 w-full">
                 <n-input v-model:value="form.log_filter" :disabled="!data.fields.log_filter.editable" />
-                <div class="text-xs opacity-70">
+                <div class="text-xs app-text-muted">
                   {{ renderMeta(data.fields.log_filter, isPendingString(data.saved.log_filter, data.effective.log_filter)) }}
                   <span class="ml-1">·</span>
                   <span class="ml-1">{{ t('settings.hubRuntimeConfig.meta.effective') }}: {{ data.effective.log_filter }}</span>
@@ -442,7 +442,7 @@ onMounted(refresh)
             <n-form-item :label="t('settings.hubRuntimeConfig.fields.logFile')">
               <div class="space-y-1 w-full">
                 <n-input v-model:value="form.log_file" :disabled="!data.fields.log_file.editable" />
-                <div class="text-xs opacity-70">
+                <div class="text-xs app-text-muted">
                   {{ renderMeta(data.fields.log_file, isPendingOptionalString(data.saved.log_file, data.effective.log_file)) }}
                   <span class="ml-1">·</span>
                   <span class="ml-1">{{ t('settings.hubRuntimeConfig.meta.effective') }}: {{ data.effective.log_file ?? '-' }}</span>
@@ -463,7 +463,7 @@ onMounted(refresh)
                     :options="rotationOptions"
                     :disabled="!data.fields.log_rotation.editable"
                   />
-                  <div class="text-xs opacity-70">
+                  <div class="text-xs app-text-muted">
                     {{ renderMeta(data.fields.log_rotation, isPendingString(data.saved.log_rotation, data.effective.log_rotation)) }}
                     <span class="ml-1">·</span>
                     <span class="ml-1">{{ t('settings.hubRuntimeConfig.meta.effective') }}: {{ data.effective.log_rotation }}</span>
@@ -478,7 +478,7 @@ onMounted(refresh)
                     :min="0"
                     :disabled="!data.fields.log_keep_files.editable"
                   />
-                  <div class="text-xs opacity-70">
+                  <div class="text-xs app-text-muted">
                     {{
                       renderMeta(
                         data.fields.log_keep_files,

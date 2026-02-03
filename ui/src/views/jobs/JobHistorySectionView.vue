@@ -236,7 +236,7 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="font-mono tabular-nums truncate">{{ row.id }}</div>
-                  <div class="text-xs opacity-70 mt-0.5">
+                  <div class="text-xs app-text-muted mt-0.5">
                     {{ formatUnixSeconds(row.started_at) }}
                     <span class="mx-1">→</span>
                     {{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}
@@ -249,7 +249,7 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
               </div>
             </template>
 
-            <div v-if="row.error" class="text-xs text-red-600 truncate">{{ row.error }}</div>
+            <div v-if="row.error" class="text-xs text-[var(--app-danger)] truncate">{{ row.error }}</div>
 
             <template #footer>
               <div class="flex flex-wrap justify-end gap-2">

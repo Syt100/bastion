@@ -541,7 +541,7 @@ const columns = computed<DataTableColumns<RunEntry>>(() => [
 
       return h('div', { class: 'space-y-1 min-w-0' }, [
         h('div', { class: 'min-w-0' }, [nameNode]),
-        h('div', { class: 'text-xs opacity-70 truncate' }, meta),
+        h('div', { class: 'text-xs app-text-muted truncate' }, meta),
       ])
     },
   },
@@ -777,7 +777,7 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
               </n-button>
             </template>
             <div class="w-96 space-y-2">
-              <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+              <div class="text-xs app-text-muted">{{ t('common.selectionLoadedHint') }}</div>
               <div class="flex flex-wrap gap-2">
                 <n-button size="tiny" secondary @click="selectAllLoadedRows">
                   {{ t('common.selectAllLoaded') }}
@@ -792,13 +792,13 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
 
               <div
                 v-if="selectedPreviewItems.length > 0"
-                class="max-h-[40vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+                class="max-h-[40vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1"
               >
                 <div v-for="it in selectedPreviewItems" :key="it.path" class="font-mono text-xs break-all">
                   {{ it.kind === 'dir' ? `📁 ${it.path}` : `📄 ${it.path}` }}
                 </div>
               </div>
-              <div v-else class="text-xs opacity-60">
+              <div v-else class="text-xs app-text-muted">
                 {{ t('common.noSelection') }}
               </div>
             </div>
@@ -831,7 +831,7 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
   <n-drawer v-if="!isDesktop" v-model:show="selectionDrawerOpen" placement="bottom" height="80vh">
     <n-drawer-content :title="t('fsPicker.confirm.selectedItems', { count: selectedCount })" closable>
       <div class="space-y-2">
-        <div class="text-xs opacity-70">{{ t('common.selectionLoadedHint') }}</div>
+        <div class="text-xs app-text-muted">{{ t('common.selectionLoadedHint') }}</div>
         <div class="flex flex-wrap gap-2">
           <n-button size="small" secondary @click="selectAllLoadedRows">
             {{ t('common.selectAllLoaded') }}
@@ -846,13 +846,13 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
 
         <div
           v-if="selectedPreviewItems.length > 0"
-          class="max-h-[55vh] overflow-auto rounded-md bg-black/2 dark:bg-white/5 px-2 py-1.5 space-y-1"
+          class="max-h-[55vh] overflow-auto rounded-md app-panel-inset px-2 py-1.5 space-y-1"
         >
           <div v-for="it in selectedPreviewItems" :key="it.path" class="font-mono text-xs break-all">
             {{ it.kind === 'dir' ? `📁 ${it.path}` : `📄 ${it.path}` }}
           </div>
         </div>
-        <div v-else class="text-xs opacity-60">
+        <div v-else class="text-xs app-text-muted">
           {{ t('common.noSelection') }}
         </div>
       </div>

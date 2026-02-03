@@ -43,7 +43,7 @@ const durationSeconds = computed<number | null>(() => {
 
 <template>
   <n-card :title="t('runs.detail.overviewTitle')" size="small" class="app-card" :bordered="false" data-testid="run-detail-summary">
-    <div v-if="!run" class="text-sm opacity-70">-</div>
+    <div v-if="!run" class="text-sm app-text-muted">-</div>
     <div v-else class="space-y-2">
       <n-alert v-if="run.error" type="error" :title="t('runs.columns.error')" :bordered="false">
         {{ run.error }}
@@ -66,16 +66,16 @@ const durationSeconds = computed<number | null>(() => {
         </div>
 
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-          <dt class="opacity-70">{{ t('runs.columns.startedAt') }}</dt>
+          <dt class="app-text-muted">{{ t('runs.columns.startedAt') }}</dt>
           <dd class="font-mono tabular-nums">{{ formatUnixSeconds(run.started_at) }}</dd>
 
-          <dt class="opacity-70">{{ t('runs.columns.endedAt') }}</dt>
+          <dt class="app-text-muted">{{ t('runs.columns.endedAt') }}</dt>
           <dd class="font-mono tabular-nums">{{ formatUnixSeconds(run.ended_at) }}</dd>
 
-          <dt class="opacity-70">{{ t('runs.detail.duration') }}</dt>
+          <dt class="app-text-muted">{{ t('runs.detail.duration') }}</dt>
           <dd class="font-mono tabular-nums">{{ formatDuration(durationSeconds) }}</dd>
 
-          <dt class="opacity-70">{{ t('runs.detail.target') }}</dt>
+          <dt class="app-text-muted">{{ t('runs.detail.target') }}</dt>
           <dd class="min-w-0">
             <div class="flex items-start gap-2 min-w-0">
               <n-tag size="small" :bordered="false" class="shrink-0">{{ targetTypeLabel }}</n-tag>
@@ -87,7 +87,7 @@ const durationSeconds = computed<number | null>(() => {
         </dl>
       </div>
 
-      <div class="border-t border-black/5 dark:border-white/10" />
+      <div class="border-t border-[color:var(--app-border)]" />
 
       <div class="space-y-1.5" data-testid="run-detail-progress">
         <div class="flex items-center justify-between gap-3">

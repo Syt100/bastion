@@ -457,8 +457,8 @@ onMounted(refresh)
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-medium">{{ row.name }}</div>
-              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+              <div class="text-xs app-text-muted mt-1">
                 {{ t('settings.notifications.enabled') }}:
                 <span class="font-medium">{{ row.enabled ? t('common.yes') : t('common.no') }}</span>
               </div>
@@ -517,8 +517,8 @@ onMounted(refresh)
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-medium">{{ row.name }}</div>
-              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
-              <div class="text-xs opacity-70 mt-1">
+              <div class="text-xs app-text-muted mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+              <div class="text-xs app-text-muted mt-1">
                 {{ t('settings.notifications.enabled') }}:
                 <span class="font-medium">{{ row.enabled ? t('common.yes') : t('common.no') }}</span>
               </div>

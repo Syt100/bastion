@@ -119,7 +119,7 @@ defineExpose<JobRunsModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runs.title')">
     <div class="space-y-3">
-      <div class="text-sm opacity-70">{{ jobId }}</div>
+      <div class="text-sm app-text-muted">{{ jobId }}</div>
       <n-data-table :loading="loading" :columns="columns" :data="runs" />
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.close') }}</n-button>

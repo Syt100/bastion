@@ -152,7 +152,7 @@ watch(showArchived, () => void refresh())
 
             <template #filters>
               <div class="flex items-center gap-2 w-full md:w-auto">
-                <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
+                <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
                 <n-switch v-model:value="showArchived" />
               </div>
             </template>
@@ -188,7 +188,7 @@ watch(showArchived, () => void refresh())
             <div
               v-else
             >
-              <ScrollShadowPane data-testid="jobs-list-scroll" class="divide-y divide-black/5 dark:divide-white/10">
+              <ScrollShadowPane data-testid="jobs-list-scroll" class="app-divide-y">
                 <button
                   v-for="job in filteredJobs"
                   :key="job.id"
@@ -204,7 +204,7 @@ watch(showArchived, () => void refresh())
                         {{ t('jobs.archived') }}
                       </n-tag>
                     </div>
-                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
+                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
                       <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
                         {{ formatNodeLabel(job.agent_id) }}
                       </n-tag>
@@ -227,7 +227,7 @@ watch(showArchived, () => void refresh())
 
                     <div
                       v-if="job.latest_run_started_at != null"
-                      class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
+                      class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
                       :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
                     >
                       {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
@@ -266,7 +266,7 @@ watch(showArchived, () => void refresh())
 
           <template #filters>
             <div class="flex items-center gap-2 w-full md:w-auto">
-              <span class="text-sm opacity-70">{{ t('jobs.showArchived') }}</span>
+              <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
               <n-switch v-model:value="showArchived" />
             </div>
           </template>
@@ -299,7 +299,7 @@ watch(showArchived, () => void refresh())
         </AppEmptyState>
 
         <n-card v-else class="app-card" :bordered="false">
-          <div class="divide-y divide-black/5 dark:divide-white/10">
+          <div class="app-divide-y">
             <button
               v-for="job in filteredJobs"
               :key="job.id"
@@ -314,7 +314,7 @@ watch(showArchived, () => void refresh())
                     {{ t('jobs.archived') }}
                   </n-tag>
                 </div>
-                <div class="mt-1 flex items-center gap-2 min-w-0 text-xs opacity-70">
+                <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
                   <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
                     {{ formatNodeLabel(job.agent_id) }}
                   </n-tag>
@@ -337,7 +337,7 @@ watch(showArchived, () => void refresh())
 
                 <div
                   v-if="job.latest_run_started_at != null"
-                  class="text-xs font-mono tabular-nums opacity-70 max-w-[10rem] truncate"
+                  class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
                   :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
                 >
                   {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}

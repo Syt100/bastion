@@ -2,6 +2,7 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  NAlert,
   NButton,
   NCard,
   NCheckbox,
@@ -524,7 +525,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
               h(
                 'span',
                 { class: 'inline-flex items-center cursor-default', title: tip },
-                [h(NIcon, { component: PinOutline, class: 'text-amber-500 text-[14px]' })],
+                [h(NIcon, { component: PinOutline, size: 14, class: 'text-[var(--app-warning)]' })],
               ),
             default: () => h('div', { class: 'max-w-[320px] text-sm' }, tip),
           },
@@ -576,8 +577,8 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
           { class: 'min-w-0' },
           [
             h(NTag, { size: 'small', bordered: false, type: deleteTaskTagType(task.status) }, { default: () => label }),
-            executor ? h('div', { class: 'text-xs opacity-70 truncate mt-0.5' }, executor) : null,
-            err ? h('div', { class: 'text-xs opacity-70 truncate mt-0.5' }, err) : null,
+            executor ? h('div', { class: 'text-xs app-text-muted truncate mt-0.5' }, executor) : null,
+            err ? h('div', { class: 'text-xs app-text-muted truncate mt-0.5' }, err) : null,
           ].filter(Boolean),
         )
       },
@@ -693,7 +694,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="text-sm font-mono tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
-              <div class="text-xs opacity-70 mt-0.5 truncate">{{ formatTarget(row) }}</div>
+              <div class="text-xs app-text-muted mt-0.5 truncate">{{ formatTarget(row) }}</div>
             </div>
             <div class="flex items-center gap-2">
               <n-checkbox
@@ -703,7 +704,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
               <n-popover v-if="row.pinned_at != null" trigger="hover" placement="top" :show-arrow="false">
                 <template #trigger>
                   <span class="inline-flex items-center cursor-default" :title="t('snapshots.pinnedTooltip')">
-                    <n-icon :component="PinOutline" class="text-amber-500 text-[14px]" />
+                    <n-icon :component="PinOutline" :size="14" class="text-[var(--app-warning)]" />
                   </span>
                 </template>
                 <div class="max-w-[320px] text-sm">{{ t('snapshots.pinnedTooltip') }}</div>
@@ -715,11 +716,11 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
 
         <div class="text-sm">
           <div class="flex items-start justify-between gap-4 py-1">
-            <div class="opacity-70">{{ t('snapshots.columns.format') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.columns.format') }}</div>
             <div class="font-mono">{{ row.artifact_format ?? '-' }}</div>
           </div>
           <div class="flex items-start justify-between gap-4 py-1">
-            <div class="opacity-70">{{ t('snapshots.columns.source') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.columns.source') }}</div>
             <div class="text-right">
               <span v-if="row.source_files != null">{{ row.source_files }}{{ t('snapshots.units.files') }}</span>
               <span v-else>-</span>
@@ -728,19 +729,19 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
             </div>
           </div>
           <div class="flex items-start justify-between gap-4 py-1">
-            <div class="opacity-70">{{ t('snapshots.columns.transfer') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.columns.transfer') }}</div>
             <div class="text-right">{{ row.transfer_bytes != null ? formatBytes(row.transfer_bytes) : '-' }}</div>
           </div>
           <div v-if="row.delete_task" class="flex items-start justify-between gap-4 py-1">
-            <div class="opacity-70">{{ t('snapshots.columns.deleteTask') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.columns.deleteTask') }}</div>
             <div class="text-right">
               <n-tag size="small" :bordered="false" :type="deleteTaskTagType(row.delete_task.status)">
                 {{ formatDeleteTaskStatus(row.delete_task.status) }} ({{ row.delete_task.attempts }})
               </n-tag>
-              <div v-if="formatDeleteTaskExecutor(row)" class="text-xs opacity-70 mt-0.5">
+              <div v-if="formatDeleteTaskExecutor(row)" class="text-xs app-text-muted mt-0.5">
                 {{ formatDeleteTaskExecutor(row) }}
               </div>
-              <div v-if="row.delete_task.last_error || row.delete_task.last_error_kind" class="text-xs opacity-70 mt-0.5">
+              <div v-if="row.delete_task.last_error || row.delete_task.last_error_kind" class="text-xs app-text-muted mt-0.5">
                 {{ lastErrorLabel(row.delete_task.last_error_kind, row.delete_task.last_error) }}
               </div>
             </div>
@@ -785,34 +786,35 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
     <n-modal v-model:show="deleteConfirmOpen" :mask-closable="!deleteConfirmBusy" preset="card" :style="{ width: isDesktop ? '720px' : '92vw' }">
       <template #header>{{ t('snapshots.deleteConfirm.title') }}</template>
       <div class="space-y-3">
-        <div class="text-sm opacity-80">{{ t('snapshots.deleteConfirm.subtitle', { count: deleteConfirmRows.length }) }}</div>
-        <div
-          v-if="deleteConfirmPinnedCount > 0"
-          class="rounded border border-amber-200/60 dark:border-amber-700/60 bg-amber-50/40 dark:bg-amber-900/10 p-3 space-y-2"
-        >
+        <div class="text-sm app-text-muted">{{ t('snapshots.deleteConfirm.subtitle', { count: deleteConfirmRows.length }) }}</div>
+        <n-alert v-if="deleteConfirmPinnedCount > 0" type="warning" :bordered="false">
           <div class="text-sm font-medium">{{ t('snapshots.deleteConfirm.pinnedWarningTitle') }}</div>
-          <div class="text-sm opacity-80">{{ t('snapshots.deleteConfirm.pinnedWarning', { count: deleteConfirmPinnedCount }) }}</div>
-          <n-checkbox :checked="deleteConfirmForcePinned" @update:checked="(v) => (deleteConfirmForcePinned = v)">
-            {{ t('snapshots.deleteConfirm.forcePinnedLabel') }}
-          </n-checkbox>
-        </div>
-        <div class="max-h-64 overflow-y-auto rounded border border-slate-200/60 dark:border-slate-700/60">
-          <div
-            v-for="row in deleteConfirmRows"
-            :key="row.run_id"
-            :class="[
-              'px-3 py-2 border-b border-slate-200/60 dark:border-slate-700/60 last:border-b-0',
-              row.pinned_at != null ? 'bg-amber-50/40 dark:bg-amber-900/10' : '',
-            ]"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="font-mono text-xs tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
-                <div class="text-xs opacity-70 truncate mt-0.5">{{ formatTarget(row) }}</div>
-              </div>
-              <div class="flex items-center gap-1 text-xs font-mono opacity-70">
-                <n-icon v-if="row.pinned_at != null" :component="PinOutline" class="text-amber-500 text-[14px]" />
-                <span>{{ row.run_id.slice(0, 8) }}…</span>
+          <div class="text-sm app-text-muted mt-1">
+            {{ t('snapshots.deleteConfirm.pinnedWarning', { count: deleteConfirmPinnedCount }) }}
+          </div>
+          <div class="mt-2">
+            <n-checkbox :checked="deleteConfirmForcePinned" @update:checked="(v) => (deleteConfirmForcePinned = v)">
+              {{ t('snapshots.deleteConfirm.forcePinnedLabel') }}
+            </n-checkbox>
+          </div>
+        </n-alert>
+        <div class="max-h-64 overflow-y-auto rounded app-border-subtle">
+          <div class="app-divide-y">
+            <div
+              v-for="row in deleteConfirmRows"
+              :key="row.run_id"
+              class="px-3 py-2"
+              :class="row.pinned_at != null ? 'border-l-2 border-l-[color:var(--app-warning)]' : ''"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-mono text-xs tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
+                  <div class="text-xs app-text-muted truncate mt-0.5">{{ formatTarget(row) }}</div>
+                </div>
+                <div class="flex items-center gap-1 text-xs font-mono app-text-muted">
+                  <n-icon v-if="row.pinned_at != null" :component="PinOutline" :size="14" class="text-[var(--app-warning)]" />
+                  <span>{{ row.run_id.slice(0, 8) }}…</span>
+                </div>
               </div>
             </div>
           </div>
@@ -849,15 +851,15 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       <n-spin :show="deleteLogLoading">
         <div v-if="deleteLogTask" class="space-y-4">
           <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="opacity-70">{{ t('snapshots.deleteLog.status') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.deleteLog.status') }}</div>
             <div>
               <n-tag size="small" :bordered="false" :type="deleteTaskTagType(deleteLogTask.status)">
                 {{ formatDeleteTaskStatus(deleteLogTask.status) }}
               </n-tag>
             </div>
-            <div class="opacity-70">{{ t('snapshots.deleteLog.attempts') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.deleteLog.attempts') }}</div>
             <div class="font-mono tabular-nums">{{ deleteLogTask.attempts }}</div>
-            <div class="opacity-70">{{ t('snapshots.deleteLog.lastError') }}</div>
+            <div class="app-text-muted">{{ t('snapshots.deleteLog.lastError') }}</div>
             <div class="min-w-0">
               <div class="truncate">{{ lastErrorLabel(deleteLogTask.last_error_kind, deleteLogTask.last_error) || '-' }}</div>
             </div>
@@ -865,18 +867,18 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
 
           <div>
             <div class="text-sm font-medium mb-2">{{ t('snapshots.deleteLog.events') }}</div>
-            <div v-if="deleteLogEvents.length === 0" class="text-sm opacity-70">{{ t('common.noData') }}</div>
+            <div v-if="deleteLogEvents.length === 0" class="text-sm app-text-muted">{{ t('common.noData') }}</div>
             <div v-else class="space-y-2">
               <div
                 v-for="e in deleteLogEvents"
                 :key="e.seq"
-                class="rounded border border-slate-200/60 dark:border-slate-700/60 px-3 py-2"
+                class="rounded app-panel-inset px-3 py-2"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <div class="text-xs font-mono tabular-nums">{{ formatUnixSeconds(e.ts) }}</div>
                     <div class="text-sm mt-0.5">{{ e.message }}</div>
-                    <div class="text-xs opacity-70 mt-0.5">{{ e.kind }}</div>
+                    <div class="text-xs app-text-muted mt-0.5">{{ e.kind }}</div>
                   </div>
                   <n-tag size="small" :bordered="false" :type="e.level === 'error' ? 'error' : e.level === 'warn' ? 'warning' : 'default'">
                     {{ e.level }}

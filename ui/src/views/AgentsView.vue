@@ -635,7 +635,7 @@ onMounted(async () => {
         </div>
 
         <div class="shrink-0 flex items-center gap-2">
-          <span class="text-sm opacity-70">{{ t('agents.filters.mode') }}</span>
+          <span class="text-sm app-text-muted">{{ t('agents.filters.mode') }}</span>
           <n-radio-group v-model:value="labelsMode" size="small">
             <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
             <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
@@ -730,14 +730,14 @@ onMounted(async () => {
             <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
           </div>
           <div class="flex items-center justify-between gap-3">
-            <div class="opacity-70">{{ t('agents.columns.id') }}</div>
+            <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
             <div class="flex items-center gap-2">
               <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
               <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
             </div>
           </div>
           <div class="flex items-center justify-between gap-3">
-            <div class="opacity-70">{{ t('agents.columns.lastSeen') }}</div>
+            <div class="app-text-muted">{{ t('agents.columns.lastSeen') }}</div>
             <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
           </div>
         </div>
@@ -806,10 +806,10 @@ onMounted(async () => {
       :title="confirmTitle"
     >
       <div class="space-y-4">
-        <div class="text-sm opacity-80">{{ confirmBody }}</div>
+        <div class="text-sm app-text-muted">{{ confirmBody }}</div>
 
         <div v-if="confirmAgent" class="text-sm">
-          <span class="opacity-70">{{ t('agents.columns.id') }}:</span>
+          <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
           <span class="font-mono ml-2">{{ confirmAgent.id }}</span>
         </div>
 
@@ -845,7 +845,7 @@ onMounted(async () => {
         </n-space>
 
         <div v-if="tokenResult" class="space-y-2">
-          <div class="text-sm opacity-70">{{ t('agents.tokenModal.help') }}</div>
+          <div class="text-sm app-text-muted">{{ t('agents.tokenModal.help') }}</div>
 
           <n-form label-placement="top">
             <n-form-item :label="t('agents.tokenModal.token')">
@@ -874,7 +874,7 @@ onMounted(async () => {
 
     <n-modal v-model:show="rotateModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.rotateModal.title')">
       <div class="space-y-4">
-        <div class="text-sm opacity-70">{{ t('agents.rotateModal.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('agents.rotateModal.help') }}</div>
 
         <n-form v-if="rotateResult" label-placement="top">
           <n-form-item :label="t('agents.rotateModal.agentKey')">
@@ -975,9 +975,9 @@ onMounted(async () => {
 
     <n-modal v-model:show="labelsModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.labelsModal.title')">
       <div class="space-y-4">
-        <div class="text-sm opacity-70">{{ t('agents.labelsModal.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('agents.labelsModal.help') }}</div>
         <div v-if="labelsAgent" class="text-sm">
-          <span class="opacity-70">{{ t('agents.columns.id') }}:</span>
+          <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
           <span class="font-mono ml-2">{{ labelsAgent.id }}</span>
         </div>
 
@@ -1009,7 +1009,7 @@ onMounted(async () => {
       :title="t('agents.bulkSyncModal.title')"
     >
       <div class="space-y-4">
-        <div class="text-sm opacity-70">{{ t('agents.bulkSyncModal.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('agents.bulkSyncModal.help') }}</div>
 
         <n-form label-placement="top">
           <n-form-item :label="t('agents.bulkSyncModal.target')">
@@ -1040,7 +1040,7 @@ onMounted(async () => {
       :title="t('agents.bulkLabelsModal.title')"
     >
       <div class="space-y-4">
-        <div class="text-sm opacity-70">{{ t('agents.bulkLabelsModal.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('agents.bulkLabelsModal.help') }}</div>
 
         <n-form label-placement="top">
           <n-form-item :label="t('agents.bulkLabelsModal.target')">

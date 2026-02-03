@@ -27,7 +27,7 @@ const { t } = useI18n()
       <n-tag size="small" :bordered="false" type="info">
         {{ t('common.selection') }}: {{ props.count }}
       </n-tag>
-      <div v-if="props.hint" class="text-xs opacity-80 truncate">
+      <div v-if="props.hint" class="text-xs app-text-muted truncate">
         {{ props.hint }}
       </div>
     </div>
@@ -40,4 +40,3 @@ const { t } = useI18n()
     </div>
   </div>
 </template>
-

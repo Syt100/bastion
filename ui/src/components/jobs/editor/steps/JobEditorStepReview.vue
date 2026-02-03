@@ -53,27 +53,27 @@ async function copyPreviewJson(): Promise<void> {
         <div class="text-sm font-medium">{{ t('jobs.steps.basics') }}</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.name') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.name') }}</div>
             <div class="font-medium text-right break-all">{{ form.name.trim() }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.node') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.node') }}</div>
             <div class="font-medium text-right break-all">{{ nodeLabel }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.type') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.type') }}</div>
             <div class="font-medium text-right break-all">{{ jobTypeLabel }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.overlap') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.overlap') }}</div>
             <div class="font-medium text-right break-all">{{ overlapLabel }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.scheduleTimezone') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.scheduleTimezone') }}</div>
             <div class="font-medium text-right break-all">{{ form.scheduleTimezone.trim() || '-' }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.schedule') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.schedule') }}</div>
             <div class="font-medium text-right break-all">{{ form.schedule.trim() ? form.schedule.trim() : '-' }}</div>
           </div>
         </div>
@@ -83,23 +83,23 @@ async function copyPreviewJson(): Promise<void> {
         <div class="text-sm font-medium">{{ t('jobs.steps.target') }}</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.targetType') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.targetType') }}</div>
             <div class="font-medium text-right break-all">{{ targetTypeLabel }}</div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.partSizeMiB') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.partSizeMiB') }}</div>
             <div class="font-medium text-right break-all">{{ Math.max(1, Math.floor(form.partSizeMiB || 1)) }}</div>
           </div>
           <div v-if="form.targetType === 'webdav'" class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.webdavBaseUrl') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.webdavBaseUrl') }}</div>
             <div class="font-medium text-right break-all">{{ form.webdavBaseUrl.trim() }}</div>
           </div>
           <div v-if="form.targetType === 'webdav'" class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.webdavSecret') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.webdavSecret') }}</div>
             <div class="font-medium text-right break-all">{{ form.webdavSecretName.trim() }}</div>
           </div>
           <div v-if="form.targetType === 'local_dir'" class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.localBaseDir') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.localBaseDir') }}</div>
             <div class="font-medium text-right break-all">{{ form.localBaseDir.trim() }}</div>
           </div>
         </div>
@@ -108,7 +108,7 @@ async function copyPreviewJson(): Promise<void> {
         <div class="mt-2 space-y-2 text-sm">
           <template v-if="form.jobType === 'filesystem'">
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.sourcePaths') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.sourcePaths') }}</div>
               <div class="font-medium text-right">{{ form.fsPaths.length }}</div>
             </div>
             <div v-if="form.fsPaths.length > 0" class="flex flex-wrap gap-2">
@@ -116,25 +116,25 @@ async function copyPreviewJson(): Promise<void> {
               <n-tag v-if="form.fsPaths.length > 6" type="info">+{{ form.fsPaths.length - 6 }}</n-tag>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.fsSymlinkPolicy') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.fsSymlinkPolicy') }}</div>
               <div class="font-medium text-right">{{ fsSymlinkPolicyLabel }}</div>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.fsHardlinkPolicy') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.fsHardlinkPolicy') }}</div>
               <div class="font-medium text-right">{{ fsHardlinkPolicyLabel }}</div>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.fsErrorPolicy') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.fsErrorPolicy') }}</div>
               <div class="font-medium text-right">{{ fsErrorPolicyLabel }}</div>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.fsInclude') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.fsInclude') }}</div>
               <div class="font-medium text-right">
                 {{ form.fsInclude.trim() ? form.fsInclude.split(/\r?\n/g).filter((l) => l.trim()).length : 0 }}
               </div>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.fsExclude') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.fsExclude') }}</div>
               <div class="font-medium text-right">
                 {{ form.fsExclude.trim() ? form.fsExclude.split(/\r?\n/g).filter((l) => l.trim()).length : 0 }}
               </div>
@@ -143,18 +143,18 @@ async function copyPreviewJson(): Promise<void> {
 
           <template v-else-if="form.jobType === 'sqlite'">
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.sqlitePath') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.sqlitePath') }}</div>
               <div class="font-medium text-right break-all">{{ form.sqlitePath.trim() }}</div>
             </div>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.sqliteIntegrityCheck') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.sqliteIntegrityCheck') }}</div>
               <div class="font-medium text-right break-all">{{ form.sqliteIntegrityCheck ? t('common.yes') : t('common.no') }}</div>
             </div>
           </template>
 
           <template v-else>
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.vaultwardenDataDir') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.vaultwardenDataDir') }}</div>
               <div class="font-medium text-right break-all">{{ form.vaultwardenDataDir.trim() }}</div>
             </div>
           </template>
@@ -165,7 +165,7 @@ async function copyPreviewJson(): Promise<void> {
         <div class="text-sm font-medium">{{ t('jobs.steps.security') }}</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.artifactFormat') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.artifactFormat') }}</div>
             <div class="font-medium text-right break-all">
               {{
                 form.artifactFormat === 'raw_tree_v1'
@@ -175,13 +175,13 @@ async function copyPreviewJson(): Promise<void> {
             </div>
           </div>
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.encryptionEnabled') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.encryptionEnabled') }}</div>
             <div class="font-medium text-right break-all">
               {{ form.encryptionEnabled ? t('common.yes') : t('common.no') }}
             </div>
           </div>
           <div v-if="form.encryptionEnabled" class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.encryptionKeyName') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.encryptionKeyName') }}</div>
             <div class="font-medium text-right break-all">{{ form.encryptionKeyName.trim() }}</div>
           </div>
         </div>
@@ -189,13 +189,13 @@ async function copyPreviewJson(): Promise<void> {
         <div class="mt-4 text-sm font-medium">{{ t('jobs.steps.notifications') }}</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="flex items-start justify-between gap-3">
-            <div class="opacity-70">{{ t('jobs.fields.notificationsMode') }}</div>
+            <div class="app-text-muted">{{ t('jobs.fields.notificationsMode') }}</div>
             <div class="font-medium text-right break-all">{{ notifyModeLabel }}</div>
           </div>
 
           <template v-if="form.notifyMode === 'custom'">
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.notifyWecomBots') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.notifyWecomBots') }}</div>
               <div class="font-medium text-right">{{ form.notifyWecomBots.length }}</div>
             </div>
             <div v-if="form.notifyWecomBots.length > 0" class="flex flex-wrap gap-2">
@@ -204,7 +204,7 @@ async function copyPreviewJson(): Promise<void> {
             </div>
 
             <div class="flex items-start justify-between gap-3">
-              <div class="opacity-70">{{ t('jobs.fields.notifyEmails') }}</div>
+              <div class="app-text-muted">{{ t('jobs.fields.notifyEmails') }}</div>
               <div class="font-medium text-right">{{ form.notifyEmails.length }}</div>
             </div>
             <div v-if="form.notifyEmails.length > 0" class="flex flex-wrap gap-2">

@@ -312,7 +312,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               @click.stop="emit('up')"
             >
               <template #icon>
-                <n-icon class="app-picker-path-action-icon opacity-80" :size="18">
+                <n-icon class="app-picker-path-action-icon app-text-muted" :size="18">
                   <arrow-up-outline />
                 </n-icon>
               </template>
@@ -327,7 +327,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               @click.stop="emit('refresh')"
             >
               <template #icon>
-                <n-icon class="app-picker-path-action-icon opacity-80" :size="18">
+                <n-icon class="app-picker-path-action-icon app-text-muted" :size="18">
                   <refresh-outline />
                 </n-icon>
               </template>
@@ -335,7 +335,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
           </div>
 
           <div v-if="!editing" class="flex items-center min-w-0 overflow-hidden">
-            <div v-if="allSegments.length === 0" class="text-sm opacity-60 truncate" @click.stop="enterEditMode">
+            <div v-if="allSegments.length === 0" class="text-sm app-text-muted truncate" @click.stop="enterEditMode">
               {{ placeholder }}
             </div>
 
@@ -343,7 +343,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
               <template v-for="(seg, idx) in shownSegments" :key="`${idx}:${seg.label}:${seg.value}`">
                 <span
                   v-if="idx > 0 && !(shownSegments[0]?.label === '/' && idx === 1)"
-                  class="text-sm opacity-50 mx-0.5 shrink-0"
+                  class="text-sm app-text-muted mx-0.5 shrink-0"
                 >
                   /
                 </span>
@@ -418,7 +418,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
     >
       <div ref="fullMeasureInnerEl" class="inline-flex items-center whitespace-nowrap">
         <template v-for="(seg, idx) in allSegments" :key="`m:full:${idx}:${seg.label}:${seg.value}`">
-          <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm opacity-50 mx-0.5">
+          <span v-if="idx > 0 && !(allSegments[0]?.label === '/' && idx === 1)" class="text-sm app-text-muted mx-0.5">
             /
           </span>
           <span class="text-sm inline-block truncate min-w-0 text-[var(--n-text-color-1)]">{{ seg.label }}</span>
@@ -432,7 +432,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
         >
           <span
             v-if="idx > 0 && !(collapsedMeasureSegments[0]?.label === '/' && idx === 1)"
-            class="text-sm opacity-50 mx-0.5"
+            class="text-sm app-text-muted mx-0.5"
           >
             /
           </span>
@@ -459,7 +459,7 @@ defineExpose<PickerPathBarInputExpose>({ focus })
             v-for="h in hiddenSegments"
             :key="h.value"
             type="button"
-            class="block text-left w-full px-2 py-1 rounded hover:bg-black/5 dark:hover:bg-white/10"
+            class="block text-left w-full px-2 py-1 rounded hover:bg-[var(--app-hover)]"
             :title="h.label"
             @click="navigateTo(h.value)"
           >

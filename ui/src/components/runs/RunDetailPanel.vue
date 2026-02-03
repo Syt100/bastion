@@ -246,7 +246,7 @@ function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warn
           </n-tag>
         </div>
 
-        <div class="mt-2 flex items-center gap-2 min-w-0 text-sm opacity-70">
+        <div class="mt-2 flex items-center gap-2 min-w-0 text-sm app-text-muted">
           <span class="font-mono tabular-nums truncate">{{ props.runId }}</span>
           <n-button size="tiny" quaternary @click="copyRunId">{{ t('common.copy') }}</n-button>
         </div>
@@ -305,4 +305,3 @@ function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warn
     <operation-modal ref="opModal" />
   </div>
 </template>
-

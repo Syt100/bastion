@@ -21,7 +21,7 @@ function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <div class="text-base font-semibold">{{ t('settings.appearance.title') }}</div>
-        <div class="text-sm opacity-70 mt-1">{{ t('settings.appearance.subtitle') }}</div>
+        <div class="text-sm app-text-muted mt-1">{{ t('settings.appearance.subtitle') }}</div>
       </div>
     </div>
 
@@ -31,7 +31,11 @@ function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
         :key="theme.id"
         type="button"
         class="text-left rounded-xl p-3 app-border-subtle transition"
-        :class="theme.id === ui.themeId ? 'ring-2 ring-[var(--app-primary)] bg-white/40 dark:bg-white/5' : 'bg-white/25 dark:bg-white/0 hover:bg-white/35 dark:hover:bg-white/5'"
+        :class="
+          theme.id === ui.themeId
+            ? 'ring-2 ring-[var(--app-primary)] bg-[var(--app-primary-soft)]'
+            : 'hover:bg-[var(--app-hover)]'
+        "
         @click="selectTheme(theme.id)"
       >
         <div class="flex items-center justify-between gap-3">
@@ -67,4 +71,3 @@ function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
     </div>
   </n-card>
 </template>
-

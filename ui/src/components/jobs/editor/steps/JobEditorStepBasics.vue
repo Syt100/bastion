@@ -256,15 +256,15 @@ watch(
         </n-form-item>
       </div>
 
-      <div class="text-xs opacity-70">
+      <div class="text-xs app-text-muted">
         {{ t('jobs.fields.scheduleTimezoneHelp') }}
       </div>
-      <div class="text-xs opacity-70">
+      <div class="text-xs app-text-muted">
         {{ t('jobs.fields.scheduleDstHelp') }}
       </div>
 
       <template v-if="form.scheduleMode === 'manual'">
-        <div class="text-sm opacity-70">{{ t('jobs.fields.scheduleManualHelp') }}</div>
+        <div class="text-sm app-text-muted">{{ t('jobs.fields.scheduleManualHelp') }}</div>
       </template>
 
       <template v-else-if="form.scheduleMode === 'simple'">
@@ -332,7 +332,7 @@ watch(
                 @update:value="clearFieldError('schedule')"
               />
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <div v-if="!fieldErrors.schedule" class="text-xs opacity-70">{{ t('jobs.fields.scheduleHelp') }}</div>
+                <div v-if="!fieldErrors.schedule" class="text-xs app-text-muted">{{ t('jobs.fields.scheduleHelp') }}</div>
                 <n-dropdown :options="cronPresets" @select="applyCronPreset">
                   <n-button size="tiny" secondary>{{ t('jobs.actions.cronPresets') }}</n-button>
                 </n-dropdown>
@@ -349,7 +349,7 @@ watch(
         <n-switch v-model:value="form.retentionEnabled" />
       </div>
 
-      <div class="text-xs opacity-70">
+      <div class="text-xs app-text-muted">
         {{ t('jobs.retention.help') }}
       </div>
 
@@ -428,7 +428,7 @@ watch(
         >
           {{ t('jobs.retention.applyNow') }}
         </n-button>
-        <div v-if="!form.id" class="text-xs opacity-70">{{ t('jobs.retention.previewDisabledUntilSaved') }}</div>
+        <div v-if="!form.id" class="text-xs app-text-muted">{{ t('jobs.retention.previewDisabledUntilSaved') }}</div>
       </div>
 
       <n-alert v-if="retentionError" type="error" :bordered="false">
@@ -442,16 +442,16 @@ watch(
       <div v-else-if="retentionPreview" class="space-y-2">
         <div class="text-sm">
           {{ t('jobs.retention.previewSummary', { keep: retentionPreview.keep_total, del: retentionPreview.delete_total }) }}
-          <span v-if="retentionPreview.result_truncated" class="text-xs opacity-70 ml-2">
+          <span v-if="retentionPreview.result_truncated" class="text-xs app-text-muted ml-2">
             {{ t('jobs.retention.previewTruncated') }}
           </span>
         </div>
 
-        <div v-if="retentionPreview.delete_total === 0" class="text-xs opacity-70">
+        <div v-if="retentionPreview.delete_total === 0" class="text-xs app-text-muted">
           {{ t('jobs.retention.previewNoDeletes') }}
         </div>
         <div v-else class="app-border-subtle rounded-md p-2">
-          <div class="text-xs opacity-70 mb-1">{{ t('jobs.retention.deleteList') }}</div>
+          <div class="text-xs app-text-muted mb-1">{{ t('jobs.retention.deleteList') }}</div>
           <div class="space-y-1">
             <div
               v-for="it in retentionPreview.delete.slice(0, 8)"
@@ -459,7 +459,7 @@ watch(
               class="text-xs flex items-start justify-between gap-2"
             >
               <div class="break-all">{{ it.run_id }}</div>
-              <div class="opacity-70 shrink-0">{{ formatUnixSeconds(it.ended_at) }}</div>
+              <div class="app-text-muted shrink-0">{{ formatUnixSeconds(it.ended_at) }}</div>
             </div>
           </div>
         </div>

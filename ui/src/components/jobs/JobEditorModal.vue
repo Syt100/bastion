@@ -494,11 +494,11 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
       <div v-else class="space-y-2">
         <div class="flex items-center justify-between gap-3">
           <div class="text-sm font-medium">{{ stepTitle }}</div>
-          <div class="text-xs opacity-70">
+          <div class="text-xs app-text-muted">
             {{ t('common.stepOf', { current: step, total: EDITOR_STEPS_TOTAL }) }}
           </div>
         </div>
-        <div class="h-1.5 rounded bg-black/5 dark:bg-white/10 overflow-hidden">
+        <div class="h-1.5 rounded bg-[var(--app-pressed)] overflow-hidden">
           <div class="h-full bg-[var(--n-primary-color)]" :style="{ width: `${stepPercent}%` }" />
         </div>
       </div>

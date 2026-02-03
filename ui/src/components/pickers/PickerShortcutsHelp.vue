@@ -66,10 +66,8 @@ const renderedShortcuts = computed(() => {
         <div v-for="it in renderedShortcuts" :key="it.combo" class="flex items-start gap-2">
           <div class="shrink-0 flex items-center gap-1">
             <template v-for="(part, idx) in it.parts" :key="`${it.combo}:${part}:${idx}`">
-              <kbd class="px-1.5 py-0.5 rounded border border-black/10 dark:border-white/10 bg-black/2 dark:bg-white/5 font-mono text-[11px] leading-none">
-                {{ part }}
-              </kbd>
-              <span v-if="idx < it.parts.length - 1" class="text-xs opacity-60">+</span>
+              <kbd class="app-kbd">{{ part }}</kbd>
+              <span v-if="idx < it.parts.length - 1" class="text-xs app-text-muted">+</span>
             </template>
           </div>
           <div class="min-w-0 text-sm leading-snug">
@@ -78,7 +76,7 @@ const renderedShortcuts = computed(() => {
         </div>
       </div>
 
-      <div v-if="note" class="text-xs opacity-70 leading-snug">
+      <div v-if="note" class="text-xs app-text-muted leading-snug">
         {{ note }}
       </div>
     </div>
@@ -110,10 +108,8 @@ const renderedShortcuts = computed(() => {
           <div v-for="it in renderedShortcuts" :key="it.combo" class="flex items-start gap-2">
             <div class="shrink-0 flex items-center gap-1">
               <template v-for="(part, idx) in it.parts" :key="`${it.combo}:${part}:${idx}`">
-                <kbd class="px-1.5 py-0.5 rounded border border-black/10 dark:border-white/10 bg-black/2 dark:bg-white/5 font-mono text-[11px] leading-none">
-                  {{ part }}
-                </kbd>
-                <span v-if="idx < it.parts.length - 1" class="text-xs opacity-60">+</span>
+                <kbd class="app-kbd">{{ part }}</kbd>
+                <span v-if="idx < it.parts.length - 1" class="text-xs app-text-muted">+</span>
               </template>
             </div>
             <div class="min-w-0 text-sm leading-snug">
@@ -122,11 +118,10 @@ const renderedShortcuts = computed(() => {
           </div>
         </div>
 
-        <div v-if="note" class="text-xs opacity-70 leading-snug">
+        <div v-if="note" class="text-xs app-text-muted leading-snug">
           {{ note }}
         </div>
       </div>
     </n-drawer-content>
   </n-drawer>
 </template>
-

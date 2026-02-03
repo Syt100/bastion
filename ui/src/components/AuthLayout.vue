@@ -20,10 +20,7 @@ function onSelectLanguage(key: string | number): void {
 
 <template>
   <div class="min-h-screen relative overflow-hidden">
-    <div
-      class="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-[#0b1220] dark:via-[#0b1220] dark:to-[#0a1a33]"
-    />
-    <div class="absolute inset-0 opacity-30 dark:opacity-20 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.22),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(99,102,241,0.16),transparent_55%)]" />
+    <div class="absolute inset-0" style="background-color: var(--app-bg-solid); background-image: var(--app-bg)" />
 
     <div class="relative min-h-screen flex flex-col">
       <div class="px-6 pt-6">

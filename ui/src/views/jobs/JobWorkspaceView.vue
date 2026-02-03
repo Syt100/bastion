@@ -221,7 +221,7 @@ function onSelectMore(key: string | number): void {
             <div class="text-lg font-semibold truncate">{{ job?.name ?? t('jobs.detail.title') }}</div>
             <n-tag v-if="job?.archived_at" size="small" :bordered="false" type="warning">{{ t('jobs.archived') }}</n-tag>
           </div>
-          <div class="mt-1 flex flex-wrap items-center gap-2 text-sm opacity-70">
+          <div class="mt-1 flex flex-wrap items-center gap-2 text-sm app-text-muted">
             <NodeContextTag :node-id="nodeId" />
             <span v-if="job" class="font-mono tabular-nums truncate">{{ job.id }}</span>
             <span v-if="job" class="font-mono tabular-nums">{{ formatUnixSeconds(job.updated_at) }}</span>
@@ -274,7 +274,7 @@ function onSelectMore(key: string | number): void {
 
     <n-modal v-model:show="inspectOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('common.json')">
       <div class="space-y-3">
-        <div class="text-sm opacity-70">{{ t('jobs.detail.title') }}</div>
+        <div class="text-sm app-text-muted">{{ t('jobs.detail.title') }}</div>
         <n-code :code="jobJson" language="json" class="text-xs" />
       </div>
     </n-modal>
@@ -284,7 +284,7 @@ function onSelectMore(key: string | number): void {
 
     <n-modal v-model:show="deleteOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('jobs.deleteTitle')">
       <div class="space-y-3">
-        <div class="text-sm opacity-80">
+        <div class="text-sm app-text-muted">
           {{
             job?.archived_at
               ? t('jobs.deletePermanentlyHelp')
@@ -292,11 +292,11 @@ function onSelectMore(key: string | number): void {
           }}
         </div>
 
-        <div v-if="job && !job.archived_at" class="rounded border border-slate-200/60 dark:border-slate-700/60 p-3 space-y-1">
+        <div v-if="job && !job.archived_at" class="rounded app-panel-inset p-3 space-y-1">
           <n-checkbox :checked="archiveCascadeSnapshots" @update:checked="(v) => (archiveCascadeSnapshots = v)">
             {{ t('jobs.archiveCascadeLabel') }}
           </n-checkbox>
-          <div class="text-xs opacity-70">{{ t('jobs.archiveCascadeHelp') }}</div>
+          <div class="text-xs app-text-muted">{{ t('jobs.archiveCascadeHelp') }}</div>
         </div>
 
         <div class="flex items-center justify-end gap-2">

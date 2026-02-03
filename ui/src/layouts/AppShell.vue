@@ -267,15 +267,15 @@ watch(nodeIdParam, (value) => {
       :collapsed-width="LAYOUT.siderCollapsedWidth"
       :width="LAYOUT.siderWidth"
     >
-      <div class="h-14 px-4 flex items-center gap-3 border-b border-black/5 dark:border-white/10">
+      <div class="h-14 px-4 flex items-center gap-3 border-b border-[color:var(--app-border)]">
         <AppLogo />
         <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
       </div>
 
-      <div class="px-4 py-3 border-b border-black/5 dark:border-white/10">
-        <div class="text-xs opacity-70 mb-1">{{ nodePickerLabel }}</div>
+      <div class="px-4 py-3 border-b border-[color:var(--app-border)]">
+        <div class="text-xs app-text-muted mb-1">{{ nodePickerLabel }}</div>
         <n-select v-model:value="selectedNodeId" :options="nodeOptions" filterable />
-        <div class="text-xs opacity-70 mt-2">{{ nodePickerHint }}</div>
+        <div class="text-xs app-text-muted mt-2">{{ nodePickerHint }}</div>
       </div>
 
       <div class="flex-1 min-h-0 overflow-y-auto">
@@ -369,14 +369,14 @@ watch(nodeIdParam, (value) => {
       </n-card>
 
       <n-card class="mb-3" :bordered="false">
-        <div class="text-xs opacity-70 mb-2">{{ nodePickerLabel }}</div>
+        <div class="text-xs app-text-muted mb-2">{{ nodePickerLabel }}</div>
         <n-select
           v-model:value="selectedNodeId"
           :options="nodeOptions"
           filterable
           @update:value="mobileMenuOpen = false"
         />
-        <div class="text-xs opacity-70 mt-2">{{ nodePickerHint }}</div>
+        <div class="text-xs app-text-muted mt-2">{{ nodePickerHint }}</div>
       </n-card>
 
       <n-menu

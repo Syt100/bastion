@@ -182,16 +182,16 @@ defineExpose<OperationModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('operations.title')">
     <div class="space-y-4">
-      <div class="text-sm opacity-70">{{ opId }}</div>
+      <div class="text-sm app-text-muted">{{ opId }}</div>
 
       <div v-if="op" class="flex items-center gap-2">
         <n-tag :type="opStatusTagType(op.status)">{{ operationStatusLabel(t, op.status) }}</n-tag>
-        <span class="text-sm opacity-70">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
-        <span class="text-sm opacity-70">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
-        <span v-if="op.ended_at" class="text-sm opacity-70">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
+        <span class="text-sm app-text-muted">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
+        <span class="text-sm app-text-muted">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
+        <span v-if="op.ended_at" class="text-sm app-text-muted">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
       </div>
 
-      <div v-if="op?.kind === 'restore' && restoreBytesDone != null" class="text-sm opacity-70 flex flex-wrap gap-x-4 gap-y-1">
+      <div v-if="op?.kind === 'restore' && restoreBytesDone != null" class="text-sm app-text-muted flex flex-wrap gap-x-4 gap-y-1">
         <span>{{ t('operations.restore.bytesDone') }}: {{ formatBytes(restoreBytesDone) }}</span>
         <span>
           {{ t('runs.progress.transfer.rate') }}:
@@ -212,16 +212,18 @@ defineExpose<OperationModalExpose>({ open })
 
       <div class="space-y-2">
         <div class="text-sm font-medium">{{ t('operations.events') }}</div>
-        <div class="max-h-80 overflow-auto border rounded-md p-2 bg-[var(--n-color)]">
-          <div v-if="events.length === 0" class="text-sm opacity-70">{{ t('operations.noEvents') }}</div>
-          <div v-for="e in events" :key="e.seq" class="font-mono text-xs py-1 border-b last:border-b-0 opacity-90">
-            <div class="flex flex-wrap gap-2">
-              <span class="opacity-70">{{ formatUnixSeconds(e.ts) }}</span>
-              <span class="opacity-70">{{ e.level }}</span>
-              <span class="opacity-70">{{ e.kind }}</span>
-              <span>{{ e.message }}</span>
+        <div class="max-h-80 overflow-auto rounded-md app-border-subtle p-2 bg-[var(--n-color)]">
+          <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('operations.noEvents') }}</div>
+          <div v-else class="app-divide-y">
+            <div v-for="e in events" :key="e.seq" class="font-mono text-xs py-1">
+              <div class="flex flex-wrap gap-2">
+                <span class="app-text-muted">{{ formatUnixSeconds(e.ts) }}</span>
+                <span class="app-text-muted">{{ e.level }}</span>
+                <span class="app-text-muted">{{ e.kind }}</span>
+                <span>{{ e.message }}</span>
+              </div>
+              <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
             </div>
-            <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
           </div>
         </div>
       </div>

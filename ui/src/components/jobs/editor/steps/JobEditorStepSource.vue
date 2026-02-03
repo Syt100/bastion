@@ -41,7 +41,7 @@ const {
       >
         <div class="space-y-3 w-full app-border-subtle rounded-lg p-3 app-glass-soft">
           <div class="flex flex-wrap items-center gap-2 justify-between">
-            <div v-if="!fieldErrors.fsPaths" class="text-xs opacity-70">{{ t('jobs.fields.sourcePathsHelp') }}</div>
+            <div v-if="!fieldErrors.fsPaths" class="text-xs app-text-muted">{{ t('jobs.fields.sourcePathsHelp') }}</div>
             <div class="flex items-center gap-2">
               <n-button size="small" type="primary" @click="openFsPicker">
                 {{ t('jobs.actions.browseFs') }}
@@ -52,7 +52,7 @@ const {
             </div>
           </div>
 
-          <div v-if="form.fsPaths.length === 0" class="text-sm opacity-60">
+          <div v-if="form.fsPaths.length === 0" class="text-sm app-text-muted">
             {{ t('jobs.fields.sourcePathsEmpty') }}
           </div>
           <div v-else class="flex flex-wrap gap-2">
@@ -74,7 +74,7 @@ const {
     <n-form-item :label="t('jobs.fields.fsPreScan')">
       <div class="space-y-1">
         <n-switch v-model:value="form.fsPreScan" />
-        <div class="text-xs opacity-70">{{ t('jobs.fields.fsPreScanHelp') }}</div>
+        <div class="text-xs app-text-muted">{{ t('jobs.fields.fsPreScanHelp') }}</div>
       </div>
     </n-form-item>
 
@@ -90,7 +90,7 @@ const {
     <n-form-item :label="t('jobs.fields.fsErrorPolicy')">
       <div class="space-y-1 w-full">
         <n-select v-model:value="form.fsErrorPolicy" :options="fsErrorPolicyOptions" />
-        <div class="text-xs opacity-70">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
+        <div class="text-xs app-text-muted">{{ t('jobs.fields.fsErrorPolicyHelp') }}</div>
       </div>
     </n-form-item>
 
@@ -103,7 +103,7 @@ const {
             :autosize="{ minRows: 2, maxRows: 6 }"
             :placeholder="t('jobs.fields.fsIncludePlaceholder')"
           />
-          <div class="text-xs opacity-70">{{ t('jobs.fields.fsIncludeHelp') }}</div>
+          <div class="text-xs app-text-muted">{{ t('jobs.fields.fsIncludeHelp') }}</div>
         </div>
       </n-form-item>
       <n-form-item :label="t('jobs.fields.fsExclude')">
@@ -114,7 +114,7 @@ const {
             :autosize="{ minRows: 2, maxRows: 6 }"
             :placeholder="t('jobs.fields.fsExcludePlaceholder')"
           />
-          <div class="text-xs opacity-70">{{ t('jobs.fields.fsExcludeHelp') }}</div>
+          <div class="text-xs app-text-muted">{{ t('jobs.fields.fsExcludeHelp') }}</div>
         </div>
       </n-form-item>
     </div>
@@ -134,7 +134,7 @@ const {
             :placeholder="t('jobs.fields.sqlitePathPlaceholder')"
             @update:value="clearFieldError('sqlitePath')"
           />
-          <div v-if="!fieldErrors.sqlitePath" class="text-xs opacity-70">{{ t('jobs.fields.sqlitePathHelp') }}</div>
+          <div v-if="!fieldErrors.sqlitePath" class="text-xs app-text-muted">{{ t('jobs.fields.sqlitePathHelp') }}</div>
         </div>
       </n-form-item>
     </div>
@@ -142,7 +142,7 @@ const {
     <n-form-item :label="t('jobs.fields.sqliteIntegrityCheck')">
       <div class="space-y-1">
         <n-switch v-model:value="form.sqliteIntegrityCheck" />
-        <div class="text-xs opacity-70">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
+        <div class="text-xs app-text-muted">{{ t('jobs.fields.sqliteIntegrityCheckHelp') }}</div>
       </div>
     </n-form-item>
   </template>
@@ -161,7 +161,7 @@ const {
             :placeholder="t('jobs.fields.vaultwardenDataDirPlaceholder')"
             @update:value="clearFieldError('vaultwardenDataDir')"
           />
-          <div v-if="!fieldErrors.vaultwardenDataDir" class="text-xs opacity-70">
+          <div v-if="!fieldErrors.vaultwardenDataDir" class="text-xs app-text-muted">
             {{ t('jobs.fields.vaultwardenDataDirHelp') }}
           </div>
         </div>

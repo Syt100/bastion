@@ -10,11 +10,11 @@
 - [x] 2.4 Commit foundation token + utility changes (detailed message)
 
 ## 3. Web UI - Consistency Refactor (High-Leverage Areas)
-- [ ] 3.1 Replace non-token “visual” colors in shared layout/components (AppShell/AuthLayout/MobileTopBar/PageHeader)
-- [ ] 3.2 Standardize list separators + row hover/pressed states to token-driven equivalents
-- [ ] 3.3 Standardize “muted text” to token semantics (avoid `opacity-*` for text)
-- [ ] 3.4 Standardize status/error styling to use theme tokens or Naive UI semantic components (no `text-red-*`)
-- [ ] 3.5 Commit refactor batch(es) (detailed message; split by area if large)
+- [x] 3.1 Replace non-token “visual” colors in shared layout/components (AppShell/AuthLayout/MobileTopBar/PageHeader)
+- [x] 3.2 Standardize list separators + row hover/pressed states to token-driven equivalents
+- [x] 3.3 Standardize “muted text” to token semantics (avoid `opacity-*` for text)
+- [x] 3.4 Standardize status/error styling to use theme tokens or Naive UI semantic components (no `text-red-*`)
+- [x] 3.5 Commit refactor batch(es) (detailed message; split by area if large)
 
 ## 4. Docs - UI Style Guide (EN + zh-CN)
 - [ ] 4.1 Add a developer-facing UI style guide page under `docs/dev/` (tokens, scales, recipes, do/don’t)

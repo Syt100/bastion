@@ -117,11 +117,10 @@ function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 
 }
 
 function runEventAccentBorderClass(level: string): string {
-  if (level === 'error') return 'border-red-500/80'
-  if (level === 'warn' || level === 'warning') return 'border-amber-400/80'
-  if (level === 'info') return 'border-emerald-400/80'
-  if (level === 'debug') return 'border-slate-400/70'
-  return 'border-zinc-400/60'
+  if (level === 'error') return 'border-[color:var(--app-danger)]'
+  if (level === 'warn' || level === 'warning') return 'border-[color:var(--app-warning)]'
+  if (level === 'info') return 'border-[color:var(--app-info)]'
+  return 'border-[color:var(--app-border)]'
 }
 
 function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
@@ -453,7 +452,7 @@ defineExpose<RunEventsModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runEvents.title')">
     <div class="space-y-3">
-      <div class="text-sm opacity-70 flex flex-wrap items-center gap-2 justify-between">
+      <div class="text-sm app-text-muted flex flex-wrap items-center gap-2 justify-between">
         <div class="flex items-center gap-2 min-w-0">
           <span class="truncate">{{ runId }}</span>
           <n-tag
@@ -462,7 +461,7 @@ defineExpose<RunEventsModalExpose>({ open })
           >
             {{ t(`runEvents.ws.${wsStatus}`) }}
           </n-tag>
-          <span v-if="wsStatus === 'reconnecting' && reconnectInSeconds != null" class="text-xs opacity-70 tabular-nums">
+          <span v-if="wsStatus === 'reconnecting' && reconnectInSeconds != null" class="text-xs app-text-muted tabular-nums">
             {{ formatRelativeSeconds(reconnectInSeconds) }}
           </span>
           <n-tag v-if="unseenCount > 0" size="small" type="warning">
@@ -480,7 +479,7 @@ defineExpose<RunEventsModalExpose>({ open })
             {{ t('runEvents.actions.reconnect') }}
           </n-button>
           <div class="flex items-center gap-2">
-            <span class="text-xs opacity-80">{{ t('runEvents.actions.follow') }}</span>
+            <span class="text-xs app-text-muted">{{ t('runEvents.actions.follow') }}</span>
             <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
           </div>
           <span data-testid="run-events-latest">
@@ -493,27 +492,27 @@ defineExpose<RunEventsModalExpose>({ open })
 
       <n-spin v-if="loading" size="small" />
 
-      <div v-if="events.length === 0" class="text-sm opacity-70">{{ t('runEvents.noEvents') }}</div>
+      <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('runEvents.noEvents') }}</div>
 
       <div
         v-else
         ref="listEl"
         data-testid="run-events-list"
-        class="max-h-[65vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-black/5 dark:ring-white/10"
+        class="max-h-[65vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-[color:var(--app-border)]"
         @scroll="handleListScroll"
       >
         <div
           v-for="item in events"
           :key="item.seq"
           data-testid="run-event-row"
-          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs opacity-90 cursor-pointer transition-colors bg-black/2 hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10"
+          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs cursor-pointer transition-colors hover:bg-[var(--app-hover)]"
           :class="runEventAccentBorderClass(item.level)"
           @click="openEventDetails(item)"
         >
           <template v-if="isDesktop">
             <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
+                class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
@@ -521,7 +520,7 @@ defineExpose<RunEventsModalExpose>({ open })
               <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
                 <span class="block w-full truncate text-center">{{ item.level }}</span>
               </n-tag>
-              <span class="opacity-70 shrink-0 w-24 truncate">{{ item.kind }}</span>
+              <span class="app-text-muted shrink-0 w-24 truncate">{{ item.kind }}</span>
               <div class="shrink-0 flex items-center gap-1 min-w-0">
                 <n-tag
                   v-for="(chip, idx) in pickSummaryChips(item)"
@@ -547,7 +546,7 @@ defineExpose<RunEventsModalExpose>({ open })
           <template v-else>
             <div class="flex items-center gap-1.5">
               <span
-                class="opacity-70 shrink-0 tabular-nums whitespace-nowrap leading-4"
+                class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
                 :title="formatUnixSeconds(item.ts)"
               >
                 {{ formatListUnixSeconds(item.ts) }}
@@ -567,7 +566,7 @@ defineExpose<RunEventsModalExpose>({ open })
             </div>
 
             <div class="mt-0.5 flex items-center gap-2 min-w-0">
-              <span class="opacity-70 truncate max-w-[40%]">{{ item.kind }}</span>
+              <span class="app-text-muted truncate max-w-[40%]">{{ item.kind }}</span>
               <div class="flex items-center gap-1 min-w-0 overflow-hidden">
                 <n-tag
                   v-for="(chip, idx) in pickSummaryChips(item)"
@@ -592,10 +591,10 @@ defineExpose<RunEventsModalExpose>({ open })
         :title="t('runEvents.details.title')"
       >
         <div v-if="detailEvent" class="space-y-3">
-          <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+          <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
             <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
             <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
-            <span class="opacity-70">{{ detailEvent.kind }}</span>
+            <span class="app-text-muted">{{ detailEvent.kind }}</span>
           </div>
           <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
           <n-code
@@ -612,10 +611,10 @@ defineExpose<RunEventsModalExpose>({ open })
       <n-drawer v-else v-model:show="detailShow" placement="bottom" height="70vh">
         <n-drawer-content :title="t('runEvents.details.title')" closable>
           <div v-if="detailEvent" class="space-y-3">
-            <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+            <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
               <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
               <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
-              <span class="opacity-70">{{ detailEvent.kind }}</span>
+              <span class="app-text-muted">{{ detailEvent.kind }}</span>
             </div>
             <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
             <n-code

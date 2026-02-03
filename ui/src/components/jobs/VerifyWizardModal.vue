@@ -51,7 +51,7 @@ defineExpose<VerifyWizardModalExpose>({ open })
 <template>
   <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('verify.title')">
     <div class="space-y-4">
-      <div class="text-sm opacity-70">{{ runId }}</div>
+      <div class="text-sm app-text-muted">{{ runId }}</div>
       <n-alert type="info" :title="t('verify.helpTitle')">
         {{ t('verify.helpBody') }}
       </n-alert>

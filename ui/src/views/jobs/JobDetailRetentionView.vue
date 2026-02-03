@@ -200,7 +200,7 @@ watch(
 
     <div class="space-y-3">
 
-        <div class="text-sm opacity-70">{{ t('jobs.retention.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('jobs.retention.help') }}</div>
 
         <n-form label-placement="top">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
@@ -233,10 +233,10 @@ watch(
           >
             {{ t('jobs.retention.applyNow') }}
           </n-button>
-          <div v-if="!form.enabled" class="text-xs opacity-70">{{ t('jobs.retention.enableFirst') }}</div>
+          <div v-if="!form.enabled" class="text-xs app-text-muted">{{ t('jobs.retention.enableFirst') }}</div>
         </div>
 
-        <div class="text-xs text-amber-700/90 dark:text-amber-300/90">
+        <div class="text-xs text-[var(--app-warning)]">
           {{ t('jobs.retention.guardrail') }}
         </div>
 
@@ -251,16 +251,16 @@ watch(
         <div v-else-if="preview" class="space-y-2">
           <div class="text-sm">
             {{ t('jobs.retention.previewSummary', { keep: preview.keep_total, del: preview.delete_total }) }}
-            <span v-if="preview.result_truncated" class="text-xs opacity-70 ml-2">
+            <span v-if="preview.result_truncated" class="text-xs app-text-muted ml-2">
               {{ t('jobs.retention.previewTruncated') }}
             </span>
           </div>
 
-          <div v-if="preview.delete_total === 0" class="text-xs opacity-70">
+          <div v-if="preview.delete_total === 0" class="text-xs app-text-muted">
             {{ t('jobs.retention.previewNoDeletes') }}
           </div>
           <div v-else class="app-border-subtle rounded-md p-2">
-            <div class="text-xs opacity-70 mb-1">{{ t('jobs.retention.deleteList') }}</div>
+            <div class="text-xs app-text-muted mb-1">{{ t('jobs.retention.deleteList') }}</div>
             <div class="space-y-1">
               <div
                 v-for="it in preview.delete.slice(0, 8)"
@@ -268,7 +268,7 @@ watch(
                 class="text-xs flex items-start justify-between gap-2"
               >
                 <div class="break-all">{{ it.run_id }}</div>
-                <div class="opacity-70 shrink-0">{{ formatUnixSeconds(it.ended_at) }}</div>
+                <div class="app-text-muted shrink-0">{{ formatUnixSeconds(it.ended_at) }}</div>
               </div>
             </div>
           </div>

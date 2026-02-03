@@ -28,30 +28,29 @@ onMounted(() => {
 <template>
   <div class="space-y-6">
     <n-card class="app-card" :title="t('settings.about.hubTitle')" :bordered="false">
-      <div class="divide-y divide-black/5 dark:divide-white/10">
+      <div class="app-divide-y">
         <div class="px-3 py-3 flex items-center justify-between gap-3">
           <div class="font-medium">{{ t('settings.about.fields.version') }}</div>
-          <div class="font-mono text-xs opacity-80 truncate">{{ hubVersion }}</div>
+          <div class="font-mono text-xs app-text-muted truncate">{{ hubVersion }}</div>
         </div>
         <div class="px-3 py-3 flex items-center justify-between gap-3">
           <div class="font-medium">{{ t('settings.about.fields.buildTime') }}</div>
-          <div class="font-mono text-xs opacity-80 truncate">{{ hubBuildTime }}</div>
+          <div class="font-mono text-xs app-text-muted truncate">{{ hubBuildTime }}</div>
         </div>
       </div>
     </n-card>
 
     <n-card class="app-card" :title="t('settings.about.uiTitle')" :bordered="false">
-      <div class="divide-y divide-black/5 dark:divide-white/10">
+      <div class="app-divide-y">
         <div class="px-3 py-3 flex items-center justify-between gap-3">
           <div class="font-medium">{{ t('settings.about.fields.version') }}</div>
-          <div class="font-mono text-xs opacity-80 truncate">{{ uiVersion }}</div>
+          <div class="font-mono text-xs app-text-muted truncate">{{ uiVersion }}</div>
         </div>
         <div class="px-3 py-3 flex items-center justify-between gap-3">
           <div class="font-medium">{{ t('settings.about.fields.buildTime') }}</div>
-          <div class="font-mono text-xs opacity-80 truncate">{{ uiBuildTime }}</div>
+          <div class="font-mono text-xs app-text-muted truncate">{{ uiBuildTime }}</div>
         </div>
       </div>
     </n-card>
   </div>
 </template>
-

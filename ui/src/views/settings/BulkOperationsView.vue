@@ -257,17 +257,17 @@ watch(
     <div class="space-y-4">
       <div v-if="detail" class="space-y-2">
         <div class="text-sm">
-          <span class="opacity-70">{{ t('bulk.columns.kind') }}:</span>
+          <span class="app-text-muted">{{ t('bulk.columns.kind') }}:</span>
           <span class="ml-2">{{ bulkOperationKindLabel(t, detail.kind) }}</span>
         </div>
         <div class="text-sm">
-          <span class="opacity-70">{{ t('bulk.columns.status') }}:</span>
+          <span class="app-text-muted">{{ t('bulk.columns.status') }}:</span>
           <span class="ml-2">
             <n-tag :type="statusTagType(detail.status)" size="small">{{ bulkOperationStatusLabel(t, detail.status) }}</n-tag>
           </span>
         </div>
         <div class="text-sm">
-          <span class="opacity-70">{{ t('bulk.columns.progress') }}:</span>
+          <span class="app-text-muted">{{ t('bulk.columns.progress') }}:</span>
           <span class="ml-2">{{ detail.success + detail.failed + detail.canceled }}/{{ detail.total }}</span>
         </div>
       </div>
@@ -281,7 +281,7 @@ watch(
 
       <n-card size="small" class="app-card">
         <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <div class="text-sm opacity-70">{{ t('bulk.filters.items') }}</div>
+          <div class="text-sm app-text-muted">{{ t('bulk.filters.items') }}</div>
           <n-radio-group v-model:value="detailItemFilter" size="small">
             <n-radio-button value="all">{{ t('bulk.filters.all') }}</n-radio-button>
             <n-radio-button value="failed">

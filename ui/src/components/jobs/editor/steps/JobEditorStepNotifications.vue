@@ -30,7 +30,7 @@ const manageDestinationsHref = '/settings/notifications/destinations'
     <n-form-item :label="t('jobs.fields.notificationsMode')">
       <div class="space-y-1 w-full">
         <n-select v-model:value="form.notifyMode" :options="notifyModeOptions" />
-        <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsModeHelp') }}</div>
+        <div class="text-xs app-text-muted">{{ t('jobs.fields.notificationsModeHelp') }}</div>
       </div>
     </n-form-item>
 
@@ -57,7 +57,7 @@ const manageDestinationsHref = '/settings/notifications/destinations'
             :options="wecomDestinationOptions"
             :placeholder="t('jobs.fields.notifySelectPlaceholder')"
           />
-          <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
+          <div class="text-xs app-text-muted">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
           <n-alert v-if="disabledWecomSelected.length > 0" type="warning" :bordered="false">
             {{ t('jobs.fields.notifyDisabledSelected', { names: disabledWecomSelected.join(', ') }) }}
           </n-alert>
@@ -73,7 +73,7 @@ const manageDestinationsHref = '/settings/notifications/destinations'
             :options="emailDestinationOptions"
             :placeholder="t('jobs.fields.notifySelectPlaceholder')"
           />
-          <div class="text-xs opacity-70">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
+          <div class="text-xs app-text-muted">{{ t('jobs.fields.notifyEmptyMeansDisable') }}</div>
           <n-alert v-if="disabledEmailSelected.length > 0" type="warning" :bordered="false">
             {{ t('jobs.fields.notifyDisabledSelected', { names: disabledEmailSelected.join(', ') }) }}
           </n-alert>
@@ -82,7 +82,7 @@ const manageDestinationsHref = '/settings/notifications/destinations'
     </template>
 
     <template v-else>
-      <div class="text-xs opacity-70">{{ t('jobs.fields.notificationsInheritHelp') }}</div>
+      <div class="text-xs app-text-muted">{{ t('jobs.fields.notificationsInheritHelp') }}</div>
     </template>
   </div>
 </template>

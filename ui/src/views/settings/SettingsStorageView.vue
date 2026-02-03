@@ -384,7 +384,7 @@ watch(distributeOpen, (open) => {
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-medium">{{ row.name }}</div>
-              <div class="text-xs opacity-70 mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
+              <div class="text-xs app-text-muted mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
             </div>
             <n-space size="small">
               <n-button size="small" @click="copyToClipboard(row.name)">{{ t('common.copy') }}</n-button>
@@ -454,7 +454,7 @@ watch(distributeOpen, (open) => {
           {{ distributeError }}
         </n-alert>
 
-        <div class="text-sm opacity-70">{{ t('settings.webdav.distribute.help') }}</div>
+        <div class="text-sm app-text-muted">{{ t('settings.webdav.distribute.help') }}</div>
 
         <n-form label-placement="top">
           <n-form-item :label="t('settings.webdav.distribute.target')">

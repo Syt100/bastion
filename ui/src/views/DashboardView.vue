@@ -131,7 +131,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.health.offlineAgents') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.health.offlineAgents') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
             {{ offlineAgents }}
@@ -143,7 +143,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
       </n-card>
 
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.health.notificationFailures') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.health.notificationFailures') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
             {{ failedNotifications }}
@@ -157,16 +157,16 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.cards.agents') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.cards.agents') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
             {{ overview?.stats.agents.online ?? 0 }}
           </div>
-          <div class="text-sm opacity-70 tabular-nums">
+          <div class="text-sm app-text-muted tabular-nums">
             {{ t('dashboard.cards.ofActive', { active: overview?.stats.agents.active ?? 0 }) }}
           </div>
         </div>
-        <div class="mt-2 text-sm opacity-70 tabular-nums">
+        <div class="mt-2 text-sm app-text-muted tabular-nums">
           {{ t('dashboard.cards.offline', { count: overview?.stats.agents.offline ?? 0 }) }}
           <span v-if="(overview?.stats.agents.revoked ?? 0) > 0" class="ml-2">
             {{ t('dashboard.cards.revoked', { count: overview?.stats.agents.revoked ?? 0 }) }}
@@ -175,44 +175,44 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
       </n-card>
 
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.cards.jobs') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.cards.jobs') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
             {{ overview?.stats.jobs.active ?? 0 }}
           </div>
-          <div class="text-sm opacity-70 tabular-nums">
+          <div class="text-sm app-text-muted tabular-nums">
             {{ t('dashboard.cards.archived', { count: overview?.stats.jobs.archived ?? 0 }) }}
           </div>
         </div>
       </n-card>
 
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.cards.runs24h') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.cards.runs24h') }}</div>
         <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
           <div>
-            <div class="text-xs opacity-70">{{ t('dashboard.cards.success') }}</div>
+            <div class="text-xs app-text-muted">{{ t('dashboard.cards.success') }}</div>
             <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.success_24h ?? 0 }}</div>
           </div>
           <div>
-            <div class="text-xs opacity-70">{{ t('dashboard.cards.failed') }}</div>
+            <div class="text-xs app-text-muted">{{ t('dashboard.cards.failed') }}</div>
             <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.failed_24h ?? 0 }}</div>
           </div>
           <div>
-            <div class="text-xs opacity-70">{{ t('dashboard.cards.rejected') }}</div>
+            <div class="text-xs app-text-muted">{{ t('dashboard.cards.rejected') }}</div>
             <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.rejected_24h ?? 0 }}</div>
           </div>
         </div>
       </n-card>
 
       <n-card size="small" class="app-card">
-        <div class="text-sm opacity-70">{{ t('dashboard.cards.live') }}</div>
+        <div class="text-sm app-text-muted">{{ t('dashboard.cards.live') }}</div>
         <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
           <div>
-            <div class="text-xs opacity-70">{{ t('dashboard.cards.running') }}</div>
+            <div class="text-xs app-text-muted">{{ t('dashboard.cards.running') }}</div>
             <div class="text-2xl font-semibold tabular-nums">{{ overview?.stats.runs.running ?? 0 }}</div>
           </div>
           <div>
-            <div class="text-xs opacity-70">{{ t('dashboard.cards.queued') }}</div>
+            <div class="text-xs app-text-muted">{{ t('dashboard.cards.queued') }}</div>
             <div class="text-2xl font-semibold tabular-nums">{{ overview?.stats.runs.queued ?? 0 }}</div>
           </div>
         </div>
@@ -245,7 +245,7 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="font-medium truncate">{{ row.job_name }}</div>
-                  <div class="text-xs opacity-70 mt-0.5 truncate">{{ nodeLabel(row) }}</div>
+                  <div class="text-xs app-text-muted mt-0.5 truncate">{{ nodeLabel(row) }}</div>
                 </div>
                 <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
               </div>
@@ -253,14 +253,14 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
 
             <div class="text-sm">
               <div class="flex items-start justify-between gap-4 py-1">
-                <div class="opacity-70">{{ t('dashboard.recent.columns.startedAt') }}</div>
+                <div class="app-text-muted">{{ t('dashboard.recent.columns.startedAt') }}</div>
                 <div class="font-mono tabular-nums">{{ formatUnixSeconds(row.started_at) }}</div>
               </div>
               <div class="flex items-start justify-between gap-4 py-1">
-                <div class="opacity-70">{{ t('dashboard.recent.columns.endedAt') }}</div>
+                <div class="app-text-muted">{{ t('dashboard.recent.columns.endedAt') }}</div>
                 <div class="font-mono tabular-nums">{{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}</div>
               </div>
-              <div v-if="row.error" class="mt-2 text-xs text-red-600 truncate">{{ row.error }}</div>
+              <div v-if="row.error" class="mt-2 text-xs text-[var(--app-danger)] truncate">{{ row.error }}</div>
             </div>
 
             <template #footer>

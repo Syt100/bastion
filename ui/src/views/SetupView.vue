@@ -54,7 +54,7 @@ async function onSubmit(): Promise<void> {
       <template #header>
         <div class="space-y-1">
           <div class="text-lg font-semibold">{{ t('auth.initTitle') }}</div>
-          <div class="text-sm opacity-70">{{ t('auth.initSubtitle') }}</div>
+          <div class="text-sm app-text-muted">{{ t('auth.initSubtitle') }}</div>
         </div>
       </template>
 

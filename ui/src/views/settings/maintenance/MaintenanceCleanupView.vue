@@ -471,7 +471,7 @@ const actionHelpItems = computed(() => [
             </div>
           </template>
 
-          <div class="text-xs opacity-70 space-y-1">
+          <div class="text-xs app-text-muted space-y-1">
             <div>{{ t('settings.maintenance.cleanup.columns.runId') }}: {{ formatRunId(row.run_id) }}</div>
             <div>{{ t('settings.maintenance.cleanup.columns.node') }}: {{ row.node_id }}</div>
             <div>{{ t('settings.maintenance.cleanup.columns.target') }}: {{ formatTarget(row.target_type) }}</div>
@@ -514,10 +514,10 @@ const actionHelpItems = computed(() => [
       </div>
 
       <div class="flex items-center justify-between text-sm">
-        <div class="opacity-70">{{ t('settings.maintenance.cleanup.total', { total }) }}</div>
+        <div class="app-text-muted">{{ t('settings.maintenance.cleanup.total', { total }) }}</div>
         <div class="flex items-center gap-2">
           <n-button size="small" :disabled="page <= 1" @click="page -= 1; refresh()">{{ t('common.back') }}</n-button>
-          <div class="text-xs opacity-70">{{ page }}</div>
+          <div class="text-xs app-text-muted">{{ page }}</div>
           <n-button size="small" :disabled="page * pageSize >= total" @click="page += 1; refresh()">
             {{ t('common.next') }}
           </n-button>
@@ -528,7 +528,7 @@ const actionHelpItems = computed(() => [
 
   <n-modal v-model:show="ignoreOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.ignoreTitle')">
     <div class="space-y-3">
-      <div class="text-sm opacity-80">{{ t('settings.maintenance.cleanup.ignoreHelp') }}</div>
+      <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.ignoreHelp') }}</div>
       <n-input v-model:value="ignoreReason" type="textarea" :placeholder="t('settings.maintenance.cleanup.ignorePlaceholder')" />
       <div class="flex items-center justify-end gap-2">
         <n-button :disabled="ignoreSaving" @click="ignoreOpen = false">{{ t('common.cancel') }}</n-button>
@@ -557,34 +557,34 @@ const actionHelpItems = computed(() => [
 
       <div class="text-sm space-y-2">
         <div class="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-1 items-start">
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
           <div class="min-w-0 break-all">{{ detail.task.run_id }}</div>
           <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.run_id)">{{ t('common.copy') }}</n-button>
 
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
           <div class="min-w-0 break-all">{{ detail.task.node_id }}</div>
           <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.node_id)">{{ t('common.copy') }}</n-button>
 
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
           <div class="min-w-0">{{ formatTarget(detail.task.target_type) }}</div>
           <div />
 
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
           <div class="min-w-0">{{ detail.task.attempts }}</div>
           <div />
 
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
           <div class="min-w-0">{{ formatUnixSeconds(detail.task.next_attempt_at) }}</div>
           <div />
 
-          <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
+          <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
           <div class="min-w-0">{{ formatUnixSeconds(detail.task.updated_at) }}</div>
           <div />
         </div>
 
         <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
           <div class="flex items-center justify-between gap-2">
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
             <n-button
               size="tiny"
               tertiary
@@ -603,7 +603,7 @@ const actionHelpItems = computed(() => [
         </div>
 
         <div v-if="detail.task.ignore_reason" class="text-sm">
-          <span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
+          <span class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
           {{ detail.task.ignore_reason }}
         </div>
       </div>
@@ -615,13 +615,13 @@ const actionHelpItems = computed(() => [
 
       <div>
         <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.eventsTitle') }}</div>
-        <div v-if="detail.events.length === 0" class="text-sm opacity-70">{{ t('common.noData') }}</div>
+        <div v-if="detail.events.length === 0" class="text-sm app-text-muted">{{ t('common.noData') }}</div>
         <div v-else class="space-y-2">
           <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-medium truncate">{{ e.kind }}</div>
-                <div class="text-xs opacity-70 mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
+                <div class="text-xs app-text-muted mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
               </div>
               <n-tag size="small" :type="eventLevelTagType(e.level)" :bordered="false">{{ e.level }}</n-tag>
             </div>
@@ -650,34 +650,34 @@ const actionHelpItems = computed(() => [
 
         <div class="text-sm space-y-2">
           <div class="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-1 items-start">
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.runId') }}:</div>
             <div class="min-w-0 break-all">{{ detail.task.run_id }}</div>
             <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.run_id)">{{ t('common.copy') }}</n-button>
 
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.node') }}:</div>
             <div class="min-w-0 break-all">{{ detail.task.node_id }}</div>
             <n-button size="tiny" tertiary @click="copyToClipboard(detail.task.node_id)">{{ t('common.copy') }}</n-button>
 
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.target') }}:</div>
             <div class="min-w-0">{{ formatTarget(detail.task.target_type) }}</div>
             <div />
 
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.attempts') }}:</div>
             <div class="min-w-0">{{ detail.task.attempts }}</div>
             <div />
 
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.nextAttempt') }}:</div>
             <div class="min-w-0">{{ formatUnixSeconds(detail.task.next_attempt_at) }}</div>
             <div />
 
-            <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
+            <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.updatedAt') }}:</div>
             <div class="min-w-0">{{ formatUnixSeconds(detail.task.updated_at) }}</div>
             <div />
           </div>
 
           <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <div class="opacity-70">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
+              <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
               <n-button
                 size="tiny"
                 tertiary
@@ -696,7 +696,7 @@ const actionHelpItems = computed(() => [
           </div>
 
           <div v-if="detail.task.ignore_reason" class="text-sm">
-            <span class="opacity-70">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
+            <span class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.ignoreReason') }}:</span>
             {{ detail.task.ignore_reason }}
           </div>
         </div>
@@ -708,13 +708,13 @@ const actionHelpItems = computed(() => [
 
         <div>
           <div class="text-sm font-medium mb-2">{{ t('settings.maintenance.cleanup.eventsTitle') }}</div>
-          <div v-if="detail.events.length === 0" class="text-sm opacity-70">{{ t('common.noData') }}</div>
+          <div v-if="detail.events.length === 0" class="text-sm app-text-muted">{{ t('common.noData') }}</div>
           <div v-else class="space-y-2">
             <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="text-sm font-medium truncate">{{ e.kind }}</div>
-                  <div class="text-xs opacity-70 mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
+                  <div class="text-xs app-text-muted mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
                 </div>
                 <n-tag size="small" :type="eventLevelTagType(e.level)" :bordered="false">{{ e.level }}</n-tag>
               </div>
@@ -731,13 +731,13 @@ const actionHelpItems = computed(() => [
 
   <n-modal v-model:show="helpOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.statusHelpTitle')">
     <div class="space-y-3">
-      <div class="text-sm opacity-80">{{ t('settings.maintenance.cleanup.statusHelpIntro') }}</div>
+      <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.statusHelpIntro') }}</div>
       <div class="space-y-2">
         <div v-for="row in statusHelpItems" :key="row.status" class="flex items-start gap-2">
           <n-tag size="small" :type="statusTagType(row.status)" :bordered="false">
             {{ formatStatus(row.status) }}
           </n-tag>
-          <div class="text-sm opacity-80">{{ row.body }}</div>
+          <div class="text-sm app-text-muted">{{ row.body }}</div>
         </div>
       </div>
 
@@ -746,7 +746,7 @@ const actionHelpItems = computed(() => [
         <div class="space-y-2">
           <div v-for="row in actionHelpItems" :key="row.key" class="flex items-start gap-2">
             <n-tag size="small" :bordered="false">{{ row.label }}</n-tag>
-            <div class="text-sm opacity-80">{{ row.body }}</div>
+            <div class="text-sm app-text-muted">{{ row.body }}</div>
           </div>
         </div>
       </div>

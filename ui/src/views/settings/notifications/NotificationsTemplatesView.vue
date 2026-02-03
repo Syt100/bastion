@@ -64,9 +64,9 @@ onMounted(refresh)
       <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
 
       <n-alert type="info" :bordered="false">
-        <div class="space-y-1">
-          <div class="font-medium">{{ t('settings.notifications.templateHelpTitle') }}</div>
-          <div class="text-xs opacity-80">
+          <div class="space-y-1">
+            <div class="font-medium">{{ t('settings.notifications.templateHelpTitle') }}</div>
+          <div class="text-xs app-text-muted">
             {{ t('settings.notifications.templateHelpVars') }}
           </div>
         </div>

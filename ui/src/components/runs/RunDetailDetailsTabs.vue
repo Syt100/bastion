@@ -230,7 +230,7 @@ async function copyEventJson(e: RunEvent): Promise<void> {
             <n-tag size="small" :type="wsStatusTagType(wsStatus)" :bordered="false">
               {{ t(`runEvents.ws.${wsStatus}`) }}
             </n-tag>
-            <span class="text-xs opacity-70">{{ filteredEvents.length }} / {{ events.length }} events</span>
+            <span class="text-xs app-text-muted">{{ filteredEvents.length }} / {{ events.length }} events</span>
             <n-button
               v-if="wsStatus === 'disconnected' || wsStatus === 'error'"
               size="tiny"
@@ -279,12 +279,12 @@ async function copyEventJson(e: RunEvent): Promise<void> {
           </div>
         </div>
 
-        <div v-if="filteredEvents.length === 0" class="mt-3 text-sm opacity-70">{{ t('common.noData') }}</div>
+        <div v-if="filteredEvents.length === 0" class="mt-3 text-sm app-text-muted">{{ t('common.noData') }}</div>
 
         <div
           v-else
           data-testid="run-detail-events-list"
-          class="mt-3 max-h-[60vh] overflow-auto rounded-md app-border-subtle divide-y divide-black/5 dark:divide-white/10"
+          class="mt-3 max-h-[60vh] overflow-auto rounded-md app-border-subtle app-divide-y"
           ref="eventsListEl"
         >
           <button
@@ -292,17 +292,17 @@ async function copyEventJson(e: RunEvent): Promise<void> {
             :key="item.seq"
             type="button"
             :data-event-seq="item.seq"
-            class="w-full text-left px-3 py-2 flex items-center gap-2 transition hover:bg-black/5 dark:hover:bg-white/5"
+            class="w-full text-left px-3 py-2 flex items-center gap-2 transition hover:bg-[var(--app-hover)]"
             @click="openEventDetails(item)"
           >
-            <span class="shrink-0 font-mono tabular-nums text-xs opacity-70 whitespace-nowrap" :title="formatUnixSeconds(item.ts)">
+            <span class="shrink-0 font-mono tabular-nums text-xs app-text-muted whitespace-nowrap" :title="formatUnixSeconds(item.ts)">
               {{ formatUnixSeconds(item.ts) }}
             </span>
             <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)" :bordered="false">
               <span class="block w-full truncate text-center">{{ item.level }}</span>
             </n-tag>
             <span class="min-w-0 flex-1 truncate text-sm" :title="item.message">{{ item.message }}</span>
-            <span v-if="item.kind && item.kind !== item.message" class="shrink-0 max-w-[12rem] truncate text-xs opacity-70 font-mono">
+            <span v-if="item.kind && item.kind !== item.message" class="shrink-0 max-w-[12rem] truncate text-xs app-text-muted font-mono">
               {{ item.kind }}
             </span>
             <n-button v-if="item.fields" size="tiny" quaternary @click.stop="openEventDetails(item)">
@@ -320,7 +320,7 @@ async function copyEventJson(e: RunEvent): Promise<void> {
           </div>
         </template>
 
-        <div v-if="ops.length === 0" class="text-sm opacity-70 py-2" data-testid="run-detail-operations-empty">
+        <div v-if="ops.length === 0" class="text-sm app-text-muted py-2" data-testid="run-detail-operations-empty">
           {{ t('runs.detail.noOperations') }}
         </div>
         <n-data-table v-else :columns="opColumns" :data="ops" size="small" :bordered="false" data-testid="run-detail-operations-table" />
@@ -331,17 +331,17 @@ async function copyEventJson(e: RunEvent): Promise<void> {
           <span>{{ t('runs.detail.summaryTitle') }}</span>
         </template>
 
-        <div v-if="!summary" class="text-sm opacity-70 py-2">{{ t('common.noData') }}</div>
+        <div v-if="!summary" class="text-sm app-text-muted py-2">{{ t('common.noData') }}</div>
         <div v-else data-testid="run-detail-summary">
           <div class="flex items-center justify-between gap-3 mb-3">
-            <div class="text-sm opacity-70">{{ t('runs.detail.summaryHelp') }}</div>
+            <div class="text-sm app-text-muted">{{ t('runs.detail.summaryHelp') }}</div>
             <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
           </div>
 
           <div class="grid grid-cols-1 gap-3" :class="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir ? 'md:grid-cols-2' : 'md:grid-cols-1'">
-            <div class="rounded border border-black/5 dark:border-white/10 p-3">
+            <div class="rounded app-border-subtle p-3">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
-              <div class="text-xs opacity-70 space-y-1">
+              <div class="text-xs app-text-muted space-y-1">
                 <div v-if="parsedSummary.targetType || parsedSummary.targetLocation">
                   {{ t('runs.detail.target') }}:
                   <span class="font-mono tabular-nums">{{ targetTypeLabel }}</span>
@@ -354,9 +354,9 @@ async function copyEventJson(e: RunEvent): Promise<void> {
               </div>
             </div>
 
-            <div v-if="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir" class="rounded border border-black/5 dark:border-white/10 p-3">
+            <div v-if="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir" class="rounded app-border-subtle p-3">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
-              <div class="text-xs opacity-70 space-y-1">
+              <div class="text-xs app-text-muted space-y-1">
                 <div v-if="parsedSummary.sqlitePath">
                   {{ t('runs.detail.sqlitePath') }}: <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
                 </div>
@@ -372,7 +372,7 @@ async function copyEventJson(e: RunEvent): Promise<void> {
             </div>
           </div>
 
-          <details class="mt-3 rounded border border-black/5 dark:border-white/10 p-3">
+          <details class="mt-3 rounded app-border-subtle p-3">
             <summary class="cursor-pointer select-none text-sm font-medium">
               {{ t('runs.detail.rawJson') }}
             </summary>
@@ -387,10 +387,10 @@ async function copyEventJson(e: RunEvent): Promise<void> {
 
   <n-modal v-if="isDesktop" v-model:show="eventDetailShow" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('runEvents.details.title')">
     <div v-if="eventDetail" class="space-y-3">
-      <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+      <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
         <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
         <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
-        <span class="opacity-70">{{ eventDetail.kind }}</span>
+        <span class="app-text-muted">{{ eventDetail.kind }}</span>
         <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
       </div>
       <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
@@ -404,10 +404,10 @@ async function copyEventJson(e: RunEvent): Promise<void> {
   <n-drawer v-else v-model:show="eventDetailShow" placement="bottom" height="70vh">
     <n-drawer-content :title="t('runEvents.details.title')" closable>
       <div v-if="eventDetail" class="space-y-3">
-        <div class="text-sm opacity-70 flex flex-wrap items-center gap-2">
+        <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
           <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
           <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
-          <span class="opacity-70">{{ eventDetail.kind }}</span>
+          <span class="app-text-muted">{{ eventDetail.kind }}</span>
           <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
         </div>
         <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>

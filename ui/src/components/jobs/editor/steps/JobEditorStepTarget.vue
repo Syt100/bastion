@@ -40,7 +40,7 @@ const manageWebdavSecretsHref = computed(() => `/n/${encodeURIComponent(form.nod
               class="w-full"
               @update:value="clearFieldError('partSizeMiB')"
             />
-            <div v-if="!fieldErrors.partSizeMiB" class="text-xs opacity-70">
+            <div v-if="!fieldErrors.partSizeMiB" class="text-xs app-text-muted">
               {{ t('jobs.fields.partSizeMiBHelp') }}
             </div>
           </div>
@@ -112,7 +112,7 @@ const manageWebdavSecretsHref = computed(() => `/n/${encodeURIComponent(form.nod
               />
               <n-button secondary @click="openLocalBaseDirPicker">{{ t('common.browse') }}</n-button>
             </div>
-            <div v-if="!fieldErrors.localBaseDir" class="text-xs opacity-70">
+            <div v-if="!fieldErrors.localBaseDir" class="text-xs app-text-muted">
               {{ t('jobs.fields.localBaseDirHelp') }}
             </div>
           </div>
