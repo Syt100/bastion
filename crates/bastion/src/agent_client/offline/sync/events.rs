@@ -78,4 +78,13 @@ mod tests {
         assert_eq!(events[2].seq, 1);
         assert_eq!(events[1].fields, Some(serde_json::json!({"x": 1})));
     }
+
+    #[tokio::test]
+    async fn load_offline_events_errors_on_invalid_json_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("events.jsonl");
+
+        tokio::fs::write(&path, "not json\n").await.unwrap();
+        assert!(load_offline_events(&path).await.is_err());
+    }
 }
