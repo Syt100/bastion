@@ -79,3 +79,66 @@ fn vaultwarden_run_includes_snapshot_and_files() {
         .unwrap();
     assert_eq!(n, 42);
 }
+
+#[test]
+fn vaultwarden_run_rejects_non_archive_v1_format() {
+    let tmp = tempdir().unwrap();
+    let data_dir = tmp.path().join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+
+    let job_id = Uuid::new_v4().to_string();
+    let run_id = Uuid::new_v4().to_string();
+    let source = VaultwardenSource {
+        data_dir: "/".to_string(),
+    };
+    let encryption = PayloadEncryption::None;
+
+    let err = build_vaultwarden_run(
+        &data_dir,
+        &job_id,
+        &run_id,
+        OffsetDateTime::now_utc(),
+        &source,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::RawTreeV1,
+            encryption: &encryption,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
+        None,
+    )
+    .expect_err("expected format validation error");
+    assert!(err.to_string().contains("support only archive_v1"));
+}
+
+#[test]
+fn vaultwarden_run_requires_source_data_dir() {
+    let tmp = tempdir().unwrap();
+    let data_dir = tmp.path().join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+
+    let job_id = Uuid::new_v4().to_string();
+    let run_id = Uuid::new_v4().to_string();
+    let source = VaultwardenSource {
+        data_dir: "   ".to_string(),
+    };
+    let encryption = PayloadEncryption::None;
+
+    let err = build_vaultwarden_run(
+        &data_dir,
+        &job_id,
+        &run_id,
+        OffsetDateTime::now_utc(),
+        &source,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &encryption,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
+        None,
+    )
+    .expect_err("expected missing data_dir error");
+    assert!(
+        err.to_string()
+            .contains("vaultwarden.source.data_dir is required")
+    );
+}
