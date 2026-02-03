@@ -25,8 +25,19 @@ impl UploadProgressBuilder {
     }
 
     fn snapshot(&mut self, done_bytes: u64, total_bytes: Option<u64>) -> ProgressSnapshotV1 {
-        let now_ts = time::OffsetDateTime::now_utc().unix_timestamp();
+        self.snapshot_at(
+            time::OffsetDateTime::now_utc().unix_timestamp(),
+            done_bytes,
+            total_bytes,
+        )
+    }
 
+    fn snapshot_at(
+        &mut self,
+        now_ts: i64,
+        done_bytes: u64,
+        total_bytes: Option<u64>,
+    ) -> ProgressSnapshotV1 {
         let dt = self
             .last_ts
             .map(|ts| now_ts.saturating_sub(ts))
@@ -223,4 +234,41 @@ pub(super) async fn run_vaultwarden_backup(
             "db": "db.sqlite3",
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upload_progress_snapshot_computes_rate_and_eta() {
+        let mut builder = UploadProgressBuilder::new();
+
+        let s0 = builder.snapshot_at(1000, 0, Some(100));
+        assert_eq!(s0.kind, ProgressKindV1::Backup);
+        assert_eq!(s0.stage, "upload");
+        assert_eq!(s0.ts, 1000);
+        assert_eq!(s0.done.bytes, 0);
+        assert_eq!(s0.total.unwrap().bytes, 100);
+        assert_eq!(s0.rate_bps, None);
+        assert_eq!(s0.eta_seconds, None);
+
+        let s1 = builder.snapshot_at(1010, 50, Some(100));
+        assert_eq!(s1.rate_bps, Some(5));
+        assert_eq!(s1.eta_seconds, Some(10));
+
+        let s2 = builder.snapshot_at(1020, 50, Some(100));
+        assert_eq!(s2.rate_bps, None);
+        assert_eq!(s2.eta_seconds, None);
+    }
+
+    #[test]
+    fn upload_progress_snapshot_rate_is_never_zero_when_progress_is_made() {
+        let mut builder = UploadProgressBuilder::new();
+
+        let _ = builder.snapshot_at(1000, 0, Some(10));
+        let s = builder.snapshot_at(1010, 1, Some(10));
+        assert_eq!(s.rate_bps, Some(1));
+        assert_eq!(s.eta_seconds, Some(9));
+    }
 }
