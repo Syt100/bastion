@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { UI_PLAIN_SURFACE_2_COLORS, UI_PLAIN_SURFACE_COLORS } from '@/theme/background'
 
 // NOTE: This is a regression test for a real production crash:
 // naive-ui -> seemly/rgba throws on CSS variable strings like `var(--app-primary)`.
@@ -75,29 +76,19 @@ describe('App theme overrides', () => {
     expect(document.documentElement.dataset.bg).toBe('plain')
   })
 
-  it('resolves var-to-var token indirection for plain surfaces', () => {
+  it('uses neutral surfaces for plain mode (dark)', () => {
     uiState = { darkMode: true, themeId: 'ocean-blue', backgroundStyle: 'plain', locale: 'en-US' }
 
-    // In "plain" mode we set tokens like `--app-surface: var(--app-surface-neutral)`.
-    // Naive UI theme overrides require concrete colors (not `var(...)`), so App.vue must
-    // resolve this indirection into a real color string.
-    document.documentElement.style.setProperty('--app-surface-neutral', '#111111')
-    document.documentElement.style.setProperty('--app-surface', 'var(--app-surface-neutral)')
-
-    try {
-      const wrapper = mount(App, {
-        global: {
-          stubs: { 'router-view': { template: '<div />' } },
-        },
-      })
-      const overrides = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as any
-      expect(overrides).toBeTruthy()
-      expect(overrides.common.cardColor).toBe('#111111')
-      expect(JSON.stringify(overrides)).not.toContain('var(')
-    } finally {
-      document.documentElement.style.removeProperty('--app-surface-neutral')
-      document.documentElement.style.removeProperty('--app-surface')
-    }
+    const wrapper = mount(App, {
+      global: {
+        stubs: { 'router-view': { template: '<div />' } },
+      },
+    })
+    const overrides = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as any
+    expect(overrides).toBeTruthy()
+    expect(overrides.common.cardColor).toBe(UI_PLAIN_SURFACE_COLORS.dark)
+    expect(overrides.common.tableHeaderColor).toBe(UI_PLAIN_SURFACE_2_COLORS.dark)
+    expect(JSON.stringify(overrides)).not.toContain('var(')
   })
 
   it('does not pass CSS var(...) strings into naive-ui theme overrides (light)', () => {

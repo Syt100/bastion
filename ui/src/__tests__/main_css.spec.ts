@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { UI_THEME_IDS } from '@/theme/presets'
+import { UI_BACKGROUND_NEUTRAL_COLORS, UI_PLAIN_SURFACE_2_COLORS, UI_PLAIN_SURFACE_COLORS } from '@/theme/background'
 
 function readMainCss(): string {
   const candidates: string[] = []
@@ -62,6 +63,15 @@ describe('main.css background variables', () => {
     expect(css).toMatch(/\.dark\s*\{[^}]*--app-surface-2-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
     expect(css).toMatch(/\.dark\s*\{[^}]*--app-glass-bg-neutral:\s*rgba\(/s)
     expect(css).toMatch(/\.dark\s*\{[^}]*--app-glass-soft-bg-neutral:\s*rgba\(/s)
+
+    // Keep the "plain" constants aligned with the CSS tokens.
+    const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    expect(css).toMatch(new RegExp(`:root\\s*\\{[^}]*--app-bg-neutral:\\s*${escapeRegExp(UI_BACKGROUND_NEUTRAL_COLORS.light)}\\s*;`, 's'))
+    expect(css).toMatch(new RegExp(`:root\\s*\\{[^}]*--app-surface-neutral:\\s*${escapeRegExp(UI_PLAIN_SURFACE_COLORS.light)}\\s*;`, 's'))
+    expect(css).toMatch(new RegExp(`:root\\s*\\{[^}]*--app-surface-2-neutral:\\s*${escapeRegExp(UI_PLAIN_SURFACE_2_COLORS.light)}\\s*;`, 's'))
+    expect(css).toMatch(new RegExp(`\\.dark\\s*\\{[^}]*--app-bg-neutral:\\s*${escapeRegExp(UI_BACKGROUND_NEUTRAL_COLORS.dark)}\\s*;`, 's'))
+    expect(css).toMatch(new RegExp(`\\.dark\\s*\\{[^}]*--app-surface-neutral:\\s*${escapeRegExp(UI_PLAIN_SURFACE_COLORS.dark)}\\s*;`, 's'))
+    expect(css).toMatch(new RegExp(`\\.dark\\s*\\{[^}]*--app-surface-2-neutral:\\s*${escapeRegExp(UI_PLAIN_SURFACE_2_COLORS.dark)}\\s*;`, 's'))
 
     expect(css).toMatch(/\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)

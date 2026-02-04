@@ -12,7 +12,18 @@ export const UI_BACKGROUND_NEUTRAL_COLORS = {
   dark: '#0b0b0b',
 } as const
 
+// "Plain" (neutral) mode should keep surfaces/chrome neutral (not theme-tinted),
+// especially in dark mode where theme presets use tinted surface tokens.
+export const UI_PLAIN_SURFACE_COLORS = {
+  light: '#ffffff',
+  dark: '#111111',
+} as const
+
+export const UI_PLAIN_SURFACE_2_COLORS = {
+  light: '#f1f5f9',
+  dark: '#1a1a1a',
+} as const
+
 export function isUiBackgroundStyle(value: unknown): value is UiBackgroundStyle {
   return typeof value === 'string' && UI_BACKGROUND_STYLE_SET.has(value)
 }
-

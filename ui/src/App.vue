@@ -13,7 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import { useSystemStore } from '@/stores/system'
 import { NAIVE_UI_DATE_LOCALES, NAIVE_UI_LOCALES } from '@/i18n/language'
-import { UI_BACKGROUND_NEUTRAL_COLORS } from '@/theme/background'
+import { UI_BACKGROUND_NEUTRAL_COLORS, UI_PLAIN_SURFACE_2_COLORS, UI_PLAIN_SURFACE_COLORS } from '@/theme/background'
 
 const ui = useUiStore()
 const system = useSystemStore()
@@ -141,6 +141,9 @@ const resolvedTokens = computed(() => {
   void ui.themeId
   void ui.backgroundStyle
   const fb = ui.darkMode ? FALLBACK_TOKENS_DARK : FALLBACK_TOKENS_LIGHT
+  const plainMode = ui.backgroundStyle === 'plain'
+  const plainSurface = ui.darkMode ? UI_PLAIN_SURFACE_COLORS.dark : UI_PLAIN_SURFACE_COLORS.light
+  const plainSurface2 = ui.darkMode ? UI_PLAIN_SURFACE_2_COLORS.dark : UI_PLAIN_SURFACE_2_COLORS.light
   return {
     primary: cssVar('--app-primary', fb.primary),
     primaryHover: cssVar('--app-primary-hover', fb.primaryHover),
@@ -158,8 +161,11 @@ const resolvedTokens = computed(() => {
     hover: cssVar('--app-hover', fb.hover),
     pressed: cssVar('--app-pressed', fb.pressed),
 
-    surface: cssVar('--app-surface', fb.surface),
-    surface2: cssVar('--app-surface-2', fb.surface2),
+    // In "plain" mode, enforce neutral surfaces via constants instead of relying on
+    // reading CSS custom properties (which can be unreliable across browsers for
+    // var-to-var indirections).
+    surface: plainMode ? plainSurface : cssVar('--app-surface', fb.surface),
+    surface2: plainMode ? plainSurface2 : cssVar('--app-surface-2', fb.surface2),
 
     shadowSm: cssVar('--app-shadow-sm', fb.shadowSm),
     shadowMd: cssVar('--app-shadow-md', fb.shadowMd),

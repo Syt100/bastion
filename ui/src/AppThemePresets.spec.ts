@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
+import { UI_PLAIN_SURFACE_COLORS } from '@/theme/background'
 
 // Regression test: theme switching must update html[data-theme] and force Naive UI
 // theme overrides to recompute (otherwise component colors can become stale).
@@ -132,6 +133,6 @@ describe('Theme presets', () => {
     await nextTick()
 
     const overrides2 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
-    expect(overrides2.common?.cardColor).toBe('#111111')
+    expect(overrides2.common?.cardColor).toBe(UI_PLAIN_SURFACE_COLORS.light)
   })
 })
