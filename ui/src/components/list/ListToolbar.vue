@@ -8,6 +8,11 @@ const props = defineProps<{
    */
   compact?: boolean
   /**
+   * Force a stacked (single-column) layout even on desktop breakpoints.
+   * Useful for toolbars rendered inside narrow panes (e.g. split views).
+   */
+  stacked?: boolean
+  /**
    * Render the toolbar as an "inset" panel (no Naive UI Card wrapper).
    * Useful when the page already uses a surrounding card (e.g. settings pages).
    */
@@ -20,13 +25,13 @@ const props = defineProps<{
     <div
       :class="[
         'flex flex-col gap-3',
-        'md:flex-row md:items-end md:justify-between',
-        props.compact ? 'md:gap-2' : '',
+        props.stacked ? '' : 'md:flex-row md:items-end md:justify-between',
+        !props.stacked && props.compact ? 'md:gap-2' : '',
       ]"
     >
       <div class="min-w-0 flex-1">
-        <div class="flex flex-col gap-3 md:flex-row md:items-end md:flex-wrap">
-          <div v-if="$slots.search" class="min-w-[14rem] flex-1">
+        <div :class="['flex flex-col gap-3', props.stacked ? '' : 'md:flex-row md:items-end md:flex-wrap']">
+          <div v-if="$slots.search" :class="[props.stacked ? '' : 'min-w-[14rem] flex-1']">
             <slot name="search" />
           </div>
           <slot name="filters" />
@@ -46,14 +51,14 @@ const props = defineProps<{
       'rounded-xl app-border-subtle',
       props.compact ? 'p-3' : 'p-4',
       'flex flex-col gap-3',
-      'md:flex-row md:items-end md:justify-between',
-      props.compact ? 'md:gap-2' : '',
+      props.stacked ? '' : 'md:flex-row md:items-end md:justify-between',
+      !props.stacked && props.compact ? 'md:gap-2' : '',
     ]"
     :style="{ background: 'var(--app-surface-2)' }"
   >
     <div class="min-w-0 flex-1">
-      <div class="flex flex-col gap-3 md:flex-row md:items-end md:flex-wrap">
-        <div v-if="$slots.search" class="min-w-[14rem] flex-1">
+      <div :class="['flex flex-col gap-3', props.stacked ? '' : 'md:flex-row md:items-end md:flex-wrap']">
+        <div v-if="$slots.search" :class="[props.stacked ? '' : 'min-w-[14rem] flex-1']">
           <slot name="search" />
         </div>
         <slot name="filters" />

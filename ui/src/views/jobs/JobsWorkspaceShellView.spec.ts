@@ -198,6 +198,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
   })
 
   it('selecting table view forces list-only layout', async () => {
+    uiStore.jobsWorkspaceLayoutMode = 'list'
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {

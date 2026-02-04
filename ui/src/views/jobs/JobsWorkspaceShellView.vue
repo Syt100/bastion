@@ -296,7 +296,7 @@ watch(showArchived, () => void refresh())
           class="app-card flex flex-col min-h-0"
           :bordered="false"
         >
-          <ListToolbar compact embedded>
+          <ListToolbar compact embedded stacked>
             <template #search>
               <n-input
                 v-model:value="searchText"
@@ -329,7 +329,7 @@ watch(showArchived, () => void refresh())
                   {{ layoutMode === 'list' ? t('jobs.workspace.actions.splitView') : t('jobs.workspace.actions.fullList') }}
                 </n-button>
 
-                <div class="flex items-center gap-2">
+                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
                   <n-button
                     size="small"
                     :secondary="jobsListView === 'list'"
