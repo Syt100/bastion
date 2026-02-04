@@ -428,6 +428,12 @@ watch(showArchived, () => void refresh())
                       <n-select v-model:value="sortKey" size="small" :options="sortOptions" class="w-full" />
                     </div>
                   </div>
+
+                  <template #popoverFooter>
+                    <div class="mt-4 pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
+                      <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+                    </div>
+                  </template>
                 </PickerFiltersPopoverDrawer>
               </div>
             </template>
@@ -470,7 +476,7 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #actions>
-              <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+              <n-button v-if="layoutMode !== 'split'" size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
             </template>
           </ListToolbar>
 
@@ -625,12 +631,14 @@ watch(showArchived, () => void refresh())
                     <n-select v-model:value="sortKey" size="small" :options="sortOptions" class="w-full" />
                   </div>
                 </div>
+
+                <template #drawerFooter>
+                  <div class="pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
+                    <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+                  </div>
+                </template>
               </PickerFiltersPopoverDrawer>
             </div>
-          </template>
-
-          <template #actions>
-            <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
           </template>
         </ListToolbar>
 
