@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NInput, NSelect, NSwitch, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NDataTable, NInput, NSelect, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -11,6 +11,7 @@ import ListToolbar from '@/components/list/ListToolbar.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
+import { useUiStore, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
@@ -27,6 +28,7 @@ const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
+const ui = useUiStore()
 const jobs = useJobsStore()
 const agents = useAgentsStore()
 
@@ -45,6 +47,23 @@ const sortOptions = computed(() => [
   { label: t('jobs.sort.nameAsc'), value: 'name_asc' },
   { label: t('jobs.sort.nameDesc'), value: 'name_desc' },
 ])
+
+const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
+  if (!isDesktop.value) return 'split'
+  const mode = ui.jobsWorkspaceLayoutMode
+  if (mode === 'detail' && !selectedJobId.value) return 'list'
+  return mode
+})
+
+const jobsListView = computed<JobsWorkspaceListView>(() => {
+  if (!isDesktop.value) return 'list'
+  if (layoutMode.value !== 'list') return 'list'
+  return ui.jobsWorkspaceListView
+})
+
+const gridColsClass = computed(() =>
+  layoutMode.value === 'split' ? 'md:grid-cols-[minmax(0,360px)_minmax(0,1fr)]' : 'md:grid-cols-1',
+)
 
 const nodeScopedJobs = computed<JobListItem[]>(() => {
   const id = nodeId.value
@@ -88,12 +107,41 @@ function openCreate(): void {
   editorModal.value?.openCreate({ nodeId: nodeId.value })
 }
 
+async function openEdit(jobId: string): Promise<void> {
+  await editorModal.value?.openEdit(jobId, { nodeId: nodeId.value })
+}
+
+async function runNow(jobId: string): Promise<void> {
+  try {
+    const res = await jobs.runNow(jobId)
+    if (res.status === 'rejected') message.warning(t('messages.runRejected'))
+    else message.success(t('messages.runQueued'))
+  } catch (error) {
+    message.error(formatToastError(t('errors.runNowFailed'), error, t))
+  }
+}
+
 function openJob(jobId: string): void {
   void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs/${encodeURIComponent(jobId)}/overview`)
 }
 
 function isSelected(jobId: string): boolean {
   return selectedJobId.value === jobId
+}
+
+function setLayoutMode(mode: JobsWorkspaceLayoutMode): void {
+  ui.setJobsWorkspaceLayoutMode(mode)
+}
+
+function toggleListOnly(): void {
+  setLayoutMode(layoutMode.value === 'list' ? 'split' : 'list')
+}
+
+function setJobsListViewMode(value: JobsWorkspaceListView): void {
+  if (value === 'table') {
+    ui.setJobsWorkspaceLayoutMode('list')
+  }
+  ui.setJobsWorkspaceListView(value)
 }
 
 function formatNodeLabel(agentId: string | null): string {
@@ -108,6 +156,110 @@ function runStatusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 
   if (status === 'rejected') return 'warning'
   return 'default'
 }
+
+function formatScheduleLabel(job: JobListItem): string {
+  return job.schedule ?? t('jobs.scheduleMode.manual')
+}
+
+const tableColumns = computed<DataTableColumns<JobListItem>>(() => [
+  {
+    title: t('jobs.columns.name'),
+    key: 'name',
+    render: (row) =>
+      h('div', { class: 'min-w-0' }, [
+        h('div', { class: 'flex items-center gap-2 min-w-0' }, [
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'text-left font-medium truncate hover:underline',
+              title: row.name,
+              onClick: () => openJob(row.id),
+            },
+            row.name,
+          ),
+          row.archived_at
+            ? h(NTag, { size: 'small', bordered: false, type: 'warning' }, { default: () => t('jobs.archived') })
+            : null,
+        ]),
+      ]),
+  },
+  {
+    title: t('jobs.columns.node'),
+    key: 'node',
+    render: (row) =>
+      h(
+        NTag,
+        { size: 'small', bordered: false, type: row.agent_id ? 'default' : 'info' },
+        { default: () => formatNodeLabel(row.agent_id) },
+      ),
+  },
+  {
+    title: t('jobs.columns.schedule'),
+    key: 'schedule',
+    render: (row) => {
+      const schedule = formatScheduleLabel(row)
+      return h('div', { class: 'min-w-0' }, [
+        h('div', { class: 'font-mono tabular-nums truncate', title: schedule }, schedule),
+        row.schedule
+          ? h('div', { class: 'text-xs app-text-muted font-mono tabular-nums truncate' }, row.schedule_timezone)
+          : null,
+      ])
+    },
+  },
+  {
+    title: t('runs.columns.status'),
+    key: 'latest_run_status',
+    render: (row) =>
+      row.latest_run_status
+        ? h(
+            NTag,
+            { size: 'small', bordered: false, type: runStatusTagType(row.latest_run_status) },
+            { default: () => runStatusLabel(t, row.latest_run_status!) },
+          )
+        : h(NTag, { size: 'small', bordered: false }, { default: () => t('runs.neverRan') }),
+  },
+  {
+    title: t('dashboard.recent.columns.startedAt'),
+    key: 'latest_run_started_at',
+    render: (row) =>
+      h(
+        'span',
+        {
+          class: 'font-mono tabular-nums text-xs',
+          title: row.latest_run_started_at != null ? formatUnixSecondsYmdHms(row.latest_run_started_at) : '-',
+        },
+        row.latest_run_started_at != null ? formatUnixSecondsYmdHm(row.latest_run_started_at) : '-',
+      ),
+  },
+  {
+    title: t('jobs.columns.updatedAt'),
+    key: 'updated_at',
+    render: (row) =>
+      h(
+        'span',
+        { class: 'font-mono tabular-nums text-xs', title: formatUnixSecondsYmdHms(row.updated_at) },
+        formatUnixSecondsYmdHm(row.updated_at),
+      ),
+  },
+  {
+    title: t('jobs.columns.actions'),
+    key: 'actions',
+    render: (row) =>
+      h('div', { class: 'flex items-center gap-2 justify-end' }, [
+        h(
+          NButton,
+          { size: 'small', disabled: !!row.archived_at, onClick: () => void runNow(row.id) },
+          { default: () => t('jobs.actions.runNow') },
+        ),
+        h(
+          NButton,
+          { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
+          { default: () => t('common.edit') },
+        ),
+      ]),
+  },
+])
 
 onMounted(async () => {
   await refresh()
@@ -138,8 +290,12 @@ watch(showArchived, () => void refresh())
     </PageHeader>
 
     <template v-if="isDesktop">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,360px)_minmax(0,1fr)] flex-1 min-h-0">
-        <n-card class="app-card flex flex-col min-h-0" :bordered="false">
+      <div class="grid grid-cols-1 gap-4 flex-1 min-h-0" :class="gridColsClass">
+        <n-card
+          v-if="layoutMode !== 'detail'"
+          class="app-card flex flex-col min-h-0"
+          :bordered="false"
+        >
           <ListToolbar compact embedded>
             <template #search>
               <n-input
@@ -164,6 +320,35 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #actions>
+              <template v-if="isDesktop">
+                <n-button
+                  size="small"
+                  tertiary
+                  @click="toggleListOnly"
+                >
+                  {{ layoutMode === 'list' ? t('jobs.workspace.actions.splitView') : t('jobs.workspace.actions.fullList') }}
+                </n-button>
+
+                <div class="flex items-center gap-2">
+                  <n-button
+                    size="small"
+                    :secondary="jobsListView === 'list'"
+                    :tertiary="jobsListView !== 'list'"
+                    @click="setJobsListViewMode('list')"
+                  >
+                    {{ t('jobs.workspace.views.list') }}
+                  </n-button>
+                  <n-button
+                    size="small"
+                    :secondary="jobsListView === 'table'"
+                    :tertiary="jobsListView !== 'table'"
+                    @click="setJobsListViewMode('table')"
+                  >
+                    {{ t('jobs.workspace.views.table') }}
+                  </n-button>
+                </div>
+              </template>
+
               <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
             </template>
           </ListToolbar>
@@ -188,58 +373,69 @@ watch(showArchived, () => void refresh())
             <div
               v-else
             >
-              <ScrollShadowPane data-testid="jobs-list-scroll" class="app-divide-y">
-                <button
-                  v-for="job in filteredJobs"
-                  :key="job.id"
-                  type="button"
-                  class="app-list-row"
-                  :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
-                  @click="openJob(job.id)"
-                >
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <div class="font-medium truncate">{{ job.name }}</div>
-                      <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                        {{ t('jobs.archived') }}
-                      </n-tag>
-                    </div>
-                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                      <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                        {{ formatNodeLabel(job.agent_id) }}
-                      </n-tag>
-                      <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
-                    </div>
+              <ScrollShadowPane
+                data-testid="jobs-list-scroll"
+                :class="jobsListView === 'list' ? 'app-divide-y' : ''"
+              >
+                <template v-if="jobsListView === 'table'">
+                  <div class="p-2">
+                    <n-data-table :columns="tableColumns" :data="filteredJobs" />
                   </div>
+                </template>
 
-                  <div class="shrink-0 flex flex-col items-end gap-1 text-right">
-                    <n-tag
-                      v-if="job.latest_run_status"
-                      size="small"
-                      :bordered="false"
-                      :type="runStatusTagType(job.latest_run_status)"
-                    >
-                      {{ runStatusLabel(t, job.latest_run_status) }}
-                    </n-tag>
-                    <n-tag v-else size="small" :bordered="false">
-                      {{ t('runs.neverRan') }}
-                    </n-tag>
-
-                    <div
-                      v-if="job.latest_run_started_at != null"
-                      class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
-                      :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
-                    >
-                      {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                <template v-else>
+                  <button
+                    v-for="job in filteredJobs"
+                    :key="job.id"
+                    type="button"
+                    class="app-list-row"
+                    :class="isSelected(job.id) ? 'bg-[var(--app-primary-soft)]' : ''"
+                    @click="openJob(job.id)"
+                  >
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <div class="font-medium truncate">{{ job.name }}</div>
+                        <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                          {{ t('jobs.archived') }}
+                        </n-tag>
+                      </div>
+                      <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+                        <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                          {{ formatNodeLabel(job.agent_id) }}
+                        </n-tag>
+                        <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
+                      </div>
                     </div>
-                  </div>
-                </button>
+
+                    <div class="shrink-0 flex flex-col items-end gap-1 text-right">
+                      <n-tag
+                        v-if="job.latest_run_status"
+                        size="small"
+                        :bordered="false"
+                        :type="runStatusTagType(job.latest_run_status)"
+                      >
+                        {{ runStatusLabel(t, job.latest_run_status) }}
+                      </n-tag>
+                      <n-tag v-else size="small" :bordered="false">
+                        {{ t('runs.neverRan') }}
+                      </n-tag>
+
+                      <div
+                        v-if="job.latest_run_started_at != null"
+                        class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
+                        :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
+                      >
+                        {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                      </div>
+                    </div>
+                  </button>
+                </template>
               </ScrollShadowPane>
             </div>
           </div>
         </n-card>
 
-        <div class="min-w-0 min-h-0 flex flex-col">
+        <div v-if="layoutMode !== 'list'" class="min-w-0 min-h-0 flex flex-col">
           <div v-if="selectedJobId" class="flex-1 min-h-0">
             <router-view />
           </div>

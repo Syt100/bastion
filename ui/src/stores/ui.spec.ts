@@ -92,4 +92,46 @@ describe('useUiStore', () => {
     expect(ui.preferredNodeId).toBe('agent1')
     expect(localStorage.getItem('bastion.ui.preferredNodeId')).toBe('agent1')
   })
+
+  it('defaults jobs workspace layout mode to split when not stored', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceLayoutMode).toBe('split')
+  })
+
+  it('defaults jobs workspace list view to list when not stored', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceListView).toBe('list')
+  })
+
+  it('falls back to split layout mode when stored value is invalid', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.jobsWorkspace.layoutMode', 'unknown-layout')
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceLayoutMode).toBe('split')
+  })
+
+  it('falls back to list view when stored value is invalid', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.jobsWorkspace.listView', 'unknown-view')
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceListView).toBe('list')
+  })
+
+  it('persists jobs workspace layout mode', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setJobsWorkspaceLayoutMode('list')
+    expect(ui.jobsWorkspaceLayoutMode).toBe('list')
+    expect(localStorage.getItem('bastion.ui.jobsWorkspace.layoutMode')).toBe('list')
+  })
+
+  it('persists jobs workspace list view', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setJobsWorkspaceListView('table')
+    expect(ui.jobsWorkspaceListView).toBe('table')
+    expect(localStorage.getItem('bastion.ui.jobsWorkspace.listView')).toBe('table')
+  })
 })

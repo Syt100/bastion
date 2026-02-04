@@ -3,26 +3,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 
+import type { JobListItem } from '@/stores/jobs'
+
 const messageApi = {
   error: vi.fn(),
+  warning: vi.fn(),
+  success: vi.fn(),
 }
 
 const jobsStore = reactive({
-  items: [] as Array<{
-    id: string
-    name: string
-    agent_id: string | null
-    schedule: string | null
-    updated_at: number
-    archived_at: number | null
-  }>,
+  items: [] as JobListItem[],
   loading: false,
   refresh: vi.fn().mockResolvedValue(undefined),
+  runNow: vi.fn().mockResolvedValue({ run_id: 'r1', status: 'success' }),
 })
 
 const agentsStore = reactive({
   items: [] as Array<{ id: string; name: string | null; online: boolean; revoked: boolean }>,
   refresh: vi.fn().mockResolvedValue(undefined),
+})
+
+const uiStore = reactive({
+  jobsWorkspaceLayoutMode: 'split' as const,
+  jobsWorkspaceListView: 'list' as const,
+  setJobsWorkspaceLayoutMode: vi.fn(),
+  setJobsWorkspaceListView: vi.fn(),
 })
 
 const routeApi = reactive<{ params: Record<string, unknown>; path: string }>({ params: {}, path: '' })
@@ -59,6 +64,7 @@ vi.mock('naive-ui', async () => {
   return {
     NButton: button,
     NCard: stub('NCard'),
+    NDataTable: stub('NDataTable'),
     NInput: stub('NInput'),
     NSelect: stub('NSelect'),
     NSwitch: stub('NSwitch'),
@@ -93,6 +99,10 @@ vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsStore,
 }))
 
+vi.mock('@/stores/ui', () => ({
+  useUiStore: () => uiStore,
+}))
+
 import JobsWorkspaceShellView from './JobsWorkspaceShellView.vue'
 
 function stubMatchMedia(matches: boolean): void {
@@ -118,14 +128,30 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     routeApi.path = '/n/hub/jobs'
     routeApi.params = { nodeId: 'hub' }
 
+    uiStore.jobsWorkspaceLayoutMode = 'split'
+    uiStore.jobsWorkspaceListView = 'list'
+    uiStore.setJobsWorkspaceLayoutMode = vi.fn((v: unknown) => {
+      uiStore.jobsWorkspaceLayoutMode = v as 'split' | 'list' | 'detail'
+    })
+    uiStore.setJobsWorkspaceListView = vi.fn((v: unknown) => {
+      uiStore.jobsWorkspaceListView = v as 'list' | 'table'
+    })
+
     jobsStore.items = [
       {
         id: 'job1',
         name: 'Job 1',
         agent_id: null,
         schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
         updated_at: 1,
         archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
       },
     ]
     jobsStore.loading = false
@@ -148,5 +174,47 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const list = wrapper.find('[data-testid="jobs-list-scroll"]')
     expect(list.exists()).toBe(true)
     expect(list.classes()).toContain('overflow-y-auto')
+  })
+
+  it('hides the job workspace pane in list-only layout', () => {
+    routeApi.params = { nodeId: 'hub', jobId: 'job1' }
+    uiStore.jobsWorkspaceLayoutMode = 'list'
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    expect(wrapper.find('router-view-stub').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="jobs-list-scroll"]').exists()).toBe(true)
+  })
+
+  it('selecting table view forces list-only layout', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    const tableBtn = wrapper.findAll('button').find((b) => b.text() === 'jobs.workspace.views.table')
+    expect(tableBtn).toBeTruthy()
+    await tableBtn!.trigger('click')
+
+    expect(uiStore.setJobsWorkspaceLayoutMode).toHaveBeenCalledWith('list')
+    expect(uiStore.setJobsWorkspaceListView).toHaveBeenCalledWith('table')
   })
 })

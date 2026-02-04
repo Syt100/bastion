@@ -327,6 +327,15 @@ const messages = {
       emptyTitle: 'Select a job',
       emptyDescription: 'Choose a job from the list to view its workspace.',
       quickLinks: 'Quick links',
+      actions: {
+        splitView: 'Split view',
+        fullList: 'Full list',
+        fullDetail: 'Full detail',
+      },
+      views: {
+        list: 'List',
+        table: 'Table',
+      },
       overview: {
         runs7dTitle: 'Runs (Last 7 Days)',
         runs7dTotal: 'Total: {n}',
