@@ -102,12 +102,6 @@ async function runNow(): Promise<void> {
   }
 }
 
-function toggleDetailOnly(): void {
-  if (!isDesktop.value) return
-  const next = ui.jobsWorkspaceLayoutMode === 'detail' ? 'split' : 'detail'
-  ui.setJobsWorkspaceLayoutMode(next)
-}
-
 const editorModal = ref<JobEditorModalExpose | null>(null)
 const deployModal = ref<JobDeployModalExpose | null>(null)
 
@@ -235,13 +229,6 @@ function onSelectMore(key: string | number): void {
         </div>
 
         <div class="flex items-center gap-2 flex-wrap justify-end">
-          <n-button v-if="isDesktop" size="small" tertiary @click="toggleDetailOnly">
-            {{
-              ui.jobsWorkspaceLayoutMode === 'detail'
-                ? t('jobs.workspace.actions.splitView')
-                : t('jobs.workspace.actions.fullDetail')
-            }}
-          </n-button>
           <n-button size="small" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
           <n-button size="small" type="primary" :disabled="!!job?.archived_at" @click="runNow">{{ t('jobs.actions.runNow') }}</n-button>
 

@@ -20,4 +20,4 @@
 - [x] 3.4 Run `bash scripts/ci.sh`
 
 ## 4. Commits
-- [ ] 4.1 Commit implementation changes (detailed message)
+- [x] 4.1 Commit implementation changes (detailed message)

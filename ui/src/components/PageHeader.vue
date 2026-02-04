@@ -22,7 +22,8 @@ defineProps<{
         <p v-else-if="subtitle" class="text-sm app-text-muted">{{ subtitle }}</p>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <!-- Keep actions aligned to the right even when they wrap below the title. -->
+    <div class="flex items-center gap-2 flex-wrap justify-end ml-auto max-w-full">
       <slot />
     </div>
   </div>

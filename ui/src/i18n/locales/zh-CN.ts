@@ -336,6 +336,9 @@ const messages = {
         list: '列表',
         table: '表格',
       },
+      filters: {
+        scheduled: '已调度',
+      },
       overview: {
         runs7dTitle: '近7天运行',
         runs7dTotal: '总计：{n}',

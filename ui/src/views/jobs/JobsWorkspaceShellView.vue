@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NInput, NSelect, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NCard, NDataTable, NInput, NRadioButton, NRadioGroup, NSelect, NSwitch, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -40,6 +40,8 @@ const editorModal = ref<JobEditorModalExpose | null>(null)
 const showArchived = ref<boolean>(false)
 const searchText = ref<string>('')
 const sortKey = ref<JobSortKey>('updated_desc')
+const listLatestStatusFilter = ref<RunStatus | 'never' | 'all'>('all')
+const listScheduleFilter = ref<'all' | 'manual' | 'scheduled'>('all')
 
 const sortOptions = computed(() => [
   { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
@@ -55,10 +57,30 @@ const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   return mode
 })
 
+const layoutModeModel = computed<JobsWorkspaceLayoutMode>({
+  get: () => layoutMode.value,
+  set: (value) => {
+    if (!isDesktop.value) return
+    if (value === 'detail' && !selectedJobId.value) return
+    ui.setJobsWorkspaceLayoutMode(value)
+  },
+})
+
 const jobsListView = computed<JobsWorkspaceListView>(() => {
   if (!isDesktop.value) return 'list'
   if (layoutMode.value !== 'list') return 'list'
   return ui.jobsWorkspaceListView
+})
+
+const jobsListViewModel = computed<JobsWorkspaceListView>({
+  get: () => jobsListView.value,
+  set: (value) => {
+    // Table view requires full-width list. Selecting it forces list-only layout.
+    if (value === 'table') {
+      ui.setJobsWorkspaceLayoutMode('list')
+    }
+    ui.setJobsWorkspaceListView(value)
+  },
 })
 
 const gridColsClass = computed(() =>
@@ -78,7 +100,30 @@ const filteredJobs = computed<JobListItem[]>(() => {
     return j.name.toLowerCase().includes(q) || j.id.toLowerCase().includes(q)
   })
 
-  const sorted = list.slice()
+  const listModeFiltersEnabled = layoutMode.value === 'list'
+  const latestStatus = listLatestStatusFilter.value
+  const scheduleMode = listScheduleFilter.value
+
+  const filtered = listModeFiltersEnabled
+    ? list.filter((j) => {
+        if (latestStatus !== 'all') {
+          if (latestStatus === 'never') {
+            if (j.latest_run_status != null) return false
+          } else if (j.latest_run_status !== latestStatus) {
+            return false
+          }
+        }
+
+        if (scheduleMode !== 'all') {
+          if (scheduleMode === 'manual' && j.schedule != null) return false
+          if (scheduleMode === 'scheduled' && j.schedule == null) return false
+        }
+
+        return true
+      })
+    : list
+
+  const sorted = filtered.slice()
   sorted.sort((a, b) => {
     if (sortKey.value === 'updated_asc') return a.updated_at - b.updated_at
     if (sortKey.value === 'updated_desc') return b.updated_at - a.updated_at
@@ -101,6 +146,8 @@ function clearFilters(): void {
   searchText.value = ''
   showArchived.value = false
   sortKey.value = 'updated_desc'
+  listLatestStatusFilter.value = 'all'
+  listScheduleFilter.value = 'all'
 }
 
 function openCreate(): void {
@@ -129,21 +176,6 @@ function isSelected(jobId: string): boolean {
   return selectedJobId.value === jobId
 }
 
-function setLayoutMode(mode: JobsWorkspaceLayoutMode): void {
-  ui.setJobsWorkspaceLayoutMode(mode)
-}
-
-function toggleListOnly(): void {
-  setLayoutMode(layoutMode.value === 'list' ? 'split' : 'list')
-}
-
-function setJobsListViewMode(value: JobsWorkspaceListView): void {
-  if (value === 'table') {
-    ui.setJobsWorkspaceLayoutMode('list')
-  }
-  ui.setJobsWorkspaceListView(value)
-}
-
 function formatNodeLabel(agentId: string | null): string {
   if (!agentId) return t('jobs.nodes.hub')
   const agent = agents.items.find((a) => a.id === agentId)
@@ -160,6 +192,22 @@ function runStatusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 
 function formatScheduleLabel(job: JobListItem): string {
   return job.schedule ?? t('jobs.scheduleMode.manual')
 }
+
+const latestStatusFilterOptions = computed(() => [
+  { label: t('runs.filters.all'), value: 'all' },
+  { label: t('runs.neverRan'), value: 'never' },
+  { label: runStatusLabel(t, 'success'), value: 'success' },
+  { label: runStatusLabel(t, 'failed'), value: 'failed' },
+  { label: runStatusLabel(t, 'running'), value: 'running' },
+  { label: runStatusLabel(t, 'queued'), value: 'queued' },
+  { label: runStatusLabel(t, 'rejected'), value: 'rejected' },
+])
+
+const scheduleFilterOptions = computed(() => [
+  { label: t('runs.filters.all'), value: 'all' },
+  { label: t('jobs.scheduleMode.manual'), value: 'manual' },
+  { label: t('jobs.workspace.filters.scheduled'), value: 'scheduled' },
+])
 
 const tableColumns = computed<DataTableColumns<JobListItem>>(() => [
   {
@@ -285,6 +333,19 @@ watch(showArchived, () => void refresh())
         <NodeContextTag :node-id="nodeId" />
       </template>
 
+      <template v-if="isDesktop">
+        <n-radio-group v-model:value="layoutModeModel" size="small" class="shrink-0">
+          <n-radio-button value="split">{{ t('jobs.workspace.actions.splitView') }}</n-radio-button>
+          <n-radio-button value="list">{{ t('jobs.workspace.actions.fullList') }}</n-radio-button>
+          <n-radio-button value="detail" :disabled="!selectedJobId">{{ t('jobs.workspace.actions.fullDetail') }}</n-radio-button>
+        </n-radio-group>
+
+        <n-radio-group v-model:value="jobsListViewModel" size="small" class="shrink-0">
+          <n-radio-button value="list">{{ t('jobs.workspace.views.list') }}</n-radio-button>
+          <n-radio-button value="table">{{ t('jobs.workspace.views.table') }}</n-radio-button>
+        </n-radio-group>
+      </template>
+
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
     </PageHeader>
@@ -296,7 +357,7 @@ watch(showArchived, () => void refresh())
           class="app-card flex flex-col min-h-0"
           :bordered="false"
         >
-          <ListToolbar compact embedded stacked>
+          <ListToolbar compact embedded :stacked="layoutMode === 'split'">
             <template #search>
               <n-input
                 v-model:value="searchText"
@@ -307,9 +368,21 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #filters>
-              <div class="flex items-center gap-2 w-full md:w-auto">
-                <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                <n-switch v-model:value="showArchived" />
+              <div class="flex flex-wrap items-end gap-3 w-full md:w-auto">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+                  <n-switch v-model:value="showArchived" />
+                </div>
+
+                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
+                  <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
+                  <n-select v-model:value="listLatestStatusFilter" size="small" :options="latestStatusFilterOptions" class="w-40" />
+                </div>
+
+                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
+                  <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
+                  <n-select v-model:value="listScheduleFilter" size="small" :options="scheduleFilterOptions" class="w-40" />
+                </div>
               </div>
             </template>
 
@@ -320,35 +393,6 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #actions>
-              <template v-if="isDesktop">
-                <n-button
-                  size="small"
-                  tertiary
-                  @click="toggleListOnly"
-                >
-                  {{ layoutMode === 'list' ? t('jobs.workspace.actions.splitView') : t('jobs.workspace.actions.fullList') }}
-                </n-button>
-
-                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
-                  <n-button
-                    size="small"
-                    :secondary="jobsListView === 'list'"
-                    :tertiary="jobsListView !== 'list'"
-                    @click="setJobsListViewMode('list')"
-                  >
-                    {{ t('jobs.workspace.views.list') }}
-                  </n-button>
-                  <n-button
-                    size="small"
-                    :secondary="jobsListView === 'table'"
-                    :tertiary="jobsListView !== 'table'"
-                    @click="setJobsListViewMode('table')"
-                  >
-                    {{ t('jobs.workspace.views.table') }}
-                  </n-button>
-                </div>
-              </template>
-
               <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
             </template>
           </ListToolbar>

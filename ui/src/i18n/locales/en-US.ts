@@ -336,6 +336,9 @@ const messages = {
         list: 'List',
         table: 'Table',
       },
+      filters: {
+        scheduled: 'Scheduled',
+      },
       overview: {
         runs7dTitle: 'Runs (Last 7 Days)',
         runs7dTotal: 'Total: {n}',

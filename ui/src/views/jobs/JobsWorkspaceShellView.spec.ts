@@ -66,6 +66,8 @@ vi.mock('naive-ui', async () => {
     NCard: stub('NCard'),
     NDataTable: stub('NDataTable'),
     NInput: stub('NInput'),
+    NRadioButton: stub('NRadioButton'),
+    NRadioGroup: stub('NRadioGroup'),
     NSelect: stub('NSelect'),
     NSwitch: stub('NSwitch'),
     NTag: stub('NTag'),
@@ -198,11 +200,9 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
   })
 
   it('selecting table view forces list-only layout', async () => {
-    uiStore.jobsWorkspaceLayoutMode = 'list'
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
           NodeContextTag: true,
           AppEmptyState: true,
           JobEditorModal: true,
@@ -211,9 +211,9 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
       },
     })
 
-    const tableBtn = wrapper.findAll('button').find((b) => b.text() === 'jobs.workspace.views.table')
-    expect(tableBtn).toBeTruthy()
-    await tableBtn!.trigger('click')
+    const groups = wrapper.findAllComponents({ name: 'NRadioGroup' })
+    expect(groups.length).toBeGreaterThanOrEqual(2)
+    groups[1]!.vm.$emit('update:value', 'table')
 
     expect(uiStore.setJobsWorkspaceLayoutMode).toHaveBeenCalledWith('list')
     expect(uiStore.setJobsWorkspaceListView).toHaveBeenCalledWith('table')
