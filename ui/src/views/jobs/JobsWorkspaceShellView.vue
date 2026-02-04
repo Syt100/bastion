@@ -380,7 +380,7 @@ watch(showArchived, () => void refresh())
                   size="small"
                   :options="latestStatusFilterOptions"
                   :consistent-menu-width="false"
-                  class="min-w-[14rem]"
+                  class="min-w-[8rem]"
                 />
               </div>
 
@@ -391,7 +391,7 @@ watch(showArchived, () => void refresh())
                   size="small"
                   :options="scheduleFilterOptions"
                   :consistent-menu-width="false"
-                  class="min-w-[14rem]"
+                  class="min-w-[8rem]"
                 />
               </div>
             </template>
