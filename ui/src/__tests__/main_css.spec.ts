@@ -55,16 +55,28 @@ describe('main.css background variables', () => {
 
   it('defines background style overrides (solid/plain) with a neutral base token', () => {
     expect(css).toMatch(/:root\s*\{[^}]*--app-bg-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/:root\s*\{[^}]*--app-surface-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/:root\s*\{[^}]*--app-surface-2-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
     expect(css).toMatch(/\.dark\s*\{[^}]*--app-bg-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\s*\{[^}]*--app-surface-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\s*\{[^}]*--app-surface-2-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\s*\{[^}]*--app-glass-bg-neutral:\s*rgba\(/s)
+    expect(css).toMatch(/\.dark\s*\{[^}]*--app-glass-soft-bg-neutral:\s*rgba\(/s)
 
     expect(css).toMatch(/\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg-solid:\s*var\(--app-bg-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-surface:\s*var\(--app-surface-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-surface-2:\s*var\(--app-surface-2-neutral\)\s*;?[^}]*\}/s)
 
     // Dark theme token blocks use `.dark[data-theme='...']` (higher specificity),
     // so background style overrides must also exist with `.dark[...]` selectors.
     expect(css).toMatch(/\.dark\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg-solid:\s*var\(--app-bg-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-surface:\s*var\(--app-surface-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-surface-2:\s*var\(--app-surface-2-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-glass-bg:\s*var\(--app-glass-bg-neutral\)\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-glass-soft-bg:\s*var\(--app-glass-soft-bg-neutral\)\s*;?[^}]*\}/s)
   })
 })

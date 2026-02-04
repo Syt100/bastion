@@ -17,6 +17,7 @@ This improves accessibility and reduces visual noise while keeping theme accents
   - `plain` (no gradient + neutral base)
 - Implement via document-level data attributes and token overrides:
   - `data-bg="..."` controls `--app-bg` and `--app-bg-solid`.
+- In `plain` mode, also neutralize UI surfaces/chrome so cards and navigation do not inherit theme-tinted dark surfaces.
 - Update mobile browser chrome color (`meta[name="theme-color"]`) so `plain` does not tint the address bar.
 - Add regression tests for the new setting and the document data attribute behavior.
 
@@ -29,4 +30,3 @@ This improves accessibility and reduces visual noise while keeping theme accents
   - Theme tokens: `ui/src/styles/main.css`
   - Appearance settings UI: `ui/src/views/settings/AppearanceView.vue`
   - UI store persistence: `ui/src/stores/ui.ts`
-

@@ -7,3 +7,5 @@
 - [x] 1.5 Add background style selector UI in Appearance settings and ensure preview respects it.
 - [x] 1.6 Add/update tests (store defaults + App dataset behavior) and run `npm test` + `scripts/ci.sh`.
 - [x] 1.7 Fix dark-mode CSS override specificity so solid/plain work in dark themes.
+- [x] 1.8 In `plain` mode, neutralize UI surfaces/chrome (cards + glass navigation) to avoid theme-tinted dark surfaces.
+- [x] 1.9 Add/update regression tests for `plain` surface/chrome overrides.
