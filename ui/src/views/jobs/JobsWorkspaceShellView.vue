@@ -335,8 +335,8 @@ watch(showArchived, () => void refresh())
 
       <template v-if="isDesktop">
         <n-radio-group v-model:value="layoutModeModel" size="small" class="shrink-0">
-          <n-radio-button value="split">{{ t('jobs.workspace.actions.splitView') }}</n-radio-button>
           <n-radio-button value="list">{{ t('jobs.workspace.actions.fullList') }}</n-radio-button>
+          <n-radio-button value="split">{{ t('jobs.workspace.actions.splitView') }}</n-radio-button>
           <n-radio-button value="detail" :disabled="!selectedJobId">{{ t('jobs.workspace.actions.fullDetail') }}</n-radio-button>
         </n-radio-group>
 
@@ -368,21 +368,31 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #filters>
-              <div class="flex flex-wrap items-end gap-3 w-full md:w-auto">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                  <n-switch v-model:value="showArchived" />
-                </div>
+              <div class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+                <n-switch v-model:value="showArchived" />
+              </div>
 
-                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
-                  <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
-                  <n-select v-model:value="listLatestStatusFilter" size="small" :options="latestStatusFilterOptions" class="w-40" />
-                </div>
+              <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
+                <n-select
+                  v-model:value="listLatestStatusFilter"
+                  size="small"
+                  :options="latestStatusFilterOptions"
+                  :consistent-menu-width="false"
+                  class="w-56"
+                />
+              </div>
 
-                <div v-if="layoutMode === 'list'" class="flex items-center gap-2">
-                  <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
-                  <n-select v-model:value="listScheduleFilter" size="small" :options="scheduleFilterOptions" class="w-40" />
-                </div>
+              <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
+                <n-select
+                  v-model:value="listScheduleFilter"
+                  size="small"
+                  :options="scheduleFilterOptions"
+                  :consistent-menu-width="false"
+                  class="w-56"
+                />
               </div>
             </template>
 
@@ -422,8 +432,8 @@ watch(showArchived, () => void refresh())
                 :class="jobsListView === 'list' ? 'app-divide-y' : ''"
               >
                 <template v-if="jobsListView === 'table'">
-                  <div class="p-2">
-                    <n-data-table :columns="tableColumns" :data="filteredJobs" />
+                  <div class="py-2">
+                    <n-data-table class="app-picker-table" size="small" :columns="tableColumns" :data="filteredJobs" :scroll-x="1100" />
                   </div>
                 </template>
 
