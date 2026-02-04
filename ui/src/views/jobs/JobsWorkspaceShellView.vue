@@ -368,7 +368,7 @@ watch(showArchived, () => void refresh())
             </template>
 
             <template #filters>
-              <div class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+              <div class="shrink-0 flex items-center gap-2 whitespace-nowrap h-7">
                 <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
                 <n-switch v-model:value="showArchived" />
               </div>
@@ -380,7 +380,7 @@ watch(showArchived, () => void refresh())
                   size="small"
                   :options="latestStatusFilterOptions"
                   :consistent-menu-width="false"
-                  class="w-56"
+                  class="min-w-[14rem]"
                 />
               </div>
 
@@ -391,7 +391,7 @@ watch(showArchived, () => void refresh())
                   size="small"
                   :options="scheduleFilterOptions"
                   :consistent-menu-width="false"
-                  class="w-56"
+                  class="min-w-[14rem]"
                 />
               </div>
             </template>
