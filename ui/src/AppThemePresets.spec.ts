@@ -80,6 +80,7 @@ import App from './App.vue'
 type ThemeOverridesLike = {
   common?: {
     primaryColor?: string
+    cardColor?: string
   }
 }
 
@@ -113,5 +114,24 @@ describe('Theme presets', () => {
     expect(document.documentElement.dataset.theme).toBe('ocean-blue')
     const overrides2 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
     expect(overrides2.common?.primaryColor).toBe('#0284c7')
+  })
+
+  it('recomputes theme overrides when backgroundStyle changes', async () => {
+    document.documentElement.style.setProperty('--app-surface', '#222222')
+
+    const wrapper = mount(App, {
+      global: { stubs: { 'router-view': { template: '<div />' } } },
+    })
+
+    const overrides1 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
+    expect(overrides1.common?.cardColor).toBe('#222222')
+
+    // Simulate plain-mode surface swap (in production this happens via html[data-bg]).
+    document.documentElement.style.setProperty('--app-surface', '#111111')
+    uiStore.backgroundStyle = 'plain'
+    await nextTick()
+
+    const overrides2 = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as unknown as ThemeOverridesLike
+    expect(overrides2.common?.cardColor).toBe('#111111')
   })
 })

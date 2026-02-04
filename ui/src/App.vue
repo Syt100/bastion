@@ -135,8 +135,11 @@ function cssVar(name: string, fallback: string): string {
 }
 
 const resolvedTokens = computed(() => {
-  // Ensure theme overrides recompute when the theme preset changes.
+  // Ensure theme overrides recompute when the theme preset or background style changes.
+  // (They depend on CSS variables, so we must explicitly depend on store state that can
+  // change those variables; otherwise Naive UI component colors can become stale.)
   void ui.themeId
+  void ui.backgroundStyle
   const fb = ui.darkMode ? FALLBACK_TOKENS_DARK : FALLBACK_TOKENS_LIGHT
   return {
     primary: cssVar('--app-primary', fb.primary),

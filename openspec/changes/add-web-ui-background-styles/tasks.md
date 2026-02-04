@@ -11,3 +11,4 @@
 - [x] 1.9 Add/update regression tests for `plain` surface/chrome overrides.
 - [x] 1.10 Resolve `var(--token)` indirections when deriving Naive UI theme overrides so `plain` mode surfaces are neutral across all themes.
 - [x] 1.11 Ensure `n-layout-sider`/`n-layout-header` use `app-glass` background-color (not Naive UI `--n-color`) so sidebar/topbar stay neutral in `plain` + dark mode.
+- [x] 1.12 Recompute Naive UI theme overrides when `backgroundStyle` changes so surface colors update immediately (no reload required).
