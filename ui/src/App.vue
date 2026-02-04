@@ -115,8 +115,21 @@ const FALLBACK_TOKENS_DARK = {
 function cssVar(name: string, fallback: string): string {
   // Naive UI theme overrides are parsed by seemly and must be real color strings (not `var(...)`).
   if (typeof document === 'undefined') return fallback
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  const styles = getComputedStyle(document.documentElement)
+  const v = styles.getPropertyValue(name).trim()
   if (!v) return fallback
+
+  // Allow tokens to reference other tokens (e.g. `--app-surface: var(--app-surface-neutral)`),
+  // but still avoid passing raw `var(...)` into Naive UI theme overrides.
+  if (v.startsWith('var(')) {
+    const inner = v.slice(4, -1).split(',')[0]?.trim()
+    if (inner?.startsWith('--')) {
+      const resolved = styles.getPropertyValue(inner).trim()
+      if (resolved && !resolved.includes('var(')) return resolved
+    }
+    return fallback
+  }
+
   if (v.includes('var(')) return fallback
   return v
 }

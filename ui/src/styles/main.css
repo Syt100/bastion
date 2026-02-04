@@ -558,6 +558,12 @@ body {
   border-color: var(--app-glass-border);
 }
 
+/* Naive UI's layout components set `background-color: var(--n-color)` on their root nodes.
+ * Ensure our glass chrome wins even if Naive UI styles are injected after app CSS. */
+:is(.n-layout-sider, .n-layout-header).app-glass {
+  background-color: var(--app-glass-bg);
+}
+
 .app-glass-soft {
   background: var(--app-glass-soft-bg);
   backdrop-filter: blur(var(--app-glass-blur)) saturate(1.1);

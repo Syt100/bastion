@@ -79,4 +79,10 @@ describe('main.css background variables', () => {
     expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-glass-bg:\s*var\(--app-glass-bg-neutral\)\s*;?[^}]*\}/s)
     expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-glass-soft-bg:\s*var\(--app-glass-soft-bg-neutral\)\s*;?[^}]*\}/s)
   })
+
+  it('forces app-glass chrome background-color on naive layout components', () => {
+    expect(css).toMatch(
+      /:is\(\.n-layout-sider,\s*\.n-layout-header\)\.app-glass\s*\{[^}]*background-color:\s*var\(--app-glass-bg\)\s*;?[^}]*\}/s,
+    )
+  })
 })

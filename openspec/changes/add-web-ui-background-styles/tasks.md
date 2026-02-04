@@ -9,3 +9,5 @@
 - [x] 1.7 Fix dark-mode CSS override specificity so solid/plain work in dark themes.
 - [x] 1.8 In `plain` mode, neutralize UI surfaces/chrome (cards + glass navigation) to avoid theme-tinted dark surfaces.
 - [x] 1.9 Add/update regression tests for `plain` surface/chrome overrides.
+- [x] 1.10 Resolve `var(--token)` indirections when deriving Naive UI theme overrides so `plain` mode surfaces are neutral across all themes.
+- [x] 1.11 Ensure `n-layout-sider`/`n-layout-header` use `app-glass` background-color (not Naive UI `--n-color`) so sidebar/topbar stay neutral in `plain` + dark mode.
