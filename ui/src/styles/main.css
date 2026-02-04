@@ -383,6 +383,18 @@
   --app-bg-solid: var(--app-bg-neutral);
 }
 
+/* Dark theme presets use `.dark[data-theme='...']` selectors (higher specificity),
+ * so we must mirror `.dark[...]` here to reliably override `--app-bg`/`--app-bg-solid`
+ * when background style is changed in dark mode. */
+.dark[data-bg='solid'] {
+  --app-bg: none;
+}
+
+.dark[data-bg='plain'] {
+  --app-bg: none;
+  --app-bg-solid: var(--app-bg-neutral);
+}
+
 /*
  * Allow the document to grow beyond the viewport.
  * We render the global gradient background on <body>, so <body> must not be

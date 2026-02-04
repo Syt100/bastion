@@ -6,3 +6,4 @@
 - [x] 1.4 Update `ui/src/App.vue` to keep `data-bg` and `meta[name="theme-color"]` in sync at runtime.
 - [x] 1.5 Add background style selector UI in Appearance settings and ensure preview respects it.
 - [x] 1.6 Add/update tests (store defaults + App dataset behavior) and run `npm test` + `scripts/ci.sh`.
+- [x] 1.7 Fix dark-mode CSS override specificity so solid/plain work in dark themes.

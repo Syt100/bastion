@@ -60,5 +60,11 @@ describe('main.css background variables', () => {
     expect(css).toMatch(/\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
     expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg-solid:\s*var\(--app-bg-neutral\)\s*;?[^}]*\}/s)
+
+    // Dark theme token blocks use `.dark[data-theme='...']` (higher specificity),
+    // so background style overrides must also exist with `.dark[...]` selectors.
+    expect(css).toMatch(/\.dark\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg-solid:\s*var\(--app-bg-neutral\)\s*;?[^}]*\}/s)
   })
 })
