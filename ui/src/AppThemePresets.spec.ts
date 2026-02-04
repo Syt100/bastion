@@ -9,11 +9,15 @@ import { nextTick, reactive } from 'vue'
 const uiStore = reactive({
   darkMode: false,
   themeId: 'mint-teal',
+  backgroundStyle: 'aurora',
   locale: 'en-US',
   toggleDarkMode: vi.fn(),
   setDarkMode: vi.fn(),
   setThemeId: vi.fn((id: string) => {
     uiStore.themeId = id
+  }),
+  setBackgroundStyle: vi.fn((bg: string) => {
+    uiStore.backgroundStyle = bg
   }),
   setLocale: vi.fn(),
   preferredNodeId: 'hub',
@@ -83,8 +87,10 @@ describe('Theme presets', () => {
   beforeEach(() => {
     uiStore.darkMode = false
     uiStore.themeId = 'mint-teal'
+    uiStore.backgroundStyle = 'aurora'
     document.documentElement.className = ''
     document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-bg')
     document.documentElement.style.cssText = ''
   })
 

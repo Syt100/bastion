@@ -688,8 +688,17 @@ const messages = {
     },
     appearance: {
       title: '外观',
-      subtitle: '选择预设主题配色（暂不支持自定义）',
+      subtitle: '主题配色与背景风格（暂不支持自定义）',
       default: '默认',
+      background: {
+        title: '背景',
+        subtitle: '选择页面背景呈现方式',
+        styles: {
+          aurora: '渐变',
+          solid: '纯色',
+          plain: '纯净（中性）',
+        },
+      },
       themes: {
         mintTeal: '薄荷绿青',
         oceanBlue: '海盐蓝',

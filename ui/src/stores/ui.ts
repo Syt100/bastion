@@ -3,6 +3,12 @@ import { computed, ref } from 'vue'
 
 import { persistLocalePreference, resolveInitialLocale, type SupportedLocale, setI18nLocale } from '@/i18n'
 import { DEFAULT_UI_THEME_ID, isUiThemeId, type UiThemeId } from '@/theme/presets'
+import {
+  DEFAULT_UI_BACKGROUND_STYLE,
+  isUiBackgroundStyle,
+  UI_BACKGROUND_STYLE_KEY,
+  type UiBackgroundStyle,
+} from '@/theme/background'
 
 const STORAGE_KEY = 'bastion.ui.darkMode'
 const PREFERRED_NODE_KEY = 'bastion.ui.preferredNodeId'
@@ -20,6 +26,12 @@ export const useUiStore = defineStore('ui', () => {
     (() => {
       const raw = localStorage.getItem(THEME_KEY)
       return isUiThemeId(raw) ? raw : DEFAULT_UI_THEME_ID
+    })(),
+  )
+  const backgroundStyle = ref<UiBackgroundStyle>(
+    (() => {
+      const raw = localStorage.getItem(UI_BACKGROUND_STYLE_KEY)
+      return isUiBackgroundStyle(raw) ? raw : DEFAULT_UI_BACKGROUND_STYLE
     })(),
   )
   const locale = ref<SupportedLocale>(resolveInitialLocale())
@@ -50,6 +62,11 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(THEME_KEY, value)
   }
 
+  function setBackgroundStyle(value: UiBackgroundStyle): void {
+    backgroundStyle.value = value
+    localStorage.setItem(UI_BACKGROUND_STYLE_KEY, value)
+  }
+
   function setPreferredNodeId(value: string): void {
     const v = value.trim() || 'hub'
     preferredNodeId.value = v
@@ -59,11 +76,13 @@ export const useUiStore = defineStore('ui', () => {
   return {
     darkMode,
     themeId,
+    backgroundStyle,
     locale,
     preferredNodeId,
     themeMode,
     setDarkMode,
     setThemeId,
+    setBackgroundStyle,
     setLocale,
     setPreferredNodeId,
     toggleDarkMode,

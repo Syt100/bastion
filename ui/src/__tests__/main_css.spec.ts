@@ -52,4 +52,13 @@ describe('main.css background variables', () => {
       expect(css).toMatch(new RegExp(`\\.dark\\[data-theme=['"]${id}['"]\\]\\s*\\{`))
     }
   })
+
+  it('defines background style overrides (solid/plain) with a neutral base token', () => {
+    expect(css).toMatch(/:root\s*\{[^}]*--app-bg-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\.dark\s*\{[^}]*--app-bg-neutral:\s*#[0-9a-fA-F]{6}\s*;?[^}]*\}/s)
+
+    expect(css).toMatch(/\[data-bg=['"]solid['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg:\s*none\s*;?[^}]*\}/s)
+    expect(css).toMatch(/\[data-bg=['"]plain['"]\]\s*\{[^}]*--app-bg-solid:\s*var\(--app-bg-neutral\)\s*;?[^}]*\}/s)
+  })
 })

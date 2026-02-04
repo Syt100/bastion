@@ -9,6 +9,8 @@
   --app-danger: #ef4444;
 
   /* --- Foundation (global) --- */
+  --app-bg-neutral: #f8fafc;
+
   --app-radius-sm: 8px;
   --app-radius: 12px;
   --app-radius-lg: 16px;
@@ -30,6 +32,8 @@
 }
 
 .dark {
+  --app-bg-neutral: #0b0b0b;
+
   /* --- Depth (dark) --- */
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.22);
   --app-shadow-md: 0 12px 28px rgba(0, 0, 0, 0.34);
@@ -364,6 +368,19 @@
   --app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(251, 146, 60, 0.22), transparent 60%),
     radial-gradient(1000px 520px at 100% 0%, rgba(251, 113, 133, 0.18), transparent 55%),
     radial-gradient(900px 600px at 50% 100%, rgba(245, 158, 11, 0.12), transparent 55%);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Background Style                                                            */
+/* -------------------------------------------------------------------------- */
+
+[data-bg='solid'] {
+  --app-bg: none;
+}
+
+[data-bg='plain'] {
+  --app-bg: none;
+  --app-bg-solid: var(--app-bg-neutral);
 }
 
 /*

@@ -688,8 +688,17 @@ const messages = {
     },
     appearance: {
       title: 'Appearance',
-      subtitle: 'Choose a preset color theme (no custom colors yet)',
+      subtitle: 'Theme preset and background style (no custom colors yet)',
       default: 'Default',
+      background: {
+        title: 'Background',
+        subtitle: 'Select how the page background is rendered',
+        styles: {
+          aurora: 'Gradient',
+          solid: 'Solid',
+          plain: 'Plain (neutral)',
+        },
+      },
       themes: {
         mintTeal: 'Mint Teal',
         oceanBlue: 'Ocean Blue',

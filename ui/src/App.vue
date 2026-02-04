@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 import { useSystemStore } from '@/stores/system'
 import { NAIVE_UI_DATE_LOCALES, NAIVE_UI_LOCALES } from '@/i18n/language'
+import { UI_BACKGROUND_NEUTRAL_COLORS } from '@/theme/background'
 
 const ui = useUiStore()
 const system = useSystemStore()
@@ -35,6 +36,7 @@ const pageTitle = computed(() => {
 watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.dataset.theme = ui.themeId
+  document.documentElement.dataset.bg = ui.backgroundStyle
   document.documentElement.classList.toggle('dark', ui.darkMode)
   // Apply to <body> as well so CSS variables used by
   // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`
@@ -44,10 +46,13 @@ watchEffect(() => {
   document.title = pageTitle.value
 
   // Use solid background in dark mode; use primary accent in light mode.
+  // Plain background uses the solid base in both modes to avoid tinted browser chrome.
   const styles = getComputedStyle(document.documentElement)
-  const themeColor = (ui.darkMode
-    ? styles.getPropertyValue('--app-bg-solid').trim()
-    : styles.getPropertyValue('--app-primary').trim()) || (ui.darkMode ? '#040b0b' : '#0d9488')
+  const mode = ui.darkMode ? 'dark' : 'light'
+  const bgSolid = styles.getPropertyValue('--app-bg-solid').trim()
+  const primary = styles.getPropertyValue('--app-primary').trim()
+  const fallback = ui.backgroundStyle === 'plain' ? UI_BACKGROUND_NEUTRAL_COLORS[mode] : ui.darkMode ? '#040b0b' : '#0d9488'
+  const themeColor = (ui.backgroundStyle === 'plain' ? bgSolid : ui.darkMode ? bgSolid : primary) || fallback
   const themeMeta = document.querySelector('meta[name="theme-color"]')
   if (themeMeta) {
     themeMeta.setAttribute('content', themeColor)

@@ -7,6 +7,7 @@ import { mount } from '@vue/test-utils'
 let uiState = {
   darkMode: false,
   themeId: 'mint-teal' as const,
+  backgroundStyle: 'aurora' as const,
   locale: 'en-US' as const,
 }
 
@@ -63,8 +64,19 @@ vi.mock('naive-ui', async (importOriginal) => {
 import App from './App.vue'
 
 describe('App theme overrides', () => {
+  it('applies data-bg from store', () => {
+    document.documentElement.removeAttribute('data-bg')
+    uiState = { darkMode: false, themeId: 'mint-teal', backgroundStyle: 'plain', locale: 'en-US' }
+    mount(App, {
+      global: {
+        stubs: { 'router-view': { template: '<div />' } },
+      },
+    })
+    expect(document.documentElement.dataset.bg).toBe('plain')
+  })
+
   it('does not pass CSS var(...) strings into naive-ui theme overrides (light)', () => {
-    uiState = { darkMode: false, themeId: 'mint-teal', locale: 'en-US' }
+    uiState = { darkMode: false, themeId: 'mint-teal', backgroundStyle: 'aurora', locale: 'en-US' }
     const wrapper = mount(App, {
       global: {
         stubs: { 'router-view': { template: '<div />' } },
@@ -76,7 +88,7 @@ describe('App theme overrides', () => {
   })
 
   it('does not pass CSS var(...) strings into naive-ui theme overrides (dark)', () => {
-    uiState = { darkMode: true, themeId: 'mint-teal', locale: 'en-US' }
+    uiState = { darkMode: true, themeId: 'mint-teal', backgroundStyle: 'aurora', locale: 'en-US' }
     const wrapper = mount(App, {
       global: {
         stubs: { 'router-view': { template: '<div />' } },

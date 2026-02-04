@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NCard, NTag } from 'naive-ui'
+import { NCard, NRadioButton, NRadioGroup, NTag } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { UI_THEME_PRESETS } from '@/theme/presets'
@@ -14,6 +14,12 @@ const themes = computed(() => UI_THEME_PRESETS)
 function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
   ui.setThemeId(id)
 }
+
+function selectBackgroundStyle(value: string | number): void {
+  if (value === 'aurora' || value === 'solid' || value === 'plain') {
+    ui.setBackgroundStyle(value)
+  }
+}
 </script>
 
 <template>
@@ -23,6 +29,16 @@ function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
         <div class="text-base font-semibold">{{ t('settings.appearance.title') }}</div>
         <div class="text-sm app-text-muted mt-1">{{ t('settings.appearance.subtitle') }}</div>
       </div>
+    </div>
+
+    <div class="mt-4 space-y-2">
+      <div class="text-sm font-medium">{{ t('settings.appearance.background.title') }}</div>
+      <div class="text-sm app-text-muted">{{ t('settings.appearance.background.subtitle') }}</div>
+      <n-radio-group size="small" :value="ui.backgroundStyle" @update:value="selectBackgroundStyle">
+        <n-radio-button value="aurora">{{ t('settings.appearance.background.styles.aurora') }}</n-radio-button>
+        <n-radio-button value="solid">{{ t('settings.appearance.background.styles.solid') }}</n-radio-button>
+        <n-radio-button value="plain">{{ t('settings.appearance.background.styles.plain') }}</n-radio-button>
+      </n-radio-group>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
@@ -50,6 +66,7 @@ function selectTheme(id: (typeof UI_THEME_PRESETS)[number]['id']): void {
           class="mt-2 rounded-lg app-border-subtle overflow-hidden"
           :class="ui.darkMode ? 'dark' : ''"
           :data-theme="theme.id"
+          :data-bg="ui.backgroundStyle"
         >
           <div class="h-12" style="background-color: var(--app-bg-solid); background-image: var(--app-bg)"></div>
           <div class="flex items-center justify-between px-2 py-2" style="background-color: var(--app-surface)">

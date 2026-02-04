@@ -37,11 +37,24 @@ describe('useUiStore', () => {
     expect(ui.themeId).toBe('mint-teal')
   })
 
+  it('defaults to aurora background style when not stored', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.backgroundStyle).toBe('aurora')
+  })
+
   it('falls back to default theme when stored value is invalid', () => {
     stubMatchMedia(false)
     localStorage.setItem('bastion.ui.themeId', 'unknown-theme')
     const ui = useUiStore()
     expect(ui.themeId).toBe('mint-teal')
+  })
+
+  it('falls back to default background style when stored value is invalid', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.backgroundStyle', 'unknown-style')
+    const ui = useUiStore()
+    expect(ui.backgroundStyle).toBe('aurora')
   })
 
   it('sets theme and persists', () => {
@@ -50,6 +63,14 @@ describe('useUiStore', () => {
     ui.setThemeId('ocean-blue')
     expect(ui.themeId).toBe('ocean-blue')
     expect(localStorage.getItem('bastion.ui.themeId')).toBe('ocean-blue')
+  })
+
+  it('sets background style and persists', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setBackgroundStyle('plain')
+    expect(ui.backgroundStyle).toBe('plain')
+    expect(localStorage.getItem('bastion.ui.backgroundStyle')).toBe('plain')
   })
 
   it('toggles dark mode and persists', () => {
