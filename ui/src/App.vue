@@ -37,12 +37,11 @@ watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.dataset.theme = ui.themeId
   document.documentElement.dataset.bg = ui.backgroundStyle
-  document.body?.setAttribute('data-bg', ui.backgroundStyle)
   document.documentElement.classList.toggle('dark', ui.darkMode)
-  // Apply to <body> as well so CSS variables used by
-  // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`
-  // always resolve correctly (some themes/libraries may style <html> separately).
-  document.body?.classList.toggle('dark', ui.darkMode)
+  // Keep theme state on <html> only; prevent <body> from shadowing CSS variables
+  // when it accidentally retains old classes/attributes during HMR.
+  document.body?.classList.remove('dark')
+  document.body?.removeAttribute('data-bg')
   document.documentElement.lang = ui.locale
   document.title = pageTitle.value
 

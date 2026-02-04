@@ -76,7 +76,6 @@ import App from './App.vue'
 describe('App theme overrides', () => {
   it('applies data-bg from store', () => {
     document.documentElement.removeAttribute('data-bg')
-    document.body.removeAttribute('data-bg')
     uiState = { darkMode: false, themeId: 'mint-teal', backgroundStyle: 'plain', locale: 'en-US' }
     mount(App, {
       global: {
@@ -84,7 +83,7 @@ describe('App theme overrides', () => {
       },
     })
     expect(document.documentElement.dataset.bg).toBe('plain')
-    expect(document.body.dataset.bg).toBe('plain')
+    expect(document.body.dataset.bg).toBeUndefined()
   })
 
   it('uses neutral surfaces for plain mode (dark)', () => {
@@ -102,15 +101,19 @@ describe('App theme overrides', () => {
     expect(JSON.stringify(overrides)).not.toContain('var(')
   })
 
-  it('keeps body data-bg in sync so dark plain mode can override glass chrome', () => {
+  it('keeps theme state on <html> only to avoid CSS variable shadowing', () => {
+    document.body.classList.add('dark')
+    document.body.setAttribute('data-bg', 'plain')
     uiState = { darkMode: true, themeId: 'ocean-blue', backgroundStyle: 'plain', locale: 'en-US' }
     mount(App, {
       global: {
         stubs: { 'router-view': { template: '<div />' } },
       },
     })
-    expect(document.body.classList.contains('dark')).toBe(true)
-    expect(document.body.dataset.bg).toBe('plain')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.dataset.bg).toBe('plain')
+    expect(document.body.classList.contains('dark')).toBe(false)
+    expect(document.body.getAttribute('data-bg')).toBe(null)
   })
 
   it('does not pass CSS var(...) strings into naive-ui theme overrides (light)', () => {

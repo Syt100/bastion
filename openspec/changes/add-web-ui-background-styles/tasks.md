@@ -13,4 +13,4 @@
 - [x] 1.11 Ensure `n-layout-sider`/`n-layout-header` use `app-glass` background-color (not Naive UI `--n-color`) so sidebar/topbar stay neutral in `plain` + dark mode.
 - [x] 1.12 Recompute Naive UI theme overrides when `backgroundStyle` changes so surface colors update immediately (no reload required).
 - [x] 1.13 In `plain` mode, force Naive UI surface colors to neutral constants (avoid browser-specific `getComputedStyle` quirks for custom properties).
-- [x] 1.14 Keep `<body data-bg>` in sync so dark-mode `plain` overrides apply to glass chrome even when `<body>` has `.dark`.
+- [x] 1.14 Keep theme state on `<html>` only (remove `dark`/`data-bg` from `<body>`) to avoid CSS variable shadowing in dark `plain` mode.
