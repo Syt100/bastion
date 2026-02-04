@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Comment, Fragment, Text, computed, useSlots, type VNode } from 'vue'
 import { NCard } from 'naive-ui'
 
 const props = defineProps<{
@@ -18,6 +19,25 @@ const props = defineProps<{
    */
   embedded?: boolean
 }>()
+
+const slots = useSlots()
+
+function isEmptyVNode(node: VNode): boolean {
+  if (node.type === Comment) return true
+  if (node.type === Text) return String(node.children ?? '').trim().length === 0
+  if (node.type === Fragment) {
+    const children = node.children
+    if (Array.isArray(children)) return children.every((c) => isEmptyVNode(c as VNode))
+    return true
+  }
+  return false
+}
+
+const hasActions = computed(() => {
+  const nodes = slots.actions?.()
+  if (!nodes || nodes.length === 0) return false
+  return nodes.some((n) => !isEmptyVNode(n as VNode))
+})
 </script>
 
 <template>
@@ -39,7 +59,7 @@ const props = defineProps<{
         </div>
       </div>
 
-      <div class="flex items-center justify-end gap-2 flex-wrap">
+      <div v-if="hasActions" data-testid="list-toolbar-actions" class="flex items-center justify-end gap-2 flex-wrap">
         <slot name="actions" />
       </div>
     </div>
@@ -66,7 +86,7 @@ const props = defineProps<{
       </div>
     </div>
 
-    <div class="flex items-center justify-end gap-2 flex-wrap">
+    <div v-if="hasActions" data-testid="list-toolbar-actions" class="flex items-center justify-end gap-2 flex-wrap">
       <slot name="actions" />
     </div>
   </div>
