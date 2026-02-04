@@ -37,6 +37,7 @@ watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.dataset.theme = ui.themeId
   document.documentElement.dataset.bg = ui.backgroundStyle
+  document.body?.setAttribute('data-bg', ui.backgroundStyle)
   document.documentElement.classList.toggle('dark', ui.darkMode)
   // Apply to <body> as well so CSS variables used by
   // `body { background-color: var(--app-bg-solid); background-image: var(--app-bg) }`

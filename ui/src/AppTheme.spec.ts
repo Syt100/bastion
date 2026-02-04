@@ -1,15 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import type { UiThemeId } from '@/theme/presets'
 import { UI_PLAIN_SURFACE_2_COLORS, UI_PLAIN_SURFACE_COLORS } from '@/theme/background'
+import type { UiBackgroundStyle } from '@/theme/background'
 
 // NOTE: This is a regression test for a real production crash:
 // naive-ui -> seemly/rgba throws on CSS variable strings like `var(--app-primary)`.
 
-let uiState = {
+type UiStateMock = {
+  darkMode: boolean
+  themeId: UiThemeId
+  backgroundStyle: UiBackgroundStyle
+  locale: string
+}
+
+let uiState: UiStateMock = {
   darkMode: false,
-  themeId: 'mint-teal' as const,
-  backgroundStyle: 'aurora' as const,
-  locale: 'en-US' as const,
+  themeId: 'mint-teal',
+  backgroundStyle: 'aurora',
+  locale: 'en-US',
 }
 
 vi.mock('@/stores/ui', () => ({
@@ -67,6 +76,7 @@ import App from './App.vue'
 describe('App theme overrides', () => {
   it('applies data-bg from store', () => {
     document.documentElement.removeAttribute('data-bg')
+    document.body.removeAttribute('data-bg')
     uiState = { darkMode: false, themeId: 'mint-teal', backgroundStyle: 'plain', locale: 'en-US' }
     mount(App, {
       global: {
@@ -74,6 +84,7 @@ describe('App theme overrides', () => {
       },
     })
     expect(document.documentElement.dataset.bg).toBe('plain')
+    expect(document.body.dataset.bg).toBe('plain')
   })
 
   it('uses neutral surfaces for plain mode (dark)', () => {
@@ -89,6 +100,17 @@ describe('App theme overrides', () => {
     expect(overrides.common.cardColor).toBe(UI_PLAIN_SURFACE_COLORS.dark)
     expect(overrides.common.tableHeaderColor).toBe(UI_PLAIN_SURFACE_2_COLORS.dark)
     expect(JSON.stringify(overrides)).not.toContain('var(')
+  })
+
+  it('keeps body data-bg in sync so dark plain mode can override glass chrome', () => {
+    uiState = { darkMode: true, themeId: 'ocean-blue', backgroundStyle: 'plain', locale: 'en-US' }
+    mount(App, {
+      global: {
+        stubs: { 'router-view': { template: '<div />' } },
+      },
+    })
+    expect(document.body.classList.contains('dark')).toBe(true)
+    expect(document.body.dataset.bg).toBe('plain')
   })
 
   it('does not pass CSS var(...) strings into naive-ui theme overrides (light)', () => {
