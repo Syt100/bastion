@@ -9,6 +9,7 @@ import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
+import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
 import { useUiStore, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
@@ -42,6 +43,8 @@ const searchText = ref<string>('')
 const sortKey = ref<JobSortKey>('updated_desc')
 const listLatestStatusFilter = ref<RunStatus | 'never' | 'all'>('all')
 const listScheduleFilter = ref<'all' | 'manual' | 'scheduled'>('all')
+const filtersPopoverOpen = ref<boolean>(false)
+const filtersDrawerOpen = ref<boolean>(false)
 
 const sortOptions = computed(() => [
   { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
@@ -87,6 +90,15 @@ const gridColsClass = computed(() =>
   layoutMode.value === 'split' ? 'md:grid-cols-[minmax(0,360px)_minmax(0,1fr)]' : 'md:grid-cols-1',
 )
 
+const filtersActiveCount = computed(() => {
+  let n = 0
+  if (showArchived.value) n += 1
+  if (listLatestStatusFilter.value !== 'all') n += 1
+  if (listScheduleFilter.value !== 'all') n += 1
+  if (sortKey.value !== 'updated_desc') n += 1
+  return n
+})
+
 const nodeScopedJobs = computed<JobListItem[]>(() => {
   const id = nodeId.value
   if (id === 'hub') return jobs.items.filter((j) => j.agent_id === null)
@@ -100,28 +112,25 @@ const filteredJobs = computed<JobListItem[]>(() => {
     return j.name.toLowerCase().includes(q) || j.id.toLowerCase().includes(q)
   })
 
-  const listModeFiltersEnabled = layoutMode.value === 'list'
   const latestStatus = listLatestStatusFilter.value
   const scheduleMode = listScheduleFilter.value
 
-  const filtered = listModeFiltersEnabled
-    ? list.filter((j) => {
-        if (latestStatus !== 'all') {
-          if (latestStatus === 'never') {
-            if (j.latest_run_status != null) return false
-          } else if (j.latest_run_status !== latestStatus) {
-            return false
-          }
-        }
+  const filtered = list.filter((j) => {
+    if (latestStatus !== 'all') {
+      if (latestStatus === 'never') {
+        if (j.latest_run_status != null) return false
+      } else if (j.latest_run_status !== latestStatus) {
+        return false
+      }
+    }
 
-        if (scheduleMode !== 'all') {
-          if (scheduleMode === 'manual' && j.schedule != null) return false
-          if (scheduleMode === 'scheduled' && j.schedule == null) return false
-        }
+    if (scheduleMode !== 'all') {
+      if (scheduleMode === 'manual' && j.schedule != null) return false
+      if (scheduleMode === 'scheduled' && j.schedule == null) return false
+    }
 
-        return true
-      })
-    : list
+    return true
+  })
 
   const sorted = filtered.slice()
   sorted.sort((a, b) => {
@@ -319,6 +328,13 @@ onMounted(async () => {
   }
 })
 
+watch(layoutMode, () => {
+  if (layoutMode.value !== 'split') {
+    filtersPopoverOpen.value = false
+    filtersDrawerOpen.value = false
+  }
+})
+
 watch(showArchived, () => void refresh())
 </script>
 
@@ -359,45 +375,96 @@ watch(showArchived, () => void refresh())
         >
           <ListToolbar compact embedded :stacked="layoutMode === 'split'">
             <template #search>
-              <n-input
-                v-model:value="searchText"
-                size="small"
-                clearable
-                :placeholder="t('jobs.filters.searchPlaceholder')"
-              />
+              <div class="flex items-center gap-2">
+                <n-input
+                  v-model:value="searchText"
+                  size="small"
+                  clearable
+                  :placeholder="t('jobs.filters.searchPlaceholder')"
+                  class="flex-1 min-w-0"
+                />
+
+                <PickerFiltersPopoverDrawer
+                  v-if="layoutMode === 'split'"
+                  :is-desktop="true"
+                  :title="t('common.filters')"
+                  :active-count="filtersActiveCount"
+                  width-class="w-96"
+                  :popover-open="filtersPopoverOpen"
+                  :drawer-open="filtersDrawerOpen"
+                  @update:popover-open="(v) => (filtersPopoverOpen = v)"
+                  @update:drawer-open="(v) => (filtersDrawerOpen = v)"
+                >
+                  <div class="space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+                      <n-switch v-model:value="showArchived" />
+                    </div>
+
+                    <div class="space-y-2">
+                      <div class="text-sm app-text-muted">{{ t('runs.columns.status') }}</div>
+                      <n-select
+                        v-model:value="listLatestStatusFilter"
+                        size="small"
+                        :options="latestStatusFilterOptions"
+                        :consistent-menu-width="false"
+                        class="w-full"
+                      />
+                    </div>
+
+                    <div class="space-y-2">
+                      <div class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</div>
+                      <n-select
+                        v-model:value="listScheduleFilter"
+                        size="small"
+                        :options="scheduleFilterOptions"
+                        :consistent-menu-width="false"
+                        class="w-full"
+                      />
+                    </div>
+
+                    <div class="space-y-2">
+                      <div class="text-sm app-text-muted">{{ t('common.sort') }}</div>
+                      <n-select v-model:value="sortKey" size="small" :options="sortOptions" class="w-full" />
+                    </div>
+                  </div>
+                </PickerFiltersPopoverDrawer>
+              </div>
             </template>
 
             <template #filters>
-              <div class="shrink-0 flex items-center gap-2 whitespace-nowrap h-7">
-                <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                <n-switch v-model:value="showArchived" />
-              </div>
+              <template v-if="layoutMode !== 'split'">
+                <div class="shrink-0 flex items-center gap-2 whitespace-nowrap h-7">
+                  <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+                  <n-switch v-model:value="showArchived" />
+                </div>
 
-              <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-                <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
-                <n-select
-                  v-model:value="listLatestStatusFilter"
-                  size="small"
-                  :options="latestStatusFilterOptions"
-                  :consistent-menu-width="false"
-                  class="min-w-[8rem]"
-                />
-              </div>
+                <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                  <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
+                  <n-select
+                    v-model:value="listLatestStatusFilter"
+                    size="small"
+                    :options="latestStatusFilterOptions"
+                    :consistent-menu-width="false"
+                    class="min-w-[8rem]"
+                  />
+                </div>
 
-              <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-                <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
-                <n-select
-                  v-model:value="listScheduleFilter"
-                  size="small"
-                  :options="scheduleFilterOptions"
-                  :consistent-menu-width="false"
-                  class="min-w-[8rem]"
-                />
-              </div>
+                <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                  <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
+                  <n-select
+                    v-model:value="listScheduleFilter"
+                    size="small"
+                    :options="scheduleFilterOptions"
+                    :consistent-menu-width="false"
+                    class="min-w-[8rem]"
+                  />
+                </div>
+              </template>
             </template>
 
             <template #sort>
-              <div class="w-full md:w-56 md:flex-none">
+              <div v-if="layoutMode !== 'split'" class="w-full md:w-56 md:flex-none">
                 <n-select v-model:value="sortKey" size="small" :options="sortOptions" />
               </div>
             </template>
@@ -506,24 +573,59 @@ watch(showArchived, () => void refresh())
       <div v-if="!selectedJobId" class="space-y-4">
         <ListToolbar>
           <template #search>
-            <n-input
-              v-model:value="searchText"
-              size="small"
-              clearable
-              :placeholder="t('jobs.filters.searchPlaceholder')"
-            />
-          </template>
+            <div class="flex items-center gap-2">
+              <n-input
+                v-model:value="searchText"
+                size="small"
+                clearable
+                :placeholder="t('jobs.filters.searchPlaceholder')"
+                class="flex-1 min-w-0"
+              />
 
-          <template #filters>
-            <div class="flex items-center gap-2 w-full md:w-auto">
-              <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-              <n-switch v-model:value="showArchived" />
-            </div>
-          </template>
+              <PickerFiltersPopoverDrawer
+                :is-desktop="false"
+                :title="t('common.filters')"
+                :active-count="filtersActiveCount"
+                width-class="w-full"
+                :popover-open="filtersPopoverOpen"
+                :drawer-open="filtersDrawerOpen"
+                @update:popover-open="(v) => (filtersPopoverOpen = v)"
+                @update:drawer-open="(v) => (filtersDrawerOpen = v)"
+              >
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+                    <n-switch v-model:value="showArchived" />
+                  </div>
 
-          <template #sort>
-            <div class="w-full md:w-56 md:flex-none">
-              <n-select v-model:value="sortKey" size="small" :options="sortOptions" />
+                  <div class="space-y-2">
+                    <div class="text-sm app-text-muted">{{ t('runs.columns.status') }}</div>
+                    <n-select
+                      v-model:value="listLatestStatusFilter"
+                      size="small"
+                      :options="latestStatusFilterOptions"
+                      :consistent-menu-width="false"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</div>
+                    <n-select
+                      v-model:value="listScheduleFilter"
+                      size="small"
+                      :options="scheduleFilterOptions"
+                      :consistent-menu-width="false"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="text-sm app-text-muted">{{ t('common.sort') }}</div>
+                    <n-select v-model:value="sortKey" size="small" :options="sortOptions" class="w-full" />
+                  </div>
+                </div>
+              </PickerFiltersPopoverDrawer>
             </div>
           </template>
 

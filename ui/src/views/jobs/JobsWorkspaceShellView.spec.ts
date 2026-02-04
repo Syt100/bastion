@@ -62,10 +62,15 @@ vi.mock('naive-ui', async () => {
   })
 
   return {
+    NBadge: stub('NBadge'),
     NButton: button,
     NCard: stub('NCard'),
     NDataTable: stub('NDataTable'),
+    NDrawer: stub('NDrawer'),
+    NDrawerContent: stub('NDrawerContent'),
+    NIcon: stub('NIcon'),
     NInput: stub('NInput'),
+    NPopover: stub('NPopover'),
     NRadioButton: stub('NRadioButton'),
     NRadioGroup: stub('NRadioGroup'),
     NSelect: stub('NSelect'),
