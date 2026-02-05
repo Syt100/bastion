@@ -98,6 +98,11 @@ fn filesystem_paths_can_backup_single_file() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = build_filesystem_run(
@@ -186,6 +191,11 @@ fn archive_hash_matches_archived_bytes_when_file_is_replaced_after_open() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = build_filesystem_run(
@@ -241,6 +251,11 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = build_filesystem_run(
@@ -309,6 +324,11 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = build_filesystem_run(
@@ -362,6 +382,11 @@ fn legacy_root_can_backup_single_file() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = build_filesystem_run(
@@ -414,6 +439,11 @@ fn archive_parts_can_be_deleted_during_packaging() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let parts_seen = Arc::new(AtomicUsize::new(0));
@@ -498,6 +528,11 @@ fn scan_legacy_root_respects_include_patterns_for_files() -> Result<(), anyhow::
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let mut issues = FilesystemBuildIssues::default();
@@ -535,6 +570,11 @@ fn scan_legacy_root_excludes_directory_and_skips_descendants() -> Result<(), any
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let mut issues = FilesystemBuildIssues::default();
@@ -574,6 +614,11 @@ fn scan_legacy_root_symlink_policy_skip_ignores_symlink_entries() -> Result<(), 
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
     let mut issues = FilesystemBuildIssues::default();
     let totals_keep = scan_filesystem_source(&source_keep, &mut issues, None)?;

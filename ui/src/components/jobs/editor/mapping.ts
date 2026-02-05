@@ -1,6 +1,14 @@
 import type { CreateOrUpdateJobRequest, JobDetail } from '@/stores/jobs'
 
-import type { ArtifactFormat, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy, JobEditorForm } from './types'
+import type {
+  ArtifactFormat,
+  ConsistencyPolicy,
+  FsErrorPolicy,
+  FsHardlinkPolicy,
+  FsSymlinkPolicy,
+  JobEditorForm,
+  SnapshotMode,
+} from './types'
 import { cronToSimpleSchedule } from './schedule'
 
 function parseStringArray(value: unknown): string[] {
@@ -30,6 +38,18 @@ function normalizeErrorPolicy(value: unknown): FsErrorPolicy {
   if (value === 'skip_fail') return 'skip_fail'
   if (value === 'skip_ok') return 'skip_ok'
   return 'fail_fast'
+}
+
+function normalizeConsistencyPolicy(value: unknown): ConsistencyPolicy {
+  if (value === 'fail') return 'fail'
+  if (value === 'ignore') return 'ignore'
+  return 'warn'
+}
+
+function normalizeSnapshotMode(value: unknown): SnapshotMode {
+  if (value === 'auto') return 'auto'
+  if (value === 'required') return 'required'
+  return 'off'
 }
 
 function normalizeArtifactFormat(value: unknown): ArtifactFormat {
@@ -71,6 +91,15 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
           return legacyRoot.trim() ? [legacyRoot] : []
         })()
   const fsPreScan = typeof source?.pre_scan === 'boolean' ? source.pre_scan : true
+  const fsSnapshotMode = normalizeSnapshotMode(source?.snapshot_mode)
+  const fsSnapshotProviderRaw = typeof source?.snapshot_provider === 'string' ? source.snapshot_provider : ''
+  const fsSnapshotProvider = fsSnapshotMode === 'off' ? '' : fsSnapshotProviderRaw
+  const fsConsistencyPolicy = normalizeConsistencyPolicy(source?.consistency_policy)
+  const fsConsistencyFailThreshold =
+    typeof source?.consistency_fail_threshold === 'number' && source.consistency_fail_threshold >= 0
+      ? Math.floor(source.consistency_fail_threshold)
+      : 0
+  const fsUploadOnConsistencyFailure = typeof source?.upload_on_consistency_failure === 'boolean' ? source.upload_on_consistency_failure : false
 
   const notif = spec.notifications as Record<string, unknown> | undefined
   const notifyMode = typeof notif?.mode === 'string' && notif.mode === 'custom' ? 'custom' : 'inherit'
@@ -87,6 +116,14 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
   const schedule = job.schedule ?? ''
   const scheduleTimezone = job.schedule_timezone || 'UTC'
   const simple = schedule.trim() ? cronToSimpleSchedule(schedule) : null
+
+  const vaultwardenConsistencyPolicy = normalizeConsistencyPolicy(source?.consistency_policy)
+  const vaultwardenConsistencyFailThreshold =
+    typeof source?.consistency_fail_threshold === 'number' && source.consistency_fail_threshold >= 0
+      ? Math.floor(source.consistency_fail_threshold)
+      : 0
+  const vaultwardenUploadOnConsistencyFailure =
+    typeof source?.upload_on_consistency_failure === 'boolean' ? source.upload_on_consistency_failure : false
 
   return {
     id: job.id,
@@ -113,9 +150,17 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     fsSymlinkPolicy: normalizeSymlinkPolicy(source?.symlink_policy),
     fsHardlinkPolicy: normalizeHardlinkPolicy(source?.hardlink_policy),
     fsErrorPolicy: normalizeErrorPolicy(source?.error_policy),
+    fsSnapshotMode,
+    fsSnapshotProvider,
+    fsConsistencyPolicy,
+    fsConsistencyFailThreshold,
+    fsUploadOnConsistencyFailure,
     sqlitePath: typeof source?.path === 'string' ? source.path : '',
     sqliteIntegrityCheck: typeof source?.integrity_check === 'boolean' ? source.integrity_check : false,
     vaultwardenDataDir: typeof source?.data_dir === 'string' ? source.data_dir : '',
+    vaultwardenConsistencyPolicy,
+    vaultwardenConsistencyFailThreshold,
+    vaultwardenUploadOnConsistencyFailure,
     targetType,
     webdavBaseUrl: typeof target?.base_url === 'string' ? target.base_url : '',
     webdavSecretName: typeof target?.secret_name === 'string' ? target.secret_name : '',
@@ -166,10 +211,30 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
           symlink_policy: form.fsSymlinkPolicy,
           hardlink_policy: form.fsHardlinkPolicy,
           error_policy: form.fsErrorPolicy,
+          snapshot_mode: form.fsSnapshotMode,
+          ...(form.fsSnapshotMode !== 'off' && form.fsSnapshotProvider.trim()
+            ? { snapshot_provider: form.fsSnapshotProvider.trim() }
+            : {}),
+          consistency_policy: form.fsConsistencyPolicy,
+          ...(form.fsConsistencyPolicy === 'fail'
+            ? {
+                consistency_fail_threshold: Math.max(0, Math.floor(form.fsConsistencyFailThreshold || 0)),
+                upload_on_consistency_failure: form.fsUploadOnConsistencyFailure,
+              }
+            : {}),
         }
       : form.jobType === 'sqlite'
         ? { path: form.sqlitePath.trim(), integrity_check: form.sqliteIntegrityCheck }
-        : { data_dir: form.vaultwardenDataDir.trim() }
+        : {
+            data_dir: form.vaultwardenDataDir.trim(),
+            consistency_policy: form.vaultwardenConsistencyPolicy,
+            ...(form.vaultwardenConsistencyPolicy === 'fail'
+              ? {
+                  consistency_fail_threshold: Math.max(0, Math.floor(form.vaultwardenConsistencyFailThreshold || 0)),
+                  upload_on_consistency_failure: form.vaultwardenUploadOnConsistencyFailure,
+                }
+              : {}),
+          }
 
   const target =
     form.targetType === 'webdav'

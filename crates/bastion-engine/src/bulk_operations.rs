@@ -565,6 +565,11 @@ mod tests {
                 symlink_policy: Default::default(),
                 hardlink_policy: Default::default(),
                 error_policy: Default::default(),
+                snapshot_mode: Default::default(),
+                snapshot_provider: None,
+                consistency_policy: Default::default(),
+                consistency_fail_threshold: None,
+                upload_on_consistency_failure: None,
             },
             target: job_spec::TargetV1::Webdav {
                 base_url: "http://example.com/backup".to_string(),

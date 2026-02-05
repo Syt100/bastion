@@ -117,6 +117,60 @@ describe('jobDetailToEditorForm', () => {
     expect(form.retentionMaxDeletePerTick).toBe(10)
     expect(form.retentionMaxDeletePerDay).toBe(100)
   })
+
+  it('parses filesystem consistency policy fields from spec', () => {
+    const job = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: { encryption: { type: 'none' } },
+      notifications: { mode: 'inherit' },
+      source: {
+        paths: ['/tmp'],
+        consistency_policy: 'fail',
+        consistency_fail_threshold: 3,
+        upload_on_consistency_failure: true,
+      },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    const form = jobDetailToEditorForm(job)
+    expect(form.fsConsistencyPolicy).toBe('fail')
+    expect(form.fsConsistencyFailThreshold).toBe(3)
+    expect(form.fsUploadOnConsistencyFailure).toBe(true)
+  })
+
+  it('parses filesystem snapshot settings from spec', () => {
+    const job = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: { encryption: { type: 'none' } },
+      notifications: { mode: 'inherit' },
+      source: {
+        paths: ['/tmp'],
+        snapshot_mode: 'auto',
+        snapshot_provider: 'btrfs',
+      },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    const form = jobDetailToEditorForm(job)
+    expect(form.fsSnapshotMode).toBe('auto')
+    expect(form.fsSnapshotProvider).toBe('btrfs')
+  })
+
+  it('parses vaultwarden consistency policy fields from spec', () => {
+    const job = createJobDetail({
+      v: 1,
+      type: 'vaultwarden',
+      pipeline: { encryption: { type: 'none' } },
+      notifications: { mode: 'inherit' },
+      source: {
+        data_dir: '/vw',
+        consistency_policy: 'ignore',
+      },
+      target: { type: 'local_dir', base_dir: '/backups', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    const form = jobDetailToEditorForm(job)
+    expect(form.vaultwardenConsistencyPolicy).toBe('ignore')
+  })
 })
 
 describe('editorFormToRequest', () => {
@@ -172,6 +226,61 @@ describe('editorFormToRequest', () => {
     const spec = req.spec as Record<string, unknown>
     const source = spec['source'] as Record<string, unknown>
     expect(source['pre_scan']).toBe(false)
+  })
+
+  it('includes snapshot settings in filesystem source spec', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'filesystem'
+    form.fsPaths = ['/tmp']
+    form.targetType = 'local_dir'
+    form.localBaseDir = '/tmp/backups'
+    form.fsSnapshotMode = 'required'
+    form.fsSnapshotProvider = 'btrfs'
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const source = spec['source'] as Record<string, unknown>
+    expect(source['snapshot_mode']).toBe('required')
+    expect(source['snapshot_provider']).toBe('btrfs')
+  })
+
+  it('includes consistency policy fields in filesystem source spec', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'filesystem'
+    form.fsPaths = ['/tmp']
+    form.targetType = 'local_dir'
+    form.localBaseDir = '/tmp/backups'
+    form.fsConsistencyPolicy = 'fail'
+    form.fsConsistencyFailThreshold = 2
+    form.fsUploadOnConsistencyFailure = true
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const source = spec['source'] as Record<string, unknown>
+    expect(source['consistency_policy']).toBe('fail')
+    expect(source['consistency_fail_threshold']).toBe(2)
+    expect(source['upload_on_consistency_failure']).toBe(true)
+  })
+
+  it('includes consistency policy fields in vaultwarden source spec', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'vaultwarden'
+    form.vaultwardenDataDir = '/vw'
+    form.targetType = 'local_dir'
+    form.localBaseDir = '/tmp/backups'
+    form.vaultwardenConsistencyPolicy = 'fail'
+    form.vaultwardenConsistencyFailThreshold = 0
+    form.vaultwardenUploadOnConsistencyFailure = false
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const source = spec['source'] as Record<string, unknown>
+    expect(source['consistency_policy']).toBe('fail')
+    expect(source['consistency_fail_threshold']).toBe(0)
+    expect(source['upload_on_consistency_failure']).toBe(false)
   })
 
   it('omits retention from spec when disabled and all defaults', () => {

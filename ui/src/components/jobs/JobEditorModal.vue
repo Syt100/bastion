@@ -244,8 +244,14 @@ async function goToStep(targetStep: number): Promise<void> {
 
 function onJobTypeChanged(): void {
   clearFieldError('fsPaths')
+  clearFieldError('fsConsistencyPolicy')
+  clearFieldError('fsConsistencyFailThreshold')
+  clearFieldError('fsUploadOnConsistencyFailure')
   clearFieldError('sqlitePath')
   clearFieldError('vaultwardenDataDir')
+  clearFieldError('vaultwardenConsistencyPolicy')
+  clearFieldError('vaultwardenConsistencyFailThreshold')
+  clearFieldError('vaultwardenUploadOnConsistencyFailure')
 }
 
 function onTargetTypeChanged(): void {

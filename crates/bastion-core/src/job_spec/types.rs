@@ -111,6 +111,34 @@ pub enum FsErrorPolicy {
     SkipOk,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SnapshotModeV1 {
+    #[default]
+    Off,
+    Auto,
+    Required,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ConsistencyPolicyV1 {
+    #[default]
+    Warn,
+    Fail,
+    Ignore,
+}
+
+impl ConsistencyPolicyV1 {
+    pub fn should_emit_warnings(self) -> bool {
+        self != Self::Ignore
+    }
+
+    pub fn should_fail(self, total: u64, threshold: u64) -> bool {
+        self == Self::Fail && total > threshold
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilesystemSource {
     #[serde(default = "default_true")]
@@ -129,6 +157,16 @@ pub struct FilesystemSource {
     pub hardlink_policy: FsHardlinkPolicy,
     #[serde(default)]
     pub error_policy: FsErrorPolicy,
+    #[serde(default)]
+    pub snapshot_mode: SnapshotModeV1,
+    #[serde(default)]
+    pub snapshot_provider: Option<String>,
+    #[serde(default)]
+    pub consistency_policy: ConsistencyPolicyV1,
+    #[serde(default)]
+    pub consistency_fail_threshold: Option<u64>,
+    #[serde(default)]
+    pub upload_on_consistency_failure: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -141,6 +179,12 @@ pub struct SqliteSource {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VaultwardenSource {
     pub data_dir: String,
+    #[serde(default)]
+    pub consistency_policy: ConsistencyPolicyV1,
+    #[serde(default)]
+    pub consistency_fail_threshold: Option<u64>,
+    #[serde(default)]
+    pub upload_on_consistency_failure: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

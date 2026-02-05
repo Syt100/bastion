@@ -143,8 +143,17 @@ pub(super) async fn build_context(
         .map(consistency_changed_total_from_summary)
         .unwrap_or(0);
 
+    let is_consistency_failure = status == "failed" && error.as_str() == "source_consistency";
     let consistency_line_wecom = if consistency_changed_total > 0 {
-        format!("> Source changed during backup: {consistency_changed_total}\n")
+        if is_consistency_failure {
+            format!(
+                "> Failed by policy (source changed during backup): {consistency_changed_total}\n"
+            )
+        } else {
+            format!("> Source changed during backup: {consistency_changed_total}\n")
+        }
+    } else if is_consistency_failure {
+        "> Failed by policy: source changed during backup\n".to_string()
     } else {
         String::new()
     };
@@ -161,7 +170,15 @@ pub(super) async fn build_context(
     };
 
     let consistency_line_email = if consistency_changed_total > 0 {
-        format!("Source changed during backup: {consistency_changed_total}\n")
+        if is_consistency_failure {
+            format!(
+                "Failed by policy (source changed during backup): {consistency_changed_total}\n"
+            )
+        } else {
+            format!("Source changed during backup: {consistency_changed_total}\n")
+        }
+    } else if is_consistency_failure {
+        "Failed by policy: source changed during backup\n".to_string()
     } else {
         String::new()
     };
@@ -420,6 +437,64 @@ mod tests {
             "Source changed during backup: 2\n"
         );
         assert_eq!(ctx.error_line_email, "Error: boom\n");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn build_context_mentions_consistency_policy_failure() -> Result<(), anyhow::Error> {
+        let (_dir, db) = init_test_db().await?;
+
+        let job = bastion_storage::jobs_repo::create_job(
+            &db,
+            "myjob",
+            None,
+            None,
+            None,
+            OverlapPolicy::Reject,
+            serde_json::json!({}),
+        )
+        .await?;
+
+        let summary = serde_json::json!({
+            "target": {
+                "type": "webdav",
+                "run_url": "https://example.invalid/runs/123"
+            },
+            "filesystem": {
+                "consistency": {
+                    "v": 2,
+                    "changed_total": 1,
+                    "replaced_total": 0,
+                    "deleted_total": 0,
+                    "read_error_total": 0,
+                    "sample_truncated": false,
+                    "sample": []
+                }
+            }
+        });
+        let run = bastion_storage::runs_repo::create_run(
+            &db,
+            &job.id,
+            RunStatus::Failed,
+            0,
+            Some(1),
+            Some(summary),
+            Some("source_consistency"),
+        )
+        .await?;
+
+        let ctx = build_context(&db, &run.id).await?;
+        assert_eq!(ctx.title, "Bastion backup failed");
+        assert_eq!(ctx.status, "failed");
+        assert_eq!(ctx.consistency_changed_total, 1);
+        assert_eq!(
+            ctx.consistency_line_wecom,
+            "> Failed by policy (source changed during backup): 1\n"
+        );
+        assert_eq!(
+            ctx.consistency_line_email,
+            "Failed by policy (source changed during backup): 1\n"
+        );
         Ok(())
     }
 }

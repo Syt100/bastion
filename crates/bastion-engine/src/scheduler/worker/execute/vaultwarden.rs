@@ -5,6 +5,7 @@ use time::OffsetDateTime;
 
 use bastion_core::job_spec;
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
+use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
@@ -54,19 +55,31 @@ pub(super) async fn execute_vaultwarden_run(
     let job_id = job.id.clone();
     let run_id_owned = run_id.to_string();
     let vw_data_dir = source.data_dir.clone();
+    let consistency_policy = source.consistency_policy;
+    let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
+    let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let part_size = target.part_size_bytes();
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
 
-    let (on_part_finished, parts_uploader) = rolling_archive::prepare_archive_part_uploader(
-        db,
-        secrets,
-        &target,
-        &job.id,
-        run_id,
-        artifact_format.clone(),
-    )
-    .await?;
+    let allow_rolling_upload = !matches!(
+        (consistency_policy, upload_on_consistency_failure),
+        (job_spec::ConsistencyPolicyV1::Fail, false)
+    );
+
+    let (on_part_finished, parts_uploader) = if allow_rolling_upload {
+        rolling_archive::prepare_archive_part_uploader(
+            db,
+            secrets,
+            &target,
+            &job.id,
+            run_id,
+            artifact_format.clone(),
+        )
+        .await?
+    } else {
+        (None, None)
+    };
 
     let build = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
@@ -84,10 +97,17 @@ pub(super) async fn execute_vaultwarden_run(
         )
     })
     .await??;
-    let consistency = build.consistency;
+    let consistency_total = build.consistency.total();
+    let consistency_failed =
+        consistency_policy.should_fail(consistency_total, consistency_fail_threshold);
+    let consistency = if consistency_policy == job_spec::ConsistencyPolicyV1::Ignore {
+        Default::default()
+    } else {
+        build.consistency
+    };
     let artifacts = build.artifacts;
 
-    if consistency.total() > 0 {
+    if consistency_policy.should_emit_warnings() && consistency_total > 0 {
         let fields = serde_json::to_value(&consistency)?;
         let _ = run_events::append_and_broadcast(
             db,
@@ -105,9 +125,6 @@ pub(super) async fn execute_vaultwarden_run(
         handle.await??;
     }
 
-    run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
-        .await?;
-
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
     let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
     let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
@@ -116,6 +133,43 @@ pub(super) async fn execute_vaultwarden_run(
         .saturating_add(entries_size)
         .saturating_add(manifest_size)
         .saturating_add(complete_size);
+
+    if consistency_failed && !upload_on_consistency_failure {
+        let target_summary = serde_json::json!({
+            "type": match target {
+                job_spec::TargetV1::Webdav { .. } => "webdav",
+                job_spec::TargetV1::LocalDir { .. } => "local_dir",
+            }
+        });
+
+        let summary = serde_json::json!({
+            "target": target_summary,
+            "artifact_format": pipeline.format,
+            "entries_count": artifacts.entries_count,
+            "parts": artifacts.parts.len(),
+            "metrics": {
+                "transfer_total_bytes": transfer_total_bytes,
+            },
+            "vaultwarden": {
+                "data_dir": vw_data_dir,
+                "db": "db.sqlite3",
+                "consistency": consistency,
+            }
+        });
+
+        let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+
+        return Err(anyhow::Error::new(RunFailedWithSummary::new(
+            "source_consistency",
+            format!(
+                "source changed during backup (failed by policy): total {consistency_total} > threshold {consistency_fail_threshold}"
+            ),
+            summary,
+        )));
+    }
+
+    run_events::append_and_broadcast(db, run_events_bus, run_id, "info", "upload", "upload", None)
+        .await?;
 
     struct UploadThrottle {
         last_emit: Instant,
@@ -186,7 +240,7 @@ pub(super) async fn execute_vaultwarden_run(
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 
-    Ok(serde_json::json!({
+    let summary = serde_json::json!({
         "target": target_summary,
         "artifact_format": pipeline.format,
         "entries_count": artifacts.entries_count,
@@ -199,5 +253,17 @@ pub(super) async fn execute_vaultwarden_run(
             "db": "db.sqlite3",
             "consistency": consistency,
         }
-    }))
+    });
+
+    if consistency_failed {
+        return Err(anyhow::Error::new(RunFailedWithSummary::new(
+            "source_consistency",
+            format!(
+                "source changed during backup (failed by policy): total {consistency_total} > threshold {consistency_fail_threshold}"
+            ),
+            summary,
+        )));
+    }
+
+    Ok(summary)
 }

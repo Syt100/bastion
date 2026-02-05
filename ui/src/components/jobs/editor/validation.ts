@@ -26,8 +26,16 @@ export function stepForJobEditorField(field: JobEditorField): number {
     case 'retentionMaxDeletePerDay':
       return 1
     case 'fsPaths':
+    case 'fsSnapshotMode':
+    case 'fsSnapshotProvider':
+    case 'fsConsistencyPolicy':
+    case 'fsConsistencyFailThreshold':
+    case 'fsUploadOnConsistencyFailure':
     case 'sqlitePath':
     case 'vaultwardenDataDir':
+    case 'vaultwardenConsistencyPolicy':
+    case 'vaultwardenConsistencyFailThreshold':
+    case 'vaultwardenUploadOnConsistencyFailure':
       return 2
     case 'webdavBaseUrl':
     case 'webdavSecretName':
@@ -78,6 +86,17 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
       if (form.fsPaths.every((p) => !p.trim())) {
         issues.push({ field: 'fsPaths', message: t('errors.sourcePathsRequired') })
       }
+      if (form.fsSnapshotMode !== 'off') {
+        const selected = form.fsPaths.map((p) => p.trim()).filter(Boolean)
+        if (selected.length !== 1) {
+          issues.push({ field: 'fsSnapshotMode', message: t('errors.snapshotRequiresSingleSourcePath') })
+        }
+      }
+      if (form.fsConsistencyPolicy === 'fail') {
+        if (!Number.isFinite(form.fsConsistencyFailThreshold) || form.fsConsistencyFailThreshold < 0) {
+          issues.push({ field: 'fsConsistencyFailThreshold', message: t('errors.consistencyThresholdInvalid') })
+        }
+      }
     } else if (form.jobType === 'sqlite') {
       if (!form.sqlitePath.trim()) {
         issues.push({ field: 'sqlitePath', message: t('errors.sqlitePathRequired') })
@@ -85,6 +104,11 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
     } else {
       if (!form.vaultwardenDataDir.trim()) {
         issues.push({ field: 'vaultwardenDataDir', message: t('errors.vaultwardenDataDirRequired') })
+      }
+      if (form.vaultwardenConsistencyPolicy === 'fail') {
+        if (!Number.isFinite(form.vaultwardenConsistencyFailThreshold) || form.vaultwardenConsistencyFailThreshold < 0) {
+          issues.push({ field: 'vaultwardenConsistencyFailThreshold', message: t('errors.consistencyThresholdInvalid') })
+        }
       }
     }
     return issues

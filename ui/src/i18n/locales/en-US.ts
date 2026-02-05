@@ -508,6 +508,19 @@ const messages = {
       fsHardlinkPolicy: 'Hardlink policy',
       fsErrorPolicy: 'Error policy',
       fsErrorPolicyHelp: 'How to handle per-entry errors (read, hash, archive, etc.)',
+      snapshotMode: 'Snapshot mode',
+      snapshotModeHelp:
+        'Creates a point-in-time snapshot of the source when supported (otherwise falls back or fails by policy). Requires exactly 1 source path.',
+      snapshotProvider: 'Snapshot provider',
+      snapshotProviderHelp: 'Optional provider override (currently: btrfs). Availability depends on runtime configuration.',
+      consistencyPolicy: 'Consistency policy',
+      consistencyPolicyHelp:
+        'How to react when the source changes during backup packaging (best-effort). Use snapshots for a point-in-time view when available.',
+      consistencyFailThreshold: 'Fail threshold',
+      consistencyFailThresholdHelp: 'Fail when total warnings > threshold (0 = fail on any warning)',
+      uploadOnConsistencyFailure: 'Upload on failure',
+      uploadOnConsistencyFailureHelp:
+        'When failing by policy, still upload artifacts for troubleshooting (not recommended for strict safety).',
       sqlitePath: 'SQLite database file',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
       sqliteIntegrityCheck: 'SQLite integrity check',
@@ -581,6 +594,24 @@ const messages = {
         failFast: 'Fail fast',
         skipFail: 'Skip but mark failed',
         skipOk: 'Skip but mark success',
+      },
+    },
+    consistency: {
+      policy: {
+        warn: 'Warn',
+        fail: 'Fail',
+        ignore: 'Ignore',
+      },
+    },
+    snapshot: {
+      mode: {
+        off: 'Off',
+        auto: 'Auto',
+        required: 'Required',
+      },
+      provider: {
+        default: 'Default',
+        btrfs: 'Btrfs',
       },
     },
     columns: {
@@ -1137,10 +1168,22 @@ const messages = {
         read_error: 'read error',
       },
     },
+    snapshot: {
+      modes: {
+        auto: 'Auto',
+        required: 'Required',
+      },
+      statuses: {
+        ready: 'Ready',
+        unavailable: 'Unavailable',
+        cleanup_failed: 'Cleanup failed',
+      },
+    },
     detail: {
       overviewTitle: 'Overview',
       duration: 'Duration',
       target: 'Target',
+      fsSnapshot: 'Filesystem snapshot',
       sqlitePath: 'SQLite path',
       sqliteSnapshot: 'SQLite snapshot',
       vaultwardenDataDir: 'Vaultwarden data directory',
@@ -1429,6 +1472,8 @@ const messages = {
     scheduleTimezoneRequired: 'Schedule timezone is required',
     retentionRuleRequired: 'When retention is enabled, set keep-last or keep-days',
     retentionLimitInvalid: 'Delete limits must be > 0',
+    consistencyThresholdInvalid: 'Consistency threshold must be >= 0',
+    snapshotRequiresSingleSourcePath: 'Snapshot mode requires exactly 1 source path',
     previewRetentionFailed: 'Could not preview retention',
     applyRetentionFailed: 'Could not apply retention',
     fetchWebdavSecretsFailed: 'Could not load WebDAV credentials',

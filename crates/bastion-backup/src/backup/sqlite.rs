@@ -91,6 +91,11 @@ pub fn build_sqlite_run(
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
     let build = crate::backup::filesystem::build_filesystem_run(
         data_dir,

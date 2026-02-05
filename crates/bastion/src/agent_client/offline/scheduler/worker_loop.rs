@@ -191,6 +191,11 @@ mod tests {
                     symlink_policy: FsSymlinkPolicy::Skip,
                     hardlink_policy: FsHardlinkPolicy::Copy,
                     error_policy: FsErrorPolicy::FailFast,
+                    snapshot_mode: Default::default(),
+                    snapshot_provider: None,
+                    consistency_policy: Default::default(),
+                    consistency_fail_threshold: None,
+                    upload_on_consistency_failure: None,
                 },
                 target: TargetResolvedV1::LocalDir {
                     base_dir: "/tmp".to_string(),

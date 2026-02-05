@@ -508,6 +508,16 @@ const messages = {
       fsHardlinkPolicy: '硬链接策略',
       fsErrorPolicy: '错误策略',
       fsErrorPolicyHelp: '遇到单个文件/目录错误（读取、哈希、打包等）时的处理方式',
+      snapshotMode: '快照模式',
+      snapshotModeHelp: '在支持时为源创建时间点快照（否则按策略回退或失败）。要求仅选择 1 个源路径。',
+      snapshotProvider: '快照提供者',
+      snapshotProviderHelp: '可选的提供者覆盖（当前：btrfs）。是否可用取决于运行时配置。',
+      consistencyPolicy: '一致性策略',
+      consistencyPolicyHelp: '当打包过程中源文件发生变化时（尽力检测）的处理方式。若可用，建议开启快照以获得时间点一致性。',
+      consistencyFailThreshold: '失败阈值',
+      consistencyFailThresholdHelp: '当告警总数 > 阈值时失败（0 表示任意告警即失败）',
+      uploadOnConsistencyFailure: '失败时仍上传',
+      uploadOnConsistencyFailureHelp: '按策略失败时仍上传备份产物用于排查（严格安全场景不推荐）。',
       sqlitePath: 'SQLite 数据库文件',
       sqlitePathPlaceholder: '/path/to/db.sqlite3',
       sqliteIntegrityCheck: 'SQLite 完整性校验',
@@ -581,6 +591,24 @@ const messages = {
         failFast: '遇错立即失败',
         skipFail: '跳过错误但标记失败',
         skipOk: '跳过错误但标记成功',
+      },
+    },
+    consistency: {
+      policy: {
+        warn: '告警',
+        fail: '失败',
+        ignore: '忽略',
+      },
+    },
+    snapshot: {
+      mode: {
+        off: '关闭',
+        auto: '自动',
+        required: '强制',
+      },
+      provider: {
+        default: '默认',
+        btrfs: 'Btrfs',
       },
     },
     columns: {
@@ -1137,10 +1165,22 @@ const messages = {
         read_error: '读取错误',
       },
     },
+    snapshot: {
+      modes: {
+        auto: '自动',
+        required: '强制',
+      },
+      statuses: {
+        ready: '已就绪',
+        unavailable: '不可用',
+        cleanup_failed: '清理失败',
+      },
+    },
     detail: {
       overviewTitle: '概览',
       duration: '耗时',
       target: '目标',
+      fsSnapshot: '文件系统快照',
       sqlitePath: 'SQLite 路径',
       sqliteSnapshot: 'SQLite 快照',
       vaultwardenDataDir: 'Vaultwarden 数据目录',
@@ -1428,6 +1468,8 @@ const messages = {
     scheduleTimezoneRequired: '请选择计划时区',
     retentionRuleRequired: '启用保留策略时需设置保留最近 N 份或最近 N 天',
     retentionLimitInvalid: '删除上限必须大于 0',
+    consistencyThresholdInvalid: '一致性阈值必须为非负数',
+    snapshotRequiresSingleSourcePath: '快照模式要求仅选择 1 个源路径',
     previewRetentionFailed: '预览保留策略失败',
     applyRetentionFailed: '执行保留策略失败',
     fetchWebdavSecretsFailed: '获取 WebDAV 凭据列表失败',

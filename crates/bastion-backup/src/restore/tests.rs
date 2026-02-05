@@ -152,6 +152,11 @@ fn restore_raw_tree_to_local_fs_copies_files() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = crate::backup::filesystem::build_filesystem_run(
@@ -302,6 +307,11 @@ fn restore_from_parts_extracts_tar_zstd_age() {
         symlink_policy: FsSymlinkPolicy::Keep,
         hardlink_policy: FsHardlinkPolicy::Copy,
         error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
 
     let build = crate::backup::filesystem::build_filesystem_run(

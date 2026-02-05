@@ -75,6 +75,11 @@ fn managed_config_snapshot_is_persisted_encrypted() {
                 symlink_policy: Default::default(),
                 hardlink_policy: Default::default(),
                 error_policy: bastion_core::job_spec::FsErrorPolicy::FailFast,
+                snapshot_mode: Default::default(),
+                snapshot_provider: None,
+                consistency_policy: Default::default(),
+                consistency_fail_threshold: None,
+                upload_on_consistency_failure: None,
             },
             target: bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
                 base_dir: "/tmp".to_string(),
@@ -127,6 +132,11 @@ fn managed_config_snapshot_load_round_trips_after_save() {
                 symlink_policy: Default::default(),
                 hardlink_policy: Default::default(),
                 error_policy: bastion_core::job_spec::FsErrorPolicy::FailFast,
+                snapshot_mode: Default::default(),
+                snapshot_provider: None,
+                consistency_policy: Default::default(),
+                consistency_fail_threshold: None,
+                upload_on_consistency_failure: None,
             },
             target: bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
                 base_dir: "/tmp".to_string(),

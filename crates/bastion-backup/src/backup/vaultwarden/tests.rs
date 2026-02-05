@@ -41,6 +41,9 @@ fn vaultwarden_run_includes_snapshot_and_files() {
 
     let source = VaultwardenSource {
         data_dir: vw_dir.to_string_lossy().to_string(),
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
     let encryption = PayloadEncryption::None;
     let build = build_vaultwarden_run(
@@ -92,6 +95,9 @@ fn vaultwarden_run_rejects_non_archive_v1_format() {
     let run_id = Uuid::new_v4().to_string();
     let source = VaultwardenSource {
         data_dir: "/".to_string(),
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
     let encryption = PayloadEncryption::None;
 
@@ -122,6 +128,9 @@ fn vaultwarden_run_requires_source_data_dir() {
     let run_id = Uuid::new_v4().to_string();
     let source = VaultwardenSource {
         data_dir: "   ".to_string(),
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
     };
     let encryption = PayloadEncryption::None;
 

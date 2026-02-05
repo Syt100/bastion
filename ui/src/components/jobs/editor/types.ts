@@ -3,6 +3,8 @@ import type { JobType, OverlapPolicy } from '@/stores/jobs'
 export type FsSymlinkPolicy = 'keep' | 'follow' | 'skip'
 export type FsHardlinkPolicy = 'copy' | 'keep'
 export type FsErrorPolicy = 'fail_fast' | 'skip_fail' | 'skip_ok'
+export type ConsistencyPolicy = 'warn' | 'fail' | 'ignore'
+export type SnapshotMode = 'off' | 'auto' | 'required'
 
 export type JobTargetType = 'webdav' | 'local_dir'
 export type NotifyMode = 'inherit' | 'custom'
@@ -23,8 +25,16 @@ export type JobEditorField =
   | 'retentionMaxDeletePerTick'
   | 'retentionMaxDeletePerDay'
   | 'fsPaths'
+  | 'fsSnapshotMode'
+  | 'fsSnapshotProvider'
+  | 'fsConsistencyPolicy'
+  | 'fsConsistencyFailThreshold'
+  | 'fsUploadOnConsistencyFailure'
   | 'sqlitePath'
   | 'vaultwardenDataDir'
+  | 'vaultwardenConsistencyPolicy'
+  | 'vaultwardenConsistencyFailThreshold'
+  | 'vaultwardenUploadOnConsistencyFailure'
   | 'webdavBaseUrl'
   | 'webdavSecretName'
   | 'localBaseDir'
@@ -56,9 +66,17 @@ export type JobEditorForm = {
   fsSymlinkPolicy: FsSymlinkPolicy
   fsHardlinkPolicy: FsHardlinkPolicy
   fsErrorPolicy: FsErrorPolicy
+  fsSnapshotMode: SnapshotMode
+  fsSnapshotProvider: string
+  fsConsistencyPolicy: ConsistencyPolicy
+  fsConsistencyFailThreshold: number
+  fsUploadOnConsistencyFailure: boolean
   sqlitePath: string
   sqliteIntegrityCheck: boolean
   vaultwardenDataDir: string
+  vaultwardenConsistencyPolicy: ConsistencyPolicy
+  vaultwardenConsistencyFailThreshold: number
+  vaultwardenUploadOnConsistencyFailure: boolean
   targetType: JobTargetType
   webdavBaseUrl: string
   webdavSecretName: string
