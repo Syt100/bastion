@@ -1,5 +1,22 @@
 type RecordValue = Record<string, unknown>
 
+export type ParsedConsistencySample = {
+  path: string
+  reason: string
+  error: string | null
+}
+
+export type ParsedConsistencyReport = {
+  v: number | null
+  changedTotal: number
+  replacedTotal: number
+  deletedTotal: number
+  readErrorTotal: number
+  total: number
+  sampleTruncated: boolean
+  sample: ParsedConsistencySample[]
+}
+
 export type ParsedRunSummary = {
   targetType: string | null
   targetLocation: string | null
@@ -8,6 +25,7 @@ export type ParsedRunSummary = {
   warningsTotal: number | null
   errorsTotal: number | null
   consistencyChangedTotal: number | null
+  consistency: ParsedConsistencyReport | null
   sqlitePath: string | null
   sqliteSnapshotName: string | null
   vaultwardenDataDir: string | null
@@ -27,6 +45,39 @@ function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function parseConsistencyReport(value: unknown): ParsedConsistencyReport | null {
+  const obj = asRecord(value)
+  if (!obj) return null
+
+  const changedTotal = asNumber(obj.changed_total) ?? 0
+  const replacedTotal = asNumber(obj.replaced_total) ?? 0
+  const deletedTotal = asNumber(obj.deleted_total) ?? 0
+  const readErrorTotal = asNumber(obj.read_error_total) ?? 0
+  const total = changedTotal + replacedTotal + deletedTotal + readErrorTotal
+
+  const sampleRaw = Array.isArray(obj.sample) ? obj.sample : []
+  const sample: ParsedConsistencySample[] = []
+  for (const item of sampleRaw) {
+    const it = asRecord(item)
+    if (!it) continue
+    const path = asString(it.path)
+    const reason = asString(it.reason)
+    if (!path || !reason) continue
+    sample.push({ path, reason, error: asString(it.error) })
+  }
+
+  return {
+    v: asNumber(obj.v),
+    changedTotal,
+    replacedTotal,
+    deletedTotal,
+    readErrorTotal,
+    total,
+    sampleTruncated: typeof obj.sample_truncated === 'boolean' ? obj.sample_truncated : false,
+    sample,
+  }
+}
+
 export function parseRunSummary(summary: unknown): ParsedRunSummary {
   const empty: ParsedRunSummary = {
     targetType: null,
@@ -36,6 +87,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     warningsTotal: null,
     errorsTotal: null,
     consistencyChangedTotal: null,
+    consistency: null,
     sqlitePath: null,
     sqliteSnapshotName: null,
     vaultwardenDataDir: null,
@@ -57,13 +109,9 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
   const sqlite = asRecord(obj.sqlite)
   const vaultwarden = asRecord(obj.vaultwarden)
 
-  const consistency = asRecord(filesystem?.consistency) ?? asRecord(vaultwarden?.consistency)
-  const consistencyChangedTotal = consistency
-    ? (asNumber(consistency.changed_total) ?? 0) +
-      (asNumber(consistency.replaced_total) ?? 0) +
-      (asNumber(consistency.deleted_total) ?? 0) +
-      (asNumber(consistency.read_error_total) ?? 0)
-    : null
+  const consistency =
+    parseConsistencyReport(filesystem?.consistency) ?? parseConsistencyReport(vaultwarden?.consistency)
+  const consistencyChangedTotal = consistency ? consistency.total : null
 
   return {
     targetType,
@@ -73,6 +121,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     warningsTotal,
     errorsTotal,
     consistencyChangedTotal,
+    consistency,
     sqlitePath: asString(sqlite?.path),
     sqliteSnapshotName: asString(sqlite?.snapshot_name),
     vaultwardenDataDir: asString(vaultwarden?.data_dir),

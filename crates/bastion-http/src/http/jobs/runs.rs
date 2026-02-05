@@ -12,6 +12,8 @@ use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
 use bastion_engine::run_events;
 
+use std::collections::HashMap;
+
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct TriggerRunResponse {
     run_id: String,
@@ -96,48 +98,51 @@ pub(in crate::http) struct RunListItem {
     consistency_changed_total: u64,
 }
 
+fn consistency_changed_total_from_report(report: Option<&serde_json::Value>) -> u64 {
+    let Some(report) = report else {
+        return 0;
+    };
+    let Some(obj) = report.as_object() else {
+        return 0;
+    };
+
+    let changed_total = obj
+        .get("changed_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let replaced_total = obj
+        .get("replaced_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let deleted_total = obj
+        .get("deleted_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let read_error_total = obj
+        .get("read_error_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    changed_total
+        .saturating_add(replaced_total)
+        .saturating_add(deleted_total)
+        .saturating_add(read_error_total)
+}
+
 fn consistency_changed_total_from_summary(summary: Option<&serde_json::Value>) -> u64 {
     let Some(summary) = summary else {
         return 0;
     };
 
-    fn report_total(report: &serde_json::Value) -> u64 {
-        let Some(obj) = report.as_object() else {
-            return 0;
-        };
-
-        let changed_total = obj
-            .get("changed_total")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let replaced_total = obj
-            .get("replaced_total")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let deleted_total = obj
-            .get("deleted_total")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let read_error_total = obj
-            .get("read_error_total")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        changed_total
-            .saturating_add(replaced_total)
-            .saturating_add(deleted_total)
-            .saturating_add(read_error_total)
-    }
-
     let fs_total = summary
         .get("filesystem")
         .and_then(|v| v.get("consistency"))
-        .map(report_total)
+        .map(|v| consistency_changed_total_from_report(Some(v)))
         .unwrap_or(0);
     let vw_total = summary
         .get("vaultwarden")
         .and_then(|v| v.get("consistency"))
-        .map(report_total)
+        .map(|v| consistency_changed_total_from_report(Some(v)))
         .unwrap_or(0);
 
     fs_total.saturating_add(vw_total)
@@ -156,23 +161,53 @@ pub(in crate::http) async fn list_job_runs(
     }
 
     let runs = runs_repo::list_runs_for_job(&state.db, &job_id, 50).await?;
+
+    let mut fallback_run_ids: Vec<String> = Vec::new();
+    for r in &runs {
+        if r.summary.is_none() {
+            fallback_run_ids.push(r.id.clone());
+        }
+    }
+
+    let mut fallback_totals: HashMap<String, u64> = HashMap::new();
+    if !fallback_run_ids.is_empty() {
+        let events = runs_repo::list_latest_run_events_by_kind(
+            &state.db,
+            &fallback_run_ids,
+            "source_consistency",
+        )
+        .await?;
+        for e in events {
+            fallback_totals.insert(
+                e.run_id,
+                consistency_changed_total_from_report(e.fields.as_ref()),
+            );
+        }
+    }
+
     Ok(Json(
         runs.into_iter()
-            .map(|r| RunListItem {
-                id: r.id,
-                status: r.status,
-                started_at: r.started_at,
-                ended_at: r.ended_at,
-                error: r.error,
-                executed_offline: r
-                    .summary
-                    .as_ref()
-                    .and_then(|v| v.get("executed_offline"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
-                consistency_changed_total: consistency_changed_total_from_summary(
-                    r.summary.as_ref(),
-                ),
+            .map(|r| {
+                let consistency_changed_total = if r.summary.is_some() {
+                    consistency_changed_total_from_summary(r.summary.as_ref())
+                } else {
+                    fallback_totals.get(&r.id).copied().unwrap_or(0)
+                };
+
+                RunListItem {
+                    id: r.id,
+                    status: r.status,
+                    started_at: r.started_at,
+                    ended_at: r.ended_at,
+                    error: r.error,
+                    executed_offline: r
+                        .summary
+                        .as_ref()
+                        .and_then(|v| v.get("executed_offline"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    consistency_changed_total,
+                }
             })
             .collect(),
     ))

@@ -13,12 +13,22 @@ describe('parseRunSummary', () => {
           deleted_total: 3,
           read_error_total: 4,
           sample_truncated: false,
-          sample: [],
+          sample: [{ path: 'a.txt', reason: 'mtime_changed' }],
         },
       },
     })
 
     expect(parsed.consistencyChangedTotal).toBe(10)
+    expect(parsed.consistency).toEqual({
+      v: 1,
+      changedTotal: 1,
+      replacedTotal: 2,
+      deletedTotal: 3,
+      readErrorTotal: 4,
+      total: 10,
+      sampleTruncated: false,
+      sample: [{ path: 'a.txt', reason: 'mtime_changed', error: null }],
+    })
   })
 
   it('parses consistencyChangedTotal from vaultwarden summary', () => {
@@ -33,12 +43,13 @@ describe('parseRunSummary', () => {
           deleted_total: 0,
           read_error_total: 0,
           sample_truncated: false,
-          sample: [],
+          sample: [{ path: 'db.sqlite3', reason: 'size_changed' }],
         },
       },
     })
 
     expect(parsed.consistencyChangedTotal).toBe(1)
+    expect(parsed.consistency?.sample[0]).toEqual({ path: 'db.sqlite3', reason: 'size_changed', error: null })
   })
 
   it('returns null when consistency is absent', () => {
@@ -46,4 +57,3 @@ describe('parseRunSummary', () => {
     expect(parsed.consistencyChangedTotal).toBe(null)
   })
 })
-

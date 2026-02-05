@@ -1,4 +1,4 @@
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, SqlitePool};
 use time::OffsetDateTime;
 
 use super::RunEvent;
@@ -102,6 +102,62 @@ pub async fn list_run_events_after_seq(
     .fetch_all(db)
     .await?;
 
+    let mut events = Vec::with_capacity(rows.len());
+    for row in rows {
+        let fields_json = row.get::<Option<String>, _>("fields_json");
+        let fields = match fields_json {
+            Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+            None => None,
+        };
+
+        events.push(RunEvent {
+            run_id: row.get::<String, _>("run_id"),
+            seq: row.get::<i64, _>("seq"),
+            ts: row.get::<i64, _>("ts"),
+            level: row.get::<String, _>("level"),
+            kind: row.get::<String, _>("kind"),
+            message: row.get::<String, _>("message"),
+            fields,
+        });
+    }
+
+    Ok(events)
+}
+
+pub async fn list_latest_run_events_by_kind(
+    db: &SqlitePool,
+    run_ids: &[String],
+    kind: &str,
+) -> Result<Vec<RunEvent>, anyhow::Error> {
+    if run_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // NOTE: This avoids N+1 queries when callers need to enrich a list of runs with the latest
+    // event of a specific kind (e.g. to show early warnings before summary_json is persisted).
+    let mut qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        r#"
+        SELECT e.run_id, e.seq, e.ts, e.level, e.kind, e.message, e.fields_json
+        FROM run_events e
+        JOIN (
+          SELECT run_id, MAX(seq) AS max_seq
+          FROM run_events
+          WHERE kind = "#,
+    );
+    qb.push_bind(kind);
+    qb.push(" AND run_id IN (");
+    let mut separated = qb.separated(", ");
+    for run_id in run_ids {
+        separated.push_bind(run_id);
+    }
+    separated.push_unseparated(
+        r#")
+          GROUP BY run_id
+        ) m ON m.run_id = e.run_id AND m.max_seq = e.seq
+        "#,
+    );
+
+    let rows = qb.build().fetch_all(db).await?;
     let mut events = Vec::with_capacity(rows.len());
     for row in rows {
         let fields_json = row.get::<Option<String>, _>("fields_json");

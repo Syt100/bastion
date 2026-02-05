@@ -156,3 +156,232 @@ async fn list_job_runs_includes_consistency_changed_total() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn list_job_runs_derives_consistency_from_latest_event_when_summary_missing() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job1",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({"v":1,"type":"filesystem"}),
+    )
+    .await
+    .expect("create job");
+
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Running,
+        2000,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    runs_repo::append_run_event(
+        &pool,
+        &run.id,
+        "warn",
+        "source_consistency",
+        "source consistency warnings",
+        Some(serde_json::json!({
+            "v": 1,
+            "changed_total": 1,
+            "replaced_total": 2,
+            "deleted_total": 0,
+            "read_error_total": 0,
+            "sample_truncated": false,
+            "sample": []
+        })),
+    )
+    .await
+    .expect("append event");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/jobs/{}/runs", base_url(addr), job.id))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    let items = body.as_array().expect("array");
+
+    let got = items
+        .iter()
+        .find(|v| v.get("id").and_then(|x| x.as_str()) == Some(run.id.as_str()))
+        .expect("run item present");
+    assert_eq!(got["consistency_changed_total"].as_u64().unwrap_or(0), 3);
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_job_runs_summary_takes_precedence_over_event() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job1",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({"v":1,"type":"filesystem"}),
+    )
+    .await
+    .expect("create job");
+
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1000,
+        Some(1001),
+        Some(serde_json::json!({
+            "filesystem": {
+                "consistency": {
+                    "v": 1,
+                    "changed_total": 1,
+                    "replaced_total": 0,
+                    "deleted_total": 0,
+                    "read_error_total": 0,
+                    "sample_truncated": false,
+                    "sample": []
+                }
+            }
+        })),
+        None,
+    )
+    .await
+    .expect("create run");
+
+    // If we were to use events, this would inflate the count, but summary_json MUST win.
+    runs_repo::append_run_event(
+        &pool,
+        &run.id,
+        "warn",
+        "source_consistency",
+        "source consistency warnings",
+        Some(serde_json::json!({
+            "v": 1,
+            "changed_total": 9,
+            "replaced_total": 9,
+            "deleted_total": 9,
+            "read_error_total": 9,
+            "sample_truncated": false,
+            "sample": []
+        })),
+    )
+    .await
+    .expect("append event");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/jobs/{}/runs", base_url(addr), job.id))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    let items = body.as_array().expect("array");
+
+    let got = items
+        .iter()
+        .find(|v| v.get("id").and_then(|x| x.as_str()) == Some(run.id.as_str()))
+        .expect("run item present");
+    assert_eq!(got["consistency_changed_total"].as_u64().unwrap_or(0), 1);
+
+    server.abort();
+}

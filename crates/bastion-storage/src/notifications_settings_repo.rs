@@ -39,7 +39,7 @@ impl Default for NotificationsTemplates {
 > Run: {{run_id}}
 > Started: {{started_at}}
 > Ended: {{ended_at}}
-{{target_line_wecom}}{{error_line_wecom}}"#
+{{target_line_wecom}}{{consistency_line_wecom}}{{error_line_wecom}}"#
                 .to_string(),
             email_subject: "Bastion {{status_text}} - {{job_name}}".to_string(),
             email_body: r#"Bastion backup
@@ -49,7 +49,7 @@ Run: {{run_id}}
 Status: {{status}}
 Started: {{started_at}}
 Ended: {{ended_at}}
-{{target_line_email}}{{error_line_email}}"#
+{{target_line_email}}{{consistency_line_email}}{{error_line_email}}"#
                 .to_string(),
         }
     }

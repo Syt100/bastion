@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, nextTick, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -159,6 +159,27 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
 const parsedSummary = computed(() => parseRunSummary(props.summary))
 const targetTypeLabel = computed(() => runTargetTypeLabel(t, parsedSummary.value.targetType))
 
+const consistencyReport = computed(() => parsedSummary.value.consistency)
+const hasConsistencyWarnings = computed(() => (consistencyReport.value?.total ?? 0) > 0)
+
+const CONSISTENCY_SAMPLE_MAX = 10
+const consistencySamples = computed(() => {
+  const c = consistencyReport.value
+  if (!c) return []
+  return c.sample.slice(0, CONSISTENCY_SAMPLE_MAX)
+})
+const consistencySampleMore = computed(() => {
+  const c = consistencyReport.value
+  if (!c) return false
+  return c.sampleTruncated || c.sample.length > CONSISTENCY_SAMPLE_MAX
+})
+
+function consistencyReasonLabel(reason: string): string {
+  const key = `runs.consistency.reasons.${reason}`
+  const translated = t(key)
+  return translated === key ? reason : translated
+}
+
 const eventsListEl = ref<HTMLDivElement | null>(null)
 
 function scrollToSeq(seq: number): void {
@@ -166,7 +187,7 @@ function scrollToSeq(seq: number): void {
   if (!root) return
   const el = root.querySelector<HTMLElement>(`[data-event-seq=\"${seq}\"]`)
   if (!el) return
-  el.scrollIntoView({ block: 'nearest' })
+  if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
 }
 
 function jumpToFirstError(): void {
@@ -211,6 +232,14 @@ async function copyEventJson(e: RunEvent): Promise<void> {
   const ok = await copyText(formatJson(e))
   if (ok) message.success(t('messages.copied'))
   else message.error(t('errors.copyFailed'))
+}
+
+async function viewConsistencyEvents(): Promise<void> {
+  detailTab.value = 'events'
+  kindFilter.value = 'source_consistency'
+  await nextTick()
+  const seq = findFirstEventSeq(props.events, (e) => e.kind === 'source_consistency')
+  if (seq != null) scrollToSeq(seq)
 }
 </script>
 
@@ -367,6 +396,57 @@ async function copyEventJson(e: RunEvent): Promise<void> {
                 <div v-if="parsedSummary.vaultwardenDataDir">
                   {{ t('runs.detail.vaultwardenDataDir') }}:
                   <span class="font-mono tabular-nums">{{ parsedSummary.vaultwardenDataDir }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="hasConsistencyWarnings" class="rounded app-border-subtle p-3" data-testid="run-detail-consistency">
+              <div class="flex items-start justify-between gap-3 mb-2">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium">{{ t('runs.consistency.title') }}</div>
+                  <div class="text-xs app-text-muted">{{ t('runs.consistency.help') }}</div>
+                </div>
+                <n-button size="small" quaternary @click="viewConsistencyEvents">
+                  {{ t('runs.consistency.viewEvents') }}
+                </n-button>
+              </div>
+
+              <div v-if="consistencyReport" class="flex flex-wrap items-center gap-2">
+                <n-tag size="small" type="warning" :bordered="false">
+                  {{ t('runs.badges.sourceChanged', { count: consistencyReport.total }) }}
+                </n-tag>
+                <n-tag size="small" :bordered="false">
+                  {{ t('runs.consistency.changed', { count: consistencyReport.changedTotal }) }}
+                </n-tag>
+                <n-tag size="small" :bordered="false">
+                  {{ t('runs.consistency.replaced', { count: consistencyReport.replacedTotal }) }}
+                </n-tag>
+                <n-tag size="small" :bordered="false">
+                  {{ t('runs.consistency.deleted', { count: consistencyReport.deletedTotal }) }}
+                </n-tag>
+                <n-tag size="small" :bordered="false">
+                  {{ t('runs.consistency.readError', { count: consistencyReport.readErrorTotal }) }}
+                </n-tag>
+              </div>
+
+              <div v-if="consistencySamples.length > 0" class="mt-3">
+                <div class="text-sm font-medium mb-2">{{ t('runs.consistency.samples') }}</div>
+                <div class="space-y-1 text-xs app-text-muted">
+                  <div v-for="item in consistencySamples" :key="item.path" class="flex items-start gap-2">
+                    <span class="shrink-0 app-text-muted">-</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-start justify-between gap-2">
+                        <span class="min-w-0 flex-1 font-mono break-all">{{ item.path }}</span>
+                        <n-tag size="tiny" :bordered="false" class="shrink-0">
+                          {{ consistencyReasonLabel(item.reason) }}
+                        </n-tag>
+                      </div>
+                      <div v-if="item.error" class="mt-0.5 truncate" :title="item.error">{{ item.error }}</div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="consistencySampleMore" class="mt-2 text-xs app-text-muted">
+                  {{ t('runs.consistency.sampleTruncated', { count: CONSISTENCY_SAMPLE_MAX }) }}
                 </div>
               </div>
             </div>

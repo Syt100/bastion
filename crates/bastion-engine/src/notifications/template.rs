@@ -15,10 +15,13 @@ pub(super) struct TemplateContext {
     target_type: String,
     target_location: String,
     target: String,
+    consistency_changed_total: u64,
     error: String,
     target_line_wecom: String,
+    consistency_line_wecom: String,
     error_line_wecom: String,
     target_line_email: String,
+    consistency_line_email: String,
     error_line_email: String,
 }
 
@@ -46,10 +49,13 @@ pub(super) async fn build_context(
             target_type: "-".to_string(),
             target_location: "-".to_string(),
             target: "-".to_string(),
+            consistency_changed_total: 0,
             error: String::new(),
             target_line_wecom: String::new(),
+            consistency_line_wecom: String::new(),
             error_line_wecom: String::new(),
             target_line_email: String::new(),
+            consistency_line_email: String::new(),
             error_line_email: String::new(),
         });
     };
@@ -88,8 +94,11 @@ pub(super) async fn build_context(
 
     let mut target_type = "-".to_string();
     let mut target_location = "-".to_string();
-    if let Some(summary) = summary_json
-        && let Ok(v) = serde_json::from_str::<serde_json::Value>(&summary)
+    let summary_value = summary_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+
+    if let Some(v) = &summary_value
         && let Some(target) = v.get("target")
     {
         target_type = target
@@ -129,6 +138,17 @@ pub(super) async fn build_context(
         String::new()
     };
 
+    let consistency_changed_total = summary_value
+        .as_ref()
+        .map(consistency_changed_total_from_summary)
+        .unwrap_or(0);
+
+    let consistency_line_wecom = if consistency_changed_total > 0 {
+        format!("> Source changed during backup: {consistency_changed_total}\n")
+    } else {
+        String::new()
+    };
+
     let target_line_email = if target != "-" {
         format!("Target: {target}\n")
     } else {
@@ -136,6 +156,12 @@ pub(super) async fn build_context(
     };
     let error_line_email = if !error.is_empty() {
         format!("Error: {error}\n")
+    } else {
+        String::new()
+    };
+
+    let consistency_line_email = if consistency_changed_total > 0 {
+        format!("Source changed during backup: {consistency_changed_total}\n")
     } else {
         String::new()
     };
@@ -152,15 +178,19 @@ pub(super) async fn build_context(
         target_type,
         target_location,
         target,
+        consistency_changed_total,
         error,
         target_line_wecom,
+        consistency_line_wecom,
         error_line_wecom,
         target_line_email,
+        consistency_line_email,
         error_line_email,
     })
 }
 
 pub(super) fn render_template(template: &str, ctx: &TemplateContext) -> String {
+    let consistency_changed_total = ctx.consistency_changed_total.to_string();
     let pairs = [
         ("{{title}}", ctx.title.as_str()),
         ("{{job_id}}", ctx.job_id.as_str()),
@@ -173,10 +203,22 @@ pub(super) fn render_template(template: &str, ctx: &TemplateContext) -> String {
         ("{{target_type}}", ctx.target_type.as_str()),
         ("{{target_location}}", ctx.target_location.as_str()),
         ("{{target}}", ctx.target.as_str()),
+        (
+            "{{consistency_changed_total}}",
+            consistency_changed_total.as_str(),
+        ),
         ("{{error}}", ctx.error.as_str()),
         ("{{target_line_wecom}}", ctx.target_line_wecom.as_str()),
+        (
+            "{{consistency_line_wecom}}",
+            ctx.consistency_line_wecom.as_str(),
+        ),
         ("{{error_line_wecom}}", ctx.error_line_wecom.as_str()),
         ("{{target_line_email}}", ctx.target_line_email.as_str()),
+        (
+            "{{consistency_line_email}}",
+            ctx.consistency_line_email.as_str(),
+        ),
         ("{{error_line_email}}", ctx.error_line_email.as_str()),
     ];
 
@@ -185,6 +227,49 @@ pub(super) fn render_template(template: &str, ctx: &TemplateContext) -> String {
         out = out.replace(k, v);
     }
     out
+}
+
+fn consistency_changed_total_from_summary(summary: &serde_json::Value) -> u64 {
+    fn report_total(report: &serde_json::Value) -> u64 {
+        let Some(obj) = report.as_object() else {
+            return 0;
+        };
+
+        let changed_total = obj
+            .get("changed_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let replaced_total = obj
+            .get("replaced_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let deleted_total = obj
+            .get("deleted_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let read_error_total = obj
+            .get("read_error_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        changed_total
+            .saturating_add(replaced_total)
+            .saturating_add(deleted_total)
+            .saturating_add(read_error_total)
+    }
+
+    let fs_total = summary
+        .get("filesystem")
+        .and_then(|v| v.get("consistency"))
+        .map(report_total)
+        .unwrap_or(0);
+    let vw_total = summary
+        .get("vaultwarden")
+        .and_then(|v| v.get("consistency"))
+        .map(report_total)
+        .unwrap_or(0);
+
+    fs_total.saturating_add(vw_total)
 }
 
 fn format_ts(ts: i64) -> String {
@@ -221,10 +306,13 @@ mod tests {
             target_type: "tt".to_string(),
             target_location: "tl".to_string(),
             target: "tgt".to_string(),
+            consistency_changed_total: 0,
             error: "err".to_string(),
             target_line_wecom: "> Target: tgt\n".to_string(),
+            consistency_line_wecom: "> Source changed during backup: 0\n".to_string(),
             error_line_wecom: "> Error: err\n".to_string(),
             target_line_email: "Target: tgt\n".to_string(),
+            consistency_line_email: "Source changed during backup: 0\n".to_string(),
             error_line_email: "Error: err\n".to_string(),
         };
 
@@ -275,6 +363,17 @@ mod tests {
             "target": {
                 "type": "webdav",
                 "run_url": "https://example.invalid/runs/123"
+            },
+            "filesystem": {
+                "consistency": {
+                    "v": 1,
+                    "changed_total": 2,
+                    "replaced_total": 0,
+                    "deleted_total": 0,
+                    "read_error_total": 0,
+                    "sample_truncated": false,
+                    "sample": []
+                }
             }
         });
         let run = bastion_storage::runs_repo::create_run(
@@ -301,15 +400,24 @@ mod tests {
         assert_eq!(ctx.target_location, "https://example.invalid/runs/123");
         assert_eq!(ctx.target, "webdav https://example.invalid/runs/123");
 
+        assert_eq!(ctx.consistency_changed_total, 2);
         assert_eq!(ctx.error, "boom");
         assert_eq!(
             ctx.target_line_wecom,
             "> Target: webdav https://example.invalid/runs/123\n"
         );
+        assert_eq!(
+            ctx.consistency_line_wecom,
+            "> Source changed during backup: 2\n"
+        );
         assert_eq!(ctx.error_line_wecom, "> Error: boom\n");
         assert_eq!(
             ctx.target_line_email,
             "Target: webdav https://example.invalid/runs/123\n"
+        );
+        assert_eq!(
+            ctx.consistency_line_email,
+            "Source changed during backup: 2\n"
         );
         assert_eq!(ctx.error_line_email, "Error: boom\n");
         Ok(())
