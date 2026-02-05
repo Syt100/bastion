@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::Read;
 use std::path::{Component, Path};
 
 use serde::Serialize;
@@ -67,7 +65,11 @@ pub(super) fn archive_prefix_for_path(path: &Path) -> Result<String, anyhow::Err
     Ok(components.join("/"))
 }
 
-pub(super) fn hash_file(path: &Path) -> Result<String, anyhow::Error> {
+#[cfg(test)]
+fn hash_file(path: &Path) -> Result<String, anyhow::Error> {
+    use std::fs::File;
+    use std::io::Read;
+
     let mut file = File::open(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buf = vec![0u8; 1024 * 1024];

@@ -1,8 +1,8 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+#[cfg(test)]
+fn hash_file(path: &std::path::Path) -> Result<String, anyhow::Error> {
+    use std::fs::File;
+    use std::io::Read;
 
-pub(super) fn hash_file(path: &Path) -> Result<String, anyhow::Error> {
     let mut file = File::open(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buf = vec![0u8; 1024 * 1024];

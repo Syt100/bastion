@@ -4,7 +4,6 @@ use std::io::Read;
 pub(crate) struct HashingReader<R> {
     inner: R,
     hasher: blake3::Hasher,
-    bytes_read: u64,
 }
 
 impl<R> HashingReader<R> {
@@ -12,12 +11,7 @@ impl<R> HashingReader<R> {
         Self {
             inner,
             hasher: blake3::Hasher::new(),
-            bytes_read: 0,
         }
-    }
-
-    pub(crate) fn bytes_read(&self) -> u64 {
-        self.bytes_read
     }
 
     pub(crate) fn finalize_hex(&mut self) -> String {
@@ -33,8 +27,6 @@ impl<R: Read> Read for HashingReader<R> {
             return Ok(0);
         }
         self.hasher.update(&buf[..n]);
-        self.bytes_read = self.bytes_read.saturating_add(n as u64);
         Ok(n)
     }
 }
-
