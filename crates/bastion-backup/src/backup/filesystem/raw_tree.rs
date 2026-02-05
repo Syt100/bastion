@@ -11,7 +11,7 @@ use bastion_core::manifest::HashAlgorithm;
 use walkdir::WalkDir;
 
 use crate::backup::source_consistency::{
-    SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+    FileFingerprintV2, SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
 };
 
 use super::FilesystemBuildIssues;
@@ -667,40 +667,6 @@ fn write_file_entry(
     let size = meta.len();
     let before_fp = fingerprint_for_meta(meta);
 
-    let mut record_consistency = |read_error: Option<String>| {
-        match source_meta_for_policy(fs_path, source.symlink_policy) {
-            Ok(after_meta) => {
-                let after_fp = fingerprint_for_meta(&after_meta);
-                if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
-                    if reason == "file_id_changed" {
-                        consistency.record_replaced(
-                            archive_path,
-                            Some(before_fp.clone()),
-                            Some(after_fp),
-                        );
-                    } else {
-                        consistency.record_changed(
-                            archive_path,
-                            reason,
-                            Some(before_fp.clone()),
-                            Some(after_fp),
-                        );
-                    }
-                    return;
-                }
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                consistency.record_deleted(archive_path, Some(before_fp.clone()));
-                return;
-            }
-            Err(_) => {}
-        }
-
-        if let Some(error) = read_error {
-            consistency.record_read_error(archive_path, error, Some(before_fp.clone()));
-        }
-    };
-
     let hardlink_group = if source.hardlink_policy == FsHardlinkPolicy::Keep
         && !is_symlink_path
         && hardlink_candidate(meta)
@@ -736,7 +702,11 @@ fn write_file_entry(
     let tmp = dst_path.with_file_name(format!("{file_name}.partial"));
     let _ = std::fs::remove_file(&tmp);
 
-    let (written, hash) = match copy_file_and_hash(fs_path, &tmp) {
+    let CopyFileAndHashResult {
+        written,
+        hash,
+        after_handle: after_handle_fp,
+    } = match copy_file_and_hash(fs_path, &tmp) {
         Ok(v) => v,
         Err(error) => {
             let msg = format!("copy error: {archive_path}: {error}");
@@ -744,7 +714,16 @@ fn write_file_entry(
                 return Err(anyhow::anyhow!(msg));
             }
             issues.record_error(msg);
-            record_consistency(Some(error.to_string()));
+            let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
+                .ok()
+                .map(|m| fingerprint_for_meta(&m));
+            consistency.record_read_error(
+                archive_path,
+                error.to_string(),
+                Some(before_fp),
+                None,
+                after_path_fp,
+            );
             return Ok(());
         }
     };
@@ -754,9 +733,16 @@ fn write_file_entry(
             return Err(anyhow::anyhow!(msg));
         }
         issues.record_error(msg);
-        record_consistency(Some(format!(
-            "copy size mismatch: expected {size}, got {written}"
-        )));
+        let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
+            .ok()
+            .map(|m| fingerprint_for_meta(&m));
+        consistency.record_read_error(
+            archive_path,
+            format!("copy size mismatch: expected {size}, got {written}"),
+            Some(before_fp),
+            after_handle_fp,
+            after_path_fp,
+        );
         let _ = std::fs::remove_file(&tmp);
         return Ok(());
     }
@@ -768,7 +754,16 @@ fn write_file_entry(
             return Err(anyhow::anyhow!(msg));
         }
         issues.record_error(msg);
-        record_consistency(Some(error.to_string()));
+        let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
+            .ok()
+            .map(|m| fingerprint_for_meta(&m));
+        consistency.record_read_error(
+            archive_path,
+            error.to_string(),
+            Some(before_fp),
+            after_handle_fp,
+            after_path_fp,
+        );
         let _ = std::fs::remove_file(&tmp);
         return Ok(());
     }
@@ -776,7 +771,42 @@ fn write_file_entry(
     stats.data_files = stats.data_files.saturating_add(1);
     stats.data_bytes = stats.data_bytes.saturating_add(size);
 
-    record_consistency(None);
+    match source_meta_for_policy(fs_path, source.symlink_policy) {
+        Ok(after_meta) => {
+            let after_path_fp = fingerprint_for_meta(&after_meta);
+            let replaced = before_fp.file_id.is_some()
+                && after_path_fp.file_id.is_some()
+                && before_fp.file_id != after_path_fp.file_id;
+
+            if replaced {
+                consistency.record_replaced(
+                    archive_path,
+                    Some(before_fp),
+                    after_handle_fp,
+                    Some(after_path_fp),
+                );
+            } else {
+                let reason = after_handle_fp
+                    .as_ref()
+                    .and_then(|h| detect_change_reason(&before_fp, h))
+                    .or_else(|| detect_change_reason(&before_fp, &after_path_fp));
+
+                if let Some(reason) = reason {
+                    consistency.record_changed(
+                        archive_path,
+                        reason,
+                        Some(before_fp),
+                        after_handle_fp,
+                        Some(after_path_fp),
+                    );
+                }
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            consistency.record_deleted(archive_path, Some(before_fp), after_handle_fp);
+        }
+        Err(_) => {}
+    }
 
     let (mtime, mode, uid, gid) = meta_fields(meta);
     let xattrs = xattrs_for_path(fs_path);
@@ -935,7 +965,13 @@ fn data_path_for_archive_path(data_dir: &Path, archive_path: &str) -> PathBuf {
     out
 }
 
-fn copy_file_and_hash(src: &Path, dst: &Path) -> Result<(u64, String), anyhow::Error> {
+struct CopyFileAndHashResult {
+    written: u64,
+    hash: String,
+    after_handle: Option<FileFingerprintV2>,
+}
+
+fn copy_file_and_hash(src: &Path, dst: &Path) -> Result<CopyFileAndHashResult, anyhow::Error> {
     let mut input = File::open(src)?;
     let mut out = File::create(dst)?;
 
@@ -954,8 +990,14 @@ fn copy_file_and_hash(src: &Path, dst: &Path) -> Result<(u64, String), anyhow::E
     }
     out.flush()?;
 
+    let after_handle = input.metadata().ok().map(|m| fingerprint_for_meta(&m));
+
     let hash = hasher.finalize().to_hex().to_string();
-    Ok((written, hash))
+    Ok(CopyFileAndHashResult {
+        written,
+        hash,
+        after_handle,
+    })
 }
 
 fn meta_fields(meta: &std::fs::Metadata) -> (Option<u64>, Option<u32>, Option<u64>, Option<u64>) {

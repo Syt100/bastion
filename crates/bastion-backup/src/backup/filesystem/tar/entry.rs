@@ -135,36 +135,60 @@ pub(super) fn write_file_entry<W: Write>(
             return Err(anyhow::anyhow!(msg));
         }
         issues.record_error(msg);
-        consistency.record_read_error(archive_path, error.to_string(), Some(before_fp));
+        let file = reader.into_inner();
+        let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
+        let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
+            .ok()
+            .map(|m| fingerprint_for_meta(&m));
+        consistency.record_read_error(
+            archive_path,
+            error.to_string(),
+            Some(before_fp),
+            after_handle_fp,
+            after_path_fp,
+        );
         return Ok(());
     }
 
     let hash = reader.finalize_hex();
+    let file = reader.into_inner();
+    let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
 
     // Best-effort: if the file changes while we're reading it, record a warning for the run so
     // users can judge consistency risk (no snapshots).
     match source_meta_for_policy(fs_path, source.symlink_policy) {
         Ok(after_meta) => {
-            let after_fp = fingerprint_for_meta(&after_meta);
-            if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
-                if reason == "file_id_changed" {
-                    consistency.record_replaced(
-                        archive_path,
-                        Some(before_fp.clone()),
-                        Some(after_fp),
-                    );
-                } else {
+            let after_path_fp = fingerprint_for_meta(&after_meta);
+            let replaced = before_fp.file_id.is_some()
+                && after_path_fp.file_id.is_some()
+                && before_fp.file_id != after_path_fp.file_id;
+
+            if replaced {
+                consistency.record_replaced(
+                    archive_path,
+                    Some(before_fp),
+                    after_handle_fp,
+                    Some(after_path_fp),
+                );
+            } else {
+                let reason = after_handle_fp
+                    .as_ref()
+                    .and_then(|h| detect_change_reason(&before_fp, h))
+                    .or_else(|| detect_change_reason(&before_fp, &after_path_fp));
+
+                if let Some(reason) = reason {
                     consistency.record_changed(
                         archive_path,
                         reason,
-                        Some(before_fp.clone()),
-                        Some(after_fp),
+                        Some(before_fp),
+                        after_handle_fp,
+                        Some(after_path_fp),
                     );
                 }
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            consistency.record_deleted(archive_path, Some(before_fp.clone()));
+            consistency.record_deleted(archive_path, Some(before_fp), after_handle_fp);
         }
         Err(_) => {}
     }

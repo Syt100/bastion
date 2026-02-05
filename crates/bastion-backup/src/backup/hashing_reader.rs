@@ -14,6 +14,10 @@ impl<R> HashingReader<R> {
         }
     }
 
+    pub(crate) fn into_inner(self) -> R {
+        self.inner
+    }
+
     pub(crate) fn finalize_hex(&mut self) -> String {
         let hasher = std::mem::replace(&mut self.hasher, blake3::Hasher::new());
         hasher.finalize().to_hex().to_string()

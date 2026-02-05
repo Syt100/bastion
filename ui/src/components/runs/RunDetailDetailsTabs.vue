@@ -442,6 +442,18 @@ async function viewConsistencyEvents(): Promise<void> {
                         </n-tag>
                       </div>
                       <div v-if="item.error" class="mt-0.5 truncate" :title="item.error">{{ item.error }}</div>
+
+                      <details v-if="item.before || item.afterHandle || item.afterPath" class="mt-1 rounded app-border-subtle p-2">
+                        <summary class="cursor-pointer select-none text-xs app-text-muted">
+                          {{ t('runs.consistency.evidence') }}
+                        </summary>
+                        <div class="mt-2">
+                          <n-code
+                            :code="formatJson({ before: item.before, after_handle: item.afterHandle, after_path: item.afterPath })"
+                            language="json"
+                          />
+                        </div>
+                      </details>
                     </div>
                   </div>
                 </div>

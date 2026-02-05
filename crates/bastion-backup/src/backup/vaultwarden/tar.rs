@@ -153,29 +153,42 @@ fn write_vaultwarden_tar_entries<W: Write>(
 
             tar.append_data(&mut header, Path::new(&rel_str), &mut reader)?;
             let hash = reader.finalize_hex();
+            let file = reader.into_inner();
+            let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
 
             match std::fs::metadata(entry.path()) {
                 Ok(after_meta) => {
-                    let after_fp = fingerprint_for_meta(&after_meta);
-                    if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
-                        if reason == "file_id_changed" {
-                            consistency.record_replaced(
-                                &rel_str,
-                                Some(before_fp.clone()),
-                                Some(after_fp),
-                            );
-                        } else {
+                    let after_path_fp = fingerprint_for_meta(&after_meta);
+                    let replaced = before_fp.file_id.is_some()
+                        && after_path_fp.file_id.is_some()
+                        && before_fp.file_id != after_path_fp.file_id;
+
+                    if replaced {
+                        consistency.record_replaced(
+                            &rel_str,
+                            Some(before_fp),
+                            after_handle_fp,
+                            Some(after_path_fp),
+                        );
+                    } else {
+                        let reason = after_handle_fp
+                            .as_ref()
+                            .and_then(|h| detect_change_reason(&before_fp, h))
+                            .or_else(|| detect_change_reason(&before_fp, &after_path_fp));
+
+                        if let Some(reason) = reason {
                             consistency.record_changed(
                                 &rel_str,
                                 reason,
-                                Some(before_fp.clone()),
-                                Some(after_fp),
+                                Some(before_fp),
+                                after_handle_fp,
+                                Some(after_path_fp),
                             );
                         }
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    consistency.record_deleted(&rel_str, Some(before_fp.clone()));
+                    consistency.record_deleted(&rel_str, Some(before_fp), after_handle_fp);
                 }
                 Err(_) => {}
             }

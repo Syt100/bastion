@@ -134,13 +134,21 @@ describe('RunDetailDetailsTabs consistency section', () => {
         summary: {
           filesystem: {
             consistency: {
-              v: 1,
+              v: 2,
               changed_total: 1,
               replaced_total: 0,
               deleted_total: 0,
               read_error_total: 0,
               sample_truncated: false,
-              sample: [{ path: 'a.txt', reason: 'mtime_changed' }],
+              sample: [
+                {
+                  path: 'a.txt',
+                  reason: 'mtime_changed',
+                  before: { size_bytes: 1, mtime_unix_nanos: 1 },
+                  after_handle: { size_bytes: 1, mtime_unix_nanos: 2 },
+                  after_path: { size_bytes: 1, mtime_unix_nanos: 2 },
+                },
+              ],
             },
           },
         },
@@ -172,6 +180,7 @@ describe('RunDetailDetailsTabs consistency section', () => {
     expect(wrapper.find('[data-testid="run-detail-consistency"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('a.txt')
     expect(wrapper.text()).toContain('mtime_changed')
+    expect(wrapper.text()).toContain('runs.consistency.evidence')
 
     // Before filtering, both events are visible.
     expect(wrapper.text()).toContain('upload')
@@ -189,4 +198,3 @@ describe('RunDetailDetailsTabs consistency section', () => {
     expect(wrapper.text()).not.toContain('upload')
   })
 })
-

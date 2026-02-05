@@ -10,7 +10,7 @@ use time::format_description::well_known::Rfc3339;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::backup::source_consistency::{SourceConsistencyReportV1, SourceConsistencyTracker};
+use crate::backup::source_consistency::{SourceConsistencyReportV2, SourceConsistencyTracker};
 use crate::backup::{
     BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
     MANIFEST_NAME, PayloadEncryption, stage_dir,
@@ -121,7 +121,7 @@ impl FilesystemBuildIssues {
 pub struct FilesystemRunBuild {
     pub artifacts: LocalRunArtifacts,
     pub issues: FilesystemBuildIssues,
-    pub consistency: SourceConsistencyReportV1,
+    pub consistency: SourceConsistencyReportV2,
     pub source_total: Option<ProgressUnitsV1>,
     pub raw_tree_stats: Option<RawTreeBuildStats>,
 }

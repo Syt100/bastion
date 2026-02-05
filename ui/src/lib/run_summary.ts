@@ -4,6 +4,9 @@ export type ParsedConsistencySample = {
   path: string
   reason: string
   error: string | null
+  before: RecordValue | null
+  afterHandle: RecordValue | null
+  afterPath: RecordValue | null
 }
 
 export type ParsedConsistencyReport = {
@@ -63,7 +66,14 @@ function parseConsistencyReport(value: unknown): ParsedConsistencyReport | null 
     const path = asString(it.path)
     const reason = asString(it.reason)
     if (!path || !reason) continue
-    sample.push({ path, reason, error: asString(it.error) })
+    sample.push({
+      path,
+      reason,
+      error: asString(it.error),
+      before: asRecord(it.before),
+      afterHandle: asRecord(it.after_handle),
+      afterPath: asRecord(it.after_path) ?? asRecord(it.after),
+    })
   }
 
   return {

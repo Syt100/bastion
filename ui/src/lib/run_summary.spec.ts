@@ -7,7 +7,7 @@ describe('parseRunSummary', () => {
     const parsed = parseRunSummary({
       filesystem: {
         consistency: {
-          v: 1,
+          v: 2,
           changed_total: 1,
           replaced_total: 2,
           deleted_total: 3,
@@ -20,14 +20,23 @@ describe('parseRunSummary', () => {
 
     expect(parsed.consistencyChangedTotal).toBe(10)
     expect(parsed.consistency).toEqual({
-      v: 1,
+      v: 2,
       changedTotal: 1,
       replacedTotal: 2,
       deletedTotal: 3,
       readErrorTotal: 4,
       total: 10,
       sampleTruncated: false,
-      sample: [{ path: 'a.txt', reason: 'mtime_changed', error: null }],
+      sample: [
+        {
+          path: 'a.txt',
+          reason: 'mtime_changed',
+          error: null,
+          before: null,
+          afterHandle: null,
+          afterPath: null,
+        },
+      ],
     })
   })
 
@@ -37,19 +46,34 @@ describe('parseRunSummary', () => {
         data_dir: '/vw',
         db: 'db.sqlite3',
         consistency: {
-          v: 1,
+          v: 2,
           changed_total: 0,
           replaced_total: 1,
           deleted_total: 0,
           read_error_total: 0,
           sample_truncated: false,
-          sample: [{ path: 'db.sqlite3', reason: 'size_changed' }],
+          sample: [
+            {
+              path: 'db.sqlite3',
+              reason: 'size_changed',
+              before: { size_bytes: 10, mtime_unix_nanos: 1 },
+              after_handle: { size_bytes: 10, mtime_unix_nanos: 1 },
+              after_path: { size_bytes: 11, mtime_unix_nanos: 2 },
+            },
+          ],
         },
       },
     })
 
     expect(parsed.consistencyChangedTotal).toBe(1)
-    expect(parsed.consistency?.sample[0]).toEqual({ path: 'db.sqlite3', reason: 'size_changed', error: null })
+    expect(parsed.consistency?.sample[0]).toEqual({
+      path: 'db.sqlite3',
+      reason: 'size_changed',
+      error: null,
+      before: { size_bytes: 10, mtime_unix_nanos: 1 },
+      afterHandle: { size_bytes: 10, mtime_unix_nanos: 1 },
+      afterPath: { size_bytes: 11, mtime_unix_nanos: 2 },
+    })
   })
 
   it('returns null when consistency is absent', () => {

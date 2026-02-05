@@ -1128,6 +1128,7 @@ const messages = {
       readError: 'Read errors: {count}',
       samples: 'Samples',
       sampleTruncated: 'Showing first {count} samples (more truncated).',
+      evidence: 'Evidence',
       reasons: {
         mtime_changed: 'mtime changed',
         size_changed: 'size changed',

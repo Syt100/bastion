@@ -5,50 +5,53 @@ use serde::{Deserialize, Serialize};
 
 use bastion_core::job_spec::FsSymlinkPolicy;
 
-const REPORT_VERSION: u32 = 1;
+const REPORT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FileIdV1 {
-    pub dev: u64,
-    pub ino: u64,
+#[serde(rename_all = "snake_case", tag = "platform")]
+pub enum FileIdV2 {
+    Unix { dev: u64, ino: u64 },
+    Windows { volume_serial: u32, file_index: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FileFingerprintV1 {
+pub struct FileFingerprintV2 {
     pub size_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mtime_unix_seconds: Option<u64>,
+    pub mtime_unix_nanos: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_id: Option<FileIdV1>,
+    pub file_id: Option<FileIdV2>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SourceConsistencySampleV1 {
+pub struct SourceConsistencySampleV2 {
     /// Archive path (not the OS path).
     pub path: String,
     /// Machine-readable reason (e.g. "mtime_changed", "size_changed", "file_id_changed",
     /// "stat_after_missing", "read_error").
     pub reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub before: Option<FileFingerprintV1>,
+    pub before: Option<FileFingerprintV2>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub after: Option<FileFingerprintV1>,
+    pub after_handle: Option<FileFingerprintV2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_path: Option<FileFingerprintV2>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SourceConsistencyReportV1 {
+pub struct SourceConsistencyReportV2 {
     pub v: u32,
     pub changed_total: u64,
     pub replaced_total: u64,
     pub deleted_total: u64,
     pub read_error_total: u64,
     pub sample_truncated: bool,
-    pub sample: Vec<SourceConsistencySampleV1>,
+    pub sample: Vec<SourceConsistencySampleV2>,
 }
 
-impl Default for SourceConsistencyReportV1 {
+impl Default for SourceConsistencyReportV2 {
     fn default() -> Self {
         Self {
             v: REPORT_VERSION,
@@ -62,7 +65,7 @@ impl Default for SourceConsistencyReportV1 {
     }
 }
 
-impl SourceConsistencyReportV1 {
+impl SourceConsistencyReportV2 {
     pub fn total(&self) -> u64 {
         self.changed_total
             .saturating_add(self.replaced_total)
@@ -78,18 +81,18 @@ impl SourceConsistencyReportV1 {
 #[derive(Debug)]
 pub struct SourceConsistencyTracker {
     max_samples: usize,
-    report: SourceConsistencyReportV1,
+    report: SourceConsistencyReportV2,
 }
 
 impl SourceConsistencyTracker {
     pub fn new(max_samples: usize) -> Self {
         Self {
             max_samples,
-            report: SourceConsistencyReportV1::default(),
+            report: SourceConsistencyReportV2::default(),
         }
     }
 
-    pub fn finish(self) -> SourceConsistencyReportV1 {
+    pub fn finish(self) -> SourceConsistencyReportV2 {
         self.report
     }
 
@@ -97,15 +100,17 @@ impl SourceConsistencyTracker {
         &mut self,
         archive_path: &str,
         reason: &'static str,
-        before: Option<FileFingerprintV1>,
-        after: Option<FileFingerprintV1>,
+        before: Option<FileFingerprintV2>,
+        after_handle: Option<FileFingerprintV2>,
+        after_path: Option<FileFingerprintV2>,
     ) {
         self.report.changed_total = self.report.changed_total.saturating_add(1);
-        self.push_sample(SourceConsistencySampleV1 {
+        self.push_sample(SourceConsistencySampleV2 {
             path: archive_path.to_string(),
             reason: reason.to_string(),
             before,
-            after,
+            after_handle,
+            after_path,
             error: None,
         });
     }
@@ -113,26 +118,34 @@ impl SourceConsistencyTracker {
     pub fn record_replaced(
         &mut self,
         archive_path: &str,
-        before: Option<FileFingerprintV1>,
-        after: Option<FileFingerprintV1>,
+        before: Option<FileFingerprintV2>,
+        after_handle: Option<FileFingerprintV2>,
+        after_path: Option<FileFingerprintV2>,
     ) {
         self.report.replaced_total = self.report.replaced_total.saturating_add(1);
-        self.push_sample(SourceConsistencySampleV1 {
+        self.push_sample(SourceConsistencySampleV2 {
             path: archive_path.to_string(),
             reason: "file_id_changed".to_string(),
             before,
-            after,
+            after_handle,
+            after_path,
             error: None,
         });
     }
 
-    pub fn record_deleted(&mut self, archive_path: &str, before: Option<FileFingerprintV1>) {
+    pub fn record_deleted(
+        &mut self,
+        archive_path: &str,
+        before: Option<FileFingerprintV2>,
+        after_handle: Option<FileFingerprintV2>,
+    ) {
         self.report.deleted_total = self.report.deleted_total.saturating_add(1);
-        self.push_sample(SourceConsistencySampleV1 {
+        self.push_sample(SourceConsistencySampleV2 {
             path: archive_path.to_string(),
             reason: "stat_after_missing".to_string(),
             before,
-            after: None,
+            after_handle,
+            after_path: None,
             error: None,
         });
     }
@@ -141,19 +154,22 @@ impl SourceConsistencyTracker {
         &mut self,
         archive_path: &str,
         error: impl Into<String>,
-        before: Option<FileFingerprintV1>,
+        before: Option<FileFingerprintV2>,
+        after_handle: Option<FileFingerprintV2>,
+        after_path: Option<FileFingerprintV2>,
     ) {
         self.report.read_error_total = self.report.read_error_total.saturating_add(1);
-        self.push_sample(SourceConsistencySampleV1 {
+        self.push_sample(SourceConsistencySampleV2 {
             path: archive_path.to_string(),
             reason: "read_error".to_string(),
             before,
-            after: None,
+            after_handle,
+            after_path,
             error: Some(error.into()),
         });
     }
 
-    fn push_sample(&mut self, sample: SourceConsistencySampleV1) {
+    fn push_sample(&mut self, sample: SourceConsistencySampleV2) {
         if self.report.sample.len() < self.max_samples {
             self.report.sample.push(sample);
         } else {
@@ -162,14 +178,14 @@ impl SourceConsistencyTracker {
     }
 }
 
-pub fn fingerprint_for_meta(meta: &std::fs::Metadata) -> FileFingerprintV1 {
-    FileFingerprintV1 {
+pub fn fingerprint_for_meta(meta: &std::fs::Metadata) -> FileFingerprintV2 {
+    FileFingerprintV2 {
         size_bytes: meta.len(),
-        mtime_unix_seconds: meta
+        mtime_unix_nanos: meta
             .modified()
             .ok()
             .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs()),
+            .and_then(|d| u64::try_from(d.as_nanos()).ok()),
         file_id: file_id_for_meta(meta),
     }
 }
@@ -186,22 +202,31 @@ pub fn source_meta_for_policy(
 }
 
 #[cfg(unix)]
-fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV1> {
+fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
     use std::os::unix::fs::MetadataExt as _;
-    Some(FileIdV1 {
+    Some(FileIdV2::Unix {
         dev: meta.dev(),
         ino: meta.ino(),
     })
 }
 
-#[cfg(not(unix))]
-fn file_id_for_meta(_meta: &std::fs::Metadata) -> Option<FileIdV1> {
+#[cfg(windows)]
+fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
+    use std::os::windows::fs::MetadataExt as _;
+    Some(FileIdV2::Windows {
+        volume_serial: meta.volume_serial_number(),
+        file_index: meta.file_index(),
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn file_id_for_meta(_meta: &std::fs::Metadata) -> Option<FileIdV2> {
     None
 }
 
 pub fn detect_change_reason(
-    before: &FileFingerprintV1,
-    after: &FileFingerprintV1,
+    before: &FileFingerprintV2,
+    after: &FileFingerprintV2,
 ) -> Option<&'static str> {
     if before.file_id.is_some() && after.file_id.is_some() && before.file_id != after.file_id {
         return Some("file_id_changed");
@@ -211,12 +236,75 @@ pub fn detect_change_reason(
         return Some("size_changed");
     }
 
-    if before.mtime_unix_seconds.is_some()
-        && after.mtime_unix_seconds.is_some()
-        && before.mtime_unix_seconds != after.mtime_unix_seconds
+    if before.mtime_unix_nanos.is_some()
+        && after.mtime_unix_nanos.is_some()
+        && before.mtime_unix_nanos != after.mtime_unix_nanos
     {
         return Some("mtime_changed");
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_change_reason_detects_mtime_nanos() {
+        let before = FileFingerprintV2 {
+            size_bytes: 1,
+            mtime_unix_nanos: Some(1000),
+            file_id: None,
+        };
+        let after = FileFingerprintV2 {
+            size_bytes: 1,
+            mtime_unix_nanos: Some(1001),
+            file_id: None,
+        };
+        assert_eq!(detect_change_reason(&before, &after), Some("mtime_changed"));
+    }
+
+    #[test]
+    fn detect_change_reason_detects_size_change() {
+        let before = FileFingerprintV2 {
+            size_bytes: 1,
+            mtime_unix_nanos: None,
+            file_id: None,
+        };
+        let after = FileFingerprintV2 {
+            size_bytes: 2,
+            mtime_unix_nanos: None,
+            file_id: None,
+        };
+        assert_eq!(detect_change_reason(&before, &after), Some("size_changed"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fingerprint_for_meta_includes_unix_file_id() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.txt");
+        std::fs::write(&path, b"hi").expect("write file");
+        let meta = std::fs::metadata(&path).expect("metadata");
+
+        let fp = fingerprint_for_meta(&meta);
+        assert_eq!(fp.size_bytes, 2);
+        assert!(fp.mtime_unix_nanos.is_some());
+        assert!(matches!(fp.file_id, Some(FileIdV2::Unix { .. })));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn fingerprint_for_meta_includes_windows_file_id() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.txt");
+        std::fs::write(&path, b"hi").expect("write file");
+        let meta = std::fs::metadata(&path).expect("metadata");
+
+        let fp = fingerprint_for_meta(&meta);
+        assert_eq!(fp.size_bytes, 2);
+        assert!(fp.mtime_unix_nanos.is_some());
+        assert!(matches!(fp.file_id, Some(FileIdV2::Windows { .. })));
+    }
 }

@@ -1128,6 +1128,7 @@ const messages = {
       readError: '读取错误：{count}',
       samples: '样例',
       sampleTruncated: '仅展示前 {count} 条（更多已截断）。',
+      evidence: '证据',
       reasons: {
         mtime_changed: '修改时间变更',
         size_changed: '大小变更',
