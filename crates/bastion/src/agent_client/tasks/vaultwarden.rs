@@ -106,7 +106,7 @@ pub(super) async fn run_vaultwarden_backup(
     let data_dir_buf = ctx.data_dir.to_path_buf();
     let job_id_clone = ctx.job_id.to_string();
     let run_id_clone = ctx.run_id.to_string();
-    let artifacts = tokio::task::spawn_blocking(move || {
+    let build = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
             &data_dir_buf,
             &job_id_clone,
@@ -122,6 +122,8 @@ pub(super) async fn run_vaultwarden_backup(
         )
     })
     .await??;
+    let _consistency = build.consistency;
+    let artifacts = build.artifacts;
 
     if let Some(handle) = parts_uploader {
         handle.await??;

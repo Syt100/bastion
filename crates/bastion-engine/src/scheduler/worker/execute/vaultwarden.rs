@@ -68,7 +68,7 @@ pub(super) async fn execute_vaultwarden_run(
     )
     .await?;
 
-    let artifacts = tokio::task::spawn_blocking(move || {
+    let build = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
             &data_dir,
             &job_id,
@@ -84,6 +84,8 @@ pub(super) async fn execute_vaultwarden_run(
         )
     })
     .await??;
+    let _consistency = build.consistency;
+    let artifacts = build.artifacts;
 
     if let Some(handle) = parts_uploader {
         handle.await??;

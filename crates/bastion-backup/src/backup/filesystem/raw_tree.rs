@@ -10,6 +10,10 @@ use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, 
 use bastion_core::manifest::HashAlgorithm;
 use walkdir::WalkDir;
 
+use crate::backup::source_consistency::{
+    SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+};
+
 use super::FilesystemBuildIssues;
 use super::RawTreeBuildStats;
 use super::entries_index::{EntriesIndexWriter, EntryRecord, write_entry_record};
@@ -21,6 +25,7 @@ pub(super) fn write_raw_tree(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<RawTreeBuildStats, anyhow::Error> {
     let data_dir = stage_dir.join("data");
@@ -83,6 +88,7 @@ pub(super) fn write_raw_tree(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 &mut stats,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
@@ -116,6 +122,7 @@ pub(super) fn write_raw_tree(
             entries_writer,
             entries_count,
             issues,
+            consistency,
             &mut stats,
             &mut hardlink_index,
             &mut seen_archive_paths,
@@ -138,6 +145,7 @@ fn write_legacy_root(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
@@ -195,6 +203,7 @@ fn write_legacy_root(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 stats,
                 hardlink_index,
                 seen_archive_paths,
@@ -313,6 +322,7 @@ fn write_legacy_root(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 stats,
                 hardlink_index,
                 seen_archive_paths,
@@ -373,6 +383,7 @@ fn write_source_entry(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
@@ -508,6 +519,7 @@ fn write_source_entry(
                     entries_writer,
                     entries_count,
                     issues,
+                    consistency,
                     stats,
                     hardlink_index,
                     seen_archive_paths,
@@ -598,6 +610,7 @@ fn write_source_entry(
             entries_writer,
             entries_count,
             issues,
+            consistency,
             stats,
             hardlink_index,
             seen_archive_paths,
@@ -640,6 +653,7 @@ fn write_file_entry(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     stats: &mut RawTreeBuildStats,
     hardlink_index: &mut HashMap<FileId, String>,
     seen_archive_paths: &mut HashSet<String>,
@@ -651,6 +665,41 @@ fn write_file_entry(
     }
 
     let size = meta.len();
+    let before_fp = fingerprint_for_meta(meta);
+
+    let mut record_consistency = |read_error: Option<String>| {
+        match source_meta_for_policy(fs_path, source.symlink_policy) {
+            Ok(after_meta) => {
+                let after_fp = fingerprint_for_meta(&after_meta);
+                if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
+                    if reason == "file_id_changed" {
+                        consistency.record_replaced(
+                            archive_path,
+                            Some(before_fp.clone()),
+                            Some(after_fp),
+                        );
+                    } else {
+                        consistency.record_changed(
+                            archive_path,
+                            reason,
+                            Some(before_fp.clone()),
+                            Some(after_fp),
+                        );
+                    }
+                    return;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                consistency.record_deleted(archive_path, Some(before_fp.clone()));
+                return;
+            }
+            Err(_) => {}
+        }
+
+        if let Some(error) = read_error {
+            consistency.record_read_error(archive_path, error, Some(before_fp.clone()));
+        }
+    };
 
     let hardlink_group = if source.hardlink_policy == FsHardlinkPolicy::Keep
         && !is_symlink_path
@@ -695,6 +744,7 @@ fn write_file_entry(
                 return Err(anyhow::anyhow!(msg));
             }
             issues.record_error(msg);
+            record_consistency(Some(error.to_string()));
             return Ok(());
         }
     };
@@ -704,6 +754,9 @@ fn write_file_entry(
             return Err(anyhow::anyhow!(msg));
         }
         issues.record_error(msg);
+        record_consistency(Some(format!(
+            "copy size mismatch: expected {size}, got {written}"
+        )));
         let _ = std::fs::remove_file(&tmp);
         return Ok(());
     }
@@ -715,12 +768,15 @@ fn write_file_entry(
             return Err(anyhow::anyhow!(msg));
         }
         issues.record_error(msg);
+        record_consistency(Some(error.to_string()));
         let _ = std::fs::remove_file(&tmp);
         return Ok(());
     }
 
     stats.data_files = stats.data_files.saturating_add(1);
     stats.data_bytes = stats.data_bytes.saturating_add(size);
+
+    record_consistency(None);
 
     let (mtime, mode, uid, gid) = meta_fields(meta);
     let xattrs = xattrs_for_path(fs_path);

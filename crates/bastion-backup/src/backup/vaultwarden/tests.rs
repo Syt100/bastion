@@ -43,7 +43,7 @@ fn vaultwarden_run_includes_snapshot_and_files() {
         data_dir: vw_dir.to_string_lossy().to_string(),
     };
     let encryption = PayloadEncryption::None;
-    let artifacts = build_vaultwarden_run(
+    let build = build_vaultwarden_run(
         &data_dir,
         &job_id,
         &run_id,
@@ -57,6 +57,8 @@ fn vaultwarden_run_includes_snapshot_and_files() {
         None,
     )
     .unwrap();
+    assert!(build.consistency.is_empty());
+    let artifacts = build.artifacts;
 
     let entries = read_entries(&artifacts.entries_index_path);
     let paths: Vec<String> = entries

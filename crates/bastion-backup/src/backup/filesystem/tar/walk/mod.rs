@@ -8,6 +8,7 @@ use super::super::FilesystemBuildIssues;
 use super::super::entries_index::EntriesIndexWriter;
 use super::super::reborrow_progress;
 use super::super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
+use crate::backup::source_consistency::SourceConsistencyTracker;
 use super::entry::{
     FileId, HardlinkRecord, source_meta_for_policy, write_dir_entry, write_file_entry,
     write_symlink_entry,
@@ -22,6 +23,7 @@ pub(super) fn write_tar_entries<W: Write>(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     mut progress: Option<&mut super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
     tar.follow_symlinks(source.symlink_policy == FsSymlinkPolicy::Follow);
@@ -82,6 +84,7 @@ pub(super) fn write_tar_entries<W: Write>(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 &mut hardlink_index,
                 &mut seen_archive_paths,
                 reborrow_progress(&mut progress),
@@ -114,6 +117,7 @@ pub(super) fn write_tar_entries<W: Write>(
             entries_writer,
             entries_count,
             issues,
+            consistency,
             &mut hardlink_index,
             &mut seen_archive_paths,
             reborrow_progress(&mut progress),

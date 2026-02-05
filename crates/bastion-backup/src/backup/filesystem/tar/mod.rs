@@ -4,6 +4,7 @@ use std::path::Path;
 use bastion_core::job_spec::FilesystemSource;
 
 use crate::backup::{LocalArtifact, PartWriter, PayloadEncryption};
+use crate::backup::source_consistency::SourceConsistencyTracker;
 
 use super::FilesystemBuildIssues;
 use super::entries_index::EntriesIndexWriter;
@@ -20,6 +21,7 @@ pub(super) fn write_tar_zstd_parts(
     entries_count: &mut u64,
     part_size_bytes: u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
     on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<Vec<LocalArtifact>, anyhow::Error> {
@@ -45,6 +47,7 @@ pub(super) fn write_tar_zstd_parts(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 progress,
             )?;
 
@@ -72,6 +75,7 @@ pub(super) fn write_tar_zstd_parts(
                 entries_writer,
                 entries_count,
                 issues,
+                consistency,
                 progress,
             )?;
 

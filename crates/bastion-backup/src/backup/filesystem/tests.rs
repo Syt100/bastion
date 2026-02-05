@@ -49,6 +49,37 @@ fn list_index_paths(entries_path: &Path) -> Vec<String> {
         .collect()
 }
 
+fn read_index_records(entries_path: &Path) -> Vec<serde_json::Value> {
+    let raw = std::fs::read(entries_path).expect("read entries index");
+    let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
+    decoded
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<serde_json::Value>(line).expect("parse jsonl"))
+        .collect()
+}
+
+fn read_tar_entry_bytes(part_path: &Path, archive_path: &str) -> Vec<u8> {
+    let file = File::open(part_path).expect("open part");
+    let decoder = zstd::Decoder::new(file).expect("zstd decoder");
+    let mut archive = ::tar::Archive::new(decoder);
+    for entry in archive.entries().expect("entries") {
+        let mut entry = entry.expect("entry");
+        let path = entry
+            .path()
+            .expect("path")
+            .to_string_lossy()
+            .to_string();
+        if path != archive_path {
+            continue;
+        }
+        let mut out = Vec::<u8>::new();
+        std::io::copy(&mut entry, &mut out).expect("read entry");
+        return out;
+    }
+    panic!("missing tar entry: {archive_path}");
+}
+
 #[test]
 fn filesystem_paths_can_backup_single_file() {
     let tmp = tempdir().expect("tempdir");
@@ -87,6 +118,8 @@ fn filesystem_paths_can_backup_single_file() {
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
+    assert!(build.consistency.is_empty());
+    assert!(build.consistency.is_empty());
 
     let part_paths = build
         .artifacts
@@ -100,6 +133,94 @@ fn filesystem_paths_can_backup_single_file() {
 
     let index_paths = list_index_paths(&build.artifacts.entries_index_path);
     assert!(index_paths.contains(&expected));
+}
+
+#[cfg(unix)]
+#[test]
+fn archive_hash_matches_archived_bytes_when_file_is_replaced_after_open() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct HookGuard;
+    impl Drop for HookGuard {
+        fn drop(&mut self) {
+            super::test_hooks::set_after_file_open_hook(None);
+        }
+    }
+
+    let tmp = tempdir().expect("tempdir");
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    let src = tmp.path().join("hello.txt");
+    let old_bytes = b"OLD-CONTENT".to_vec();
+    std::fs::write(&src, &old_bytes).unwrap();
+
+    let expected = archive_prefix_for_path(&src).unwrap();
+    let expected_for_hook = expected.clone();
+
+    let replaced = Arc::new(AtomicBool::new(false));
+    let replaced_for_hook = replaced.clone();
+    let src_for_hook = src.clone();
+    super::test_hooks::set_after_file_open_hook(Some(Box::new(move |fs_path, archive_path| {
+        if archive_path != expected_for_hook {
+            return;
+        }
+        if replaced_for_hook
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+        assert_eq!(fs_path, src_for_hook.as_path());
+
+        let tmp_path = src_for_hook.with_file_name("hello.txt.replacement");
+        std::fs::write(&tmp_path, b"NEW-CONTENT").expect("write replacement");
+        std::fs::rename(&tmp_path, &src_for_hook).expect("replace file via rename");
+    })));
+    let _guard = HookGuard;
+
+    let source = FilesystemSource {
+        pre_scan: false,
+        paths: vec![src.to_string_lossy().to_string()],
+        root: String::new(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+    };
+
+    let build = build_filesystem_run(
+        &data_dir,
+        &Uuid::new_v4().to_string(),
+        &Uuid::new_v4().to_string(),
+        OffsetDateTime::now_utc(),
+        &source,
+        BuildPipelineOptions {
+            artifact_format: ArtifactFormatV1::ArchiveV1,
+            encryption: &PayloadEncryption::None,
+            part_size_bytes: 4 * 1024 * 1024,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(build.issues.errors_total, 0);
+    assert_eq!(build.consistency.replaced_total, 1);
+
+    let part = build.artifacts.parts[0].path.as_path();
+    let archived = read_tar_entry_bytes(part, &expected);
+    assert_eq!(archived, old_bytes, "archive should use opened bytes");
+
+    let records = read_index_records(&build.artifacts.entries_index_path);
+    let hash = records
+        .iter()
+        .find(|v| v.get("path").and_then(|p| p.as_str()) == Some(expected.as_str()))
+        .and_then(|v| v.get("hash").and_then(|h| h.as_str()))
+        .expect("entry hash")
+        .to_string();
+    let expected_hash = blake3::hash(&archived).to_hex().to_string();
+    assert_eq!(hash, expected_hash);
 }
 
 #[test]
@@ -140,6 +261,8 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
+    assert!(build.consistency.is_empty());
+    assert!(build.consistency.is_empty());
     assert!(build.artifacts.parts.is_empty());
 
     let stage_dir = build
@@ -207,6 +330,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
     assert_eq!(build.issues.warnings_total, 1);
+    assert!(build.consistency.is_empty());
     assert!(
         build
             .issues

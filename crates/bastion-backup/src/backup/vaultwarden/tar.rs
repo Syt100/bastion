@@ -6,6 +6,10 @@ use bastion_core::manifest::HashAlgorithm;
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::backup::hashing_reader::HashingReader;
+use crate::backup::source_consistency::{
+    SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+};
 use crate::backup::{LocalArtifact, PartWriter, PayloadEncryption};
 
 #[derive(Debug, Serialize)]
@@ -26,6 +30,7 @@ pub(super) fn write_tar_zstd_parts(
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
     part_size_bytes: u64,
+    consistency: &mut SourceConsistencyTracker,
     on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<Vec<LocalArtifact>, anyhow::Error> {
     let payload_prefix: &'static str = "payload.part";
@@ -50,6 +55,7 @@ pub(super) fn write_tar_zstd_parts(
                 snapshot_path,
                 entries_writer,
                 entries_count,
+                consistency,
             )?;
 
             tar.finish()?;
@@ -76,6 +82,7 @@ pub(super) fn write_tar_zstd_parts(
                 snapshot_path,
                 entries_writer,
                 entries_count,
+                consistency,
             )?;
 
             tar.finish()?;
@@ -107,6 +114,7 @@ fn write_vaultwarden_tar_entries<W: Write>(
     snapshot_path: &Path,
     entries_writer: &mut zstd::Encoder<'_, BufWriter<File>>,
     entries_count: &mut u64,
+    consistency: &mut SourceConsistencyTracker,
 ) -> Result<(), anyhow::Error> {
     for next in WalkDir::new(root).follow_links(false).into_iter() {
         let entry = next?;
@@ -129,11 +137,49 @@ fn write_vaultwarden_tar_entries<W: Write>(
             continue;
         }
 
-        tar.append_path_with_name(entry.path(), Path::new(&rel_str))?;
-
         let record = if entry.file_type().is_file() {
-            let size = entry.metadata()?.len();
-            let hash = super::hash::hash_file(entry.path())?;
+            let file = File::open(entry.path())?;
+            let meta = file.metadata()?;
+            let before_fp = fingerprint_for_meta(&meta);
+            let size = meta.len();
+
+            let mut reader = HashingReader::new(file);
+
+            let mut header = tar::Header::new_gnu();
+            header.set_metadata_in_mode(&meta, tar::HeaderMode::Complete);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_size(size);
+            header.set_cksum();
+
+            tar.append_data(&mut header, Path::new(&rel_str), &mut reader)?;
+            let hash = reader.finalize_hex();
+
+            match std::fs::metadata(entry.path()) {
+                Ok(after_meta) => {
+                    let after_fp = fingerprint_for_meta(&after_meta);
+                    if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
+                        if reason == "file_id_changed" {
+                            consistency.record_replaced(
+                                &rel_str,
+                                Some(before_fp.clone()),
+                                Some(after_fp),
+                            );
+                        } else {
+                            consistency.record_changed(
+                                &rel_str,
+                                reason,
+                                Some(before_fp.clone()),
+                                Some(after_fp),
+                            );
+                        }
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    consistency.record_deleted(&rel_str, Some(before_fp.clone()));
+                }
+                Err(_) => {}
+            }
+
             EntryRecord {
                 path: rel_str,
                 kind: "file".to_string(),
@@ -142,6 +188,7 @@ fn write_vaultwarden_tar_entries<W: Write>(
                 hash: Some(hash),
             }
         } else if entry.file_type().is_dir() {
+            tar.append_path_with_name(entry.path(), Path::new(&rel_str))?;
             EntryRecord {
                 path: rel_str,
                 kind: "dir".to_string(),
@@ -150,6 +197,7 @@ fn write_vaultwarden_tar_entries<W: Write>(
                 hash: None,
             }
         } else if entry.file_type().is_symlink() {
+            tar.append_path_with_name(entry.path(), Path::new(&rel_str))?;
             EntryRecord {
                 path: rel_str,
                 kind: "symlink".to_string(),
@@ -168,9 +216,19 @@ fn write_vaultwarden_tar_entries<W: Write>(
     }
 
     // Add the SQLite snapshot as db.sqlite3 at the root of the archive.
-    tar.append_path_with_name(snapshot_path, Path::new("db.sqlite3"))?;
-    let snapshot_size = std::fs::metadata(snapshot_path)?.len();
-    let snapshot_hash = super::hash::hash_file(snapshot_path)?;
+    let snapshot_file = File::open(snapshot_path)?;
+    let snapshot_meta = snapshot_file.metadata()?;
+    let snapshot_size = snapshot_meta.len();
+
+    let mut snapshot_reader = HashingReader::new(snapshot_file);
+    let mut header = tar::Header::new_gnu();
+    header.set_metadata_in_mode(&snapshot_meta, tar::HeaderMode::Complete);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_size(snapshot_size);
+    header.set_cksum();
+    tar.append_data(&mut header, Path::new("db.sqlite3"), &mut snapshot_reader)?;
+    let snapshot_hash = snapshot_reader.finalize_hex();
+
     let record = EntryRecord {
         path: "db.sqlite3".to_string(),
         kind: "file".to_string(),

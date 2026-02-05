@@ -14,6 +14,7 @@ use crate::backup::{
     BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
     MANIFEST_NAME, PayloadEncryption, stage_dir,
 };
+use crate::backup::source_consistency::{SourceConsistencyReportV1, SourceConsistencyTracker};
 use bastion_core::job_spec::FilesystemSource;
 
 mod entries_index;
@@ -22,6 +23,7 @@ mod tar;
 mod util;
 
 const MAX_FS_ISSUE_SAMPLES: usize = 50;
+const MAX_SOURCE_CONSISTENCY_SAMPLES: usize = 50;
 const FS_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
@@ -119,6 +121,7 @@ impl FilesystemBuildIssues {
 pub struct FilesystemRunBuild {
     pub artifacts: LocalRunArtifacts,
     pub issues: FilesystemBuildIssues,
+    pub consistency: SourceConsistencyReportV1,
     pub source_total: Option<ProgressUnitsV1>,
     pub raw_tree_stats: Option<RawTreeBuildStats>,
 }
@@ -159,6 +162,8 @@ pub fn build_filesystem_run(
 
     let stage = stage_dir(data_dir, run_id);
     std::fs::create_dir_all(&stage)?;
+
+    let mut consistency = SourceConsistencyTracker::new(MAX_SOURCE_CONSISTENCY_SAMPLES);
 
     let entries_path = stage.join(ENTRIES_INDEX_NAME);
     let entries_file = OpenOptions::new()
@@ -207,6 +212,7 @@ pub fn build_filesystem_run(
                     &mut entries_count,
                     part_size_bytes,
                     &mut issues,
+                    &mut consistency,
                     packaging_progress.as_mut(),
                     on_part_finished,
                 )?,
@@ -226,6 +232,7 @@ pub fn build_filesystem_run(
                     &mut entries_writer,
                     &mut entries_count,
                     &mut issues,
+                    &mut consistency,
                     packaging_progress.as_mut(),
                 )?;
                 (
@@ -314,6 +321,7 @@ pub fn build_filesystem_run(
             complete_path,
         },
         issues,
+        consistency: consistency.finish(),
         source_total: pre_scan_totals,
         raw_tree_stats,
     })
@@ -321,5 +329,8 @@ pub fn build_filesystem_run(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(super) mod test_hooks;
 
 mod scan;

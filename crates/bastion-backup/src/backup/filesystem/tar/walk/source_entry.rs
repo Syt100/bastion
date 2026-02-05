@@ -10,6 +10,7 @@ use super::{
     join_archive_path, source_meta_for_policy, write_dir_entry, write_file_entry,
     write_symlink_entry,
 };
+use crate::backup::source_consistency::SourceConsistencyTracker;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_source_entry<W: Write>(
@@ -23,6 +24,7 @@ pub(super) fn write_source_entry<W: Write>(
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
     hardlink_index: &mut HashMap<FileId, HardlinkRecord>,
     seen_archive_paths: &mut HashSet<String>,
     mut progress: Option<&mut super::super::super::FilesystemBuildProgressCtx<'_>>,
@@ -135,28 +137,16 @@ pub(super) fn write_source_entry<W: Write>(
                     continue;
                 }
 
-                let meta = match entry.metadata() {
-                    Ok(m) => m,
-                    Err(error) => {
-                        let msg = format!("metadata error: {archive_path}: {error}");
-                        if source.error_policy == FsErrorPolicy::FailFast {
-                            return Err(anyhow::anyhow!(msg));
-                        }
-                        issues.record_error(msg);
-                        continue;
-                    }
-                };
-
                 write_file_entry(
                     tar,
                     entry.path(),
                     &archive_path,
-                    &meta,
                     is_symlink_path,
                     source,
                     entries_writer,
                     entries_count,
                     issues,
+                    consistency,
                     hardlink_index,
                     seen_archive_paths,
                     super::reborrow_progress(&mut progress),
@@ -240,12 +230,12 @@ pub(super) fn write_source_entry<W: Write>(
             tar,
             path,
             &archive_path,
-            &meta,
             is_symlink_path,
             source,
             entries_writer,
             entries_count,
             issues,
+            consistency,
             hardlink_index,
             seen_archive_paths,
             super::reborrow_progress(&mut progress),

@@ -13,6 +13,15 @@ use crate::backup::{
     BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
     MANIFEST_NAME, PayloadEncryption, stage_dir,
 };
+use crate::backup::source_consistency::{SourceConsistencyReportV1, SourceConsistencyTracker};
+
+const MAX_SOURCE_CONSISTENCY_SAMPLES: usize = 50;
+
+#[derive(Debug)]
+pub struct VaultwardenRunBuild {
+    pub artifacts: LocalRunArtifacts,
+    pub consistency: SourceConsistencyReportV1,
+}
 
 pub fn build_vaultwarden_run(
     data_dir: &Path,
@@ -22,7 +31,7 @@ pub fn build_vaultwarden_run(
     source: &VaultwardenSource,
     pipeline: BuildPipelineOptions<'_>,
     on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
-) -> Result<LocalRunArtifacts, anyhow::Error> {
+) -> Result<VaultwardenRunBuild, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
         encryption,
@@ -55,6 +64,8 @@ pub fn build_vaultwarden_run(
     let mut entries_writer = zstd::Encoder::new(entries_writer, 3)?;
     let mut entries_count = 0u64;
 
+    let mut consistency = SourceConsistencyTracker::new(MAX_SOURCE_CONSISTENCY_SAMPLES);
+
     let root = PathBuf::from(source.data_dir.trim());
     if root.as_os_str().is_empty() {
         anyhow::bail!("vaultwarden.source.data_dir is required");
@@ -79,6 +90,7 @@ pub fn build_vaultwarden_run(
         &mut entries_writer,
         &mut entries_count,
         part_size_bytes,
+        &mut consistency,
         on_part_finished,
     )?;
     entries_writer.finish()?;
@@ -141,12 +153,15 @@ pub fn build_vaultwarden_run(
         "built vaultwarden backup artifacts"
     );
 
-    Ok(LocalRunArtifacts {
-        run_dir: stage.parent().unwrap_or(&stage).to_path_buf(),
-        parts,
-        entries_index_path: stage.join(ENTRIES_INDEX_NAME),
-        entries_count,
-        manifest_path,
-        complete_path,
+    Ok(VaultwardenRunBuild {
+        artifacts: LocalRunArtifacts {
+            run_dir: stage.parent().unwrap_or(&stage).to_path_buf(),
+            parts,
+            entries_index_path: stage.join(ENTRIES_INDEX_NAME),
+            entries_count,
+            manifest_path,
+            complete_path,
+        },
+        consistency: consistency.finish(),
     })
 }

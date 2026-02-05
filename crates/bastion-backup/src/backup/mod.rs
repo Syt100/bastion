@@ -1,6 +1,9 @@
 pub mod filesystem;
+pub mod source_consistency;
 pub mod sqlite;
 pub mod vaultwarden;
+
+mod hashing_reader;
 
 use std::fs::File;
 use std::io::{self, Write};
