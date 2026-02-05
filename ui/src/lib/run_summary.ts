@@ -7,6 +7,7 @@ export type ParsedRunSummary = {
   partsCount: number | null
   warningsTotal: number | null
   errorsTotal: number | null
+  consistencyChangedTotal: number | null
   sqlitePath: string | null
   sqliteSnapshotName: string | null
   vaultwardenDataDir: string | null
@@ -34,6 +35,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     partsCount: null,
     warningsTotal: null,
     errorsTotal: null,
+    consistencyChangedTotal: null,
     sqlitePath: null,
     sqliteSnapshotName: null,
     vaultwardenDataDir: null,
@@ -55,6 +57,14 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
   const sqlite = asRecord(obj.sqlite)
   const vaultwarden = asRecord(obj.vaultwarden)
 
+  const consistency = asRecord(filesystem?.consistency) ?? asRecord(vaultwarden?.consistency)
+  const consistencyChangedTotal = consistency
+    ? (asNumber(consistency.changed_total) ?? 0) +
+      (asNumber(consistency.replaced_total) ?? 0) +
+      (asNumber(consistency.deleted_total) ?? 0) +
+      (asNumber(consistency.read_error_total) ?? 0)
+    : null
+
   return {
     targetType,
     targetLocation: runDir ?? runUrl,
@@ -62,10 +72,10 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     partsCount: asNumber(obj.parts),
     warningsTotal,
     errorsTotal,
+    consistencyChangedTotal,
     sqlitePath: asString(sqlite?.path),
     sqliteSnapshotName: asString(sqlite?.snapshot_name),
     vaultwardenDataDir: asString(vaultwarden?.data_dir),
     vaultwardenDb: asString(vaultwarden?.db),
   }
 }
-

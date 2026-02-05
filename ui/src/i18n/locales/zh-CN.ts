@@ -1116,6 +1116,7 @@ const messages = {
     },
     badges: {
       offline: '离线',
+      sourceChanged: '源文件变更: {count}',
     },
     detail: {
       overviewTitle: '概览',

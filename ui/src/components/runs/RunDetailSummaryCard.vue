@@ -57,6 +57,14 @@ const durationSeconds = computed<number | null>(() => {
           <n-tag v-if="parsedSummary.warningsTotal != null && parsedSummary.warningsTotal > 0" size="small" type="warning" :bordered="false">
             {{ t('runs.detail.warnings', { count: parsedSummary.warningsTotal }) }}
           </n-tag>
+          <n-tag
+            v-if="parsedSummary.consistencyChangedTotal != null && parsedSummary.consistencyChangedTotal > 0"
+            size="small"
+            type="warning"
+            :bordered="false"
+          >
+            {{ t('runs.badges.sourceChanged', { count: parsedSummary.consistencyChangedTotal }) }}
+          </n-tag>
           <n-tag v-if="parsedSummary.entriesCount != null" size="small" :bordered="false">
             {{ t('runs.detail.entries', { count: parsedSummary.entriesCount }) }}
           </n-tag>

@@ -1116,6 +1116,7 @@ const messages = {
     },
     badges: {
       offline: 'Offline',
+      sourceChanged: 'Source changed: {count}',
     },
     detail: {
       overviewTitle: 'Overview',
