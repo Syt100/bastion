@@ -130,6 +130,13 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
               { type: statusTagType(row.status), size: 'small', bordered: false },
               { default: () => runStatusLabel(t, row.status) },
             ),
+            row.consistency_changed_total != null && row.consistency_changed_total > 0
+              ? h(
+                  NTag,
+                  { size: 'small', type: 'warning', bordered: false },
+                  { default: () => t('runs.badges.sourceChanged', { count: row.consistency_changed_total }) },
+                )
+              : null,
             row.executed_offline
               ? h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => t('runs.badges.offline') })
               : null,
@@ -244,6 +251,12 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
                 </div>
                 <div class="flex flex-wrap justify-end gap-1">
                   <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
+                  <n-tag
+                    v-if="row.consistency_changed_total != null && row.consistency_changed_total > 0"
+                    size="small"
+                    :bordered="false"
+                    type="warning"
+                  >{{ t('runs.badges.sourceChanged', { count: row.consistency_changed_total }) }}</n-tag>
                   <n-tag v-if="row.executed_offline" size="small" :bordered="false" type="info">{{ t('runs.badges.offline') }}</n-tag>
                 </div>
               </div>

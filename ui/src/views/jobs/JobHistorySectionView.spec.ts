@@ -34,6 +34,29 @@ vi.mock('naive-ui', async () => {
       },
     })
 
+  const dataTable = vue.defineComponent({
+    name: 'NDataTable',
+    props: ['columns', 'data', 'loading'],
+    setup(props, { attrs }) {
+      return () =>
+        vue.h(
+          'div',
+          { 'data-stub': 'NDataTable', ...attrs },
+          ((props.data as unknown[]) ?? []).map((row, idx) =>
+            vue.h(
+              'div',
+              { 'data-row': (row as { id?: unknown }).id ?? idx },
+              ((props.columns as unknown[]) ?? []).map((col) => {
+                const c = col as { key?: unknown; render?: ((row: unknown) => unknown) | undefined }
+                const body = typeof c.render === 'function' ? c.render(row) : String((row as Record<string, unknown>)[String(c.key ?? '')] ?? '')
+                return vue.h('div', { 'data-col': String(c.key ?? '') }, body as never)
+              }),
+            ),
+          ),
+        )
+    },
+  })
+
   const button = vue.defineComponent({
     name: 'NButton',
     props: ['disabled'],
@@ -50,7 +73,7 @@ vi.mock('naive-ui', async () => {
   return {
     NButton: button,
     NCard: stub('NCard'),
-    NDataTable: stub('NDataTable'),
+    NDataTable: dataTable,
     NIcon: stub('NIcon'),
     NSpace: stub('NSpace'),
     NTag: stub('NTag'),
@@ -59,7 +82,12 @@ vi.mock('naive-ui', async () => {
 })
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) => {
+      const count = params?.count
+      return typeof count === 'number' ? `${key}:${count}` : key
+    },
+  }),
 }))
 
 vi.mock('@/stores/jobs', () => ({
@@ -132,6 +160,37 @@ describe('JobHistorySectionView layout', () => {
 
     // Regression guard: the removed summary grid referenced the latest run label.
     expect(wrapper.text()).not.toContain('runs.latestRun')
+  })
+
+  it('shows a warning tag when consistency_changed_total > 0 (desktop)', async () => {
+    jobsApi.listRuns.mockResolvedValue([
+      {
+        id: 'run1',
+        status: 'success',
+        started_at: 1,
+        ended_at: 2,
+        error: null,
+        executed_offline: false,
+        consistency_changed_total: 2,
+      },
+    ])
+
+    const wrapper = mount(JobHistorySectionView, {
+      global: {
+        provide: provideJobContext(),
+        stubs: {
+          AppEmptyState: true,
+          RunEventsModal: true,
+          RestoreWizardModal: true,
+          VerifyWizardModal: true,
+          OperationModal: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('runs.badges.sourceChanged:2')
   })
 
   it('filters runs by status when a filter chip is selected (mobile)', async () => {

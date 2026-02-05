@@ -93,6 +93,54 @@ pub(in crate::http) struct RunListItem {
     ended_at: Option<i64>,
     error: Option<String>,
     executed_offline: bool,
+    consistency_changed_total: u64,
+}
+
+fn consistency_changed_total_from_summary(summary: Option<&serde_json::Value>) -> u64 {
+    let Some(summary) = summary else {
+        return 0;
+    };
+
+    fn report_total(report: &serde_json::Value) -> u64 {
+        let Some(obj) = report.as_object() else {
+            return 0;
+        };
+
+        let changed_total = obj
+            .get("changed_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let replaced_total = obj
+            .get("replaced_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let deleted_total = obj
+            .get("deleted_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let read_error_total = obj
+            .get("read_error_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        changed_total
+            .saturating_add(replaced_total)
+            .saturating_add(deleted_total)
+            .saturating_add(read_error_total)
+    }
+
+    let fs_total = summary
+        .get("filesystem")
+        .and_then(|v| v.get("consistency"))
+        .map(report_total)
+        .unwrap_or(0);
+    let vw_total = summary
+        .get("vaultwarden")
+        .and_then(|v| v.get("consistency"))
+        .map(report_total)
+        .unwrap_or(0);
+
+    fs_total.saturating_add(vw_total)
 }
 
 pub(in crate::http) async fn list_job_runs(
@@ -122,6 +170,7 @@ pub(in crate::http) async fn list_job_runs(
                     .and_then(|v| v.get("executed_offline"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
+                consistency_changed_total: consistency_changed_total_from_summary(r.summary.as_ref()),
             })
             .collect(),
     ))
