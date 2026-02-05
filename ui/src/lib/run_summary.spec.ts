@@ -80,4 +80,27 @@ describe('parseRunSummary', () => {
     const parsed = parseRunSummary({ filesystem: { warnings_total: 0, errors_total: 0 } })
     expect(parsed.consistencyChangedTotal).toBe(null)
   })
+
+  it('parses filesystemSnapshot when snapshot mode is enabled', () => {
+    const parsed = parseRunSummary({
+      filesystem: {
+        snapshot: { mode: 'auto', status: 'ready', provider: 'btrfs' },
+      },
+    })
+    expect(parsed.filesystemSnapshot).toEqual({
+      mode: 'auto',
+      status: 'ready',
+      provider: 'btrfs',
+      reason: null,
+    })
+  })
+
+  it('hides filesystemSnapshot when snapshot mode is off', () => {
+    const parsed = parseRunSummary({
+      filesystem: {
+        snapshot: { mode: 'off', status: 'off' },
+      },
+    })
+    expect(parsed.filesystemSnapshot).toBe(null)
+  })
 })

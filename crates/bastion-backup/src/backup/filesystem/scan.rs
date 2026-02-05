@@ -21,6 +21,7 @@ fn meta_for_policy(
 
 pub(super) fn scan_filesystem_source(
     source: &FilesystemSource,
+    read_mapping: Option<&super::FilesystemReadMapping>,
     issues: &mut FilesystemBuildIssues,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<ProgressUnitsV1, anyhow::Error> {
@@ -58,8 +59,13 @@ pub(super) fn scan_filesystem_source(
                 covered_dirs.push(p.clone());
             }
 
+            let fs_path = match read_mapping {
+                Some(mapping) => mapping.map_path(p.as_path())?,
+                None => p.clone(),
+            };
             scan_source_path(
                 source,
+                fs_path.as_path(),
                 p.as_path(),
                 &exclude,
                 &include,
@@ -76,7 +82,11 @@ pub(super) fn scan_filesystem_source(
 
     scan_legacy_root(
         source,
-        Path::new(source.root.trim()),
+        match read_mapping {
+            Some(mapping) => mapping.map_path(Path::new(source.root.trim()))?,
+            None => PathBuf::from(source.root.trim()),
+        }
+        .as_path(),
         &exclude,
         &include,
         has_includes,
@@ -92,7 +102,8 @@ pub(super) fn scan_filesystem_source(
 #[allow(clippy::too_many_arguments)]
 fn scan_source_path(
     source: &FilesystemSource,
-    path: &Path,
+    fs_path: &Path,
+    archive_path_basis: &Path,
     exclude: &globset::GlobSet,
     include: &globset::GlobSet,
     has_includes: bool,
@@ -101,10 +112,13 @@ fn scan_source_path(
     totals: &mut ProgressUnitsV1,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
-    let prefix = match archive_prefix_for_path(path) {
+    let prefix = match archive_prefix_for_path(archive_path_basis) {
         Ok(v) => v,
         Err(error) => {
-            let msg = format!("archive path error: {}: {error:#}", path.display());
+            let msg = format!(
+                "archive path error: {}: {error:#}",
+                archive_path_basis.display()
+            );
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -113,10 +127,10 @@ fn scan_source_path(
         }
     };
 
-    let meta = match meta_for_policy(path, source.symlink_policy) {
+    let meta = match meta_for_policy(fs_path, source.symlink_policy) {
         Ok(m) => m,
         Err(error) => {
-            let msg = format!("metadata error: {}: {error}", path.display());
+            let msg = format!("metadata error: {}: {error}", fs_path.display());
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -138,7 +152,7 @@ fn scan_source_path(
             }
         }
 
-        let mut iter = WalkDir::new(path).follow_links(follow_links).into_iter();
+        let mut iter = WalkDir::new(fs_path).follow_links(follow_links).into_iter();
         while let Some(next) = iter.next() {
             let entry = match next {
                 Ok(e) => e,
@@ -155,17 +169,17 @@ fn scan_source_path(
                     continue;
                 }
             };
-            if entry.path() == path {
+            if entry.path() == fs_path {
                 continue;
             }
 
-            let rel = match entry.path().strip_prefix(path) {
+            let rel = match entry.path().strip_prefix(fs_path) {
                 Ok(v) => v,
                 Err(error) => {
                     let msg = format!(
                         "path error: {} is not under root {}: {error}",
                         entry.path().display(),
-                        path.display()
+                        fs_path.display()
                     );
                     if source.error_policy == FsErrorPolicy::FailFast {
                         return Err(anyhow::anyhow!(msg));
@@ -248,7 +262,7 @@ fn scan_source_path(
     if archive_path.is_empty() {
         let msg = format!(
             "invalid source path: {} has no archive path",
-            path.display()
+            archive_path_basis.display()
         );
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));

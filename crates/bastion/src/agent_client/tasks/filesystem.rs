@@ -5,11 +5,23 @@ use tokio_tungstenite::tungstenite::Message;
 
 use bastion_backup as backup;
 use bastion_core::agent_protocol::{PipelineResolvedV1, TargetResolvedV1};
-use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy};
+use bastion_core::job_spec::{
+    ConsistencyPolicyV1, FilesystemSource, FsErrorPolicy, SnapshotModeV1,
+};
 use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
 use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+
+#[cfg(unix)]
+fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_dir(target, link)
+}
 
 struct BackupProgressBuilder {
     last_stage: Option<&'static str>,
@@ -131,20 +143,273 @@ pub(super) async fn run_filesystem_backup(
     source: FilesystemSource,
     target: TargetResolvedV1,
 ) -> Result<serde_json::Value, anyhow::Error> {
+    fn snapshot_mode_str(mode: SnapshotModeV1) -> &'static str {
+        match mode {
+            SnapshotModeV1::Off => "off",
+            SnapshotModeV1::Auto => "auto",
+            SnapshotModeV1::Required => "required",
+        }
+    }
+
+    let snapshot_mode = source.snapshot_mode;
+    let snapshot_provider = source.snapshot_provider.clone();
+    let mut snapshot_summary = if snapshot_mode == SnapshotModeV1::Off {
+        serde_json::json!({ "mode": snapshot_mode_str(snapshot_mode), "status": "off" })
+    } else {
+        serde_json::json!({ "mode": snapshot_mode_str(snapshot_mode), "status": "unavailable" })
+    };
+    let mut snapshot_handle: Option<backup::filesystem::source_snapshot::SourceSnapshotHandle> =
+        None;
+    let mut read_mapping: Option<backup::filesystem::FilesystemReadMapping> = None;
+
+    if snapshot_mode != SnapshotModeV1::Off {
+        let using_paths = source.paths.iter().any(|p| !p.trim().is_empty());
+        let snapshot_root = if using_paths {
+            let paths = source
+                .paths
+                .iter()
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>();
+            if paths.len() == 1 {
+                Ok(std::path::PathBuf::from(paths[0]))
+            } else {
+                Err(format!(
+                    "snapshot requires exactly 1 source path (got {})",
+                    paths.len()
+                ))
+            }
+        } else {
+            let root = source.root.trim();
+            if root.is_empty() {
+                Err("snapshot requires filesystem.source.root or exactly 1 filesystem.source.paths entry".to_string())
+            } else {
+                Ok(std::path::PathBuf::from(root))
+            }
+        };
+
+        match snapshot_root {
+            Ok(root) => {
+                let provider_override = snapshot_provider.clone();
+                let fields = serde_json::json!({
+                    "mode": snapshot_mode_str(snapshot_mode),
+                    "provider_override": provider_override.as_deref(),
+                    "root": root.to_string_lossy().to_string(),
+                });
+                super::send_run_event(
+                    tx,
+                    ctx.run_id,
+                    "info",
+                    "snapshot_started",
+                    "snapshot started",
+                    Some(fields),
+                )
+                .await?;
+
+                let run_dir = backup::run_dir(ctx.data_dir, ctx.run_id);
+                let attempt = tokio::task::spawn_blocking(move || {
+                    backup::filesystem::source_snapshot::attempt_source_snapshot(
+                        &root,
+                        &run_dir,
+                        provider_override.as_deref(),
+                    )
+                })
+                .await?;
+
+                match attempt {
+                    backup::filesystem::source_snapshot::SnapshotAttempt::Ready(handle) => {
+                        read_mapping = Some(handle.read_mapping());
+                        snapshot_handle = Some(handle.clone());
+                        let provider = handle.provider.clone();
+                        snapshot_summary = serde_json::json!({
+                            "mode": snapshot_mode_str(snapshot_mode),
+                            "provider": provider.clone(),
+                            "status": "ready",
+                        });
+
+                        let fields = serde_json::json!({
+                            "mode": snapshot_mode_str(snapshot_mode),
+                            "provider": provider,
+                            "root": handle.original_root.to_string_lossy().to_string(),
+                            "snapshot_root": handle.snapshot_root.to_string_lossy().to_string(),
+                        });
+                        super::send_run_event(
+                            tx,
+                            ctx.run_id,
+                            "info",
+                            "snapshot_ready",
+                            "snapshot ready",
+                            Some(fields),
+                        )
+                        .await?;
+                    }
+                    backup::filesystem::source_snapshot::SnapshotAttempt::Unavailable(unavail) => {
+                        snapshot_summary = serde_json::json!({
+                            "mode": snapshot_mode_str(snapshot_mode),
+                            "provider": unavail.provider,
+                            "status": "unavailable",
+                            "reason": unavail.reason,
+                        });
+
+                        super::send_run_event(
+                            tx,
+                            ctx.run_id,
+                            "warn",
+                            "snapshot_unavailable",
+                            "snapshot unavailable",
+                            Some(snapshot_summary.clone()),
+                        )
+                        .await?;
+
+                        if snapshot_mode == SnapshotModeV1::Required {
+                            let summary = serde_json::json!({
+                                "artifact_format": pipeline.format,
+                                "filesystem": {
+                                    "snapshot": snapshot_summary,
+                                }
+                            });
+                            return Err(anyhow::Error::new(RunFailedWithSummary::new(
+                                "snapshot_unavailable",
+                                "snapshot unavailable (required by policy)",
+                                summary,
+                            )));
+                        }
+                    }
+                }
+            }
+            Err(reason) => {
+                snapshot_summary = serde_json::json!({
+                    "mode": snapshot_mode_str(snapshot_mode),
+                    "provider": snapshot_provider,
+                    "status": "unavailable",
+                    "reason": reason,
+                });
+                super::send_run_event(
+                    tx,
+                    ctx.run_id,
+                    "warn",
+                    "snapshot_unavailable",
+                    "snapshot unavailable",
+                    Some(snapshot_summary.clone()),
+                )
+                .await?;
+
+                if snapshot_mode == SnapshotModeV1::Required {
+                    let summary = serde_json::json!({
+                        "artifact_format": pipeline.format,
+                        "filesystem": {
+                            "snapshot": snapshot_summary,
+                        }
+                    });
+                    return Err(anyhow::Error::new(RunFailedWithSummary::new(
+                        "snapshot_unavailable",
+                        "snapshot unavailable (invalid configuration)",
+                        summary,
+                    )));
+                }
+            }
+        }
+    }
+
     super::send_run_event(tx, ctx.run_id, "info", "packaging", "packaging", None).await?;
     let part_size = target_part_size_bytes(&target);
     let error_policy = source.error_policy;
+    let consistency_policy = source.consistency_policy;
+    let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
+    let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let encryption = super::payload_encryption(pipeline.encryption);
     let artifact_format = pipeline.format;
     let artifact_format_for_summary = artifact_format.clone();
     let started_at = ctx.started_at;
 
-    let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
-        &target,
-        ctx.job_id,
-        ctx.run_id,
-        artifact_format.clone(),
+    let allow_rolling_upload = !matches!(
+        (consistency_policy, upload_on_consistency_failure),
+        (ConsistencyPolicyV1::Fail, false)
     );
+
+    let (on_part_finished, parts_uploader) = if allow_rolling_upload {
+        super::prepare_archive_part_uploader(
+            &target,
+            ctx.job_id,
+            ctx.run_id,
+            artifact_format.clone(),
+        )
+    } else {
+        (None, None)
+    };
+
+    // For raw_tree_v1 + local_dir targets, avoid duplicating the staged `data/` tree by linking the
+    // staging `data/` dir to the final target run dir (best-effort; falls back to normal staging).
+    let mut direct_target_run_dir: Option<std::path::PathBuf> = None;
+    if artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+        && let TargetResolvedV1::LocalDir { base_dir, .. } = &target
+    {
+        let target_run_dir = std::path::Path::new(base_dir)
+            .join(ctx.job_id)
+            .join(ctx.run_id);
+        let target_data_dir = target_run_dir.join("data");
+        let stage_data_dir = backup::stage_dir(ctx.data_dir, ctx.run_id).join("data");
+
+        if let Err(error) = std::fs::create_dir_all(&target_data_dir) {
+            let fields = serde_json::json!({
+                "error": error.to_string(),
+                "target_data_dir": target_data_dir.to_string_lossy().to_string(),
+            });
+            super::send_run_event(
+                tx,
+                ctx.run_id,
+                "warn",
+                "direct_data_path_unavailable",
+                "raw-tree direct data path unavailable",
+                Some(fields),
+            )
+            .await?;
+        } else {
+            let _ = std::fs::create_dir_all(backup::stage_dir(ctx.data_dir, ctx.run_id));
+            if let Ok(meta) = std::fs::symlink_metadata(&stage_data_dir) {
+                let _ = if meta.is_dir() {
+                    std::fs::remove_dir_all(&stage_data_dir)
+                } else {
+                    std::fs::remove_file(&stage_data_dir)
+                };
+            }
+
+            match create_dir_link(&stage_data_dir, &target_data_dir) {
+                Ok(()) => {
+                    direct_target_run_dir = Some(target_run_dir);
+                    let fields = serde_json::json!({
+                        "stage_data_dir": stage_data_dir.to_string_lossy().to_string(),
+                        "target_data_dir": target_data_dir.to_string_lossy().to_string(),
+                    });
+                    super::send_run_event(
+                        tx,
+                        ctx.run_id,
+                        "info",
+                        "direct_data_path_ready",
+                        "raw-tree direct data path ready",
+                        Some(fields),
+                    )
+                    .await?;
+                }
+                Err(error) => {
+                    let fields = serde_json::json!({
+                        "error": error.to_string(),
+                        "stage_data_dir": stage_data_dir.to_string_lossy().to_string(),
+                        "target_data_dir": target_data_dir.to_string_lossy().to_string(),
+                    });
+                    super::send_run_event(
+                        tx,
+                        ctx.run_id,
+                        "warn",
+                        "direct_data_path_unavailable",
+                        "raw-tree direct data path unavailable",
+                        Some(fields),
+                    )
+                    .await?;
+                }
+            }
+        }
+    }
 
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::channel::<backup::filesystem::FilesystemBuildProgressUpdate>(8);
@@ -153,6 +418,7 @@ pub(super) async fn run_filesystem_backup(
     let data_dir_buf = ctx.data_dir.to_path_buf();
     let job_id_clone = ctx.job_id.to_string();
     let run_id_clone = ctx.run_id.to_string();
+    let read_mapping_for_build = read_mapping.clone();
     let progress_tx_build = progress_tx.clone();
     let mut build_handle = tokio::task::spawn_blocking(move || {
         let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
@@ -170,14 +436,15 @@ pub(super) async fn run_filesystem_backup(
                 encryption: &encryption,
                 part_size_bytes: part_size,
             },
+            read_mapping_for_build.as_ref(),
             Some(&on_progress),
             on_part_finished,
         )
     });
 
-    let build = loop {
+    let build_join = loop {
         tokio::select! {
-            res = &mut build_handle => break res??,
+            res = &mut build_handle => break res,
             maybe_update = progress_rx.recv() => {
                 if let Some(update) = maybe_update {
                     super::send_run_progress_snapshot(tx, ctx.run_id, progress.snapshot(update)).await?;
@@ -185,6 +452,51 @@ pub(super) async fn run_filesystem_backup(
             }
         }
     };
+
+    let build_res: Result<backup::filesystem::FilesystemRunBuild, anyhow::Error> = match build_join
+    {
+        Ok(res) => res,
+        Err(error) => Err(anyhow::Error::new(error)),
+    };
+
+    if let Some(handle) = snapshot_handle.take() {
+        let provider = handle.provider.clone();
+        let cleanup = tokio::task::spawn_blocking(move || handle.cleanup()).await?;
+        if let Err(error) = cleanup {
+            if let Some(obj) = snapshot_summary.as_object_mut() {
+                obj.insert(
+                    "status".to_string(),
+                    serde_json::Value::String("cleanup_failed".to_string()),
+                );
+                obj.insert(
+                    "reason".to_string(),
+                    serde_json::Value::String(error.to_string()),
+                );
+            }
+
+            let fields = serde_json::json!({
+                "provider": provider,
+                "error": error.to_string(),
+            });
+            super::send_run_event(
+                tx,
+                ctx.run_id,
+                "warn",
+                "snapshot_cleanup_failed",
+                "snapshot cleanup failed",
+                Some(fields),
+            )
+            .await?;
+        }
+    }
+
+    if build_res.is_err()
+        && let Some(dir) = direct_target_run_dir.as_ref()
+    {
+        let _ = tokio::fs::remove_dir_all(dir).await;
+    }
+
+    let build = build_res?;
 
     if let Some(handle) = parts_uploader {
         handle.await??;
@@ -213,8 +525,13 @@ pub(super) async fn run_filesystem_backup(
         .await?;
     }
 
-    if build.consistency.total() > 0 {
-        let fields = serde_json::to_value(&build.consistency)?;
+    let raw_consistency = build.consistency;
+    let consistency_total = raw_consistency.total();
+    let consistency_failed =
+        consistency_policy.should_fail(consistency_total, consistency_fail_threshold);
+
+    if consistency_policy.should_emit_warnings() && consistency_total > 0 {
+        let fields = serde_json::to_value(&raw_consistency)?;
         super::send_run_event(
             tx,
             ctx.run_id,
@@ -228,7 +545,11 @@ pub(super) async fn run_filesystem_backup(
 
     let source_total = build.source_total;
     let issues = build.issues;
-    let consistency = build.consistency;
+    let consistency = if consistency_policy == ConsistencyPolicyV1::Ignore {
+        Default::default()
+    } else {
+        raw_consistency
+    };
     let artifacts = build.artifacts;
     let raw_tree_data_bytes = build.raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
 
@@ -242,6 +563,54 @@ pub(super) async fn run_filesystem_backup(
         .saturating_add(complete_size)
         .saturating_add(raw_tree_data_bytes);
     let mut last_upload_done_bytes: u64 = 0;
+
+    if consistency_failed && !upload_on_consistency_failure {
+        let target_summary = serde_json::json!({
+            "type": match target {
+                TargetResolvedV1::Webdav { .. } => "webdav",
+                TargetResolvedV1::LocalDir { .. } => "local_dir",
+            }
+        });
+
+        let metrics = {
+            let mut m = serde_json::Map::new();
+            if let Some(t) = source_total {
+                m.insert("source_total".to_string(), serde_json::json!(t));
+            }
+            m.insert(
+                "transfer_total_bytes".to_string(),
+                serde_json::json!(transfer_total_bytes),
+            );
+            serde_json::Value::Object(m)
+        };
+
+        let summary = serde_json::json!({
+            "target": target_summary,
+            "artifact_format": artifact_format_for_summary,
+            "entries_count": artifacts.entries_count,
+            "parts": artifacts.parts.len(),
+            "metrics": metrics,
+            "filesystem": {
+                "warnings_total": issues.warnings_total,
+                "errors_total": issues.errors_total,
+                "snapshot": snapshot_summary.clone(),
+                "consistency": consistency,
+            }
+        });
+
+        let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
+        if let Some(dir) = direct_target_run_dir.as_ref() {
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        }
+
+        return Err(anyhow::Error::new(RunFailedWithSummary::new(
+            "source_consistency",
+            format!(
+                "source changed during backup (failed by policy): total {consistency_total} > threshold {consistency_fail_threshold}"
+            ),
+            summary,
+        )));
+    }
 
     super::send_run_event(tx, ctx.run_id, "info", "upload", "upload", None).await?;
     struct UploadThrottle {
@@ -362,6 +731,7 @@ pub(super) async fn run_filesystem_backup(
         "filesystem": {
             "warnings_total": issues.warnings_total,
             "errors_total": issues.errors_total,
+            "snapshot": snapshot_summary.clone(),
             "consistency": consistency,
         }
     });
@@ -383,14 +753,122 @@ pub(super) async fn run_filesystem_backup(
         )));
     }
 
+    if consistency_failed {
+        return Err(anyhow::Error::new(RunFailedWithSummary::new(
+            "source_consistency",
+            format!(
+                "source changed during backup (failed by policy): total {consistency_total} > threshold {consistency_fail_threshold}"
+            ),
+            summary,
+        )));
+    }
+
     Ok(summary)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use futures_util::Sink;
+    use tokio_tungstenite::tungstenite::Message;
+
     use super::BackupProgressBuilder;
     use bastion_backup as backup;
+    use bastion_core::agent_protocol::{PipelineResolvedV1, TargetResolvedV1};
     use bastion_core::progress::ProgressUnitsV1;
+    use bastion_core::run_failure::RunFailedWithSummary;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        messages: Vec<Message>,
+    }
+
+    impl Sink<Message> for RecordingSink {
+        type Error = tokio_tungstenite::tungstenite::Error;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+            self.messages.push(item);
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn snapshot_required_fails_when_snapshot_config_is_invalid() -> Result<(), anyhow::Error>
+    {
+        let tmp = tempfile::tempdir()?;
+        let dest_dir = tmp.path().join("dest");
+
+        let ctx = super::super::TaskContext {
+            data_dir: tmp.path(),
+            run_id: "run_id",
+            job_id: "job_id",
+            started_at: time::OffsetDateTime::now_utc(),
+        };
+
+        let pipeline = PipelineResolvedV1::default();
+        let source = bastion_core::job_spec::FilesystemSource {
+            pre_scan: false,
+            // Invalid for snapshots: requires exactly 1 source path in paths-mode.
+            paths: vec!["/a".to_string(), "/b".to_string()],
+            root: String::new(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+            symlink_policy: bastion_core::job_spec::FsSymlinkPolicy::Keep,
+            hardlink_policy: bastion_core::job_spec::FsHardlinkPolicy::Copy,
+            error_policy: bastion_core::job_spec::FsErrorPolicy::FailFast,
+            snapshot_mode: bastion_core::job_spec::SnapshotModeV1::Required,
+            snapshot_provider: None,
+            consistency_policy: bastion_core::job_spec::ConsistencyPolicyV1::Warn,
+            consistency_fail_threshold: None,
+            upload_on_consistency_failure: None,
+        };
+
+        let target = TargetResolvedV1::LocalDir {
+            base_dir: dest_dir.to_string_lossy().to_string(),
+            part_size_bytes: 1024,
+        };
+
+        let mut sink = RecordingSink::default();
+        let err = super::run_filesystem_backup(&mut sink, &ctx, pipeline, source, target)
+            .await
+            .expect_err("expected snapshot failure");
+
+        let failed = err
+            .downcast_ref::<RunFailedWithSummary>()
+            .expect("downcast RunFailedWithSummary");
+        assert_eq!(failed.code, "snapshot_unavailable");
+        assert!(failed.message.contains("invalid configuration"));
+        assert!(
+            failed.summary["filesystem"]["snapshot"]["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("exactly 1 source path")
+        );
+        Ok(())
+    }
 
     #[test]
     fn upload_snapshot_includes_source_and_transfer_detail() {

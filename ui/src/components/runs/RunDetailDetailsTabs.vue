@@ -159,6 +159,8 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
 const parsedSummary = computed(() => parseRunSummary(props.summary))
 const targetTypeLabel = computed(() => runTargetTypeLabel(t, parsedSummary.value.targetType))
 
+const filesystemSnapshot = computed(() => parsedSummary.value.filesystemSnapshot)
+
 const consistencyReport = computed(() => parsedSummary.value.consistency)
 const hasConsistencyWarnings = computed(() => (consistencyReport.value?.total ?? 0) > 0)
 
@@ -178,6 +180,18 @@ function consistencyReasonLabel(reason: string): string {
   const key = `runs.consistency.reasons.${reason}`
   const translated = t(key)
   return translated === key ? reason : translated
+}
+
+function snapshotModeLabel(mode: string): string {
+  const key = `runs.snapshot.modes.${mode}`
+  const translated = t(key)
+  return translated === key ? mode : translated
+}
+
+function snapshotStatusLabel(status: string): string {
+  const key = `runs.snapshot.statuses.${status}`
+  const translated = t(key)
+  return translated === key ? status : translated
 }
 
 const eventsListEl = ref<HTMLDivElement | null>(null)
@@ -367,7 +381,10 @@ async function viewConsistencyEvents(): Promise<void> {
             <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
           </div>
 
-          <div class="grid grid-cols-1 gap-3" :class="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir ? 'md:grid-cols-2' : 'md:grid-cols-1'">
+          <div
+            class="grid grid-cols-1 gap-3"
+            :class="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir || filesystemSnapshot ? 'md:grid-cols-2' : 'md:grid-cols-1'"
+          >
             <div class="rounded app-border-subtle p-3">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
               <div class="text-xs app-text-muted space-y-1">
@@ -383,9 +400,22 @@ async function viewConsistencyEvents(): Promise<void> {
               </div>
             </div>
 
-            <div v-if="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir" class="rounded app-border-subtle p-3">
+            <div v-if="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir || filesystemSnapshot" class="rounded app-border-subtle p-3">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
               <div class="text-xs app-text-muted space-y-1">
+                <div v-if="filesystemSnapshot" class="space-y-0.5">
+                  <div>
+                    {{ t('runs.detail.fsSnapshot') }}:
+                    <span class="font-mono tabular-nums">{{ snapshotStatusLabel(filesystemSnapshot.status) }}</span>
+                    <span class="app-text-muted"> · {{ snapshotModeLabel(filesystemSnapshot.mode) }}</span>
+                    <span v-if="filesystemSnapshot.provider" class="font-mono tabular-nums">
+                      · {{ filesystemSnapshot.provider }}
+                    </span>
+                  </div>
+                  <div v-if="filesystemSnapshot.reason" class="truncate" :title="filesystemSnapshot.reason">
+                    {{ filesystemSnapshot.reason }}
+                  </div>
+                </div>
                 <div v-if="parsedSummary.sqlitePath">
                   {{ t('runs.detail.sqlitePath') }}: <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
                 </div>

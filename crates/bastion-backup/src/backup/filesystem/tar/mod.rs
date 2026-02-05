@@ -16,6 +16,7 @@ mod walk;
 pub(super) fn write_tar_zstd_parts(
     stage_dir: &Path,
     source: &FilesystemSource,
+    read_mapping: Option<&super::FilesystemReadMapping>,
     encryption: &PayloadEncryption,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
@@ -44,6 +45,7 @@ pub(super) fn write_tar_zstd_parts(
             walk::write_tar_entries(
                 &mut tar,
                 source,
+                read_mapping,
                 entries_writer,
                 entries_count,
                 issues,
@@ -72,6 +74,7 @@ pub(super) fn write_tar_zstd_parts(
             walk::write_tar_entries(
                 &mut tar,
                 source,
+                read_mapping,
                 entries_writer,
                 entries_count,
                 issues,

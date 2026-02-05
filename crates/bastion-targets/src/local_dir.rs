@@ -328,6 +328,71 @@ mod tests {
         store_run(&dest_base, "job1", "run1", &artifacts, None).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn store_run_raw_tree_accepts_stage_data_symlink_to_target_data_dir() {
+        use std::os::unix::fs as unix_fs;
+
+        let tmp = tempdir().unwrap();
+        let stage = tmp.path().join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let dest_base = tmp.path().join("dest");
+        let run_dir = dest_base.join("job1").join("run1");
+        let target_data_dir = run_dir.join("data");
+        std::fs::create_dir_all(&target_data_dir).unwrap();
+        std::fs::write(target_data_dir.join("hello.txt"), b"hi").unwrap();
+
+        // Simulate raw-tree direct data path: stage/data points at target run_dir/data.
+        unix_fs::symlink(&target_data_dir, stage.join("data")).unwrap();
+
+        let entries_path = stage.join("entries.jsonl.zst");
+        std::fs::write(&entries_path, b"").unwrap();
+
+        let manifest_path = stage.join("manifest.json");
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec(&serde_json::json!({
+              "format_version": 1,
+              "job_id": "00000000-0000-0000-0000-000000000000",
+              "run_id": "00000000-0000-0000-0000-000000000000",
+              "started_at": "2025-12-30T12:00:00Z",
+              "ended_at": "2025-12-30T12:00:01Z",
+              "pipeline": {
+                "format": "raw_tree_v1",
+                "tar": "pax",
+                "compression": "zstd",
+                "encryption": "none",
+                "split_bytes": 0
+              },
+              "artifacts": [],
+              "entry_index": { "name": "entries.jsonl.zst", "count": 0 }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let complete_path = stage.join("complete.json");
+        std::fs::write(&complete_path, b"{}").unwrap();
+
+        let artifacts = LocalRunArtifacts {
+            run_dir: stage.clone(),
+            parts: Vec::new(),
+            entries_index_path: entries_path.clone(),
+            entries_count: 0,
+            manifest_path: manifest_path.clone(),
+            complete_path: complete_path.clone(),
+        };
+
+        store_run(&dest_base, "job1", "run1", &artifacts, None).unwrap();
+
+        assert_eq!(
+            std::fs::read(run_dir.join("data").join("hello.txt")).unwrap(),
+            b"hi"
+        );
+        assert!(!run_dir.join("data").join("hello.txt.partial").exists());
+    }
+
     #[test]
     fn store_run_parts_rolling_copies_and_deletes_local_parts() {
         let tmp = tempdir().unwrap();

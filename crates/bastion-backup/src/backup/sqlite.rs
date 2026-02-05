@@ -109,6 +109,7 @@ pub fn build_sqlite_run(
             part_size_bytes,
         },
         None,
+        None,
         on_part_finished,
     )?;
     if build.issues.errors_total > 0 {

@@ -19,9 +19,11 @@ use super::RawTreeBuildStats;
 use super::entries_index::{EntriesIndexWriter, EntryRecord, write_entry_record};
 use super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_raw_tree(
     stage_dir: &Path,
     source: &FilesystemSource,
+    read_mapping: Option<&super::FilesystemReadMapping>,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -77,8 +79,13 @@ pub(super) fn write_raw_tree(
                 covered_dirs.push(p.clone());
             }
 
+            let fs_path = match read_mapping {
+                Some(mapping) => mapping.map_path(p.as_path())?,
+                None => p.clone(),
+            };
             write_source_entry(
-                &p,
+                fs_path.as_path(),
+                p.as_path(),
                 source,
                 &exclude,
                 &include,
@@ -111,8 +118,12 @@ pub(super) fn write_raw_tree(
         }
     } else {
         let root = PathBuf::from(source.root.trim());
+        let fs_root = match read_mapping {
+            Some(mapping) => mapping.map_path(root.as_path())?,
+            None => root.clone(),
+        };
         write_legacy_root(
-            &root,
+            fs_root.as_path(),
             source,
             &exclude,
             &include,
@@ -373,7 +384,8 @@ fn write_legacy_root(
 
 #[allow(clippy::too_many_arguments)]
 fn write_source_entry(
-    path: &Path,
+    fs_path: &Path,
+    archive_path_basis: &Path,
     source: &FilesystemSource,
     exclude: &globset::GlobSet,
     include: &globset::GlobSet,
@@ -389,10 +401,13 @@ fn write_source_entry(
     seen_archive_paths: &mut HashSet<String>,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
-    let prefix = match archive_prefix_for_path(path) {
+    let prefix = match archive_prefix_for_path(archive_path_basis) {
         Ok(v) => v,
         Err(error) => {
-            let msg = format!("archive path error: {}: {error:#}", path.display());
+            let msg = format!(
+                "archive path error: {}: {error:#}",
+                archive_path_basis.display()
+            );
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -400,10 +415,10 @@ fn write_source_entry(
             return Ok(());
         }
     };
-    let meta = match source_meta_for_policy(path, source.symlink_policy) {
+    let meta = match source_meta_for_policy(fs_path, source.symlink_policy) {
         Ok(m) => m,
         Err(error) => {
-            let msg = format!("metadata error: {}: {error}", path.display());
+            let msg = format!("metadata error: {}: {error}", fs_path.display());
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -419,7 +434,7 @@ fn write_source_entry(
             && !exclude.is_match(format!("{prefix}/"))
         {
             write_dir_entry(
-                path,
+                fs_path,
                 &prefix,
                 source,
                 data_dir,
@@ -431,7 +446,7 @@ fn write_source_entry(
             )?;
         }
 
-        let mut iter = WalkDir::new(path).follow_links(follow_links).into_iter();
+        let mut iter = WalkDir::new(fs_path).follow_links(follow_links).into_iter();
         while let Some(next) = iter.next() {
             let entry = match next {
                 Ok(e) => e,
@@ -448,17 +463,17 @@ fn write_source_entry(
                     continue;
                 }
             };
-            if entry.path() == path {
+            if entry.path() == fs_path {
                 continue;
             }
 
-            let rel = match entry.path().strip_prefix(path) {
+            let rel = match entry.path().strip_prefix(fs_path) {
                 Ok(v) => v,
                 Err(error) => {
                     let msg = format!(
                         "path error: {} is not under root {}: {error}",
                         entry.path().display(),
-                        path.display()
+                        fs_path.display()
                     );
                     if source.error_policy == FsErrorPolicy::FailFast {
                         return Err(anyhow::anyhow!(msg));
@@ -572,7 +587,7 @@ fn write_source_entry(
     if archive_path.is_empty() {
         let msg = format!(
             "invalid source path: {} has no archive path",
-            path.display()
+            archive_path_basis.display()
         );
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));
@@ -585,14 +600,14 @@ fn write_source_entry(
         return Ok(());
     }
     if meta.file_type().is_symlink() && source.symlink_policy == FsSymlinkPolicy::Skip {
-        let target = std::fs::read_link(path)
+        let target = std::fs::read_link(fs_path)
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| "<unknown>".to_string());
         issues.record_warning(format!("skipped symlink: {archive_path} -> {target}"));
         return Ok(());
     }
 
-    let is_symlink_path = std::fs::symlink_metadata(path)
+    let is_symlink_path = std::fs::symlink_metadata(fs_path)
         .ok()
         .is_some_and(|m| m.file_type().is_symlink());
 
@@ -601,7 +616,7 @@ fn write_source_entry(
             return Ok(());
         }
         write_file_entry(
-            path,
+            fs_path,
             &archive_path,
             &meta,
             is_symlink_path,
@@ -621,7 +636,7 @@ fn write_source_entry(
 
     if meta.file_type().is_symlink() {
         write_symlink_entry(
-            path,
+            fs_path,
             &archive_path,
             source,
             data_dir,

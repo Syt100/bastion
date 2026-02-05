@@ -17,9 +17,11 @@ use crate::backup::source_consistency::SourceConsistencyTracker;
 mod legacy_root;
 mod source_entry;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_tar_entries<W: Write>(
     tar: &mut ::tar::Builder<W>,
     source: &FilesystemSource,
+    read_mapping: Option<&super::super::FilesystemReadMapping>,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -73,9 +75,14 @@ pub(super) fn write_tar_entries<W: Write>(
                 covered_dirs.push(p.clone());
             }
 
+            let fs_path = match read_mapping {
+                Some(mapping) => mapping.map_path(p.as_path())?,
+                None => p.clone(),
+            };
             source_entry::write_source_entry(
                 tar,
-                &p,
+                fs_path.as_path(),
+                p.as_path(),
                 source,
                 &exclude,
                 &include,
@@ -106,9 +113,13 @@ pub(super) fn write_tar_entries<W: Write>(
         }
     } else {
         let root = PathBuf::from(source.root.trim());
+        let fs_root = match read_mapping {
+            Some(mapping) => mapping.map_path(root.as_path())?,
+            None => root.clone(),
+        };
         legacy_root::write_legacy_root(
             tar,
-            &root,
+            fs_root.as_path(),
             source,
             &exclude,
             &include,

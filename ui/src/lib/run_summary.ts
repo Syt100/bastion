@@ -20,6 +20,13 @@ export type ParsedConsistencyReport = {
   sample: ParsedConsistencySample[]
 }
 
+export type ParsedFilesystemSnapshot = {
+  mode: string
+  status: string
+  provider: string | null
+  reason: string | null
+}
+
 export type ParsedRunSummary = {
   targetType: string | null
   targetLocation: string | null
@@ -29,6 +36,7 @@ export type ParsedRunSummary = {
   errorsTotal: number | null
   consistencyChangedTotal: number | null
   consistency: ParsedConsistencyReport | null
+  filesystemSnapshot: ParsedFilesystemSnapshot | null
   sqlitePath: string | null
   sqliteSnapshotName: string | null
   vaultwardenDataDir: string | null
@@ -46,6 +54,23 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function parseFilesystemSnapshot(value: unknown): ParsedFilesystemSnapshot | null {
+  const obj = asRecord(value)
+  if (!obj) return null
+
+  const mode = asString(obj.mode)
+  if (!mode || mode === 'off') return null
+
+  const status = asString(obj.status) ?? 'unknown'
+
+  return {
+    mode,
+    status,
+    provider: asString(obj.provider),
+    reason: asString(obj.reason),
+  }
 }
 
 function parseConsistencyReport(value: unknown): ParsedConsistencyReport | null {
@@ -98,6 +123,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     errorsTotal: null,
     consistencyChangedTotal: null,
     consistency: null,
+    filesystemSnapshot: null,
     sqlitePath: null,
     sqliteSnapshotName: null,
     vaultwardenDataDir: null,
@@ -115,6 +141,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
   const filesystem = asRecord(obj.filesystem)
   const warningsTotal = asNumber(filesystem?.warnings_total)
   const errorsTotal = asNumber(filesystem?.errors_total)
+  const filesystemSnapshot = parseFilesystemSnapshot(filesystem?.snapshot)
 
   const sqlite = asRecord(obj.sqlite)
   const vaultwarden = asRecord(obj.vaultwarden)
@@ -132,6 +159,7 @@ export function parseRunSummary(summary: unknown): ParsedRunSummary {
     errorsTotal,
     consistencyChangedTotal,
     consistency,
+    filesystemSnapshot,
     sqlitePath: asString(sqlite?.path),
     sqliteSnapshotName: asString(sqlite?.snapshot_name),
     vaultwardenDataDir: asString(vaultwarden?.data_dir),

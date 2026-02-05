@@ -15,7 +15,8 @@ use crate::backup::source_consistency::SourceConsistencyTracker;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_source_entry<W: Write>(
     tar: &mut ::tar::Builder<W>,
-    path: &Path,
+    fs_path: &Path,
+    archive_path_basis: &Path,
     source: &FilesystemSource,
     exclude: &globset::GlobSet,
     include: &globset::GlobSet,
@@ -29,10 +30,13 @@ pub(super) fn write_source_entry<W: Write>(
     seen_archive_paths: &mut HashSet<String>,
     mut progress: Option<&mut super::super::super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<(), anyhow::Error> {
-    let prefix = match archive_prefix_for_path(path) {
+    let prefix = match archive_prefix_for_path(archive_path_basis) {
         Ok(v) => v,
         Err(error) => {
-            let msg = format!("archive path error: {}: {error:#}", path.display());
+            let msg = format!(
+                "archive path error: {}: {error:#}",
+                archive_path_basis.display()
+            );
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -40,10 +44,10 @@ pub(super) fn write_source_entry<W: Write>(
             return Ok(());
         }
     };
-    let meta = match source_meta_for_policy(path, source.symlink_policy) {
+    let meta = match source_meta_for_policy(fs_path, source.symlink_policy) {
         Ok(m) => m,
         Err(error) => {
-            let msg = format!("metadata error: {}: {error}", path.display());
+            let msg = format!("metadata error: {}: {error}", fs_path.display());
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -60,7 +64,7 @@ pub(super) fn write_source_entry<W: Write>(
         {
             write_dir_entry(
                 tar,
-                path,
+                fs_path,
                 &prefix,
                 source,
                 entries_writer,
@@ -71,7 +75,7 @@ pub(super) fn write_source_entry<W: Write>(
             )?;
         }
 
-        let mut iter = WalkDir::new(path).follow_links(follow_links).into_iter();
+        let mut iter = WalkDir::new(fs_path).follow_links(follow_links).into_iter();
         while let Some(next) = iter.next() {
             let entry = match next {
                 Ok(e) => e,
@@ -88,17 +92,17 @@ pub(super) fn write_source_entry<W: Write>(
                     continue;
                 }
             };
-            if entry.path() == path {
+            if entry.path() == fs_path {
                 continue;
             }
 
-            let rel = match entry.path().strip_prefix(path) {
+            let rel = match entry.path().strip_prefix(fs_path) {
                 Ok(v) => v,
                 Err(error) => {
                     let msg = format!(
                         "path error: {} is not under root {}: {error}",
                         entry.path().display(),
-                        path.display()
+                        fs_path.display()
                     );
                     if source.error_policy == FsErrorPolicy::FailFast {
                         return Err(anyhow::anyhow!(msg));
@@ -198,7 +202,7 @@ pub(super) fn write_source_entry<W: Write>(
     if archive_path.is_empty() {
         let msg = format!(
             "invalid source path: {} has no archive path",
-            path.display()
+            archive_path_basis.display()
         );
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));
@@ -211,14 +215,14 @@ pub(super) fn write_source_entry<W: Write>(
         return Ok(());
     }
     if meta.file_type().is_symlink() && source.symlink_policy == FsSymlinkPolicy::Skip {
-        let target = std::fs::read_link(path)
+        let target = std::fs::read_link(fs_path)
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| "<unknown>".to_string());
         issues.record_warning(format!("skipped symlink: {archive_path} -> {target}"));
         return Ok(());
     }
 
-    let is_symlink_path = std::fs::symlink_metadata(path)
+    let is_symlink_path = std::fs::symlink_metadata(fs_path)
         .ok()
         .is_some_and(|m| m.file_type().is_symlink());
 
@@ -228,7 +232,7 @@ pub(super) fn write_source_entry<W: Write>(
         }
         write_file_entry(
             tar,
-            path,
+            fs_path,
             &archive_path,
             is_symlink_path,
             source,
@@ -246,7 +250,7 @@ pub(super) fn write_source_entry<W: Write>(
     if meta.file_type().is_symlink() {
         write_symlink_entry(
             tar,
-            path,
+            fs_path,
             &archive_path,
             source,
             entries_writer,

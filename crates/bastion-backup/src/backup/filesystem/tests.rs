@@ -118,6 +118,7 @@ fn filesystem_paths_can_backup_single_file() {
         },
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -211,6 +212,7 @@ fn archive_hash_matches_archived_bytes_when_file_is_replaced_after_open() {
         },
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -269,6 +271,7 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
         None,
     )
@@ -344,6 +347,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
         },
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -400,6 +404,7 @@ fn legacy_root_can_backup_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
         None,
     )
@@ -484,6 +489,7 @@ fn archive_parts_can_be_deleted_during_packaging() {
             part_size_bytes: 64,
         },
         None,
+        None,
         Some(on_part_finished),
     )
     .unwrap();
@@ -536,7 +542,7 @@ fn scan_legacy_root_respects_include_patterns_for_files() -> Result<(), anyhow::
     };
 
     let mut issues = FilesystemBuildIssues::default();
-    let totals = scan_filesystem_source(&source, &mut issues, None)?;
+    let totals = scan_filesystem_source(&source, None, &mut issues, None)?;
     assert_eq!(issues.errors_total, 0);
 
     // The directory entry is still counted even though its contents are filtered by include globs.
@@ -578,7 +584,7 @@ fn scan_legacy_root_excludes_directory_and_skips_descendants() -> Result<(), any
     };
 
     let mut issues = FilesystemBuildIssues::default();
-    let totals = scan_filesystem_source(&source, &mut issues, None)?;
+    let totals = scan_filesystem_source(&source, None, &mut issues, None)?;
     assert_eq!(issues.errors_total, 0);
 
     // Excluding a directory should skip the directory entry and everything under it.
@@ -621,7 +627,7 @@ fn scan_legacy_root_symlink_policy_skip_ignores_symlink_entries() -> Result<(), 
         upload_on_consistency_failure: None,
     };
     let mut issues = FilesystemBuildIssues::default();
-    let totals_keep = scan_filesystem_source(&source_keep, &mut issues, None)?;
+    let totals_keep = scan_filesystem_source(&source_keep, None, &mut issues, None)?;
     assert_eq!(issues.errors_total, 0);
     assert_eq!(
         totals_keep,
@@ -637,7 +643,7 @@ fn scan_legacy_root_symlink_policy_skip_ignores_symlink_entries() -> Result<(), 
         ..source_keep
     };
     let mut issues = FilesystemBuildIssues::default();
-    let totals_skip = scan_filesystem_source(&source_skip, &mut issues, None)?;
+    let totals_skip = scan_filesystem_source(&source_skip, None, &mut issues, None)?;
     assert_eq!(issues.errors_total, 0);
     assert_eq!(
         totals_skip,

@@ -1,6 +1,6 @@
 use std::fs::OpenOptions;
 use std::io::BufWriter;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use bastion_core::manifest::{ArtifactFormatV1, EntryIndexRef, ManifestV1, PipelineSettings};
@@ -19,6 +19,7 @@ use bastion_core::job_spec::FilesystemSource;
 
 mod entries_index;
 mod raw_tree;
+pub mod source_snapshot;
 mod tar;
 mod util;
 
@@ -126,6 +127,21 @@ pub struct FilesystemRunBuild {
     pub raw_tree_stats: Option<RawTreeBuildStats>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FilesystemReadMapping {
+    pub original_root: PathBuf,
+    pub read_root: PathBuf,
+}
+
+impl FilesystemReadMapping {
+    pub fn map_path(&self, path: &Path) -> Result<PathBuf, anyhow::Error> {
+        let rel = path
+            .strip_prefix(&self.original_root)
+            .map_err(|_| anyhow::anyhow!("path is not under snapshot root: {}", path.display()))?;
+        Ok(self.read_root.join(rel))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn build_filesystem_run(
     data_dir: &Path,
@@ -134,6 +150,7 @@ pub fn build_filesystem_run(
     started_at: OffsetDateTime,
     source: &FilesystemSource,
     pipeline: BuildPipelineOptions<'_>,
+    read_mapping: Option<&FilesystemReadMapping>,
     on_progress: Option<&dyn Fn(FilesystemBuildProgressUpdate)>,
     on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
@@ -182,13 +199,23 @@ pub fn build_filesystem_run(
             Some(cb) => {
                 let mut ctx = FilesystemBuildProgressCtx::new("scan", None, cb);
                 ctx.maybe_emit(true);
-                let totals = scan::scan_filesystem_source(source, &mut issues, Some(&mut ctx))?;
+                let totals = scan::scan_filesystem_source(
+                    source,
+                    read_mapping,
+                    &mut issues,
+                    Some(&mut ctx),
+                )?;
                 ctx.done = totals;
                 ctx.total = Some(totals);
                 ctx.maybe_emit(true);
                 Some(totals)
             }
-            None => Some(scan::scan_filesystem_source(source, &mut issues, None)?),
+            None => Some(scan::scan_filesystem_source(
+                source,
+                read_mapping,
+                &mut issues,
+                None,
+            )?),
         }
     } else {
         None
@@ -207,6 +234,7 @@ pub fn build_filesystem_run(
                 tar::write_tar_zstd_parts(
                     &stage,
                     source,
+                    read_mapping,
                     encryption,
                     &mut entries_writer,
                     &mut entries_count,
@@ -229,6 +257,7 @@ pub fn build_filesystem_run(
                 let stats = raw_tree::write_raw_tree(
                     &stage,
                     source,
+                    read_mapping,
                     &mut entries_writer,
                     &mut entries_count,
                     &mut issues,
