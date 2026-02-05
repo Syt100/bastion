@@ -170,7 +170,9 @@ pub(in crate::http) async fn list_job_runs(
                     .and_then(|v| v.get("executed_offline"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
-                consistency_changed_total: consistency_changed_total_from_summary(r.summary.as_ref()),
+                consistency_changed_total: consistency_changed_total_from_summary(
+                    r.summary.as_ref(),
+                ),
             })
             .collect(),
     ))

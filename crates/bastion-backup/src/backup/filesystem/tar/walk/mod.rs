@@ -8,11 +8,11 @@ use super::super::FilesystemBuildIssues;
 use super::super::entries_index::EntriesIndexWriter;
 use super::super::reborrow_progress;
 use super::super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
-use crate::backup::source_consistency::SourceConsistencyTracker;
 use super::entry::{
     FileId, HardlinkRecord, source_meta_for_policy, write_dir_entry, write_file_entry,
     write_symlink_entry,
 };
+use crate::backup::source_consistency::SourceConsistencyTracker;
 
 mod legacy_root;
 mod source_entry;

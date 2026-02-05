@@ -9,11 +9,11 @@ use time::format_description::well_known::Rfc3339;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::backup::source_consistency::{SourceConsistencyReportV1, SourceConsistencyTracker};
 use crate::backup::{
     BuildPipelineOptions, COMPLETE_NAME, ENTRIES_INDEX_NAME, LocalArtifact, LocalRunArtifacts,
     MANIFEST_NAME, PayloadEncryption, stage_dir,
 };
-use crate::backup::source_consistency::{SourceConsistencyReportV1, SourceConsistencyTracker};
 
 const MAX_SOURCE_CONSISTENCY_SAMPLES: usize = 50;
 

@@ -203,10 +203,7 @@ pub fn detect_change_reason(
     before: &FileFingerprintV1,
     after: &FileFingerprintV1,
 ) -> Option<&'static str> {
-    if before.file_id.is_some()
-        && after.file_id.is_some()
-        && before.file_id != after.file_id
-    {
+    if before.file_id.is_some() && after.file_id.is_some() && before.file_id != after.file_id {
         return Some("file_id_changed");
     }
 
@@ -223,4 +220,3 @@ pub fn detect_change_reason(
 
     None
 }
-

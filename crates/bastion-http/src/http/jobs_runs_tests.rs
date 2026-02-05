@@ -144,7 +144,9 @@ async fn list_job_runs_includes_consistency_changed_total() {
 
     for item in items {
         let id = item["id"].as_str().unwrap_or_default();
-        let total = item["consistency_changed_total"].as_u64().unwrap_or_default();
+        let total = item["consistency_changed_total"]
+            .as_u64()
+            .unwrap_or_default();
         if id == run_no_consistency.id {
             assert_eq!(total, 0);
         } else if id == run_with_consistency.id {
@@ -154,4 +156,3 @@ async fn list_job_runs_includes_consistency_changed_total() {
 
     server.abort();
 }
-

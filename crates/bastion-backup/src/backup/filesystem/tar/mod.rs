@@ -3,8 +3,8 @@ use std::path::Path;
 
 use bastion_core::job_spec::FilesystemSource;
 
-use crate::backup::{LocalArtifact, PartWriter, PayloadEncryption};
 use crate::backup::source_consistency::SourceConsistencyTracker;
+use crate::backup::{LocalArtifact, PartWriter, PayloadEncryption};
 
 use super::FilesystemBuildIssues;
 use super::entries_index::EntriesIndexWriter;

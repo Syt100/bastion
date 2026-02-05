@@ -80,9 +80,11 @@ pub(super) fn write_file_entry<W: Write>(
         header.set_entry_type(::tar::EntryType::hard_link());
         header.set_size(0);
 
-        if let Err(error) =
-            tar.append_link(&mut header, Path::new(archive_path), Path::new(&existing.first_path))
-        {
+        if let Err(error) = tar.append_link(
+            &mut header,
+            Path::new(archive_path),
+            Path::new(&existing.first_path),
+        ) {
             let msg = format!("archive error (hardlink): {archive_path}: {error}");
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
@@ -146,9 +148,18 @@ pub(super) fn write_file_entry<W: Write>(
             let after_fp = fingerprint_for_meta(&after_meta);
             if let Some(reason) = detect_change_reason(&before_fp, &after_fp) {
                 if reason == "file_id_changed" {
-                    consistency.record_replaced(archive_path, Some(before_fp.clone()), Some(after_fp));
+                    consistency.record_replaced(
+                        archive_path,
+                        Some(before_fp.clone()),
+                        Some(after_fp),
+                    );
                 } else {
-                    consistency.record_changed(archive_path, reason, Some(before_fp.clone()), Some(after_fp));
+                    consistency.record_changed(
+                        archive_path,
+                        reason,
+                        Some(before_fp.clone()),
+                        Some(after_fp),
+                    );
                 }
             }
         }

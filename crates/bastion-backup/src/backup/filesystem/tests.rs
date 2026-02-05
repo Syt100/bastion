@@ -65,11 +65,7 @@ fn read_tar_entry_bytes(part_path: &Path, archive_path: &str) -> Vec<u8> {
     let mut archive = ::tar::Archive::new(decoder);
     for entry in archive.entries().expect("entries") {
         let mut entry = entry.expect("entry");
-        let path = entry
-            .path()
-            .expect("path")
-            .to_string_lossy()
-            .to_string();
+        let path = entry.path().expect("path").to_string_lossy().to_string();
         if path != archive_path {
             continue;
         }
