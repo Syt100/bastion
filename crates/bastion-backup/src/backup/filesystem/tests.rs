@@ -49,6 +49,7 @@ fn list_index_paths(entries_path: &Path) -> Vec<String> {
         .collect()
 }
 
+#[cfg(unix)]
 fn read_index_records(entries_path: &Path) -> Vec<serde_json::Value> {
     let raw = std::fs::read(entries_path).expect("read entries index");
     let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
@@ -59,6 +60,7 @@ fn read_index_records(entries_path: &Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
+#[cfg(unix)]
 fn read_tar_entry_bytes(part_path: &Path, archive_path: &str) -> Vec<u8> {
     let file = File::open(part_path).expect("open part");
     let decoder = zstd::Decoder::new(file).expect("zstd decoder");

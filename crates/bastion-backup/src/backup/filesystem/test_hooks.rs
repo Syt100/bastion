@@ -7,6 +7,7 @@ thread_local! {
     static AFTER_FILE_OPEN: RefCell<Option<AfterFileOpenHook>> = RefCell::new(None);
 }
 
+#[cfg(unix)]
 pub(super) fn set_after_file_open_hook(hook: Option<AfterFileOpenHook>) {
     AFTER_FILE_OPEN.with(|slot| {
         *slot.borrow_mut() = hook;
