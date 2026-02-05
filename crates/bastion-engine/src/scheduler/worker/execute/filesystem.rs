@@ -120,9 +120,24 @@ pub(super) async fn execute_filesystem_run(
         .await;
     }
 
+    if build.consistency.total() > 0 {
+        let fields = serde_json::to_value(&build.consistency)?;
+        let _ = run_events::append_and_broadcast(
+            db,
+            run_events_bus,
+            run_id,
+            "warn",
+            "source_consistency",
+            "source consistency warnings",
+            Some(fields),
+        )
+        .await;
+    }
+
     let source_total = build.source_total;
     let raw_tree_stats = build.raw_tree_stats;
     let issues = build.issues;
+    let consistency = build.consistency;
     let artifacts = build.artifacts;
 
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
@@ -247,6 +262,7 @@ pub(super) async fn execute_filesystem_run(
         "filesystem": {
             "warnings_total": issues.warnings_total,
             "errors_total": issues.errors_total,
+            "consistency": consistency,
         },
     });
 

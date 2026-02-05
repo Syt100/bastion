@@ -213,8 +213,22 @@ pub(super) async fn run_filesystem_backup(
         .await?;
     }
 
+    if build.consistency.total() > 0 {
+        let fields = serde_json::to_value(&build.consistency)?;
+        super::send_run_event(
+            tx,
+            ctx.run_id,
+            "warn",
+            "source_consistency",
+            "source consistency warnings",
+            Some(fields),
+        )
+        .await?;
+    }
+
     let source_total = build.source_total;
     let issues = build.issues;
+    let consistency = build.consistency;
     let artifacts = build.artifacts;
     let raw_tree_data_bytes = build.raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
 
@@ -348,6 +362,7 @@ pub(super) async fn run_filesystem_backup(
         "filesystem": {
             "warnings_total": issues.warnings_total,
             "errors_total": issues.errors_total,
+            "consistency": consistency,
         }
     });
 

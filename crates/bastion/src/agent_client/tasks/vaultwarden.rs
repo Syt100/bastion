@@ -122,11 +122,24 @@ pub(super) async fn run_vaultwarden_backup(
         )
     })
     .await??;
-    let _consistency = build.consistency;
+    let consistency = build.consistency;
     let artifacts = build.artifacts;
 
     if let Some(handle) = parts_uploader {
         handle.await??;
+    }
+
+    if consistency.total() > 0 {
+        let fields = serde_json::to_value(&consistency)?;
+        super::send_run_event(
+            tx,
+            ctx.run_id,
+            "warn",
+            "source_consistency",
+            "source consistency warnings",
+            Some(fields),
+        )
+        .await?;
     }
 
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
@@ -234,6 +247,7 @@ pub(super) async fn run_vaultwarden_backup(
         "vaultwarden": {
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",
+            "consistency": consistency,
         }
     }))
 }

@@ -84,8 +84,22 @@ pub(super) async fn execute_vaultwarden_run(
         )
     })
     .await??;
-    let _consistency = build.consistency;
+    let consistency = build.consistency;
     let artifacts = build.artifacts;
+
+    if consistency.total() > 0 {
+        let fields = serde_json::to_value(&consistency)?;
+        let _ = run_events::append_and_broadcast(
+            db,
+            run_events_bus,
+            run_id,
+            "warn",
+            "source_consistency",
+            "source consistency warnings",
+            Some(fields),
+        )
+        .await;
+    }
 
     if let Some(handle) = parts_uploader {
         handle.await??;
@@ -183,6 +197,7 @@ pub(super) async fn execute_vaultwarden_run(
         "vaultwarden": {
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",
+            "consistency": consistency,
         }
     }))
 }
