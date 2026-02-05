@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 
 import type { JobListItem } from '@/stores/jobs'
@@ -16,6 +16,8 @@ const jobsStore = reactive({
   loading: false,
   refresh: vi.fn().mockResolvedValue(undefined),
   runNow: vi.fn().mockResolvedValue({ run_id: 'r1', status: 'success' }),
+  archiveJob: vi.fn().mockResolvedValue(undefined),
+  unarchiveJob: vi.fn().mockResolvedValue(undefined),
 })
 
 const agentsStore = reactive({
@@ -26,8 +28,10 @@ const agentsStore = reactive({
 const uiStore = reactive({
   jobsWorkspaceLayoutMode: 'split' as const,
   jobsWorkspaceListView: 'list' as const,
+  jobsWorkspaceSplitListWidthPx: 360,
   setJobsWorkspaceLayoutMode: vi.fn(),
   setJobsWorkspaceListView: vi.fn(),
+  setJobsWorkspaceSplitListWidthPx: vi.fn(),
 })
 
 const routeApi = reactive<{ params: Record<string, unknown>; path: string }>({ params: {}, path: '' })
@@ -39,8 +43,20 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['value', 'options', 'bordered', 'size'],
-      emits: ['update:value', 'update:expanded-keys'],
+      props: [
+        'show',
+        'value',
+        'options',
+        'bordered',
+        'size',
+        'checked',
+        'checkedRowKeys',
+        'rowKey',
+        'columns',
+        'data',
+        'loading',
+      ],
+      emits: ['update:show', 'update:value', 'update:expanded-keys', 'update:checked', 'update:checked-row-keys', 'update:sorter', 'select', 'close'],
       setup(_props, { slots, attrs }) {
         return () => vue.h('div', { 'data-stub': name, ...attrs }, slots.default?.())
       },
@@ -54,10 +70,59 @@ vi.mock('naive-ui', async () => {
           'button',
           {
             'data-stub': 'NButton',
+            disabled: Boolean((attrs as { disabled?: unknown }).disabled),
             onClick: (attrs as { onClick?: (() => void) | undefined }).onClick,
           },
           slots.default?.(),
         )
+    },
+  })
+
+  const tag = vue.defineComponent({
+    name: 'NTag',
+    props: {
+      closable: Boolean,
+      size: String,
+      bordered: Boolean,
+      type: String,
+    },
+    emits: ['close'],
+    setup(props, { slots, emit, attrs }) {
+      return () =>
+        vue.h('span', { 'data-stub': 'NTag', ...attrs }, [
+          slots.default?.(),
+          props.closable ? vue.h('button', { 'data-testid': 'tag-close', onClick: () => emit('close') }, 'x') : null,
+        ])
+    },
+  })
+
+  const modal = vue.defineComponent({
+    name: 'NModal',
+    props: ['show'],
+    emits: ['update:show'],
+    setup(props, { slots }) {
+      return () => {
+        if (!props.show) return vue.h('div', { 'data-stub': 'NModal' })
+        return vue.h('div', { 'data-stub': 'NModal' }, slots.default?.())
+      }
+    },
+  })
+
+  const checkbox = vue.defineComponent({
+    name: 'NCheckbox',
+    props: ['checked'],
+    emits: ['update:checked'],
+    setup(props, { emit, attrs, slots }) {
+      return () =>
+        vue.h('label', { 'data-stub': 'NCheckbox' }, [
+          vue.h('input', {
+            type: 'checkbox',
+            checked: Boolean(props.checked),
+            onChange: (e: Event) => emit('update:checked', (e.target as HTMLInputElement).checked),
+            ...(attrs as Record<string, unknown>),
+          }),
+          slots.default?.(),
+        ])
     },
   })
 
@@ -66,16 +131,19 @@ vi.mock('naive-ui', async () => {
     NButton: button,
     NCard: stub('NCard'),
     NDataTable: stub('NDataTable'),
+    NCheckbox: checkbox,
     NDrawer: stub('NDrawer'),
     NDrawerContent: stub('NDrawerContent'),
     NIcon: stub('NIcon'),
     NInput: stub('NInput'),
+    NModal: modal,
     NPopover: stub('NPopover'),
     NRadioButton: stub('NRadioButton'),
     NRadioGroup: stub('NRadioGroup'),
     NSelect: stub('NSelect'),
+    NDropdown: stub('NDropdown'),
     NSwitch: stub('NSwitch'),
-    NTag: stub('NTag'),
+    NTag: tag,
     useMessage: () => messageApi,
   }
 })
@@ -222,5 +290,174 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
 
     expect(uiStore.setJobsWorkspaceLayoutMode).toHaveBeenCalledWith('list')
     expect(uiStore.setJobsWorkspaceListView).toHaveBeenCalledWith('table')
+  })
+
+  it('renders results count and active filter chips; closing a chip clears the filter', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          JobEditorModal: true,
+          // Render the toolbar named slots so search input exists.
+          ListToolbar: { template: '<div><slot name=\"search\" /><slot name=\"filters\" /><slot name=\"sort\" /><slot name=\"actions\" /></div>' },
+          'router-view': true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('jobs.workspace.filters.resultsCount')
+
+    const input = wrapper.findComponent({ name: 'NInput' })
+    input.vm.$emit('update:value', 'abc')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('common.search: abc')
+
+    const close = wrapper.find('[data-testid=\"tag-close\"]')
+    expect(close.exists()).toBe(true)
+    await close.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).not.toContain('common.search: abc')
+  })
+
+  it('bulk run now skips archived jobs', async () => {
+    uiStore.jobsWorkspaceLayoutMode = 'list'
+    uiStore.jobsWorkspaceListView = 'table'
+    jobsStore.items = [
+      {
+        id: 'job1',
+        name: 'Job 1',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+      {
+        id: 'job2',
+        name: 'Job 2',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: 123,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+    ]
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    const table = wrapper.findComponent({ name: 'NDataTable' })
+    table.vm.$emit('update:checked-row-keys', ['job1', 'job2'])
+    await wrapper.vm.$nextTick()
+
+    const toolbar = wrapper.find('.app-selection-toolbar')
+    expect(toolbar.exists()).toBe(true)
+
+    const runBtn = toolbar.findAll('button').find((b) => b.text() === 'jobs.actions.runNow')
+    expect(runBtn).toBeTruthy()
+    await runBtn!.trigger('click')
+    await flushPromises()
+
+    expect(jobsStore.runNow).toHaveBeenCalledTimes(1)
+    expect(jobsStore.runNow).toHaveBeenCalledWith('job1')
+  })
+
+  it('bulk archive requires confirmation and only archives eligible jobs', async () => {
+    uiStore.jobsWorkspaceLayoutMode = 'list'
+    uiStore.jobsWorkspaceListView = 'table'
+    jobsStore.items = [
+      {
+        id: 'job1',
+        name: 'Job 1',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+      {
+        id: 'job2',
+        name: 'Job 2',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: 123,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+    ]
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    wrapper.findComponent({ name: 'NDataTable' }).vm.$emit('update:checked-row-keys', ['job1', 'job2'])
+    await wrapper.vm.$nextTick()
+
+    const toolbar = wrapper.find('.app-selection-toolbar')
+    expect(toolbar.exists()).toBe(true)
+
+    const archiveBtn = toolbar.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
+    expect(archiveBtn).toBeTruthy()
+    await archiveBtn!.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(jobsStore.archiveJob).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('jobs.workspace.bulk.archiveConfirm')
+
+    const modal = wrapper.find('[data-stub=\"NModal\"]')
+    const confirm = modal.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
+    expect(confirm).toBeTruthy()
+    await confirm!.trigger('click')
+    await flushPromises()
+
+    expect(jobsStore.archiveJob).toHaveBeenCalledTimes(1)
+    expect(jobsStore.archiveJob).toHaveBeenCalledWith('job1', { cascadeSnapshots: false })
   })
 })

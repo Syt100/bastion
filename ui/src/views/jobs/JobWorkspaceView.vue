@@ -2,7 +2,7 @@
 import { computed, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NCard, NCheckbox, NCode, NDrawer, NDrawerContent, NDropdown, NModal, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
-import { EllipsisHorizontal } from '@vicons/ionicons5'
+import { EllipsisHorizontal, PlayOutline, RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import NodeContextTag from '@/components/NodeContextTag.vue'
@@ -212,7 +212,53 @@ function onSelectMore(key: string | number): void {
 
 <template>
   <div :class="isDesktop ? 'h-full min-h-0 flex flex-col gap-4' : 'space-y-4'">
-    <MobileTopBar v-if="!isDesktop" :title="job?.name ?? t('jobs.detail.title')" :back-to="`/n/${encodeURIComponent(nodeId)}/jobs`" />
+    <MobileTopBar
+      v-if="!isDesktop"
+      sticky
+      :title="job?.name ?? t('jobs.detail.title')"
+      :back-to="`/n/${encodeURIComponent(nodeId)}/jobs`"
+    >
+      <template #actions>
+        <n-button
+          size="small"
+          quaternary
+          :disabled="!job || !!job.archived_at"
+          :title="t('jobs.actions.runNow')"
+          :aria-label="t('jobs.actions.runNow')"
+          @click="runNow"
+        >
+          <template #icon>
+            <PlayOutline />
+          </template>
+        </n-button>
+
+        <n-button
+          size="small"
+          quaternary
+          :loading="loading"
+          :title="t('jobs.workspace.actions.refreshJob')"
+          :aria-label="t('jobs.workspace.actions.refreshJob')"
+          @click="refresh"
+        >
+          <template #icon>
+            <RefreshOutline />
+          </template>
+        </n-button>
+
+        <n-dropdown trigger="click" :options="moreOptions" @select="onSelectMore">
+          <n-button
+            size="small"
+            quaternary
+            :title="t('common.more')"
+            :aria-label="t('common.more')"
+          >
+            <template #icon>
+              <EllipsisHorizontal />
+            </template>
+          </n-button>
+        </n-dropdown>
+      </template>
+    </MobileTopBar>
 
     <n-card class="app-card" :bordered="false">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -228,8 +274,16 @@ function onSelectMore(key: string | number): void {
           </div>
         </div>
 
-        <div class="flex items-center gap-2 flex-wrap justify-end">
-          <n-button size="small" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+        <div v-if="isDesktop" class="flex items-center gap-2 flex-wrap justify-end">
+          <n-button
+            size="small"
+            :loading="loading"
+            :title="t('jobs.workspace.actions.refreshJob')"
+            :aria-label="t('jobs.workspace.actions.refreshJob')"
+            @click="refresh"
+          >
+            {{ t('jobs.workspace.actions.refreshJob') }}
+          </n-button>
           <n-button size="small" type="primary" :disabled="!!job?.archived_at" @click="runNow">{{ t('jobs.actions.runNow') }}</n-button>
 
           <template v-if="isDesktop">

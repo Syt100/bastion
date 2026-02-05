@@ -331,6 +331,11 @@ const messages = {
         splitView: 'Split view',
         fullList: 'Full list',
         fullDetail: 'Full detail',
+        resizeSplit: 'Resize split pane',
+        refreshList: 'Refresh list',
+        refreshJob: 'Refresh job',
+        select: 'Select',
+        openDetails: 'Open details',
       },
       views: {
         list: 'List',
@@ -338,6 +343,16 @@ const messages = {
       },
       filters: {
         scheduled: 'Scheduled',
+        resultsCount: 'Results: {filtered}/{total}',
+      },
+      bulk: {
+        archiveTitle: 'Archive jobs',
+        unarchiveTitle: 'Unarchive jobs',
+        archiveConfirm: 'Archive {eligible} of {total} selected jobs?',
+        unarchiveConfirm: 'Unarchive {eligible} of {total} selected jobs?',
+        runSummary: 'Run now: queued {queued}, rejected {rejected}, skipped {skipped}, failed {failed}',
+        archiveSummary: 'Archived {ok}, skipped {skipped}, failed {failed}',
+        unarchiveSummary: 'Unarchived {ok}, skipped {skipped}, failed {failed}',
       },
       overview: {
         runs7dTitle: 'Runs (Last 7 Days)',

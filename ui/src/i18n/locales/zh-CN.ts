@@ -331,6 +331,11 @@ const messages = {
         splitView: '分栏',
         fullList: '仅列表',
         fullDetail: '仅详情',
+        resizeSplit: '调整分栏宽度',
+        refreshList: '刷新列表',
+        refreshJob: '刷新任务',
+        select: '选择',
+        openDetails: '查看详情',
       },
       views: {
         list: '列表',
@@ -338,6 +343,16 @@ const messages = {
       },
       filters: {
         scheduled: '已调度',
+        resultsCount: '结果：{filtered}/{total}',
+      },
+      bulk: {
+        archiveTitle: '归档任务',
+        unarchiveTitle: '取消归档任务',
+        archiveConfirm: '将归档已选择的 {eligible}/{total} 个任务，是否继续？',
+        unarchiveConfirm: '将取消归档已选择的 {eligible}/{total} 个任务，是否继续？',
+        runSummary: '立即运行：排队 {queued}，拒绝 {rejected}，跳过 {skipped}，失败 {failed}',
+        archiveSummary: '归档完成：成功 {ok}，跳过 {skipped}，失败 {failed}',
+        unarchiveSummary: '取消归档完成：成功 {ok}，跳过 {skipped}，失败 {failed}',
       },
       overview: {
         runs7dTitle: '近7天运行',

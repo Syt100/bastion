@@ -8,6 +8,10 @@ import { useI18n } from 'vue-i18n'
 const props = defineProps<{
   title: string
   backTo?: string | null
+  /**
+   * When true, the bar sticks to the top while scrolling (mobile-only usage).
+   */
+  sticky?: boolean
 }>()
 
 const { t } = useI18n()
@@ -24,6 +28,7 @@ function back(): void {
 <template>
   <div
     class="h-12 px-2 rounded-lg app-border-subtle app-glass-soft"
+    :class="props.sticky ? 'sticky top-2 z-40' : ''"
   >
     <div class="h-full grid grid-cols-[96px_1fr_96px] items-center">
       <div class="flex items-center">
@@ -40,7 +45,7 @@ function back(): void {
       </div>
 
       <div class="flex items-center justify-end">
-        <!-- reserved actions area (intentionally empty in this version) -->
+        <slot name="actions" />
       </div>
     </div>
   </div>

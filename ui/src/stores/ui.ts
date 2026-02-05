@@ -15,6 +15,11 @@ const PREFERRED_NODE_KEY = 'bastion.ui.preferredNodeId'
 const THEME_KEY = 'bastion.ui.themeId'
 const JOBS_WORKSPACE_LAYOUT_KEY = 'bastion.ui.jobsWorkspace.layoutMode'
 const JOBS_WORKSPACE_LIST_VIEW_KEY = 'bastion.ui.jobsWorkspace.listView'
+const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_KEY = 'bastion.ui.jobsWorkspace.splitListWidthPx'
+
+const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_DEFAULT_PX = 360
+const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MIN_PX = 280
+const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MAX_PX = 640
 
 export type JobsWorkspaceLayoutMode = 'split' | 'list' | 'detail'
 export type JobsWorkspaceListView = 'list' | 'table'
@@ -25,6 +30,16 @@ function isJobsWorkspaceLayoutMode(value: string | null): value is JobsWorkspace
 
 function isJobsWorkspaceListView(value: string | null): value is JobsWorkspaceListView {
   return value === 'list' || value === 'table'
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)))
+}
+
+function parseStoredInt(value: string | null): number | null {
+  if (!value) return null
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? n : null
 }
 
 export const useUiStore = defineStore('ui', () => {
@@ -59,6 +74,13 @@ export const useUiStore = defineStore('ui', () => {
     (() => {
       const raw = localStorage.getItem(JOBS_WORKSPACE_LIST_VIEW_KEY)
       return isJobsWorkspaceListView(raw) ? raw : 'list'
+    })(),
+  )
+  const jobsWorkspaceSplitListWidthPx = ref<number>(
+    (() => {
+      const raw = parseStoredInt(localStorage.getItem(JOBS_WORKSPACE_SPLIT_LIST_WIDTH_KEY))
+      if (raw == null) return JOBS_WORKSPACE_SPLIT_LIST_WIDTH_DEFAULT_PX
+      return clampInt(raw, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MIN_PX, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MAX_PX)
     })(),
   )
   const themeMode = computed(() => (darkMode.value ? 'dark' : 'light'))
@@ -108,6 +130,12 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(JOBS_WORKSPACE_LIST_VIEW_KEY, value)
   }
 
+  function setJobsWorkspaceSplitListWidthPx(value: number): void {
+    const v = clampInt(value, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MIN_PX, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MAX_PX)
+    jobsWorkspaceSplitListWidthPx.value = v
+    localStorage.setItem(JOBS_WORKSPACE_SPLIT_LIST_WIDTH_KEY, String(v))
+  }
+
   return {
     darkMode,
     themeId,
@@ -116,6 +144,7 @@ export const useUiStore = defineStore('ui', () => {
     preferredNodeId,
     jobsWorkspaceLayoutMode,
     jobsWorkspaceListView,
+    jobsWorkspaceSplitListWidthPx,
     themeMode,
     setDarkMode,
     setThemeId,
@@ -124,6 +153,7 @@ export const useUiStore = defineStore('ui', () => {
     setPreferredNodeId,
     setJobsWorkspaceLayoutMode,
     setJobsWorkspaceListView,
+    setJobsWorkspaceSplitListWidthPx,
     toggleDarkMode,
   }
 })

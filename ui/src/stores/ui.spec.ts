@@ -134,4 +134,32 @@ describe('useUiStore', () => {
     expect(ui.jobsWorkspaceListView).toBe('table')
     expect(localStorage.getItem('bastion.ui.jobsWorkspace.listView')).toBe('table')
   })
+
+  it('defaults jobs split list width to 360px when not stored', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceSplitListWidthPx).toBe(360)
+  })
+
+  it('clamps jobs split list width to the minimum when stored value is too small', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.jobsWorkspace.splitListWidthPx', '100')
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceSplitListWidthPx).toBe(280)
+  })
+
+  it('clamps jobs split list width to the maximum when stored value is too large', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.jobsWorkspace.splitListWidthPx', '9999')
+    const ui = useUiStore()
+    expect(ui.jobsWorkspaceSplitListWidthPx).toBe(640)
+  })
+
+  it('persists jobs split list width', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setJobsWorkspaceSplitListWidthPx(420)
+    expect(ui.jobsWorkspaceSplitListWidthPx).toBe(420)
+    expect(localStorage.getItem('bastion.ui.jobsWorkspace.splitListWidthPx')).toBe('420')
+  })
 })
