@@ -13,7 +13,7 @@ use url::Url;
 use walkdir::WalkDir;
 
 use crate::backup::source_consistency::{
-    FileFingerprintV2, SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+    FileFingerprintV2, SourceConsistencyTracker, detect_change_reason, fingerprint_for_path_meta,
 };
 
 use super::FilesystemBuildIssues;
@@ -244,7 +244,7 @@ impl RawTreeDataSink for WebdavDataSink {
                     size,
                     self.max_attempts,
                 ))?;
-        let after_handle = after_handle_meta.map(|m| fingerprint_for_meta(&m));
+        let after_handle = after_handle_meta.map(|m| fingerprint_for_path_meta(fs_path, &m));
         Ok((hash, after_handle))
     }
 }
@@ -961,7 +961,7 @@ fn write_file_entry(
     }
 
     let size = meta.len();
-    let before_fp = fingerprint_for_meta(meta);
+    let before_fp = fingerprint_for_path_meta(fs_path, meta);
 
     let hardlink_group = if source.hardlink_policy == FsHardlinkPolicy::Keep
         && !is_symlink_path
@@ -989,7 +989,7 @@ fn write_file_entry(
             issues.record_error(msg);
             let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
                 .ok()
-                .map(|m| fingerprint_for_meta(&m));
+                .map(|m| fingerprint_for_path_meta(fs_path, &m));
             consistency.record_read_error(
                 archive_path,
                 error.to_string(),
@@ -1006,7 +1006,7 @@ fn write_file_entry(
 
     match source_meta_for_policy(fs_path, source.symlink_policy) {
         Ok(after_meta) => {
-            let after_path_fp = fingerprint_for_meta(&after_meta);
+            let after_path_fp = fingerprint_for_path_meta(fs_path, &after_meta);
             let replaced = before_fp.file_id.is_some()
                 && after_path_fp.file_id.is_some()
                 && before_fp.file_id != after_path_fp.file_id;
@@ -1221,7 +1221,10 @@ fn copy_file_and_hash(src: &Path, dst: &Path) -> Result<CopyFileAndHashResult, a
     }
     out.flush()?;
 
-    let after_handle = input.metadata().ok().map(|m| fingerprint_for_meta(&m));
+    let after_handle = input
+        .metadata()
+        .ok()
+        .map(|m| fingerprint_for_path_meta(src, &m));
 
     let hash = hasher.finalize().to_hex().to_string();
     Ok(CopyFileAndHashResult {
@@ -1247,7 +1250,10 @@ fn hash_file_and_fingerprint(
         hasher.update(&buf[..n]);
     }
 
-    let after_handle = input.metadata().ok().map(|m| fingerprint_for_meta(&m));
+    let after_handle = input
+        .metadata()
+        .ok()
+        .map(|m| fingerprint_for_path_meta(src, &m));
     let hash = hasher.finalize().to_hex().to_string();
     Ok((hash, after_handle))
 }

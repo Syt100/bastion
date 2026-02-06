@@ -190,6 +190,20 @@ pub fn fingerprint_for_meta(meta: &std::fs::Metadata) -> FileFingerprintV2 {
     }
 }
 
+#[cfg(windows)]
+pub fn fingerprint_for_path_meta(path: &Path, meta: &std::fs::Metadata) -> FileFingerprintV2 {
+    let mut fp = fingerprint_for_meta(meta);
+    if fp.file_id.is_none() {
+        fp.file_id = file_id_for_path(path);
+    }
+    fp
+}
+
+#[cfg(not(windows))]
+pub fn fingerprint_for_path_meta(_path: &Path, meta: &std::fs::Metadata) -> FileFingerprintV2 {
+    fingerprint_for_meta(meta)
+}
+
 pub fn source_meta_for_policy(
     path: &Path,
     policy: FsSymlinkPolicy,
@@ -214,10 +228,26 @@ fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
 fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
     let _ = meta;
     // `std::os::windows::fs::MetadataExt::{volume_serial_number,file_index}` is currently
-    // unstable (`windows_by_handle`) on stable Rust. We still produce useful best-effort
-    // consistency signals using size + mtime. A future improvement could use
-    // `GetFileInformationByHandle` via `windows-sys` to recover a stable file ID.
+    // unstable (`windows_by_handle`) on stable Rust. When only Metadata is available, we
+    // produce useful best-effort consistency signals using size + mtime.
+    //
+    // When a path is available, we recover a stable Windows file ID via the `file-id` crate.
     None
+}
+
+#[cfg(windows)]
+fn file_id_for_path(path: &Path) -> Option<FileIdV2> {
+    match file_id::get_low_res_file_id(path) {
+        Ok(file_id::FileId::LowRes {
+            volume_serial_number,
+            file_index,
+        }) => Some(FileIdV2::Windows {
+            volume_serial: volume_serial_number,
+            file_index,
+        }),
+        Ok(_) => None,
+        Err(_) => None,
+    }
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -297,18 +327,15 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn fingerprint_for_meta_omits_windows_file_id_on_stable() {
+    fn fingerprint_for_path_meta_includes_windows_file_id() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("a.txt");
         std::fs::write(&path, b"hi").expect("write file");
         let meta = std::fs::metadata(&path).expect("metadata");
 
-        let fp = fingerprint_for_meta(&meta);
+        let fp = fingerprint_for_path_meta(&path, &meta);
         assert_eq!(fp.size_bytes, 2);
         assert!(fp.mtime_unix_nanos.is_some());
-        assert!(
-            fp.file_id.is_none(),
-            "windows file_id is not available on stable Rust without platform APIs"
-        );
+        assert!(matches!(fp.file_id, Some(FileIdV2::Windows { .. })));
     }
 }

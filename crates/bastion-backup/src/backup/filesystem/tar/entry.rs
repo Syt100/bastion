@@ -8,7 +8,7 @@ use bastion_core::manifest::HashAlgorithm;
 
 use crate::backup::hashing_reader::HashingReader;
 use crate::backup::source_consistency::{
-    SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+    SourceConsistencyTracker, detect_change_reason, fingerprint_for_path_meta,
 };
 
 use super::super::FilesystemBuildIssues;
@@ -116,7 +116,7 @@ pub(super) fn write_file_entry<W: Write>(
         return Ok(());
     }
 
-    let before_fp = fingerprint_for_meta(&meta);
+    let before_fp = fingerprint_for_path_meta(fs_path, &meta);
 
     #[cfg(all(test, unix))]
     super::super::test_hooks::run_after_file_open_hook(fs_path, archive_path);
@@ -136,10 +136,13 @@ pub(super) fn write_file_entry<W: Write>(
         }
         issues.record_error(msg);
         let file = reader.into_inner();
-        let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
+        let after_handle_fp = file
+            .metadata()
+            .ok()
+            .map(|m| fingerprint_for_path_meta(fs_path, &m));
         let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
             .ok()
-            .map(|m| fingerprint_for_meta(&m));
+            .map(|m| fingerprint_for_path_meta(fs_path, &m));
         consistency.record_read_error(
             archive_path,
             error.to_string(),
@@ -152,13 +155,16 @@ pub(super) fn write_file_entry<W: Write>(
 
     let hash = reader.finalize_hex();
     let file = reader.into_inner();
-    let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
+    let after_handle_fp = file
+        .metadata()
+        .ok()
+        .map(|m| fingerprint_for_path_meta(fs_path, &m));
 
     // Best-effort: if the file changes while we're reading it, record a warning for the run so
     // users can judge consistency risk (no snapshots).
     match source_meta_for_policy(fs_path, source.symlink_policy) {
         Ok(after_meta) => {
-            let after_path_fp = fingerprint_for_meta(&after_meta);
+            let after_path_fp = fingerprint_for_path_meta(fs_path, &after_meta);
             let replaced = before_fp.file_id.is_some()
                 && after_path_fp.file_id.is_some()
                 && before_fp.file_id != after_path_fp.file_id;

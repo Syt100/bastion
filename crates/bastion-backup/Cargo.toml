@@ -31,6 +31,9 @@ zstd = { version = "0.13.3", features = ["zstdmt"] }
 nix = { version = "0.30.1", default-features = false, features = ["fs", "user"] }
 xattr = "1.6.1"
 
+[target.'cfg(windows)'.dependencies]
+file-id = "0.2.3"
+
 [dev-dependencies]
 axum = { workspace = true, features = ["macros"] }
 tempfile.workspace = true

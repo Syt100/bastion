@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 
 use crate::backup::hashing_reader::HashingReader;
 use crate::backup::source_consistency::{
-    SourceConsistencyTracker, detect_change_reason, fingerprint_for_meta,
+    SourceConsistencyTracker, detect_change_reason, fingerprint_for_path_meta,
 };
 use crate::backup::{LocalArtifact, PartWriter, PayloadEncryption};
 
@@ -140,7 +140,7 @@ fn write_vaultwarden_tar_entries<W: Write>(
         let record = if entry.file_type().is_file() {
             let file = File::open(entry.path())?;
             let meta = file.metadata()?;
-            let before_fp = fingerprint_for_meta(&meta);
+            let before_fp = fingerprint_for_path_meta(entry.path(), &meta);
             let size = meta.len();
 
             let mut reader = HashingReader::new(file);
@@ -154,11 +154,14 @@ fn write_vaultwarden_tar_entries<W: Write>(
             tar.append_data(&mut header, Path::new(&rel_str), &mut reader)?;
             let hash = reader.finalize_hex();
             let file = reader.into_inner();
-            let after_handle_fp = file.metadata().ok().map(|m| fingerprint_for_meta(&m));
+            let after_handle_fp = file
+                .metadata()
+                .ok()
+                .map(|m| fingerprint_for_path_meta(entry.path(), &m));
 
             match std::fs::metadata(entry.path()) {
                 Ok(after_meta) => {
-                    let after_path_fp = fingerprint_for_meta(&after_meta);
+                    let after_path_fp = fingerprint_for_path_meta(entry.path(), &after_meta);
                     let replaced = before_fp.file_id.is_some()
                         && after_path_fp.file_id.is_some()
                         && before_fp.file_id != after_path_fp.file_id;
