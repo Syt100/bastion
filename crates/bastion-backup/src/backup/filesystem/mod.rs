@@ -142,6 +142,15 @@ impl FilesystemReadMapping {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct RawTreeWebdavDirectUploadConfig {
+    pub handle: tokio::runtime::Handle,
+    pub base_url: String,
+    pub credentials: bastion_targets::WebdavCredentials,
+    pub max_attempts: u32,
+    pub resume_by_size: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn build_filesystem_run(
     data_dir: &Path,
@@ -153,6 +162,7 @@ pub fn build_filesystem_run(
     read_mapping: Option<&FilesystemReadMapping>,
     on_progress: Option<&dyn Fn(FilesystemBuildProgressUpdate)>,
     on_part_finished: Option<Box<dyn Fn(LocalArtifact) -> std::io::Result<()> + Send>>,
+    raw_tree_webdav_direct_upload: Option<RawTreeWebdavDirectUploadConfig>,
 ) -> Result<FilesystemRunBuild, anyhow::Error> {
     let BuildPipelineOptions {
         artifact_format,
@@ -254,16 +264,30 @@ pub fn build_filesystem_run(
                 if !matches!(encryption, PayloadEncryption::None) {
                     anyhow::bail!("raw_tree_v1 does not support payload encryption");
                 }
-                let stats = raw_tree::write_raw_tree(
-                    &stage,
-                    source,
-                    read_mapping,
-                    &mut entries_writer,
-                    &mut entries_count,
-                    &mut issues,
-                    &mut consistency,
-                    packaging_progress.as_mut(),
-                )?;
+                let stats = match raw_tree_webdav_direct_upload.as_ref() {
+                    Some(cfg) => raw_tree::write_raw_tree_webdav_direct(
+                        cfg,
+                        job_id,
+                        run_id,
+                        source,
+                        read_mapping,
+                        &mut entries_writer,
+                        &mut entries_count,
+                        &mut issues,
+                        &mut consistency,
+                        packaging_progress.as_mut(),
+                    )?,
+                    None => raw_tree::write_raw_tree(
+                        &stage,
+                        source,
+                        read_mapping,
+                        &mut entries_writer,
+                        &mut entries_count,
+                        &mut issues,
+                        &mut consistency,
+                        packaging_progress.as_mut(),
+                    )?,
+                };
                 (
                     ArtifactFormatV1::RawTreeV1,
                     Vec::new(),
@@ -359,7 +383,7 @@ pub fn build_filesystem_run(
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) mod test_hooks;
 
 mod scan;

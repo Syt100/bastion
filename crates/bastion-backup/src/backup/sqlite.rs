@@ -111,6 +111,7 @@ pub fn build_sqlite_run(
         None,
         None,
         on_part_finished,
+        None,
     )?;
     if build.issues.errors_total > 0 {
         anyhow::bail!(

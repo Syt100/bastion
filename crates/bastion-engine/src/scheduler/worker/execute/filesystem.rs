@@ -257,6 +257,38 @@ pub(super) async fn execute_filesystem_run(
         (None, None)
     };
 
+    let mut raw_tree_webdav_direct_upload: Option<
+        backup::filesystem::RawTreeWebdavDirectUploadConfig,
+    > = None;
+    if allow_rolling_upload
+        && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+        && let job_spec::TargetV1::Webdav {
+            base_url,
+            secret_name,
+            ..
+        } = &target
+    {
+        let cred_bytes = bastion_storage::secrets_repo::get_secret(
+            db,
+            secrets,
+            bastion_core::HUB_NODE_ID,
+            "webdav",
+            secret_name,
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+        let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
+
+        raw_tree_webdav_direct_upload = Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
+            handle: tokio::runtime::Handle::current(),
+            base_url: base_url.clone(),
+            credentials,
+            max_attempts: 3,
+            resume_by_size: true,
+        });
+    }
+    let using_webdav_raw_tree_direct_upload = raw_tree_webdav_direct_upload.is_some();
+
     // For raw_tree_v1 + local_dir targets, avoid duplicating the staged `data/` tree by linking the
     // staging `data/` dir to the final target run dir (best-effort; falls back to normal staging).
     let mut direct_target_run_dir: Option<std::path::PathBuf> = None;
@@ -335,6 +367,9 @@ pub(super) async fn execute_filesystem_run(
 
     let read_mapping_for_build = read_mapping.clone();
     let progress_tx_build = progress_tx.clone();
+    let raw_tree_webdav_direct_upload_for_build = raw_tree_webdav_direct_upload.clone();
+    let job_id_for_build = job_id.clone();
+    let run_id_for_build = run_id_owned.clone();
     let build_res = tokio::task::spawn_blocking(move || {
         let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
             let _ = progress_tx_build.send(Some(RunProgressUpdate {
@@ -348,8 +383,8 @@ pub(super) async fn execute_filesystem_run(
         };
         backup::filesystem::build_filesystem_run(
             &data_dir,
-            &job_id,
-            &run_id_owned,
+            &job_id_for_build,
+            &run_id_for_build,
             started_at,
             &source,
             backup::BuildPipelineOptions {
@@ -360,6 +395,7 @@ pub(super) async fn execute_filesystem_run(
             read_mapping_for_build.as_ref(),
             Some(&on_progress),
             on_part_finished,
+            raw_tree_webdav_direct_upload_for_build,
         )
     })
     .await?;
@@ -396,10 +432,22 @@ pub(super) async fn execute_filesystem_run(
         }
     }
 
-    if build_res.is_err()
-        && let Some(dir) = direct_target_run_dir.as_ref()
-    {
-        let _ = tokio::fs::remove_dir_all(dir).await;
+    if build_res.is_err() {
+        if using_webdav_raw_tree_direct_upload
+            && let Some(cfg) = raw_tree_webdav_direct_upload.as_ref()
+        {
+            let _ = bastion_targets::webdav::cleanup_incomplete_run(
+                &cfg.base_url,
+                cfg.credentials.clone(),
+                &job_id,
+                &run_id_owned,
+            )
+            .await;
+        }
+
+        if let Some(dir) = direct_target_run_dir.as_ref() {
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        }
     }
 
     let build = build_res?;
@@ -465,11 +513,16 @@ pub(super) async fn execute_filesystem_run(
     let manifest_size = std::fs::metadata(&artifacts.manifest_path)?.len();
     let complete_size = std::fs::metadata(&artifacts.complete_path)?.len();
     let raw_tree_data_bytes = raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
+    let raw_tree_data_bytes_for_transfer = if using_webdav_raw_tree_direct_upload {
+        0
+    } else {
+        raw_tree_data_bytes
+    };
     let transfer_total_bytes = parts_bytes
         .saturating_add(entries_size)
         .saturating_add(manifest_size)
         .saturating_add(complete_size)
-        .saturating_add(raw_tree_data_bytes);
+        .saturating_add(raw_tree_data_bytes_for_transfer);
 
     if consistency_failed && !upload_on_consistency_failure {
         let target_summary = serde_json::json!({
@@ -596,7 +649,7 @@ pub(super) async fn execute_filesystem_run(
             }));
         })
     };
-    let target_summary = super::super::target_store::store_run_artifacts_to_target(
+    let target_summary = match super::super::target_store::store_run_artifacts_to_target(
         db,
         secrets,
         &job.id,
@@ -605,7 +658,24 @@ pub(super) async fn execute_filesystem_run(
         &artifacts,
         Some(upload_cb),
     )
-    .await?;
+    .await
+    {
+        Ok(v) => v,
+        Err(error) => {
+            if using_webdav_raw_tree_direct_upload
+                && let Some(cfg) = raw_tree_webdav_direct_upload.as_ref()
+            {
+                let _ = bastion_targets::webdav::cleanup_incomplete_run(
+                    &cfg.base_url,
+                    cfg.credentials.clone(),
+                    &job_id,
+                    &run_id_owned,
+                )
+                .await;
+            }
+            return Err(error);
+        }
+    };
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 

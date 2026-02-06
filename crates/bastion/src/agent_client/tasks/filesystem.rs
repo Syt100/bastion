@@ -338,6 +338,31 @@ pub(super) async fn run_filesystem_backup(
         (None, None)
     };
 
+    let mut raw_tree_webdav_direct_upload: Option<
+        backup::filesystem::RawTreeWebdavDirectUploadConfig,
+    > = None;
+    if allow_rolling_upload
+        && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+        && let TargetResolvedV1::Webdav {
+            base_url,
+            username,
+            password,
+            ..
+        } = &target
+    {
+        raw_tree_webdav_direct_upload = Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
+            handle: tokio::runtime::Handle::current(),
+            base_url: base_url.clone(),
+            credentials: bastion_targets::WebdavCredentials {
+                username: username.clone(),
+                password: password.clone(),
+            },
+            max_attempts: 3,
+            resume_by_size: true,
+        });
+    }
+    let using_webdav_raw_tree_direct_upload = raw_tree_webdav_direct_upload.is_some();
+
     // For raw_tree_v1 + local_dir targets, avoid duplicating the staged `data/` tree by linking the
     // staging `data/` dir to the final target run dir (best-effort; falls back to normal staging).
     let mut direct_target_run_dir: Option<std::path::PathBuf> = None;
@@ -420,6 +445,7 @@ pub(super) async fn run_filesystem_backup(
     let run_id_clone = ctx.run_id.to_string();
     let read_mapping_for_build = read_mapping.clone();
     let progress_tx_build = progress_tx.clone();
+    let raw_tree_webdav_direct_upload_for_build = raw_tree_webdav_direct_upload.clone();
     let mut build_handle = tokio::task::spawn_blocking(move || {
         let on_progress = |update: backup::filesystem::FilesystemBuildProgressUpdate| {
             // Pre-scan/packaging is already throttled; blocking send is OK here.
@@ -439,6 +465,7 @@ pub(super) async fn run_filesystem_backup(
             read_mapping_for_build.as_ref(),
             Some(&on_progress),
             on_part_finished,
+            raw_tree_webdav_direct_upload_for_build,
         )
     });
 
@@ -490,10 +517,28 @@ pub(super) async fn run_filesystem_backup(
         }
     }
 
-    if build_res.is_err()
-        && let Some(dir) = direct_target_run_dir.as_ref()
-    {
-        let _ = tokio::fs::remove_dir_all(dir).await;
+    if build_res.is_err() {
+        if using_webdav_raw_tree_direct_upload
+            && let TargetResolvedV1::Webdav {
+                base_url,
+                username,
+                password,
+                ..
+            } = &target
+        {
+            let creds = bastion_targets::WebdavCredentials {
+                username: username.clone(),
+                password: password.clone(),
+            };
+            let _ = bastion_targets::webdav::cleanup_incomplete_run(
+                base_url, creds, ctx.job_id, ctx.run_id,
+            )
+            .await;
+        }
+
+        if let Some(dir) = direct_target_run_dir.as_ref() {
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        }
     }
 
     let build = build_res?;
@@ -552,6 +597,11 @@ pub(super) async fn run_filesystem_backup(
     };
     let artifacts = build.artifacts;
     let raw_tree_data_bytes = build.raw_tree_stats.map(|s| s.data_bytes).unwrap_or(0);
+    let raw_tree_data_bytes_for_transfer = if using_webdav_raw_tree_direct_upload {
+        0
+    } else {
+        raw_tree_data_bytes
+    };
 
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();
     let entries_size = std::fs::metadata(&artifacts.entries_index_path)?.len();
@@ -561,7 +611,7 @@ pub(super) async fn run_filesystem_backup(
         .saturating_add(entries_size)
         .saturating_add(manifest_size)
         .saturating_add(complete_size)
-        .saturating_add(raw_tree_data_bytes);
+        .saturating_add(raw_tree_data_bytes_for_transfer);
     let mut last_upload_done_bytes: u64 = 0;
 
     if consistency_failed && !upload_on_consistency_failure {
@@ -679,7 +729,30 @@ pub(super) async fn run_filesystem_backup(
     ));
     let target_summary = loop {
         tokio::select! {
-            res = &mut upload_fut => break res?,
+            res = &mut upload_fut => {
+                match res {
+                    Ok(v) => break v,
+                    Err(error) => {
+                        if using_webdav_raw_tree_direct_upload
+                            && let TargetResolvedV1::Webdav { base_url, username, password, .. } = &target
+                        {
+                            let creds = bastion_targets::WebdavCredentials {
+                                username: username.clone(),
+                                password: password.clone(),
+                            };
+                            let _ = bastion_targets::webdav::cleanup_incomplete_run(
+                                base_url,
+                                creds,
+                                ctx.job_id,
+                                ctx.run_id,
+                            )
+                            .await;
+                        }
+
+                        return Err(error);
+                    }
+                }
+            },
             maybe_update = progress_rx.recv() => {
                 if let Some(update) = maybe_update {
                     if update.stage == "upload" {

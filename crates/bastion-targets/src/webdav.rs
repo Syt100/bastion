@@ -11,6 +11,84 @@ use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 use crate::StoreRunProgress;
 use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
 
+pub async fn cleanup_incomplete_run(
+    base_url: &str,
+    credentials: WebdavCredentials,
+    job_id: &str,
+    run_id: &str,
+) -> Result<(), anyhow::Error> {
+    let mut base_url = Url::parse(base_url)?;
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+
+    let client = WebdavClient::new(base_url.clone(), credentials)?;
+    let job_url = base_url.join(&format!("{job_id}/"))?;
+    let run_url = job_url.join(&format!("{run_id}/"))?;
+
+    // Best-effort: try `DELETE` directly first (some servers recursively delete collections).
+    // If the server rejects this for non-empty collections, we fall back to a bounded recursive
+    // cleanup using PROPFIND depth=1.
+    if client.delete(&run_url).await.is_ok() {
+        return Ok(());
+    }
+
+    use crate::WebdavHttpError;
+    use reqwest::StatusCode;
+
+    let mut remaining = 10_000usize;
+    let mut stack = vec![run_url.clone()];
+    let mut dirs_postorder = Vec::<Url>::new();
+
+    while let Some(dir) = stack.pop() {
+        if remaining == 0 {
+            break;
+        }
+
+        let entries = match client.propfind_depth1(&dir).await {
+            Ok(v) => v,
+            Err(error) => {
+                if let Some(http) = error.downcast_ref::<WebdavHttpError>()
+                    && http.status == StatusCode::NOT_FOUND
+                {
+                    continue;
+                }
+                // Best-effort: skip this subtree.
+                continue;
+            }
+        };
+
+        dirs_postorder.push(dir.clone());
+
+        for entry in entries {
+            if remaining == 0 {
+                break;
+            }
+            remaining = remaining.saturating_sub(1);
+
+            let mut child = dir.clone();
+            child.set_query(None);
+            child.set_fragment(None);
+            child.set_path(&entry.href);
+
+            if entry.kind == "dir" {
+                stack.push(child);
+            } else {
+                let _ = client.delete(&child).await;
+            }
+        }
+    }
+
+    // Try to delete collections after their children.
+    for dir in dirs_postorder.into_iter().rev() {
+        let _ = client.delete(&dir).await;
+    }
+
+    // Finally, retry deleting the run dir.
+    let _ = client.delete(&run_url).await;
+    Ok(())
+}
+
 /// Upload `payload.part*` files as they are finalized, deleting the local part file after it has
 /// been successfully uploaded (or skipped via resumability-by-size).
 ///

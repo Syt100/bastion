@@ -21,12 +21,10 @@
 - [x] Run detail: snapshot status + provider info
 - [x] Add i18n and UI tests
 
-### 2.4 Follow-up (Phase 2): WebDAV raw_tree direct upload
-Deferred. Track this as a separate change when we implement streaming upload:
-
-- Design + implement raw_tree direct uploader to WebDAV (streaming + hashing)
-- Add failure cleanup strategy
-- Add tests and performance guardrails (concurrency/limits)
+### 2.4 WebDAV raw_tree direct upload (Phase 2)
+- [x] Design + implement raw_tree direct uploader to WebDAV (streaming + hashing)
+- [x] Add failure cleanup strategy
+- [x] Add tests and performance guardrails (concurrency/limits)
 
 ## 3. Validation
 - [x] Run `scripts/ci.sh`

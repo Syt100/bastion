@@ -1,7 +1,10 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+use futures_util::TryStreamExt as _;
 use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Method, StatusCode};
@@ -225,6 +228,105 @@ impl WebdavClient {
         match res.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
             s => Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+        }
+    }
+
+    /// Upload a file while computing a BLAKE3 hash of the uploaded bytes.
+    ///
+    /// This is used by streaming upload pipelines that want to avoid reading the payload twice
+    /// (once for hashing and once for upload).
+    pub async fn put_file_hash_blake3(
+        &self,
+        url: &Url,
+        path: &Path,
+        size: u64,
+    ) -> Result<(String, Option<std::fs::Metadata>), anyhow::Error> {
+        use tokio::io::AsyncReadExt as _;
+
+        tracing::debug!(
+            url = %redact_url(url),
+            path = %path.display(),
+            size,
+            "webdav put (blake3)"
+        );
+
+        // Use a std file so we can `try_clone` for best-effort handle fingerprinting after upload.
+        let file = std::fs::File::open(path)?;
+        let file_clone = file.try_clone()?;
+
+        let hasher = Arc::new(Mutex::new(blake3::Hasher::new()));
+        let hasher_for_stream = hasher.clone();
+        let bytes_read = Arc::new(AtomicU64::new(0));
+        let bytes_read_for_stream = bytes_read.clone();
+
+        let file = tokio::fs::File::from_std(file);
+        let stream = ReaderStream::new(file.take(size)).inspect_ok(move |chunk| {
+            let mut guard = hasher_for_stream
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.update(chunk.as_ref());
+            bytes_read_for_stream.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+        });
+        let body = reqwest::Body::wrap_stream(stream);
+
+        let res = self
+            .authed(self.http.put(url.clone()))
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(CONTENT_LENGTH, size)
+            .body(body)
+            .send()
+            .await?;
+
+        match res.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {}
+            s => return Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+        }
+
+        let uploaded = bytes_read.load(Ordering::Relaxed);
+        if uploaded != size {
+            anyhow::bail!("upload size mismatch: expected {size}, got {uploaded}");
+        }
+
+        let hash = {
+            let mut guard = hasher
+                .lock()
+                .map_err(|_| anyhow::anyhow!("blake3 hasher mutex poisoned"))?;
+            let hasher = std::mem::replace(&mut *guard, blake3::Hasher::new());
+            hasher.finalize().to_hex().to_string()
+        };
+
+        let after_handle_meta = file_clone.metadata().ok();
+        Ok((hash, after_handle_meta))
+    }
+
+    pub async fn put_file_hash_blake3_with_retries(
+        &self,
+        url: &Url,
+        path: &Path,
+        size: u64,
+        max_attempts: u32,
+    ) -> Result<(String, Option<std::fs::Metadata>), anyhow::Error> {
+        let mut attempt = 1u32;
+        let mut backoff = Duration::from_secs(1);
+        loop {
+            match self.put_file_hash_blake3(url, path, size).await {
+                Ok(v) => return Ok(v),
+                Err(error) if attempt < max_attempts => {
+                    tracing::debug!(
+                        url = %redact_url(url),
+                        attempt,
+                        max_attempts,
+                        backoff_seconds = backoff.as_secs(),
+                        error = %error,
+                        "webdav put (blake3) failed; retrying"
+                    );
+                    tokio::time::sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                    attempt += 1;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
         }
     }
 

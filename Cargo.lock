@@ -368,6 +368,7 @@ version = "0.1.0"
 dependencies = [
  "age",
  "anyhow",
+ "axum",
  "base64 0.22.1",
  "bastion-core",
  "bastion-storage",
@@ -521,6 +522,8 @@ dependencies = [
  "anyhow",
  "axum",
  "bastion-core",
+ "blake3",
+ "futures-util",
  "httpdate",
  "percent-encoding",
  "reqwest",

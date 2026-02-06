@@ -118,7 +118,7 @@ pub(super) fn write_file_entry<W: Write>(
 
     let before_fp = fingerprint_for_meta(&meta);
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     super::super::test_hooks::run_after_file_open_hook(fs_path, archive_path);
 
     let mut reader = HashingReader::new(file);

@@ -49,35 +49,6 @@ fn list_index_paths(entries_path: &Path) -> Vec<String> {
         .collect()
 }
 
-#[cfg(unix)]
-fn read_index_records(entries_path: &Path) -> Vec<serde_json::Value> {
-    let raw = std::fs::read(entries_path).expect("read entries index");
-    let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
-    decoded
-        .split(|b| *b == b'\n')
-        .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice::<serde_json::Value>(line).expect("parse jsonl"))
-        .collect()
-}
-
-#[cfg(unix)]
-fn read_tar_entry_bytes(part_path: &Path, archive_path: &str) -> Vec<u8> {
-    let file = File::open(part_path).expect("open part");
-    let decoder = zstd::Decoder::new(file).expect("zstd decoder");
-    let mut archive = ::tar::Archive::new(decoder);
-    for entry in archive.entries().expect("entries") {
-        let mut entry = entry.expect("entry");
-        let path = entry.path().expect("path").to_string_lossy().to_string();
-        if path != archive_path {
-            continue;
-        }
-        let mut out = Vec::<u8>::new();
-        std::io::copy(&mut entry, &mut out).expect("read entry");
-        return out;
-    }
-    panic!("missing tar entry: {archive_path}");
-}
-
 #[test]
 fn filesystem_paths_can_backup_single_file() {
     let tmp = tempdir().expect("tempdir");
@@ -119,6 +90,7 @@ fn filesystem_paths_can_backup_single_file() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -143,6 +115,33 @@ fn filesystem_paths_can_backup_single_file() {
 #[test]
 fn archive_hash_matches_archived_bytes_when_file_is_replaced_after_open() {
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn read_index_records(entries_path: &Path) -> Vec<serde_json::Value> {
+        let raw = std::fs::read(entries_path).expect("read entries index");
+        let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
+        decoded
+            .split(|b| *b == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice::<serde_json::Value>(line).expect("parse jsonl"))
+            .collect()
+    }
+
+    fn read_tar_entry_bytes(part_path: &Path, archive_path: &str) -> Vec<u8> {
+        let file = File::open(part_path).expect("open part");
+        let decoder = zstd::Decoder::new(file).expect("zstd decoder");
+        let mut archive = ::tar::Archive::new(decoder);
+        for entry in archive.entries().expect("entries") {
+            let mut entry = entry.expect("entry");
+            let path = entry.path().expect("path").to_string_lossy().to_string();
+            if path != archive_path {
+                continue;
+            }
+            let mut out = Vec::<u8>::new();
+            std::io::copy(&mut entry, &mut out).expect("read entry");
+            return out;
+        }
+        panic!("missing tar entry: {archive_path}");
+    }
 
     struct HookGuard;
     impl Drop for HookGuard {
@@ -213,6 +212,7 @@ fn archive_hash_matches_archived_bytes_when_file_is_replaced_after_open() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -271,6 +271,7 @@ fn filesystem_paths_can_build_raw_tree_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
         None,
         None,
@@ -348,6 +349,7 @@ fn filesystem_paths_deduplicates_overlapping_sources() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -404,6 +406,7 @@ fn legacy_root_can_backup_single_file() {
             encryption: &PayloadEncryption::None,
             part_size_bytes: 4 * 1024 * 1024,
         },
+        None,
         None,
         None,
         None,
@@ -491,6 +494,7 @@ fn archive_parts_can_be_deleted_during_packaging() {
         None,
         None,
         Some(on_part_finished),
+        None,
     )
     .unwrap();
     assert_eq!(build.issues.errors_total, 0);
@@ -513,6 +517,209 @@ fn archive_parts_can_be_deleted_during_packaging() {
         .filter(|name| name.starts_with("payload.part"))
         .count();
     assert_eq!(remaining_parts, 0);
+}
+
+#[tokio::test]
+async fn raw_tree_webdav_direct_upload_writes_complete_last_and_hashes_uploaded_bytes() {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::extract::State;
+    use axum::http::header::CONTENT_LENGTH;
+    use axum::http::{Method, Request, StatusCode};
+    use axum::response::IntoResponse;
+    use axum::routing::any;
+    use tokio::net::TcpListener;
+
+    #[derive(Clone, Default)]
+    struct DavState {
+        files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+        put_order: Arc<Mutex<Vec<String>>>,
+    }
+
+    async fn dav_handler(State(state): State<DavState>, req: Request<Body>) -> impl IntoResponse {
+        let method = req.method().clone();
+        let path = req.uri().path().to_string();
+
+        match method {
+            Method::HEAD => {
+                let files = state.files.lock().unwrap();
+                if let Some(bytes) = files.get(&path) {
+                    let mut resp = StatusCode::OK.into_response();
+                    resp.headers_mut()
+                        .insert(CONTENT_LENGTH, bytes.len().to_string().parse().unwrap());
+                    resp
+                } else {
+                    StatusCode::NOT_FOUND.into_response()
+                }
+            }
+            Method::PUT => {
+                let body = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                    .await
+                    .unwrap_or_default();
+                {
+                    let mut files = state.files.lock().unwrap();
+                    files.insert(path.clone(), body.to_vec());
+                }
+                {
+                    let mut order = state.put_order.lock().unwrap();
+                    order.push(path);
+                }
+                StatusCode::CREATED.into_response()
+            }
+            _ => {
+                // MKCOL and any other methods.
+                StatusCode::CREATED.into_response()
+            }
+        }
+    }
+
+    async fn start_dav() -> (String, DavState) {
+        let state = DavState::default();
+        let app = Router::new()
+            .route("/{*path}", any(dav_handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        (format!("http://{addr}/backup"), state)
+    }
+
+    let tmp = tempdir().expect("tempdir");
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+
+    let src = tmp.path().join("hello.txt");
+    std::fs::write(&src, b"hi").unwrap();
+    let expected = archive_prefix_for_path(&src).unwrap();
+
+    let source = FilesystemSource {
+        pre_scan: false,
+        paths: vec![src.to_string_lossy().to_string()],
+        root: String::new(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        symlink_policy: FsSymlinkPolicy::Keep,
+        hardlink_policy: FsHardlinkPolicy::Copy,
+        error_policy: FsErrorPolicy::FailFast,
+        snapshot_mode: Default::default(),
+        snapshot_provider: None,
+        consistency_policy: Default::default(),
+        consistency_fail_threshold: None,
+        upload_on_consistency_failure: None,
+    };
+
+    let (base_url, state) = start_dav().await;
+    let creds = bastion_targets::WebdavCredentials {
+        username: "u".to_string(),
+        password: "p".to_string(),
+    };
+
+    let job_id = Uuid::new_v4().to_string();
+    let run_id = Uuid::new_v4().to_string();
+
+    let cfg = super::RawTreeWebdavDirectUploadConfig {
+        handle: tokio::runtime::Handle::current(),
+        base_url: base_url.clone(),
+        credentials: creds.clone(),
+        max_attempts: 1,
+        resume_by_size: false,
+    };
+
+    let started_at = OffsetDateTime::now_utc();
+    let data_dir_for_build = data_dir.clone();
+    let source_for_build = source.clone();
+    let job_id_for_build = job_id.clone();
+    let run_id_for_build = run_id.clone();
+    let build = tokio::task::spawn_blocking(move || {
+        build_filesystem_run(
+            &data_dir_for_build,
+            &job_id_for_build,
+            &run_id_for_build,
+            started_at,
+            &source_for_build,
+            BuildPipelineOptions {
+                artifact_format: ArtifactFormatV1::RawTreeV1,
+                encryption: &PayloadEncryption::None,
+                part_size_bytes: 4 * 1024 * 1024,
+            },
+            None,
+            None,
+            None,
+            Some(cfg),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap();
+
+    // Upload manifest/index/complete (data was uploaded during packaging).
+    let _ = bastion_targets::webdav::store_run(
+        &base_url,
+        creds,
+        &job_id,
+        &run_id,
+        &build.artifacts,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let expected_data_path = format!("/backup/{job_id}/{run_id}/data/{expected}");
+
+    // Ensure the payload bytes are uploaded under the expected data path.
+    {
+        let files = state.files.lock().unwrap();
+        let got = match files.get(&expected_data_path) {
+            Some(v) => v,
+            None => {
+                drop(files);
+                let mut keys = state
+                    .files
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>();
+                keys.sort();
+                let order = state.put_order.lock().unwrap().clone();
+                panic!(
+                    "uploaded raw-tree file not found: {expected_data_path}\nkeys={keys:?}\nput_order={order:?}"
+                );
+            }
+        };
+        assert_eq!(got.as_slice(), b"hi");
+    }
+
+    // Ensure the completion marker is written last (atomic semantics).
+    {
+        let order = state.put_order.lock().unwrap();
+        assert!(
+            order.last().is_some_and(|p| p.ends_with("/complete.json")),
+            "complete.json is not last PUT: {order:?}"
+        );
+    }
+
+    // Ensure the entry hash matches the archived/uploaded bytes.
+    let raw = std::fs::read(&build.artifacts.entries_index_path).expect("read entries index");
+    let decoded = zstd::decode_all(std::io::Cursor::new(raw)).expect("decode entries index");
+    let records = decoded
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<serde_json::Value>(line).expect("parse jsonl"))
+        .collect::<Vec<_>>();
+    let hash = records
+        .iter()
+        .find(|v| v.get("path").and_then(|p| p.as_str()) == Some(expected.as_str()))
+        .and_then(|v| v.get("hash").and_then(|h| h.as_str()))
+        .expect("entry hash");
+    assert_eq!(hash, blake3::hash(b"hi").to_hex().to_string());
 }
 
 #[test]

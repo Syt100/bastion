@@ -8,6 +8,8 @@ use std::time::SystemTime;
 use base64::Engine as _;
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 use bastion_core::manifest::HashAlgorithm;
+use bastion_targets::{WebdavClient, WebdavCredentials};
+use url::Url;
 use walkdir::WalkDir;
 
 use crate::backup::source_consistency::{
@@ -18,6 +20,234 @@ use super::FilesystemBuildIssues;
 use super::RawTreeBuildStats;
 use super::entries_index::{EntriesIndexWriter, EntryRecord, write_entry_record};
 use super::util::{archive_prefix_for_path, compile_globset, join_archive_path};
+
+trait RawTreeDataSink {
+    fn ensure_dir(&mut self, archive_path: &str) -> Result<(), anyhow::Error>;
+
+    fn store_file_hashing_blake3(
+        &mut self,
+        fs_path: &Path,
+        archive_path: &str,
+        size: u64,
+    ) -> Result<(String, Option<FileFingerprintV2>), anyhow::Error>;
+}
+
+struct LocalDataSink {
+    data_dir: PathBuf,
+}
+
+impl LocalDataSink {
+    fn new(stage_dir: &Path) -> Result<Self, anyhow::Error> {
+        let data_dir = stage_dir.join("data");
+        std::fs::create_dir_all(&data_dir)?;
+        Ok(Self { data_dir })
+    }
+}
+
+impl RawTreeDataSink for LocalDataSink {
+    fn ensure_dir(&mut self, archive_path: &str) -> Result<(), anyhow::Error> {
+        let dst_dir = data_path_for_archive_path(&self.data_dir, archive_path);
+        std::fs::create_dir_all(&dst_dir)?;
+        Ok(())
+    }
+
+    fn store_file_hashing_blake3(
+        &mut self,
+        fs_path: &Path,
+        archive_path: &str,
+        size: u64,
+    ) -> Result<(String, Option<FileFingerprintV2>), anyhow::Error> {
+        let dst_path = data_path_for_archive_path(&self.data_dir, archive_path);
+        let parent = dst_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("invalid destination path: {}", dst_path.display()))?;
+        std::fs::create_dir_all(parent)?;
+
+        let file_name = dst_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow::anyhow!("invalid destination file name"))?;
+        let tmp = dst_path.with_file_name(format!("{file_name}.partial"));
+        let _ = std::fs::remove_file(&tmp);
+
+        let CopyFileAndHashResult {
+            written,
+            hash,
+            after_handle,
+        } = match copy_file_and_hash(fs_path, &tmp) {
+            Ok(v) => v,
+            Err(error) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(error);
+            }
+        };
+
+        if written != size {
+            let _ = std::fs::remove_file(&tmp);
+            anyhow::bail!("copy size mismatch: expected {size}, got {written}");
+        }
+
+        let _ = std::fs::remove_file(&dst_path);
+        if let Err(error) = std::fs::rename(&tmp, &dst_path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(anyhow::Error::new(error));
+        }
+        Ok((hash, after_handle))
+    }
+}
+
+struct WebdavDataSink {
+    handle: tokio::runtime::Handle,
+    client: WebdavClient,
+    data_url: Url,
+    ensured_collections: HashSet<String>,
+    max_attempts: u32,
+    resume_by_size: bool,
+}
+
+impl WebdavDataSink {
+    fn new(
+        handle: tokio::runtime::Handle,
+        base_url: &str,
+        credentials: WebdavCredentials,
+        job_id: &str,
+        run_id: &str,
+        max_attempts: u32,
+        resume_by_size: bool,
+    ) -> Result<Self, anyhow::Error> {
+        let mut base_url = Url::parse(base_url)?;
+        if !base_url.path().ends_with('/') {
+            base_url.set_path(&format!("{}/", base_url.path()));
+        }
+
+        let client = WebdavClient::new(base_url.clone(), credentials)?;
+
+        let job_url = base_url.join(&format!("{job_id}/"))?;
+        let run_url = job_url.join(&format!("{run_id}/"))?;
+        let data_url = run_url.join("data/")?;
+
+        let mut out = Self {
+            handle,
+            client,
+            data_url: data_url.clone(),
+            ensured_collections: HashSet::new(),
+            max_attempts,
+            resume_by_size,
+        };
+
+        out.ensure_collection(&job_url)?;
+        out.ensure_collection(&run_url)?;
+        out.ensure_collection(&data_url)?;
+        Ok(out)
+    }
+
+    fn ensure_collection(&mut self, url: &Url) -> Result<(), anyhow::Error> {
+        let key = url.as_str().to_string();
+        if self.ensured_collections.contains(&key) {
+            return Ok(());
+        }
+        self.handle.block_on(self.client.ensure_collection(url))?;
+        self.ensured_collections.insert(key);
+        Ok(())
+    }
+
+    fn dir_url_for_archive_path(&self, archive_path: &str) -> Result<Url, anyhow::Error> {
+        let mut dir_url = self.data_url.clone();
+        {
+            let mut segs = dir_url
+                .path_segments_mut()
+                .map_err(|_| anyhow::anyhow!("data_url cannot be a base"))?;
+            segs.pop_if_empty();
+            for seg in archive_path
+                .split('/')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                segs.push(seg);
+            }
+        }
+        if !dir_url.path().ends_with('/') {
+            dir_url.set_path(&format!("{}/", dir_url.path()));
+        }
+        Ok(dir_url)
+    }
+
+    fn file_urls_for_archive_path(&self, archive_path: &str) -> Result<(Url, Url), anyhow::Error> {
+        let mut dir_url = self.data_url.clone();
+        let mut file_url = self.data_url.clone();
+
+        let segments = archive_path
+            .split('/')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        if segments.is_empty() {
+            anyhow::bail!("invalid raw-tree archive path: {archive_path}");
+        }
+
+        {
+            let mut segs = dir_url
+                .path_segments_mut()
+                .map_err(|_| anyhow::anyhow!("data_url cannot be a base"))?;
+            segs.pop_if_empty();
+            for seg in &segments[..segments.len().saturating_sub(1)] {
+                segs.push(seg);
+            }
+        }
+        if !dir_url.path().ends_with('/') {
+            dir_url.set_path(&format!("{}/", dir_url.path()));
+        }
+
+        {
+            let mut segs = file_url
+                .path_segments_mut()
+                .map_err(|_| anyhow::anyhow!("data_url cannot be a base"))?;
+            segs.pop_if_empty();
+            for seg in &segments {
+                segs.push(seg);
+            }
+        }
+
+        Ok((dir_url, file_url))
+    }
+}
+
+impl RawTreeDataSink for WebdavDataSink {
+    fn ensure_dir(&mut self, archive_path: &str) -> Result<(), anyhow::Error> {
+        let url = self.dir_url_for_archive_path(archive_path)?;
+        self.ensure_collection(&url)?;
+        Ok(())
+    }
+
+    fn store_file_hashing_blake3(
+        &mut self,
+        fs_path: &Path,
+        archive_path: &str,
+        size: u64,
+    ) -> Result<(String, Option<FileFingerprintV2>), anyhow::Error> {
+        let (dir_url, file_url) = self.file_urls_for_archive_path(archive_path)?;
+        self.ensure_collection(&dir_url)?;
+
+        if self.resume_by_size
+            && let Some(existing) = self.handle.block_on(self.client.head_size(&file_url))?
+            && existing == size
+        {
+            let (hash, after_handle) = hash_file_and_fingerprint(fs_path)?;
+            return Ok((hash, after_handle));
+        }
+
+        let (hash, after_handle_meta) =
+            self.handle
+                .block_on(self.client.put_file_hash_blake3_with_retries(
+                    &file_url,
+                    fs_path,
+                    size,
+                    self.max_attempts,
+                ))?;
+        let after_handle = after_handle_meta.map(|m| fingerprint_for_meta(&m));
+        Ok((hash, after_handle))
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_raw_tree(
@@ -30,9 +260,64 @@ pub(super) fn write_raw_tree(
     consistency: &mut SourceConsistencyTracker,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<RawTreeBuildStats, anyhow::Error> {
-    let data_dir = stage_dir.join("data");
-    std::fs::create_dir_all(&data_dir)?;
+    let mut sink = LocalDataSink::new(stage_dir)?;
+    write_raw_tree_to_sink(
+        &mut sink,
+        source,
+        read_mapping,
+        entries_writer,
+        entries_count,
+        issues,
+        consistency,
+        super::reborrow_progress(&mut progress),
+    )
+}
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn write_raw_tree_webdav_direct(
+    cfg: &super::RawTreeWebdavDirectUploadConfig,
+    job_id: &str,
+    run_id: &str,
+    source: &FilesystemSource,
+    read_mapping: Option<&super::FilesystemReadMapping>,
+    entries_writer: &mut EntriesIndexWriter<'_>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
+    mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
+) -> Result<RawTreeBuildStats, anyhow::Error> {
+    let mut sink = WebdavDataSink::new(
+        cfg.handle.clone(),
+        cfg.base_url.as_str(),
+        cfg.credentials.clone(),
+        job_id,
+        run_id,
+        cfg.max_attempts,
+        cfg.resume_by_size,
+    )?;
+    write_raw_tree_to_sink(
+        &mut sink,
+        source,
+        read_mapping,
+        entries_writer,
+        entries_count,
+        issues,
+        consistency,
+        super::reborrow_progress(&mut progress),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_raw_tree_to_sink(
+    sink: &mut dyn RawTreeDataSink,
+    source: &FilesystemSource,
+    read_mapping: Option<&super::FilesystemReadMapping>,
+    entries_writer: &mut EntriesIndexWriter<'_>,
+    entries_count: &mut u64,
+    issues: &mut FilesystemBuildIssues,
+    consistency: &mut SourceConsistencyTracker,
+    mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
+) -> Result<RawTreeBuildStats, anyhow::Error> {
     let exclude = compile_globset(&source.exclude)?;
     let include = compile_globset(&source.include)?;
     let has_includes = !source.include.is_empty();
@@ -84,6 +369,7 @@ pub(super) fn write_raw_tree(
                 None => p.clone(),
             };
             write_source_entry(
+                sink,
                 fs_path.as_path(),
                 p.as_path(),
                 source,
@@ -91,7 +377,6 @@ pub(super) fn write_raw_tree(
                 &include,
                 has_includes,
                 follow_links,
-                &data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -123,13 +408,13 @@ pub(super) fn write_raw_tree(
             None => root.clone(),
         };
         write_legacy_root(
+            sink,
             fs_root.as_path(),
             source,
             &exclude,
             &include,
             has_includes,
             follow_links,
-            &data_dir,
             entries_writer,
             entries_count,
             issues,
@@ -146,13 +431,13 @@ pub(super) fn write_raw_tree(
 
 #[allow(clippy::too_many_arguments)]
 fn write_legacy_root(
+    sink: &mut dyn RawTreeDataSink,
     root: &Path,
     source: &FilesystemSource,
     exclude: &globset::GlobSet,
     include: &globset::GlobSet,
     has_includes: bool,
     follow_links: bool,
-    data_dir: &Path,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -205,12 +490,12 @@ fn write_legacy_root(
                 return Ok(());
             }
             write_file_entry(
+                sink,
                 root,
                 name,
                 &meta,
                 is_symlink_path,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -225,7 +510,6 @@ fn write_legacy_root(
                 root,
                 name,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -324,12 +608,12 @@ fn write_legacy_root(
             };
 
             write_file_entry(
+                sink,
                 entry.path(),
                 &archive_path,
                 &meta,
                 is_symlink_path,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -344,10 +628,10 @@ fn write_legacy_root(
 
         if entry.file_type().is_dir() {
             write_dir_entry(
+                sink,
                 entry.path(),
                 &archive_path,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -362,7 +646,6 @@ fn write_legacy_root(
                 entry.path(),
                 &archive_path,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -384,6 +667,7 @@ fn write_legacy_root(
 
 #[allow(clippy::too_many_arguments)]
 fn write_source_entry(
+    sink: &mut dyn RawTreeDataSink,
     fs_path: &Path,
     archive_path_basis: &Path,
     source: &FilesystemSource,
@@ -391,7 +675,6 @@ fn write_source_entry(
     include: &globset::GlobSet,
     has_includes: bool,
     follow_links: bool,
-    data_dir: &Path,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -434,10 +717,10 @@ fn write_source_entry(
             && !exclude.is_match(format!("{prefix}/"))
         {
             write_dir_entry(
+                sink,
                 fs_path,
                 &prefix,
                 source,
-                data_dir,
                 entries_writer,
                 entries_count,
                 issues,
@@ -525,12 +808,12 @@ fn write_source_entry(
                 };
 
                 write_file_entry(
+                    sink,
                     entry.path(),
                     &archive_path,
                     &meta,
                     is_symlink_path,
                     source,
-                    data_dir,
                     entries_writer,
                     entries_count,
                     issues,
@@ -545,10 +828,10 @@ fn write_source_entry(
 
             if entry.file_type().is_dir() {
                 write_dir_entry(
+                    sink,
                     entry.path(),
                     &archive_path,
                     source,
-                    data_dir,
                     entries_writer,
                     entries_count,
                     issues,
@@ -563,7 +846,6 @@ fn write_source_entry(
                     entry.path(),
                     &archive_path,
                     source,
-                    data_dir,
                     entries_writer,
                     entries_count,
                     issues,
@@ -616,12 +898,12 @@ fn write_source_entry(
             return Ok(());
         }
         write_file_entry(
+            sink,
             fs_path,
             &archive_path,
             &meta,
             is_symlink_path,
             source,
-            data_dir,
             entries_writer,
             entries_count,
             issues,
@@ -639,7 +921,6 @@ fn write_source_entry(
             fs_path,
             &archive_path,
             source,
-            data_dir,
             entries_writer,
             entries_count,
             issues,
@@ -659,12 +940,12 @@ fn write_source_entry(
 
 #[allow(clippy::too_many_arguments)]
 fn write_file_entry(
+    sink: &mut dyn RawTreeDataSink,
     fs_path: &Path,
     archive_path: &str,
     meta: &std::fs::Metadata,
     is_symlink_path: bool,
     source: &FilesystemSource,
-    data_dir: &Path,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -697,34 +978,11 @@ fn write_file_entry(
         None
     };
 
-    let dst_path = data_path_for_archive_path(data_dir, archive_path);
-    let parent = dst_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("invalid destination path: {}", dst_path.display()))?;
-    if let Err(error) = std::fs::create_dir_all(parent) {
-        let msg = format!("create dir error: {}: {error}", parent.display());
-        if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
-        }
-        issues.record_error(msg);
-        return Ok(());
-    }
-
-    let file_name = dst_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow::anyhow!("invalid destination file name"))?;
-    let tmp = dst_path.with_file_name(format!("{file_name}.partial"));
-    let _ = std::fs::remove_file(&tmp);
-
-    let CopyFileAndHashResult {
-        written,
-        hash,
-        after_handle: after_handle_fp,
-    } = match copy_file_and_hash(fs_path, &tmp) {
+    let (hash, after_handle_fp) = match sink.store_file_hashing_blake3(fs_path, archive_path, size)
+    {
         Ok(v) => v,
         Err(error) => {
-            let msg = format!("copy error: {archive_path}: {error}");
+            let msg = format!("store file error: {archive_path}: {error}");
             if source.error_policy == FsErrorPolicy::FailFast {
                 return Err(anyhow::anyhow!(msg));
             }
@@ -742,46 +1000,6 @@ fn write_file_entry(
             return Ok(());
         }
     };
-    if written != size {
-        let msg = format!("copy size mismatch: {archive_path}: expected {size}, got {written}");
-        if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
-        }
-        issues.record_error(msg);
-        let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
-            .ok()
-            .map(|m| fingerprint_for_meta(&m));
-        consistency.record_read_error(
-            archive_path,
-            format!("copy size mismatch: expected {size}, got {written}"),
-            Some(before_fp),
-            after_handle_fp,
-            after_path_fp,
-        );
-        let _ = std::fs::remove_file(&tmp);
-        return Ok(());
-    }
-
-    let _ = std::fs::remove_file(&dst_path);
-    if let Err(error) = std::fs::rename(&tmp, &dst_path) {
-        let msg = format!("rename error: {archive_path}: {error}");
-        if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
-        }
-        issues.record_error(msg);
-        let after_path_fp = source_meta_for_policy(fs_path, source.symlink_policy)
-            .ok()
-            .map(|m| fingerprint_for_meta(&m));
-        consistency.record_read_error(
-            archive_path,
-            error.to_string(),
-            Some(before_fp),
-            after_handle_fp,
-            after_path_fp,
-        );
-        let _ = std::fs::remove_file(&tmp);
-        return Ok(());
-    }
 
     stats.data_files = stats.data_files.saturating_add(1);
     stats.data_bytes = stats.data_bytes.saturating_add(size);
@@ -851,10 +1069,10 @@ fn write_file_entry(
 
 #[allow(clippy::too_many_arguments)]
 fn write_dir_entry(
+    sink: &mut dyn RawTreeDataSink,
     fs_path: &Path,
     archive_path: &str,
     source: &FilesystemSource,
-    data_dir: &Path,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -866,9 +1084,8 @@ fn write_dir_entry(
         return Ok(());
     }
 
-    let dst_dir = data_path_for_archive_path(data_dir, archive_path);
-    if let Err(error) = std::fs::create_dir_all(&dst_dir) {
-        let msg = format!("create dir error: {}: {error}", dst_dir.display());
+    if let Err(error) = sink.ensure_dir(archive_path) {
+        let msg = format!("create dir error: {archive_path}: {error}");
         if source.error_policy == FsErrorPolicy::FailFast {
             return Err(anyhow::anyhow!(msg));
         }
@@ -919,7 +1136,6 @@ fn write_symlink_entry(
     fs_path: &Path,
     archive_path: &str,
     source: &FilesystemSource,
-    _data_dir: &Path,
     entries_writer: &mut EntriesIndexWriter<'_>,
     entries_count: &mut u64,
     issues: &mut FilesystemBuildIssues,
@@ -1013,6 +1229,27 @@ fn copy_file_and_hash(src: &Path, dst: &Path) -> Result<CopyFileAndHashResult, a
         hash,
         after_handle,
     })
+}
+
+fn hash_file_and_fingerprint(
+    src: &Path,
+) -> Result<(String, Option<FileFingerprintV2>), anyhow::Error> {
+    let mut input = File::open(src)?;
+
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+
+    loop {
+        let n = input.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+
+    let after_handle = input.metadata().ok().map(|m| fingerprint_for_meta(&m));
+    let hash = hasher.finalize().to_hex().to_string();
+    Ok((hash, after_handle))
 }
 
 fn meta_fields(meta: &std::fs::Metadata) -> (Option<u64>, Option<u32>, Option<u64>, Option<u64>) {

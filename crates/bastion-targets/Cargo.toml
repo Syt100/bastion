@@ -7,6 +7,8 @@ version.workspace = true
 [dependencies]
 bastion-core = { path = "../bastion-core" }
 anyhow.workspace = true
+blake3.workspace = true
+futures-util.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["rustls-tls", "stream"] }
 roxmltree = "0.20.0"
 httpdate = "1.0.3"
