@@ -297,7 +297,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn fingerprint_for_meta_includes_windows_file_id() {
+    fn fingerprint_for_meta_omits_windows_file_id_on_stable() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("a.txt");
         std::fs::write(&path, b"hi").expect("write file");
@@ -306,6 +306,9 @@ mod tests {
         let fp = fingerprint_for_meta(&meta);
         assert_eq!(fp.size_bytes, 2);
         assert!(fp.mtime_unix_nanos.is_some());
-        assert!(matches!(fp.file_id, Some(FileIdV2::Windows { .. })));
+        assert!(
+            fp.file_id.is_none(),
+            "windows file_id is not available on stable Rust without platform APIs"
+        );
     }
 }
