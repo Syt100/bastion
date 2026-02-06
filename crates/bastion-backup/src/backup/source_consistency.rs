@@ -212,11 +212,12 @@ fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
 
 #[cfg(windows)]
 fn file_id_for_meta(meta: &std::fs::Metadata) -> Option<FileIdV2> {
-    use std::os::windows::fs::MetadataExt as _;
-    Some(FileIdV2::Windows {
-        volume_serial: meta.volume_serial_number(),
-        file_index: meta.file_index(),
-    })
+    let _ = meta;
+    // `std::os::windows::fs::MetadataExt::{volume_serial_number,file_index}` is currently
+    // unstable (`windows_by_handle`) on stable Rust. We still produce useful best-effort
+    // consistency signals using size + mtime. A future improvement could use
+    // `GetFileInformationByHandle` via `windows-sys` to recover a stable file ID.
+    None
 }
 
 #[cfg(not(any(unix, windows)))]
