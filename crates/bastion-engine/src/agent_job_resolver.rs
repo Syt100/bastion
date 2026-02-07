@@ -75,7 +75,11 @@ async fn resolve_pipeline_for_agent(
             key_name,
         },
     };
-    Ok(PipelineResolvedV1 { format, encryption })
+    Ok(PipelineResolvedV1 {
+        format,
+        encryption,
+        webdav: pipeline.webdav.clone(),
+    })
 }
 
 async fn resolve_target_for_agent(

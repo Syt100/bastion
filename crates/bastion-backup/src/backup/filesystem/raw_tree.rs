@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use base64::Engine as _;
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
 use bastion_core::manifest::HashAlgorithm;
-use bastion_targets::{WebdavClient, WebdavCredentials};
+use bastion_targets::WebdavClient;
 use url::Url;
 use walkdir::WalkDir;
 
@@ -107,32 +107,32 @@ struct WebdavDataSink {
 
 impl WebdavDataSink {
     fn new(
-        handle: tokio::runtime::Handle,
-        base_url: &str,
-        credentials: WebdavCredentials,
+        cfg: &super::RawTreeWebdavDirectUploadConfig,
         job_id: &str,
         run_id: &str,
-        max_attempts: u32,
-        resume_by_size: bool,
     ) -> Result<Self, anyhow::Error> {
-        let mut base_url = Url::parse(base_url)?;
+        let mut base_url = Url::parse(cfg.base_url.as_str())?;
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
 
-        let client = WebdavClient::new(base_url.clone(), credentials)?;
+        let client = WebdavClient::new_with_limits(
+            base_url.clone(),
+            cfg.credentials.clone(),
+            cfg.limits.clone(),
+        )?;
 
         let job_url = base_url.join(&format!("{job_id}/"))?;
         let run_url = job_url.join(&format!("{run_id}/"))?;
         let data_url = run_url.join("data/")?;
 
         let mut out = Self {
-            handle,
+            handle: cfg.handle.clone(),
             client,
             data_url: data_url.clone(),
             ensured_collections: HashSet::new(),
-            max_attempts,
-            resume_by_size,
+            max_attempts: cfg.max_attempts,
+            resume_by_size: cfg.resume_by_size,
         };
 
         out.ensure_collection(&job_url)?;
@@ -286,15 +286,7 @@ pub(super) fn write_raw_tree_webdav_direct(
     consistency: &mut SourceConsistencyTracker,
     mut progress: Option<&mut super::FilesystemBuildProgressCtx<'_>>,
 ) -> Result<RawTreeBuildStats, anyhow::Error> {
-    let mut sink = WebdavDataSink::new(
-        cfg.handle.clone(),
-        cfg.base_url.as_str(),
-        cfg.credentials.clone(),
-        job_id,
-        run_id,
-        cfg.max_attempts,
-        cfg.resume_by_size,
-    )?;
+    let mut sink = WebdavDataSink::new(cfg, job_id, run_id)?;
     write_raw_tree_to_sink(
         &mut sink,
         source,

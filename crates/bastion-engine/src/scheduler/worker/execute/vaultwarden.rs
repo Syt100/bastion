@@ -234,6 +234,7 @@ pub(super) async fn execute_vaultwarden_run(
         run_id,
         &target,
         &artifacts,
+        None,
         Some(upload_cb),
     )
     .await?;

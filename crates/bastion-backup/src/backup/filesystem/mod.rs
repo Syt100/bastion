@@ -149,6 +149,7 @@ pub struct RawTreeWebdavDirectUploadConfig {
     pub credentials: bastion_targets::WebdavCredentials,
     pub max_attempts: u32,
     pub resume_by_size: bool,
+    pub limits: Option<bastion_targets::WebdavRequestLimits>,
 }
 
 #[allow(clippy::too_many_arguments)]

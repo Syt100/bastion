@@ -6,10 +6,11 @@ use std::time::UNIX_EPOCH;
 
 use futures_util::TryStreamExt as _;
 use percent_encoding::percent_decode_str;
-use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
+use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, RETRY_AFTER};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 use tokio_util::io::ReaderStream;
 use url::Url;
 
@@ -42,6 +43,44 @@ pub struct WebdavCredentials {
     pub password: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct WebdavRequestLimits {
+    /// Maximum number of in-flight WebDAV requests.
+    pub concurrency: u32,
+    /// Max PUT requests per second (best-effort).
+    pub put_qps: Option<u32>,
+    /// Max HEAD requests per second (best-effort).
+    pub head_qps: Option<u32>,
+    /// Max MKCOL requests per second (best-effort).
+    pub mkcol_qps: Option<u32>,
+    /// Optional burst capacity for rate limits (best-effort).
+    pub burst: Option<u32>,
+}
+
+impl Default for WebdavRequestLimits {
+    fn default() -> Self {
+        Self {
+            concurrency: 4,
+            put_qps: None,
+            head_qps: None,
+            mkcol_qps: None,
+            burst: None,
+        }
+    }
+}
+
+impl From<&bastion_core::job_spec::WebdavRequestLimitsV1> for WebdavRequestLimits {
+    fn from(value: &bastion_core::job_spec::WebdavRequestLimitsV1) -> Self {
+        Self {
+            concurrency: value.concurrency,
+            put_qps: value.put_qps,
+            head_qps: value.head_qps,
+            mkcol_qps: value.mkcol_qps,
+            burst: value.burst,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct WebdavCredentialsJson {
     username: String,
@@ -64,6 +103,123 @@ pub struct WebdavClient {
     #[allow(dead_code)]
     base_url: Url,
     credentials: WebdavCredentials,
+    limiter: Option<Arc<WebdavRequestLimiter>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WebdavRequestClass {
+    Put,
+    Head,
+    Mkcol,
+    Other,
+}
+
+#[derive(Debug)]
+struct WebdavRequestLimiter {
+    limits: WebdavRequestLimits,
+    concurrency: Semaphore,
+    put_rate: Option<TokenBucketGate>,
+    head_rate: Option<TokenBucketGate>,
+    mkcol_rate: Option<TokenBucketGate>,
+}
+
+impl WebdavRequestLimiter {
+    fn new(limits: WebdavRequestLimits) -> Self {
+        let burst = limits.burst.unwrap_or(1).max(1);
+        Self {
+            concurrency: Semaphore::new(limits.concurrency.max(1) as usize),
+            put_rate: limits
+                .put_qps
+                .and_then(|qps| TokenBucketGate::new(qps, burst)),
+            head_rate: limits
+                .head_qps
+                .and_then(|qps| TokenBucketGate::new(qps, burst)),
+            mkcol_rate: limits
+                .mkcol_qps
+                .and_then(|qps| TokenBucketGate::new(qps, burst)),
+            limits,
+        }
+    }
+
+    fn concurrency_limit(&self) -> usize {
+        self.limits.concurrency.max(1) as usize
+    }
+
+    async fn rate_limit(&self, class: WebdavRequestClass) {
+        let gate = match class {
+            WebdavRequestClass::Put => self.put_rate.as_ref(),
+            WebdavRequestClass::Head => self.head_rate.as_ref(),
+            WebdavRequestClass::Mkcol => self.mkcol_rate.as_ref(),
+            WebdavRequestClass::Other => None,
+        };
+        if let Some(gate) = gate {
+            gate.wait().await;
+        }
+    }
+
+    async fn acquire_concurrency(&self) -> tokio::sync::SemaphorePermit<'_> {
+        // `Semaphore::acquire()` only errors if closed; we never close this semaphore.
+        self.concurrency.acquire().await.expect("semaphore")
+    }
+}
+
+#[derive(Debug)]
+struct TokenBucketGate {
+    rate_per_sec: f64,
+    burst: f64,
+    state: Mutex<TokenBucketState>,
+}
+
+#[derive(Debug)]
+struct TokenBucketState {
+    tokens: f64,
+    last: tokio::time::Instant,
+}
+
+impl TokenBucketGate {
+    fn new(qps: u32, burst: u32) -> Option<Self> {
+        if qps == 0 {
+            return None;
+        }
+        let burst = burst.max(1);
+        Some(Self {
+            rate_per_sec: qps as f64,
+            burst: burst as f64,
+            state: Mutex::new(TokenBucketState {
+                tokens: burst as f64,
+                last: tokio::time::Instant::now(),
+            }),
+        })
+    }
+
+    async fn wait(&self) {
+        let delay = {
+            let now = tokio::time::Instant::now();
+            let mut guard = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let elapsed = now.duration_since(guard.last);
+            let refill = elapsed.as_secs_f64() * self.rate_per_sec;
+            guard.tokens = (guard.tokens + refill).min(self.burst);
+            guard.last = now;
+
+            // Reserve a token for this request (negative tokens represent debt).
+            guard.tokens -= 1.0;
+            if guard.tokens >= 0.0 {
+                None
+            } else {
+                let deficit = -guard.tokens;
+                Some(Duration::from_secs_f64(deficit / self.rate_per_sec))
+            }
+        };
+
+        if let Some(d) = delay
+            && d > Duration::from_millis(0)
+        {
+            tokio::time::sleep(d).await;
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +248,7 @@ impl std::error::Error for WebdavNotDirectoryError {}
 pub struct WebdavHttpError {
     pub status: StatusCode,
     pub message: String,
+    pub retry_after: Option<Duration>,
 }
 
 impl std::fmt::Display for WebdavHttpError {
@@ -108,6 +265,14 @@ impl std::error::Error for WebdavHttpError {}
 
 impl WebdavClient {
     pub fn new(base_url: Url, credentials: WebdavCredentials) -> Result<Self, anyhow::Error> {
+        Self::new_with_limits(base_url, credentials, None)
+    }
+
+    pub fn new_with_limits(
+        base_url: Url,
+        credentials: WebdavCredentials,
+        limits: Option<WebdavRequestLimits>,
+    ) -> Result<Self, anyhow::Error> {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()?;
@@ -115,6 +280,7 @@ impl WebdavClient {
             http,
             base_url,
             credentials,
+            limiter: limits.map(|l| Arc::new(WebdavRequestLimiter::new(l))),
         })
     }
 
@@ -130,7 +296,59 @@ impl WebdavClient {
         &self.base_url
     }
 
+    pub fn request_concurrency_limit(&self) -> usize {
+        self.limiter
+            .as_ref()
+            .map(|lim| lim.concurrency_limit())
+            .unwrap_or(1)
+    }
+
+    async fn send_limited(
+        &self,
+        class: WebdavRequestClass,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, anyhow::Error> {
+        if let Some(limiter) = self.limiter.as_ref() {
+            // Don't consume concurrency while we wait for rate slots.
+            limiter.rate_limit(class).await;
+            let _permit = limiter.acquire_concurrency().await;
+            Ok(self.authed(builder).send().await?)
+        } else {
+            Ok(self.authed(builder).send().await?)
+        }
+    }
+
     pub async fn ensure_collection(&self, url: &Url) -> Result<(), anyhow::Error> {
+        async fn mkcol(client: &WebdavClient, url: &Url) -> Result<StatusCode, anyhow::Error> {
+            let mut attempt = 1u32;
+            let max_attempts = 3u32;
+            let mut backoff = Duration::from_secs(1);
+            loop {
+                let res = client
+                    .send_limited(
+                        WebdavRequestClass::Mkcol,
+                        client
+                            .http
+                            .request(Method::from_bytes(b"MKCOL")?, url.clone()),
+                    )
+                    .await?;
+                let status = res.status();
+                match status {
+                    StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
+                        if attempt < max_attempts =>
+                    {
+                        let delay = parse_retry_after(&res)
+                            .unwrap_or_else(|| std::cmp::min(backoff, Duration::from_secs(30)));
+                        tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
+                        backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                        attempt += 1;
+                        continue;
+                    }
+                    _ => return Ok(status),
+                }
+            }
+        }
+
         // WebDAV `MKCOL` doesn't create intermediate collections; many servers return HTTP 409
         // Conflict if parent collections are missing. We iteratively create parents first.
         let mut pending = Vec::<Url>::new();
@@ -139,15 +357,9 @@ impl WebdavClient {
 
         for _ in 0..=32 {
             tracing::debug!(url = %redact_url(&current), "webdav mkcol");
-            let res = self
-                .authed(
-                    self.http
-                        .request(Method::from_bytes(b"MKCOL")?, current.clone()),
-                )
-                .send()
-                .await?;
+            let status = mkcol(self, &current).await?;
 
-            match res.status() {
+            match status {
                 StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => {
                     base_ready = true;
                     break;
@@ -160,7 +372,14 @@ impl WebdavClient {
                     current = parent;
                     continue;
                 }
-                s => return Err(anyhow::anyhow!("MKCOL failed: HTTP {s}")),
+                s => {
+                    return Err(WebdavHttpError {
+                        status: s,
+                        message: "MKCOL failed".to_string(),
+                        retry_after: None,
+                    }
+                    .into());
+                }
             }
         }
 
@@ -170,17 +389,18 @@ impl WebdavClient {
 
         while let Some(next) = pending.pop() {
             tracing::debug!(url = %redact_url(&next), "webdav mkcol");
-            let res = self
-                .authed(
-                    self.http
-                        .request(Method::from_bytes(b"MKCOL")?, next.clone()),
-                )
-                .send()
-                .await?;
+            let status = mkcol(self, &next).await?;
 
-            match res.status() {
+            match status {
                 StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => {}
-                s => return Err(anyhow::anyhow!("MKCOL failed: HTTP {s}")),
+                s => {
+                    return Err(WebdavHttpError {
+                        status: s,
+                        message: "MKCOL failed".to_string(),
+                        retry_after: None,
+                    }
+                    .into());
+                }
             }
         }
 
@@ -189,20 +409,46 @@ impl WebdavClient {
 
     pub async fn head_size(&self, url: &Url) -> Result<Option<u64>, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav head");
-        let res = self.authed(self.http.head(url.clone())).send().await?;
-
-        match res.status() {
-            StatusCode::OK => {
-                let len = res
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .ok_or_else(|| anyhow::anyhow!("missing Content-Length"))?;
-                Ok(Some(len))
+        let mut attempt = 1u32;
+        let max_attempts = 3u32;
+        let mut backoff = Duration::from_secs(1);
+        loop {
+            let res = self
+                .send_limited(WebdavRequestClass::Head, self.http.head(url.clone()))
+                .await?;
+            let status = res.status();
+            match status {
+                StatusCode::OK => {
+                    let len = res
+                        .headers()
+                        .get(CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .ok_or_else(|| anyhow::anyhow!("missing Content-Length"))?;
+                    return Ok(Some(len));
+                }
+                StatusCode::NOT_FOUND => return Ok(None),
+                StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
+                    if attempt < max_attempts =>
+                {
+                    let delay = parse_retry_after(&res)
+                        .unwrap_or_else(|| std::cmp::min(backoff, Duration::from_secs(30)));
+                    tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
+                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                    attempt += 1;
+                    continue;
+                }
+                s => {
+                    let retry_after = parse_retry_after(&res);
+                    let message = res.text().await.unwrap_or_default();
+                    return Err(WebdavHttpError {
+                        status: s,
+                        message,
+                        retry_after,
+                    }
+                    .into());
+                }
             }
-            StatusCode::NOT_FOUND => Ok(None),
-            s => Err(anyhow::anyhow!("HEAD failed: HTTP {s}")),
         }
     }
 
@@ -217,17 +463,27 @@ impl WebdavClient {
         let stream = ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
-        let res = self
-            .authed(self.http.put(url.clone()))
+        let req = self
+            .http
+            .put(url.clone())
             .header(CONTENT_TYPE, "application/octet-stream")
             .header(CONTENT_LENGTH, size)
-            .body(body)
-            .send()
-            .await?;
+            .body(body);
+        let res = self.send_limited(WebdavRequestClass::Put, req).await?;
 
-        match res.status() {
+        let status = res.status();
+        match status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            s => Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+            s => {
+                let retry_after = parse_retry_after(&res);
+                let message = res.text().await.unwrap_or_default();
+                Err(WebdavHttpError {
+                    status: s,
+                    message,
+                    retry_after,
+                }
+                .into())
+            }
         }
     }
 
@@ -269,17 +525,27 @@ impl WebdavClient {
         });
         let body = reqwest::Body::wrap_stream(stream);
 
-        let res = self
-            .authed(self.http.put(url.clone()))
+        let req = self
+            .http
+            .put(url.clone())
             .header(CONTENT_TYPE, "application/octet-stream")
             .header(CONTENT_LENGTH, size)
-            .body(body)
-            .send()
-            .await?;
+            .body(body);
+        let res = self.send_limited(WebdavRequestClass::Put, req).await?;
 
-        match res.status() {
+        let status = res.status();
+        match status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {}
-            s => return Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+            s => {
+                let retry_after = parse_retry_after(&res);
+                let message = res.text().await.unwrap_or_default();
+                return Err(WebdavHttpError {
+                    status: s,
+                    message,
+                    retry_after,
+                }
+                .into());
+            }
         }
 
         let uploaded = bytes_read.load(Ordering::Relaxed);
@@ -312,6 +578,15 @@ impl WebdavClient {
             match self.put_file_hash_blake3(url, path, size).await {
                 Ok(v) => return Ok(v),
                 Err(error) if attempt < max_attempts => {
+                    if let Some(http) = error.downcast_ref::<WebdavHttpError>()
+                        && (http.status == StatusCode::TOO_MANY_REQUESTS
+                            || http.status == StatusCode::SERVICE_UNAVAILABLE)
+                        && let Some(delay) = http.retry_after
+                    {
+                        tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
+                        attempt += 1;
+                        continue;
+                    }
                     tracing::debug!(
                         url = %redact_url(url),
                         attempt,
@@ -337,17 +612,27 @@ impl WebdavClient {
         content_type: &'static str,
     ) -> Result<(), anyhow::Error> {
         tracing::debug!(url = %redact_url(url), size = bytes.len(), "webdav put bytes");
-        let res = self
-            .authed(self.http.put(url.clone()))
+        let req = self
+            .http
+            .put(url.clone())
             .header(CONTENT_TYPE, content_type)
             .header(CONTENT_LENGTH, bytes.len() as u64)
-            .body(bytes)
-            .send()
-            .await?;
+            .body(bytes);
+        let res = self.send_limited(WebdavRequestClass::Put, req).await?;
 
-        match res.status() {
+        let status = res.status();
+        match status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            s => Err(anyhow::anyhow!("PUT failed: HTTP {s}")),
+            s => {
+                let retry_after = parse_retry_after(&res);
+                let message = res.text().await.unwrap_or_default();
+                Err(WebdavHttpError {
+                    status: s,
+                    message,
+                    retry_after,
+                }
+                .into())
+            }
         }
     }
 
@@ -364,6 +649,15 @@ impl WebdavClient {
             match self.put_file(url, path, size).await {
                 Ok(()) => return Ok(()),
                 Err(error) if attempt < max_attempts => {
+                    if let Some(http) = error.downcast_ref::<WebdavHttpError>()
+                        && (http.status == StatusCode::TOO_MANY_REQUESTS
+                            || http.status == StatusCode::SERVICE_UNAVAILABLE)
+                        && let Some(delay) = http.retry_after
+                    {
+                        tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
+                        attempt += 1;
+                        continue;
+                    }
                     tracing::debug!(
                         url = %redact_url(url),
                         attempt,
@@ -384,7 +678,9 @@ impl WebdavClient {
 
     pub async fn get_bytes(&self, url: &Url) -> Result<Vec<u8>, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav get bytes");
-        let res = self.authed(self.http.get(url.clone())).send().await?;
+        let res = self
+            .send_limited(WebdavRequestClass::Other, self.http.get(url.clone()))
+            .await?;
 
         match res.status() {
             StatusCode::OK => Ok(res.bytes().await?.to_vec()),
@@ -414,17 +710,13 @@ impl WebdavClient {
         ) -> Result<reqwest::Response, anyhow::Error> {
             let depth_name = reqwest::header::HeaderName::from_static("depth");
             tracing::debug!(url = %redact_url(url), "webdav propfind depth=1");
-            Ok(client
-                .authed(
-                    client
-                        .http
-                        .request(Method::from_bytes(b"PROPFIND")?, url.clone()),
-                )
+            let req = client
+                .http
+                .request(Method::from_bytes(b"PROPFIND")?, url.clone())
                 .header(depth_name, "1")
                 .header(CONTENT_TYPE, "application/xml")
-                .body(body)
-                .send()
-                .await?)
+                .body(body);
+            client.send_limited(WebdavRequestClass::Other, req).await
         }
 
         let res = send(self, url, BODY).await?;
@@ -444,6 +736,7 @@ impl WebdavClient {
             return Err(WebdavHttpError {
                 status: alt_status,
                 message,
+                retry_after: None,
             }
             .into());
         }
@@ -455,12 +748,19 @@ impl WebdavClient {
         }
 
         let message = res.text().await.unwrap_or_default();
-        Err(WebdavHttpError { status, message }.into())
+        Err(WebdavHttpError {
+            status,
+            message,
+            retry_after: None,
+        }
+        .into())
     }
 
     pub async fn delete(&self, url: &Url) -> Result<bool, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), "webdav delete");
-        let res = self.authed(self.http.delete(url.clone())).send().await?;
+        let res = self
+            .send_limited(WebdavRequestClass::Other, self.http.delete(url.clone()))
+            .await?;
 
         match res.status() {
             StatusCode::NOT_FOUND => Ok(false),
@@ -508,7 +808,9 @@ impl WebdavClient {
         expected_size: Option<u64>,
     ) -> Result<u64, anyhow::Error> {
         tracing::debug!(url = %redact_url(url), dest = %dest.display(), "webdav get to file");
-        let res = self.authed(self.http.get(url.clone())).send().await?;
+        let res = self
+            .send_limited(WebdavRequestClass::Other, self.http.get(url.clone()))
+            .await?;
 
         if res.status() != StatusCode::OK {
             anyhow::bail!("GET failed: HTTP {}", res.status());
@@ -551,6 +853,27 @@ impl WebdavClient {
         tokio::fs::rename(&tmp, dest).await?;
         Ok(written)
     }
+}
+
+fn parse_retry_after(res: &reqwest::Response) -> Option<Duration> {
+    let v = res.headers().get(RETRY_AFTER)?.to_str().ok()?.trim();
+    if v.is_empty() {
+        return None;
+    }
+
+    if let Ok(secs) = v.parse::<u64>() {
+        return Some(Duration::from_secs(secs));
+    }
+
+    // Retry-After also supports HTTP-date.
+    if let Ok(t) = httpdate::parse_http_date(v) {
+        if let Ok(d) = t.duration_since(std::time::SystemTime::now()) {
+            return Some(d);
+        }
+        return Some(Duration::from_secs(0));
+    }
+
+    None
 }
 
 fn parse_propfind_multistatus(xml: &str) -> Result<Vec<WebdavPropfindEntry>, anyhow::Error> {
@@ -715,8 +1038,21 @@ fn filter_depth1_self(
 #[cfg(test)]
 mod tests {
     use super::{
-        basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus,
+        WebdavClient, WebdavCredentials, WebdavRequestLimits, basename_from_href, decode_href_path,
+        filter_depth1_self, parse_propfind_multistatus,
     };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::extract::State;
+    use axum::http::{Method, Request, StatusCode};
+    use axum::response::IntoResponse;
+    use axum::routing::any;
+    use tempfile::TempDir;
+    use tokio::net::TcpListener;
     use url::Url;
 
     #[test]
@@ -854,5 +1190,204 @@ mod tests {
         let url = Url::parse("http://example/backup/file.txt").unwrap();
         let err = filter_depth1_self(&url, &mut entries).unwrap_err();
         assert!(err.to_string().contains("not a directory"));
+    }
+
+    #[tokio::test]
+    async fn request_limiter_caps_concurrency() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            inflight: Arc<AtomicUsize>,
+            max_inflight: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, req: Request<Body>) -> impl IntoResponse {
+            struct Guard(Arc<AtomicUsize>);
+            impl Drop for Guard {
+                fn drop(&mut self) {
+                    self.0.fetch_sub(1, Ordering::SeqCst);
+                }
+            }
+
+            let current = state.inflight.fetch_add(1, Ordering::SeqCst) + 1;
+            state.max_inflight.fetch_max(current, Ordering::SeqCst);
+            let _guard = Guard(state.inflight.clone());
+
+            let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                .await
+                .unwrap_or_default();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            StatusCode::CREATED
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new_with_limits(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            Some(WebdavRequestLimits {
+                concurrency: 2,
+                put_qps: None,
+                head_qps: None,
+                mkcol_qps: None,
+                burst: None,
+            }),
+        )
+        .unwrap();
+
+        let mut set: tokio::task::JoinSet<Result<(), anyhow::Error>> = tokio::task::JoinSet::new();
+        for i in 0..10usize {
+            let client = client.clone();
+            let url = base.join(&format!("file{i}")).unwrap();
+            set.spawn(async move {
+                client
+                    .put_bytes(&url, vec![b'x'], "application/octet-stream")
+                    .await
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            res.unwrap().unwrap();
+        }
+
+        let peak = state.max_inflight.load(Ordering::SeqCst);
+        assert!(peak <= 2, "expected peak concurrency <= 2, got {peak}");
+    }
+
+    #[tokio::test]
+    async fn request_limiter_enforces_put_qps() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            puts: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, req: Request<Body>) -> impl IntoResponse {
+            if req.method() == Method::PUT {
+                state.puts.fetch_add(1, Ordering::SeqCst);
+            }
+            let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                .await
+                .unwrap_or_default();
+            StatusCode::CREATED
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new_with_limits(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            Some(WebdavRequestLimits {
+                concurrency: 8,
+                put_qps: Some(2),
+                head_qps: None,
+                mkcol_qps: None,
+                burst: Some(1),
+            }),
+        )
+        .unwrap();
+
+        let start = tokio::time::Instant::now();
+        for i in 0..5usize {
+            let url = base.join(&format!("file{i}")).unwrap();
+            client
+                .put_bytes(&url, vec![b'x'], "application/octet-stream")
+                .await
+                .unwrap();
+        }
+        let elapsed = start.elapsed();
+
+        // With qps=2 and burst=1, 5 sequential requests SHOULD take at least ~2s worth of waits.
+        assert!(
+            elapsed >= Duration::from_millis(1700),
+            "expected elapsed >= 1.7s, got {elapsed:?}"
+        );
+        assert_eq!(state.puts.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn put_file_with_retries_retries_on_429_with_retry_after() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            puts: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, req: Request<Body>) -> impl IntoResponse {
+            let method = req.method().clone();
+            let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                .await
+                .unwrap_or_default();
+
+            if method != Method::PUT {
+                return StatusCode::CREATED.into_response();
+            }
+
+            let n = state.puts.fetch_add(1, Ordering::SeqCst) + 1;
+            if n == 1 {
+                return axum::http::Response::builder()
+                    .status(StatusCode::TOO_MANY_REQUESTS)
+                    .header("Retry-After", "0")
+                    .body(Body::from("busy"))
+                    .unwrap();
+            }
+
+            StatusCode::CREATED.into_response()
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+        )
+        .unwrap();
+
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("payload.bin");
+        std::fs::write(&path, b"hello").unwrap();
+
+        let url = base.join("payload.bin").unwrap();
+        client
+            .put_file_with_retries(&url, &path, 5, 3)
+            .await
+            .unwrap();
+
+        assert_eq!(state.puts.load(Ordering::SeqCst), 2);
     }
 }

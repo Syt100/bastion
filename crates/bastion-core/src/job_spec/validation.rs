@@ -152,9 +152,7 @@ fn validate_webdav_raw_tree_direct_filesystem(
     }
 
     if pipeline.format != ArtifactFormatV1::RawTreeV1 {
-        anyhow::bail!(
-            "pipeline.webdav.raw_tree_direct requires pipeline.format=raw_tree_v1"
-        );
+        anyhow::bail!("pipeline.webdav.raw_tree_direct requires pipeline.format=raw_tree_v1");
     }
 
     if !matches!(target, TargetV1::Webdav { .. }) {
@@ -185,21 +183,21 @@ fn validate_webdav_raw_tree_direct_filesystem(
             ("head_qps", limits.head_qps),
             ("mkcol_qps", limits.mkcol_qps),
         ] {
-            if let Some(qps) = qps {
-                if qps == 0 || qps > MAX_QPS {
-                    anyhow::bail!(
-                        "pipeline.webdav.raw_tree_direct.limits.{name} must be within 1..={MAX_QPS}"
-                    );
-                }
+            if let Some(qps) = qps
+                && (qps == 0 || qps > MAX_QPS)
+            {
+                anyhow::bail!(
+                    "pipeline.webdav.raw_tree_direct.limits.{name} must be within 1..={MAX_QPS}"
+                );
             }
         }
 
-        if let Some(burst) = limits.burst {
-            if burst == 0 || burst > MAX_BURST {
-                anyhow::bail!(
-                    "pipeline.webdav.raw_tree_direct.limits.burst must be within 1..={MAX_BURST}"
-                );
-            }
+        if let Some(burst) = limits.burst
+            && (burst == 0 || burst > MAX_BURST)
+        {
+            anyhow::bail!(
+                "pipeline.webdav.raw_tree_direct.limits.burst must be within 1..={MAX_BURST}"
+            );
         }
     }
 

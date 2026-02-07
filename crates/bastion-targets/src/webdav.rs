@@ -1,5 +1,9 @@
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tracing::{debug, info};
 use url::Url;
 
@@ -9,7 +13,7 @@ use bastion_core::backup_format::{
 use bastion_core::manifest::{ArtifactFormatV1, ManifestV1};
 
 use crate::StoreRunProgress;
-use crate::webdav_client::{WebdavClient, WebdavCredentials, redact_url};
+use crate::webdav_client::{WebdavClient, WebdavCredentials, WebdavRequestLimits, redact_url};
 
 pub async fn cleanup_incomplete_run(
     base_url: &str,
@@ -155,7 +159,8 @@ pub async fn store_run(
     job_id: &str,
     run_id: &str,
     artifacts: &LocalRunArtifacts,
-    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
+    limits: Option<WebdavRequestLimits>,
+    on_progress: Option<Arc<dyn Fn(StoreRunProgress) + Send + Sync>>,
 ) -> Result<Url, anyhow::Error> {
     let manifest_bytes = std::fs::read(&artifacts.manifest_path)?;
     let manifest: ManifestV1 = serde_json::from_slice(&manifest_bytes)?;
@@ -175,7 +180,7 @@ pub async fn store_run(
         .saturating_add(manifest_size)
         .saturating_add(complete_size);
     let mut bytes_done: u64 = 0;
-    if let Some(cb) = on_progress {
+    if let Some(cb) = on_progress.as_ref() {
         cb(StoreRunProgress {
             bytes_done,
             bytes_total: Some(bytes_total),
@@ -196,7 +201,7 @@ pub async fn store_run(
         "storing run to webdav"
     );
 
-    let client = WebdavClient::new(base_url.clone(), credentials)?;
+    let client = WebdavClient::new_with_limits(base_url.clone(), credentials, limits)?;
     let job_url = base_url.join(&format!("{job_id}/"))?;
     client.ensure_collection(&job_url).await?;
 
@@ -210,7 +215,7 @@ pub async fn store_run(
         artifact_format,
         &mut bytes_done,
         &mut bytes_total,
-        on_progress,
+        on_progress.as_ref(),
     )
     .await?;
 
@@ -230,7 +235,7 @@ async fn upload_artifacts(
     artifact_format: ArtifactFormatV1,
     bytes_done: &mut u64,
     bytes_total: &mut u64,
-    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
+    on_progress: Option<&Arc<dyn Fn(StoreRunProgress) + Send + Sync>>,
 ) -> Result<(), anyhow::Error> {
     for part in &artifacts.parts {
         let url = run_url.join(&part.name)?;
@@ -291,7 +296,7 @@ async fn upload_artifacts(
             artifacts,
             bytes_done,
             bytes_total,
-            on_progress,
+            on_progress.cloned(),
         )
         .await?;
     }
@@ -318,7 +323,7 @@ async fn upload_raw_tree_data_dir(
     artifacts: &LocalRunArtifacts,
     bytes_done: &mut u64,
     bytes_total: &mut u64,
-    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
+    on_progress: Option<Arc<dyn Fn(StoreRunProgress) + Send + Sync>>,
 ) -> Result<(), anyhow::Error> {
     let stage_dir = artifacts
         .manifest_path
@@ -357,6 +362,91 @@ async fn upload_raw_tree_data_dir(
         dir_url: data_url,
     }];
 
+    let concurrency = client.request_concurrency_limit().max(1);
+    if concurrency <= 1 {
+        while let Some(next) = stack.pop() {
+            let mut rd = tokio::fs::read_dir(&next.dir_path).await?;
+            while let Some(entry) = rd.next_entry().await? {
+                let ty = entry.file_type().await?;
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                let path = entry.path();
+
+                if ty.is_dir() {
+                    let mut url = next.dir_url.clone();
+                    {
+                        let mut segs = url
+                            .path_segments_mut()
+                            .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                        segs.push(&name_str);
+                    }
+                    if !url.path().ends_with('/') {
+                        url.set_path(&format!("{}/", url.path()));
+                    }
+                    client.ensure_collection(&url).await?;
+                    stack.push(StackItem {
+                        dir_path: path,
+                        dir_url: url,
+                    });
+                    continue;
+                }
+
+                if ty.is_file() {
+                    let size = tokio::fs::metadata(&path).await?.len();
+                    *bytes_total = bytes_total.saturating_add(size);
+                    if let Some(cb) = on_progress.as_ref() {
+                        cb(StoreRunProgress {
+                            bytes_done: *bytes_done,
+                            bytes_total: Some(*bytes_total),
+                        });
+                    }
+                    let mut url = next.dir_url.clone();
+                    {
+                        let mut segs = url
+                            .path_segments_mut()
+                            .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                        segs.push(&name_str);
+                    }
+
+                    if let Some(existing) = client.head_size(&url).await?
+                        && existing == size
+                    {
+                        debug!(url = %redact_url(&url), size, "skipping existing webdav file");
+                        *bytes_done = bytes_done.saturating_add(size);
+                        if let Some(cb) = on_progress.as_ref() {
+                            cb(StoreRunProgress {
+                                bytes_done: *bytes_done,
+                                bytes_total: Some(*bytes_total),
+                            });
+                        }
+                        continue;
+                    }
+
+                    debug!(url = %redact_url(&url), size, "uploading webdav file");
+                    client.put_file_with_retries(&url, &path, size, 3).await?;
+                    *bytes_done = bytes_done.saturating_add(size);
+                    if let Some(cb) = on_progress.as_ref() {
+                        cb(StoreRunProgress {
+                            bytes_done: *bytes_done,
+                            bytes_total: Some(*bytes_total),
+                        });
+                    }
+                    continue;
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
+    let client = client.clone();
+    let bytes_done_atomic = Arc::new(AtomicU64::new(*bytes_done));
+    let bytes_total_atomic = Arc::new(AtomicU64::new(*bytes_total));
+    let sem = Arc::new(Semaphore::new(concurrency));
+    let max_in_flight = concurrency.saturating_mul(8).max(concurrency);
+
+    let mut uploads: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
+
     while let Some(next) = stack.pop() {
         let mut rd = tokio::fs::read_dir(&next.dir_path).await?;
         while let Some(entry) = rd.next_entry().await? {
@@ -384,51 +474,102 @@ async fn upload_raw_tree_data_dir(
                 continue;
             }
 
-            if ty.is_file() {
-                let size = tokio::fs::metadata(&path).await?.len();
-                *bytes_total = bytes_total.saturating_add(size);
-                if let Some(cb) = on_progress {
-                    cb(StoreRunProgress {
-                        bytes_done: *bytes_done,
-                        bytes_total: Some(*bytes_total),
-                    });
-                }
-                let mut url = next.dir_url.clone();
-                {
-                    let mut segs = url
-                        .path_segments_mut()
-                        .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
-                    segs.push(&name_str);
-                }
+            if !ty.is_file() {
+                continue;
+            }
 
-                if let Some(existing) = client.head_size(&url).await?
+            let size = tokio::fs::metadata(&path).await?.len();
+            let total = bytes_total_atomic.fetch_add(size, Ordering::Relaxed) + size;
+            if let Some(cb) = on_progress.as_ref() {
+                cb(StoreRunProgress {
+                    bytes_done: bytes_done_atomic.load(Ordering::Relaxed),
+                    bytes_total: Some(total),
+                });
+            }
+
+            let mut url = next.dir_url.clone();
+            {
+                let mut segs = url
+                    .path_segments_mut()
+                    .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                segs.push(&name_str);
+            }
+
+            while uploads.len() >= max_in_flight {
+                let Some(joined) = uploads.join_next().await else {
+                    break;
+                };
+                match joined {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        uploads.abort_all();
+                        return Err(error);
+                    }
+                    Err(error) => {
+                        uploads.abort_all();
+                        return Err(anyhow::Error::new(error));
+                    }
+                }
+            }
+
+            let permit = sem.clone().acquire_owned().await?;
+            let client = client.clone();
+            let url_for_task = url.clone();
+            let path_for_task = path.clone();
+            let on_progress_for_task = on_progress.clone();
+            let bytes_done_for_task = bytes_done_atomic.clone();
+            let bytes_total_for_task = bytes_total_atomic.clone();
+
+            uploads.spawn(async move {
+                let _permit = permit;
+                if let Some(existing) = client.head_size(&url_for_task).await?
                     && existing == size
                 {
-                    debug!(url = %redact_url(&url), size, "skipping existing webdav file");
-                    *bytes_done = bytes_done.saturating_add(size);
-                    if let Some(cb) = on_progress {
-                        cb(StoreRunProgress {
-                            bytes_done: *bytes_done,
-                            bytes_total: Some(*bytes_total),
-                        });
-                    }
-                    continue;
+                    debug!(
+                        url = %redact_url(&url_for_task),
+                        size,
+                        "skipping existing webdav file"
+                    );
+                } else {
+                    debug!(
+                        url = %redact_url(&url_for_task),
+                        path = %path_for_task.display(),
+                        size,
+                        "uploading webdav file"
+                    );
+                    client
+                        .put_file_with_retries(&url_for_task, &path_for_task, size, 3)
+                        .await?;
                 }
 
-                debug!(url = %redact_url(&url), size, "uploading webdav file");
-                client.put_file_with_retries(&url, &path, size, 3).await?;
-                *bytes_done = bytes_done.saturating_add(size);
-                if let Some(cb) = on_progress {
+                let done = bytes_done_for_task.fetch_add(size, Ordering::Relaxed) + size;
+                if let Some(cb) = on_progress_for_task.as_ref() {
                     cb(StoreRunProgress {
-                        bytes_done: *bytes_done,
-                        bytes_total: Some(*bytes_total),
+                        bytes_done: done,
+                        bytes_total: Some(bytes_total_for_task.load(Ordering::Relaxed)),
                     });
                 }
-                continue;
+                Ok(())
+            });
+        }
+    }
+
+    while let Some(joined) = uploads.join_next().await {
+        match joined {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                uploads.abort_all();
+                return Err(error);
+            }
+            Err(error) => {
+                uploads.abort_all();
+                return Err(anyhow::Error::new(error));
             }
         }
     }
 
+    *bytes_done = bytes_done_atomic.load(Ordering::Relaxed);
+    *bytes_total = bytes_total_atomic.load(Ordering::Relaxed);
     Ok(())
 }
 
@@ -441,7 +582,7 @@ async fn upload_named_file(
     allow_resume: bool,
     bytes_done: &mut u64,
     bytes_total: &mut u64,
-    on_progress: Option<&(dyn Fn(StoreRunProgress) + Send + Sync)>,
+    on_progress: Option<&Arc<dyn Fn(StoreRunProgress) + Send + Sync>>,
 ) -> Result<(), anyhow::Error> {
     let size = tokio::fs::metadata(path).await?.len();
     let url = run_url.join(name)?;
@@ -476,7 +617,9 @@ async fn upload_named_file(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use axum::Router;
     use axum::body::Body;
@@ -490,15 +633,31 @@ mod tests {
     use tokio::net::TcpListener;
 
     use crate::WebdavCredentials;
+    use crate::WebdavRequestLimits;
     use bastion_core::backup_format::{LocalArtifact, LocalRunArtifacts};
 
     #[derive(Clone, Default)]
     struct DavState {
         files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
         put_counts: Arc<Mutex<HashMap<String, u64>>>,
+        put_order: Arc<Mutex<Vec<String>>>,
+        inflight: Arc<AtomicUsize>,
+        max_inflight: Arc<AtomicUsize>,
+        put_delay_ms: Arc<AtomicU64>,
     }
 
     async fn dav_handler(State(state): State<DavState>, req: Request<Body>) -> impl IntoResponse {
+        struct Guard(Arc<AtomicUsize>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+
+        let current = state.inflight.fetch_add(1, Ordering::SeqCst) + 1;
+        state.max_inflight.fetch_max(current, Ordering::SeqCst);
+        let _guard = Guard(state.inflight.clone());
+
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
@@ -515,6 +674,10 @@ mod tests {
                 }
             }
             Method::PUT => {
+                let delay = state.put_delay_ms.load(Ordering::Relaxed);
+                if delay > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                }
                 let body = axum::body::to_bytes(req.into_body(), 1024 * 1024)
                     .await
                     .unwrap_or_default();
@@ -524,7 +687,11 @@ mod tests {
                 }
                 {
                     let mut counts = state.put_counts.lock().unwrap();
-                    *counts.entry(path).or_insert(0) += 1;
+                    *counts.entry(path.clone()).or_insert(0) += 1;
+                }
+                {
+                    let mut order = state.put_order.lock().unwrap();
+                    order.push(path.clone());
                 }
                 StatusCode::CREATED.into_response()
             }
@@ -610,12 +777,20 @@ mod tests {
         };
 
         // First store: uploads all artifacts.
-        let _ = super::store_run(&base_url, creds.clone(), "job1", "run1", &artifacts, None)
-            .await
-            .unwrap();
+        let _ = super::store_run(
+            &base_url,
+            creds.clone(),
+            "job1",
+            "run1",
+            &artifacts,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         // Second store: should skip payload parts and entries index, but re-upload manifest and complete.
-        let _ = super::store_run(&base_url, creds, "job1", "run1", &artifacts, None)
+        let _ = super::store_run(&base_url, creds, "job1", "run1", &artifacts, None, None)
             .await
             .unwrap();
 
@@ -723,5 +898,88 @@ mod tests {
 
         let counts = state.put_counts.lock().unwrap();
         assert_eq!(*counts.get(&existing_path).unwrap_or(&0), 0);
+    }
+
+    #[tokio::test]
+    async fn store_run_raw_tree_upload_writes_complete_last_and_respects_concurrency_limit() {
+        let (base_url, state) = start_dav().await;
+        state.put_delay_ms.store(50, Ordering::SeqCst);
+
+        let temp = TempDir::new().expect("tempdir");
+        let stage = temp.path().join("stage");
+        std::fs::create_dir_all(stage.join("data/sub")).unwrap();
+
+        std::fs::write(stage.join("data/a.txt"), b"hello").unwrap();
+        std::fs::write(stage.join("data/sub/b.txt"), b"world").unwrap();
+        std::fs::write(stage.join("data/sub/c.txt"), b"!").unwrap();
+
+        let entries_path = stage.join("entries.jsonl.zst");
+        std::fs::write(&entries_path, b"entries").unwrap();
+
+        let manifest_path = stage.join("manifest.json");
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec(&serde_json::json!({
+              "format_version": 1,
+              "job_id": "00000000-0000-0000-0000-000000000000",
+              "run_id": "00000000-0000-0000-0000-000000000000",
+              "started_at": "2025-12-30T12:00:00Z",
+              "ended_at": "2025-12-30T12:00:01Z",
+              "pipeline": {
+                "format": "raw_tree_v1",
+                "tar": "pax",
+                "compression": "zstd",
+                "encryption": "none",
+                "split_bytes": 0
+              },
+              "artifacts": [],
+              "entry_index": { "name": "entries.jsonl.zst", "count": 0 }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let complete_path = stage.join("complete.json");
+        std::fs::write(&complete_path, b"{}").unwrap();
+
+        let artifacts = LocalRunArtifacts {
+            run_dir: stage.clone(),
+            parts: vec![],
+            entries_index_path: entries_path,
+            entries_count: 1,
+            manifest_path,
+            complete_path,
+        };
+
+        let creds = crate::WebdavCredentials {
+            username: "u".to_string(),
+            password: "p".to_string(),
+        };
+
+        super::store_run(
+            &base_url,
+            creds,
+            "job1",
+            "run1",
+            &artifacts,
+            Some(WebdavRequestLimits {
+                concurrency: 2,
+                put_qps: None,
+                head_qps: None,
+                mkcol_qps: None,
+                burst: None,
+            }),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let peak = state.max_inflight.load(Ordering::SeqCst);
+        assert!(peak <= 2, "expected peak <= 2, got {peak}");
+        assert!(peak >= 2, "expected concurrent uploads, got peak={peak}");
+
+        let order = state.put_order.lock().unwrap();
+        let last = order.last().cloned().unwrap_or_default();
+        assert_eq!(last, "/backup/job1/run1/complete.json");
     }
 }

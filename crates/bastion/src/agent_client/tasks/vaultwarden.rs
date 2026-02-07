@@ -260,6 +260,7 @@ pub(super) async fn run_vaultwarden_backup(
         ctx.run_id,
         &target,
         &artifacts,
+        None,
         Some(upload_cb),
     ));
 

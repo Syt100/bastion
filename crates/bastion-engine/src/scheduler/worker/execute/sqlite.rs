@@ -194,6 +194,7 @@ pub(super) async fn execute_sqlite_run(
         run_id,
         &target,
         &build.artifacts,
+        None,
         Some(upload_cb),
     )
     .await?;

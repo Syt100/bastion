@@ -318,6 +318,23 @@ pub(super) async fn run_filesystem_backup(
     let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
     let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let webdav_direct = pipeline.webdav.raw_tree_direct.clone();
+    let webdav_limits = webdav_direct
+        .limits
+        .as_ref()
+        .map(bastion_targets::WebdavRequestLimits::from)
+        .or_else(|| {
+            if webdav_direct.mode != bastion_core::job_spec::WebdavRawTreeDirectModeV1::Off {
+                Some(bastion_targets::WebdavRequestLimits {
+                    concurrency: 4,
+                    put_qps: Some(20),
+                    head_qps: Some(50),
+                    mkcol_qps: Some(50),
+                    burst: Some(10),
+                })
+            } else {
+                None
+            }
+        });
     let encryption = super::payload_encryption(pipeline.encryption);
     let artifact_format = pipeline.format;
     let artifact_format_for_summary = artifact_format.clone();
@@ -372,6 +389,7 @@ pub(super) async fn run_filesystem_backup(
                     },
                     max_attempts: 3,
                     resume_by_size: webdav_direct.resume_by_size,
+                    limits: webdav_limits.clone(),
                 });
         }
     }
@@ -734,11 +752,18 @@ pub(super) async fn run_filesystem_backup(
         })
     };
 
+    let webdav_limits_for_store = if matches!(target, TargetResolvedV1::Webdav { .. }) {
+        webdav_limits.clone()
+    } else {
+        None
+    };
+
     let mut upload_fut = std::pin::pin!(store_artifacts_to_resolved_target(
         ctx.job_id,
         ctx.run_id,
         &target,
         &artifacts,
+        webdav_limits_for_store,
         Some(upload_cb),
     ));
     let target_summary = loop {

@@ -218,6 +218,7 @@ pub(super) async fn run_sqlite_backup(
         ctx.run_id,
         &target,
         &build.artifacts,
+        None,
         Some(upload_cb),
     ));
 

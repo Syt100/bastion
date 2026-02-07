@@ -630,6 +630,7 @@ async fn raw_tree_webdav_direct_upload_writes_complete_last_and_hashes_uploaded_
         credentials: creds.clone(),
         max_attempts: 1,
         resume_by_size: false,
+        limits: None,
     };
 
     let started_at = OffsetDateTime::now_utc();
@@ -666,6 +667,7 @@ async fn raw_tree_webdav_direct_upload_writes_complete_last_and_hashes_uploaded_
         &job_id,
         &run_id,
         &build.artifacts,
+        None,
         None,
     )
     .await

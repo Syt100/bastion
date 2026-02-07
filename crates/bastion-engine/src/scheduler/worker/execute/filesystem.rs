@@ -237,6 +237,23 @@ pub(super) async fn execute_filesystem_run(
     let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let artifact_format = pipeline.format.clone();
     let webdav_direct = pipeline.webdav.raw_tree_direct.clone();
+    let webdav_limits = webdav_direct
+        .limits
+        .as_ref()
+        .map(bastion_targets::WebdavRequestLimits::from)
+        .or_else(|| {
+            if webdav_direct.mode != job_spec::WebdavRawTreeDirectModeV1::Off {
+                Some(bastion_targets::WebdavRequestLimits {
+                    concurrency: 4,
+                    put_qps: Some(20),
+                    head_qps: Some(50),
+                    mkcol_qps: Some(50),
+                    burst: Some(10),
+                })
+            } else {
+                None
+            }
+        });
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
 
     let allow_rolling_upload = !matches!(
@@ -297,6 +314,7 @@ pub(super) async fn execute_filesystem_run(
                     credentials,
                     max_attempts: 3,
                     resume_by_size: webdav_direct.resume_by_size,
+                    limits: webdav_limits.clone(),
                 });
         }
     }
@@ -662,6 +680,12 @@ pub(super) async fn execute_filesystem_run(
             }));
         })
     };
+
+    let webdav_limits_for_store = if matches!(target, job_spec::TargetV1::Webdav { .. }) {
+        webdav_limits.clone()
+    } else {
+        None
+    };
     let target_summary = match super::super::target_store::store_run_artifacts_to_target(
         db,
         secrets,
@@ -669,6 +693,7 @@ pub(super) async fn execute_filesystem_run(
         run_id,
         &target,
         &artifacts,
+        webdav_limits_for_store,
         Some(upload_cb),
     )
     .await

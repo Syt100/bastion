@@ -20,6 +20,7 @@ pub(super) async fn store_artifacts_to_resolved_target(
     run_id: &str,
     target: &TargetResolvedV1,
     artifacts: &backup::LocalRunArtifacts,
+    webdav_limits: Option<targets::WebdavRequestLimits>,
     on_progress: Option<std::sync::Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
 ) -> Result<serde_json::Value, anyhow::Error> {
     match target {
@@ -39,7 +40,8 @@ pub(super) async fn store_artifacts_to_resolved_target(
                 job_id,
                 run_id,
                 artifacts,
-                on_progress.as_deref(),
+                webdav_limits,
+                on_progress.clone(),
             )
             .await?;
             Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))

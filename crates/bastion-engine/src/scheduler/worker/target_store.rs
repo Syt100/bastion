@@ -11,6 +11,7 @@ use bastion_targets::WebdavCredentials;
 use bastion_backup as backup;
 use bastion_targets as targets;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn store_run_artifacts_to_target(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
@@ -18,6 +19,7 @@ pub(super) async fn store_run_artifacts_to_target(
     run_id: &str,
     target: &job_spec::TargetV1,
     artifacts: &backup::LocalRunArtifacts,
+    webdav_limits: Option<targets::WebdavRequestLimits>,
     on_progress: Option<Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
 ) -> Result<serde_json::Value, anyhow::Error> {
     match target {
@@ -38,7 +40,8 @@ pub(super) async fn store_run_artifacts_to_target(
                 job_id,
                 run_id,
                 artifacts,
-                on_progress.as_deref(),
+                webdav_limits,
+                on_progress.clone(),
             )
             .await?;
             Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
