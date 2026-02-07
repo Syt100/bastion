@@ -95,15 +95,68 @@ pub(in crate::http) struct RunListItem {
     ended_at: Option<i64>,
     error: Option<String>,
     executed_offline: bool,
-    consistency_changed_total: u64,
+    issues_warnings_total: u64,
+    issues_errors_total: u64,
+    consistency_total: u64,
+    consistency_signal_total: u64,
 }
 
-fn consistency_changed_total_from_report(report: Option<&serde_json::Value>) -> u64 {
+#[derive(Debug, Default, Clone, Copy)]
+struct IssuesDigest {
+    warnings_total: u64,
+    errors_total: u64,
+}
+
+fn issues_digest_from_report(report: Option<&serde_json::Value>) -> IssuesDigest {
     let Some(report) = report else {
-        return 0;
+        return IssuesDigest::default();
     };
     let Some(obj) = report.as_object() else {
-        return 0;
+        return IssuesDigest::default();
+    };
+
+    IssuesDigest {
+        warnings_total: obj
+            .get("warnings_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        errors_total: obj
+            .get("errors_total")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+    }
+}
+
+fn issues_digest_from_summary(summary: Option<&serde_json::Value>) -> IssuesDigest {
+    let Some(summary) = summary else {
+        return IssuesDigest::default();
+    };
+
+    let fs = summary.get("filesystem");
+    IssuesDigest {
+        warnings_total: fs
+            .and_then(|v| v.get("warnings_total"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        errors_total: fs
+            .and_then(|v| v.get("errors_total"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ConsistencyDigest {
+    total: u64,
+    signal_total: u64,
+}
+
+fn consistency_digest_from_report(report: Option<&serde_json::Value>) -> ConsistencyDigest {
+    let Some(report) = report else {
+        return ConsistencyDigest::default();
+    };
+    let Some(obj) = report.as_object() else {
+        return ConsistencyDigest::default();
     };
 
     let changed_total = obj
@@ -123,29 +176,40 @@ fn consistency_changed_total_from_report(report: Option<&serde_json::Value>) -> 
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    changed_total
+    let total = changed_total
         .saturating_add(replaced_total)
         .saturating_add(deleted_total)
-        .saturating_add(read_error_total)
+        .saturating_add(read_error_total);
+    let signal_total = replaced_total
+        .saturating_add(deleted_total)
+        .saturating_add(read_error_total);
+
+    ConsistencyDigest {
+        total,
+        signal_total,
+    }
 }
 
-fn consistency_changed_total_from_summary(summary: Option<&serde_json::Value>) -> u64 {
+fn consistency_digest_from_summary(summary: Option<&serde_json::Value>) -> ConsistencyDigest {
     let Some(summary) = summary else {
-        return 0;
+        return ConsistencyDigest::default();
     };
 
-    let fs_total = summary
+    let fs = summary
         .get("filesystem")
         .and_then(|v| v.get("consistency"))
-        .map(|v| consistency_changed_total_from_report(Some(v)))
-        .unwrap_or(0);
-    let vw_total = summary
+        .map(|v| consistency_digest_from_report(Some(v)))
+        .unwrap_or_default();
+    let vw = summary
         .get("vaultwarden")
         .and_then(|v| v.get("consistency"))
-        .map(|v| consistency_changed_total_from_report(Some(v)))
-        .unwrap_or(0);
+        .map(|v| consistency_digest_from_report(Some(v)))
+        .unwrap_or_default();
 
-    fs_total.saturating_add(vw_total)
+    ConsistencyDigest {
+        total: fs.total.saturating_add(vw.total),
+        signal_total: fs.signal_total.saturating_add(vw.signal_total),
+    }
 }
 
 pub(in crate::http) async fn list_job_runs(
@@ -169,29 +233,41 @@ pub(in crate::http) async fn list_job_runs(
         }
     }
 
-    let mut fallback_totals: HashMap<String, u64> = HashMap::new();
+    let mut fallback_consistency: HashMap<String, ConsistencyDigest> = HashMap::new();
+    let mut fallback_issues: HashMap<String, IssuesDigest> = HashMap::new();
     if !fallback_run_ids.is_empty() {
-        let events = runs_repo::list_latest_run_events_by_kind(
+        let consistency_events = runs_repo::list_latest_run_events_by_kind(
             &state.db,
             &fallback_run_ids,
             "source_consistency",
         )
         .await?;
-        for e in events {
-            fallback_totals.insert(
-                e.run_id,
-                consistency_changed_total_from_report(e.fields.as_ref()),
-            );
+        for e in consistency_events {
+            fallback_consistency
+                .insert(e.run_id, consistency_digest_from_report(e.fields.as_ref()));
+        }
+
+        let issue_events =
+            runs_repo::list_latest_run_events_by_kind(&state.db, &fallback_run_ids, "fs_issues")
+                .await?;
+        for e in issue_events {
+            fallback_issues.insert(e.run_id, issues_digest_from_report(e.fields.as_ref()));
         }
     }
 
     Ok(Json(
         runs.into_iter()
             .map(|r| {
-                let consistency_changed_total = if r.summary.is_some() {
-                    consistency_changed_total_from_summary(r.summary.as_ref())
+                let (issues, consistency) = if r.summary.is_some() {
+                    (
+                        issues_digest_from_summary(r.summary.as_ref()),
+                        consistency_digest_from_summary(r.summary.as_ref()),
+                    )
                 } else {
-                    fallback_totals.get(&r.id).copied().unwrap_or(0)
+                    (
+                        fallback_issues.get(&r.id).copied().unwrap_or_default(),
+                        fallback_consistency.get(&r.id).copied().unwrap_or_default(),
+                    )
                 };
 
                 RunListItem {
@@ -206,7 +282,10 @@ pub(in crate::http) async fn list_job_runs(
                         .and_then(|v| v.get("executed_offline"))
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false),
-                    consistency_changed_total,
+                    issues_warnings_total: issues.warnings_total,
+                    issues_errors_total: issues.errors_total,
+                    consistency_total: consistency.total,
+                    consistency_signal_total: consistency.signal_total,
                 }
             })
             .collect(),

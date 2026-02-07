@@ -49,7 +49,10 @@ export type RunListItem = {
   ended_at: number | null
   error: string | null
   executed_offline?: boolean
-  consistency_changed_total?: number
+  issues_warnings_total?: number
+  issues_errors_total?: number
+  consistency_total?: number
+  consistency_signal_total?: number
 }
 
 export type RunEvent = {

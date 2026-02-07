@@ -39,6 +39,8 @@ const verifyModal = ref<VerifyWizardModalExpose | null>(null)
 const opModal = ref<OperationModalExpose | null>(null)
 const runEventsModal = ref<RunEventsModalExpose | null>(null)
 
+const CONSISTENCY_CHANGED_BADGE_THRESHOLD = 10
+
 function statusTagType(status: RunListItem['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
@@ -119,8 +121,37 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
   {
     title: t('runs.columns.status'),
     key: 'status',
-    render: (row) =>
-      h(
+    render: (row) => {
+      const errors = row.issues_errors_total ?? 0
+      const warnings = row.issues_warnings_total ?? 0
+      const consistencyTotal = row.consistency_total ?? 0
+      const consistencySignal = row.consistency_signal_total ?? 0
+
+      const alertTags = []
+      if (errors > 0) {
+        alertTags.push(
+          h(NTag, { size: 'small', type: 'error', bordered: false }, { default: () => t('runs.badges.errors', { count: errors }) }),
+        )
+      }
+      if (warnings > 0) {
+        alertTags.push(
+          h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => t('runs.badges.warnings', { count: warnings }) }),
+        )
+      }
+      if (consistencySignal > 0) {
+        alertTags.push(
+          h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => t('runs.badges.sourceRisk', { count: consistencySignal }) }),
+        )
+      } else if (consistencyTotal >= CONSISTENCY_CHANGED_BADGE_THRESHOLD) {
+        alertTags.push(
+          h(NTag, { size: 'small', type: 'warning', bordered: false }, { default: () => t('runs.badges.sourceChanged', { count: consistencyTotal }) }),
+        )
+      }
+
+      // Runs list should stay scannable: show high-signal alert digests only.
+      const cappedAlerts = alertTags.slice(0, 3)
+
+      return h(
         NSpace,
         { size: 8, align: 'center', wrapItem: false },
         {
@@ -130,19 +161,14 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
               { type: statusTagType(row.status), size: 'small', bordered: false },
               { default: () => runStatusLabel(t, row.status) },
             ),
-            row.consistency_changed_total != null && row.consistency_changed_total > 0
-              ? h(
-                  NTag,
-                  { size: 'small', type: 'warning', bordered: false },
-                  { default: () => t('runs.badges.sourceChanged', { count: row.consistency_changed_total }) },
-                )
-              : null,
+            ...cappedAlerts,
             row.executed_offline
               ? h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => t('runs.badges.offline') })
               : null,
           ],
         },
-      ),
+      )
+    },
   },
   {
     title: t('runs.columns.id'),
@@ -252,11 +278,29 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
                 <div class="flex flex-wrap justify-end gap-1">
                   <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
                   <n-tag
-                    v-if="row.consistency_changed_total != null && row.consistency_changed_total > 0"
+                    v-if="row.issues_errors_total != null && row.issues_errors_total > 0"
+                    size="small"
+                    :bordered="false"
+                    type="error"
+                  >{{ t('runs.badges.errors', { count: row.issues_errors_total }) }}</n-tag>
+                  <n-tag
+                    v-if="row.issues_warnings_total != null && row.issues_warnings_total > 0"
                     size="small"
                     :bordered="false"
                     type="warning"
-                  >{{ t('runs.badges.sourceChanged', { count: row.consistency_changed_total }) }}</n-tag>
+                  >{{ t('runs.badges.warnings', { count: row.issues_warnings_total }) }}</n-tag>
+                  <n-tag
+                    v-if="row.consistency_signal_total != null && row.consistency_signal_total > 0"
+                    size="small"
+                    :bordered="false"
+                    type="warning"
+                  >{{ t('runs.badges.sourceRisk', { count: row.consistency_signal_total }) }}</n-tag>
+                  <n-tag
+                    v-else-if="row.consistency_total != null && row.consistency_total >= CONSISTENCY_CHANGED_BADGE_THRESHOLD"
+                    size="small"
+                    :bordered="false"
+                    type="warning"
+                  >{{ t('runs.badges.sourceChanged', { count: row.consistency_total }) }}</n-tag>
                   <n-tag v-if="row.executed_offline" size="small" :bordered="false" type="info">{{ t('runs.badges.offline') }}</n-tag>
                 </div>
               </div>

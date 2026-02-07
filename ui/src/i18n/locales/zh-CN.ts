@@ -1166,6 +1166,9 @@ const messages = {
     },
     badges: {
       offline: '离线',
+      errors: '错误: {count}',
+      warnings: '告警: {count}',
+      sourceRisk: '源风险: {count}',
       sourceChanged: '源文件变更: {count}',
     },
     consistency: {

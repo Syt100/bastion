@@ -1170,6 +1170,9 @@ const messages = {
     },
     badges: {
       offline: 'Offline',
+      errors: 'Errors: {count}',
+      warnings: 'Warnings: {count}',
+      sourceRisk: 'Source risk: {count}',
       sourceChanged: 'Source changed: {count}',
     },
     consistency: {

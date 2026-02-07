@@ -162,7 +162,7 @@ describe('JobHistorySectionView layout', () => {
     expect(wrapper.text()).not.toContain('runs.latestRun')
   })
 
-  it('shows a warning tag when consistency_changed_total > 0 (desktop)', async () => {
+  it('shows high-signal alert digest tags (desktop)', async () => {
     jobsApi.listRuns.mockResolvedValue([
       {
         id: 'run1',
@@ -171,7 +171,10 @@ describe('JobHistorySectionView layout', () => {
         ended_at: 2,
         error: null,
         executed_offline: false,
-        consistency_changed_total: 2,
+        issues_errors_total: 1,
+        issues_warnings_total: 2,
+        consistency_total: 3,
+        consistency_signal_total: 1,
       },
     ])
 
@@ -190,7 +193,52 @@ describe('JobHistorySectionView layout', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('runs.badges.sourceChanged:2')
+    expect(wrapper.text()).toContain('runs.badges.errors:1')
+    expect(wrapper.text()).toContain('runs.badges.warnings:2')
+    expect(wrapper.text()).toContain('runs.badges.sourceRisk:1')
+  })
+
+  it('de-noises low-volume changed-only consistency (desktop)', async () => {
+    jobsApi.listRuns.mockResolvedValue([
+      {
+        id: 'run1',
+        status: 'success',
+        started_at: 1,
+        ended_at: 2,
+        error: null,
+        executed_offline: false,
+        consistency_total: 9,
+        consistency_signal_total: 0,
+      },
+      {
+        id: 'run2',
+        status: 'success',
+        started_at: 3,
+        ended_at: 4,
+        error: null,
+        executed_offline: false,
+        consistency_total: 10,
+        consistency_signal_total: 0,
+      },
+    ])
+
+    const wrapper = mount(JobHistorySectionView, {
+      global: {
+        provide: provideJobContext(),
+        stubs: {
+          AppEmptyState: true,
+          RunEventsModal: true,
+          RestoreWizardModal: true,
+          VerifyWizardModal: true,
+          OperationModal: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('runs.badges.sourceChanged:9')
+    expect(wrapper.text()).toContain('runs.badges.sourceChanged:10')
   })
 
   it('filters runs by status when a filter chip is selected (mobile)', async () => {
