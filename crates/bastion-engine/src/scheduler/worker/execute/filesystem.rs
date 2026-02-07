@@ -236,6 +236,7 @@ pub(super) async fn execute_filesystem_run(
     let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
     let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let artifact_format = pipeline.format.clone();
+    let webdav_direct = pipeline.webdav.raw_tree_direct.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
 
     let allow_rolling_upload = !matches!(
@@ -260,32 +261,44 @@ pub(super) async fn execute_filesystem_run(
     let mut raw_tree_webdav_direct_upload: Option<
         backup::filesystem::RawTreeWebdavDirectUploadConfig,
     > = None;
-    if allow_rolling_upload
-        && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
-        && let job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } = &target
-    {
-        let cred_bytes = bastion_storage::secrets_repo::get_secret(
-            db,
-            secrets,
-            bastion_core::HUB_NODE_ID,
-            "webdav",
-            secret_name,
-        )
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-        let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
+    if webdav_direct.mode != job_spec::WebdavRawTreeDirectModeV1::Off {
+        let supported = allow_rolling_upload
+            && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+            && matches!(target, job_spec::TargetV1::Webdav { .. });
 
-        raw_tree_webdav_direct_upload = Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
-            handle: tokio::runtime::Handle::current(),
-            base_url: base_url.clone(),
-            credentials,
-            max_attempts: 3,
-            resume_by_size: true,
-        });
+        if !supported && webdav_direct.mode == job_spec::WebdavRawTreeDirectModeV1::On {
+            anyhow::bail!(
+                "webdav raw-tree direct upload is required by config but not supported by this run (format/target/policy)"
+            );
+        }
+
+        if supported
+            && let job_spec::TargetV1::Webdav {
+                base_url,
+                secret_name,
+                ..
+            } = &target
+        {
+            let cred_bytes = bastion_storage::secrets_repo::get_secret(
+                db,
+                secrets,
+                bastion_core::HUB_NODE_ID,
+                "webdav",
+                secret_name,
+            )
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
+
+            raw_tree_webdav_direct_upload =
+                Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
+                    handle: tokio::runtime::Handle::current(),
+                    base_url: base_url.clone(),
+                    credentials,
+                    max_attempts: 3,
+                    resume_by_size: webdav_direct.resume_by_size,
+                });
+        }
     }
     let using_webdav_raw_tree_direct_upload = raw_tree_webdav_direct_upload.is_some();
 

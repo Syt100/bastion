@@ -171,6 +171,35 @@ describe('jobDetailToEditorForm', () => {
     const form = jobDetailToEditorForm(job)
     expect(form.vaultwardenConsistencyPolicy).toBe('ignore')
   })
+
+  it('parses webdav raw-tree direct upload settings from pipeline', () => {
+    const job = createJobDetail({
+      v: 1,
+      type: 'filesystem',
+      pipeline: {
+        format: 'raw_tree_v1',
+        encryption: { type: 'none' },
+        webdav: {
+          raw_tree_direct: {
+            mode: 'on',
+            resume_by_size: false,
+            limits: { concurrency: 8, put_qps: 10, head_qps: 20, mkcol_qps: 30, burst: 100 },
+          },
+        },
+      },
+      notifications: { mode: 'inherit' },
+      source: { paths: ['/tmp'] },
+      target: { type: 'webdav', base_url: 'https://dav.example.com', secret_name: 's', part_size_bytes: 256 * 1024 * 1024 },
+    })
+    const form = jobDetailToEditorForm(job)
+    expect(form.webdavRawTreeDirectMode).toBe('on')
+    expect(form.webdavRawTreeDirectResumeBySize).toBe(false)
+    expect(form.webdavRawTreeDirectConcurrency).toBe(8)
+    expect(form.webdavRawTreeDirectPutQps).toBe(10)
+    expect(form.webdavRawTreeDirectHeadQps).toBe(20)
+    expect(form.webdavRawTreeDirectMkcolQps).toBe(30)
+    expect(form.webdavRawTreeDirectBurst).toBe(100)
+  })
 })
 
 describe('editorFormToRequest', () => {
@@ -324,6 +353,42 @@ describe('editorFormToRequest', () => {
       keep_days: null,
       max_delete_per_tick: 5,
       max_delete_per_day: 50,
+    })
+  })
+
+  it('includes webdav raw-tree direct upload settings in pipeline spec', () => {
+    const form = createInitialJobEditorForm()
+    form.name = 'Demo'
+    form.jobType = 'filesystem'
+    form.fsPaths = ['/tmp']
+    form.targetType = 'webdav'
+    form.webdavBaseUrl = 'https://dav.example.com'
+    form.webdavSecretName = 's'
+    form.artifactFormat = 'raw_tree_v1'
+
+    form.webdavRawTreeDirectMode = 'on'
+    form.webdavRawTreeDirectResumeBySize = true
+    form.webdavRawTreeDirectConcurrency = 4
+    form.webdavRawTreeDirectPutQps = 20
+    form.webdavRawTreeDirectHeadQps = null
+    form.webdavRawTreeDirectMkcolQps = 50
+    form.webdavRawTreeDirectBurst = 10
+
+    const req = editorFormToRequest(form)
+    const spec = req.spec as Record<string, unknown>
+    const pipeline = spec['pipeline'] as Record<string, unknown>
+    expect(pipeline.webdav).toEqual({
+      raw_tree_direct: {
+        mode: 'on',
+        resume_by_size: true,
+        limits: {
+          concurrency: 4,
+          put_qps: 20,
+          head_qps: null,
+          mkcol_qps: 50,
+          burst: 10,
+        },
+      },
     })
   })
 })

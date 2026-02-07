@@ -24,6 +24,12 @@ const message = useMessage()
 
 const { form, showJsonPreview, previewPayload } = useJobEditorContext()
 
+function formatOptionalLimit(value: number | null): string {
+  if (typeof value !== 'number') return '-'
+  const n = Math.floor(value)
+  return n > 0 ? String(n) : '-'
+}
+
 function formatJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
@@ -97,6 +103,43 @@ async function copyPreviewJson(): Promise<void> {
           <div v-if="form.targetType === 'webdav'" class="flex items-start justify-between gap-3">
             <div class="app-text-muted">{{ t('jobs.fields.webdavSecret') }}</div>
             <div class="font-medium text-right break-all">{{ form.webdavSecretName.trim() }}</div>
+          </div>
+          <div
+            v-if="form.jobType === 'filesystem' && form.targetType === 'webdav' && form.artifactFormat === 'raw_tree_v1'"
+            class="flex items-start justify-between gap-3"
+          >
+            <div class="app-text-muted">{{ t('jobs.webdav.rawTreeDirect.title') }}</div>
+            <div class="font-medium text-right break-all">
+              {{
+                form.webdavRawTreeDirectMode === 'on'
+                  ? t('jobs.webdav.rawTreeDirect.mode.on')
+                  : form.webdavRawTreeDirectMode === 'auto'
+                    ? t('jobs.webdav.rawTreeDirect.mode.auto')
+                    : t('jobs.webdav.rawTreeDirect.mode.off')
+              }}
+            </div>
+          </div>
+          <div
+            v-if="
+              form.jobType === 'filesystem' &&
+              form.targetType === 'webdav' &&
+              form.artifactFormat === 'raw_tree_v1' &&
+              form.webdavRawTreeDirectMode !== 'off'
+            "
+            class="flex items-start justify-between gap-3"
+          >
+            <div class="app-text-muted">{{ t('jobs.webdav.rawTreeDirect.limitsLabel') }}</div>
+            <div class="font-medium text-right break-all">
+              {{
+                t('jobs.webdav.rawTreeDirect.limitsSummary', {
+                  c: Math.max(1, Math.floor(form.webdavRawTreeDirectConcurrency || 1)),
+                  put: formatOptionalLimit(form.webdavRawTreeDirectPutQps),
+                  head: formatOptionalLimit(form.webdavRawTreeDirectHeadQps),
+                  mkcol: formatOptionalLimit(form.webdavRawTreeDirectMkcolQps),
+                  burst: formatOptionalLimit(form.webdavRawTreeDirectBurst),
+                })
+              }}
+            </div>
           </div>
           <div v-if="form.targetType === 'local_dir'" class="flex items-start justify-between gap-3">
             <div class="app-text-muted">{{ t('jobs.fields.localBaseDir') }}</div>

@@ -4,7 +4,7 @@ use url::Url;
 use super::JOB_SPEC_VERSION;
 use super::types::{
     EncryptionV1, FilesystemSource, JobSpecV1, NotificationsModeV1, NotificationsV1, PipelineV1,
-    RetentionPolicyV1, TargetV1, VaultwardenSource,
+    RetentionPolicyV1, TargetV1, VaultwardenSource, WebdavRawTreeDirectModeV1,
 };
 use crate::manifest::ArtifactFormatV1;
 
@@ -29,6 +29,7 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_webdav_raw_tree_direct_filesystem(pipeline, source, target)?;
             validate_notifications(notifications)?;
             validate_retention(retention)?;
             validate_filesystem_source(source)?;
@@ -44,6 +45,7 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_webdav_raw_tree_direct_unsupported("sqlite", pipeline)?;
             validate_notifications(notifications)?;
             validate_retention(retention)?;
             if source.path.trim().is_empty() {
@@ -61,6 +63,7 @@ pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
         } => {
             validate_version(*v)?;
             validate_pipeline(pipeline)?;
+            validate_webdav_raw_tree_direct_unsupported("vaultwarden", pipeline)?;
             validate_notifications(notifications)?;
             validate_retention(retention)?;
             validate_vaultwarden_source(source)?;
@@ -125,6 +128,81 @@ fn validate_pipeline(pipeline: &PipelineV1) -> Result<(), anyhow::Error> {
             }
         }
     }
+    Ok(())
+}
+
+fn validate_webdav_raw_tree_direct_unsupported(
+    job_type: &'static str,
+    pipeline: &PipelineV1,
+) -> Result<(), anyhow::Error> {
+    if pipeline.webdav.raw_tree_direct.mode != WebdavRawTreeDirectModeV1::Off {
+        anyhow::bail!("pipeline.webdav.raw_tree_direct is not supported for {job_type} jobs");
+    }
+    Ok(())
+}
+
+fn validate_webdav_raw_tree_direct_filesystem(
+    pipeline: &PipelineV1,
+    source: &FilesystemSource,
+    target: &TargetV1,
+) -> Result<(), anyhow::Error> {
+    let direct = &pipeline.webdav.raw_tree_direct;
+    if direct.mode == WebdavRawTreeDirectModeV1::Off {
+        return Ok(());
+    }
+
+    if pipeline.format != ArtifactFormatV1::RawTreeV1 {
+        anyhow::bail!(
+            "pipeline.webdav.raw_tree_direct requires pipeline.format=raw_tree_v1"
+        );
+    }
+
+    if !matches!(target, TargetV1::Webdav { .. }) {
+        anyhow::bail!("pipeline.webdav.raw_tree_direct requires target.type=webdav");
+    }
+
+    if source.consistency_policy == super::types::ConsistencyPolicyV1::Fail
+        && !source.upload_on_consistency_failure.unwrap_or(false)
+    {
+        anyhow::bail!(
+            "pipeline.webdav.raw_tree_direct is not allowed when filesystem.source.consistency_policy=fail and filesystem.source.upload_on_consistency_failure is false"
+        );
+    }
+
+    if let Some(limits) = direct.limits.as_ref() {
+        const MAX_CONCURRENCY: u32 = 128;
+        const MAX_QPS: u32 = 10_000;
+        const MAX_BURST: u32 = 100_000;
+
+        if limits.concurrency == 0 || limits.concurrency > MAX_CONCURRENCY {
+            anyhow::bail!(
+                "pipeline.webdav.raw_tree_direct.limits.concurrency must be within 1..={MAX_CONCURRENCY}"
+            );
+        }
+
+        for (name, qps) in [
+            ("put_qps", limits.put_qps),
+            ("head_qps", limits.head_qps),
+            ("mkcol_qps", limits.mkcol_qps),
+        ] {
+            if let Some(qps) = qps {
+                if qps == 0 || qps > MAX_QPS {
+                    anyhow::bail!(
+                        "pipeline.webdav.raw_tree_direct.limits.{name} must be within 1..={MAX_QPS}"
+                    );
+                }
+            }
+        }
+
+        if let Some(burst) = limits.burst {
+            if burst == 0 || burst > MAX_BURST {
+                anyhow::bail!(
+                    "pipeline.webdav.raw_tree_direct.limits.burst must be within 1..={MAX_BURST}"
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -214,6 +292,92 @@ fn validate_target(target: &TargetV1) -> Result<(), anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use super::validate_value;
+
+    #[test]
+    fn webdav_raw_tree_direct_rejects_non_filesystem_jobs() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "sqlite",
+          "pipeline": {
+            "format": "raw_tree_v1",
+            "webdav": { "raw_tree_direct": { "mode": "auto" } }
+          },
+          "source": { "path": "/tmp/db.sqlite3" },
+          "target": { "type": "webdav", "base_url": "https://example.invalid/backup", "secret_name": "s" }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("raw_tree_direct"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn webdav_raw_tree_direct_requires_webdav_target_and_raw_tree_format() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "pipeline": {
+            "format": "archive_v1",
+            "webdav": { "raw_tree_direct": { "mode": "on" } }
+          },
+          "source": { "paths": ["/"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("raw_tree_v1"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn webdav_raw_tree_direct_rejects_consistency_fail_without_upload_on_failure() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "pipeline": {
+            "format": "raw_tree_v1",
+            "webdav": { "raw_tree_direct": { "mode": "auto" } }
+          },
+          "source": {
+            "paths": ["/"],
+            "consistency_policy": "fail",
+            "consistency_fail_threshold": 0,
+            "upload_on_consistency_failure": false
+          },
+          "target": { "type": "webdav", "base_url": "https://example.invalid/backup", "secret_name": "s" }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("upload_on_consistency_failure"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn webdav_raw_tree_direct_validates_limits() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "pipeline": {
+            "format": "raw_tree_v1",
+            "webdav": {
+              "raw_tree_direct": {
+                "mode": "on",
+                "limits": { "concurrency": 0 }
+              }
+            }
+          },
+          "source": { "paths": ["/"] },
+          "target": { "type": "webdav", "base_url": "https://example.invalid/backup", "secret_name": "s" }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("limits.concurrency"),
+            "unexpected error: {err}"
+        );
+    }
 
     #[test]
     fn retention_disabled_allows_empty_keep_rules() {

@@ -10,6 +10,7 @@ export type JobTargetType = 'webdav' | 'local_dir'
 export type NotifyMode = 'inherit' | 'custom'
 export type NodeIdOrHub = 'hub' | string
 export type ArtifactFormat = 'archive_v1' | 'raw_tree_v1'
+export type WebdavRawTreeDirectMode = 'off' | 'auto' | 'on'
 
 export type JobEditorMode = 'create' | 'edit'
 
@@ -37,6 +38,12 @@ export type JobEditorField =
   | 'vaultwardenUploadOnConsistencyFailure'
   | 'webdavBaseUrl'
   | 'webdavSecretName'
+  | 'webdavRawTreeDirectMode'
+  | 'webdavRawTreeDirectConcurrency'
+  | 'webdavRawTreeDirectPutQps'
+  | 'webdavRawTreeDirectHeadQps'
+  | 'webdavRawTreeDirectMkcolQps'
+  | 'webdavRawTreeDirectBurst'
   | 'localBaseDir'
   | 'partSizeMiB'
   | 'encryptionKeyName'
@@ -80,6 +87,13 @@ export type JobEditorForm = {
   targetType: JobTargetType
   webdavBaseUrl: string
   webdavSecretName: string
+  webdavRawTreeDirectMode: WebdavRawTreeDirectMode
+  webdavRawTreeDirectResumeBySize: boolean
+  webdavRawTreeDirectConcurrency: number
+  webdavRawTreeDirectPutQps: number | null
+  webdavRawTreeDirectHeadQps: number | null
+  webdavRawTreeDirectMkcolQps: number | null
+  webdavRawTreeDirectBurst: number | null
   localBaseDir: string
   partSizeMiB: number
   notifyMode: NotifyMode

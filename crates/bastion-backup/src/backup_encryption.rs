@@ -249,6 +249,7 @@ mod tests {
         let pipeline = bastion_core::job_spec::PipelineV1 {
             format: ArtifactFormatV1::ArchiveV1,
             encryption: bastion_core::job_spec::EncryptionV1::None,
+            ..Default::default()
         };
 
         let enc = ensure_payload_encryption(&pool, &crypto, &pipeline)
@@ -268,6 +269,7 @@ mod tests {
             encryption: bastion_core::job_spec::EncryptionV1::AgeX25519 {
                 key_name: "primary".to_string(),
             },
+            ..Default::default()
         };
 
         let enc = ensure_payload_encryption(&pool, &crypto, &pipeline)
@@ -297,6 +299,7 @@ mod tests {
             encryption: bastion_core::job_spec::EncryptionV1::AgeX25519 {
                 key_name: "primary".to_string(),
             },
+            ..Default::default()
         };
 
         assert!(

@@ -39,6 +39,12 @@ export function stepForJobEditorField(field: JobEditorField): number {
       return 2
     case 'webdavBaseUrl':
     case 'webdavSecretName':
+    case 'webdavRawTreeDirectMode':
+    case 'webdavRawTreeDirectConcurrency':
+    case 'webdavRawTreeDirectPutQps':
+    case 'webdavRawTreeDirectHeadQps':
+    case 'webdavRawTreeDirectMkcolQps':
+    case 'webdavRawTreeDirectBurst':
     case 'localBaseDir':
     case 'partSizeMiB':
       return 3
@@ -131,6 +137,37 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
     if (!Number.isFinite(form.partSizeMiB) || form.partSizeMiB <= 0) {
       issues.push({ field: 'partSizeMiB', message: t('errors.partSizeInvalid') })
     }
+
+    const showDirect =
+      form.jobType === 'filesystem' && form.targetType === 'webdav' && form.artifactFormat === 'raw_tree_v1'
+    if (showDirect && form.webdavRawTreeDirectMode !== 'off') {
+      const concurrency = Math.floor(form.webdavRawTreeDirectConcurrency || 0)
+      if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 128) {
+        issues.push({
+          field: 'webdavRawTreeDirectConcurrency',
+          message: t('errors.webdavRawTreeDirectConcurrencyInvalid'),
+        })
+      }
+
+      function validateOptionalPositiveInt(
+        value: number | null,
+        field: JobEditorField,
+        max: number,
+        messageKey: string,
+      ): void {
+        if (value == null) return
+        const n = Math.floor(value)
+        if (!Number.isFinite(n) || n < 1 || n > max) {
+          issues.push({ field, message: t(messageKey, { max }) })
+        }
+      }
+
+      validateOptionalPositiveInt(form.webdavRawTreeDirectPutQps, 'webdavRawTreeDirectPutQps', 10000, 'errors.webdavRawTreeDirectQpsInvalid')
+      validateOptionalPositiveInt(form.webdavRawTreeDirectHeadQps, 'webdavRawTreeDirectHeadQps', 10000, 'errors.webdavRawTreeDirectQpsInvalid')
+      validateOptionalPositiveInt(form.webdavRawTreeDirectMkcolQps, 'webdavRawTreeDirectMkcolQps', 10000, 'errors.webdavRawTreeDirectQpsInvalid')
+      validateOptionalPositiveInt(form.webdavRawTreeDirectBurst, 'webdavRawTreeDirectBurst', 100000, 'errors.webdavRawTreeDirectBurstInvalid')
+    }
+
     return issues
   }
 

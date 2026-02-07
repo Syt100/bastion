@@ -26,6 +26,78 @@ pub struct PipelineV1 {
     pub format: ArtifactFormatV1,
     #[serde(default)]
     pub encryption: EncryptionV1,
+    #[serde(default)]
+    pub webdav: PipelineWebdavV1,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WebdavRawTreeDirectModeV1 {
+    #[default]
+    Off,
+    Auto,
+    On,
+}
+
+fn default_webdav_direct_concurrency() -> u32 {
+    4
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WebdavRequestLimitsV1 {
+    /// Maximum number of in-flight WebDAV requests.
+    #[serde(default = "default_webdav_direct_concurrency")]
+    pub concurrency: u32,
+    /// Max PUT requests per second (best-effort).
+    #[serde(default)]
+    pub put_qps: Option<u32>,
+    /// Max HEAD requests per second (best-effort).
+    #[serde(default)]
+    pub head_qps: Option<u32>,
+    /// Max MKCOL requests per second (best-effort).
+    #[serde(default)]
+    pub mkcol_qps: Option<u32>,
+    /// Optional burst capacity for rate limits (best-effort).
+    #[serde(default)]
+    pub burst: Option<u32>,
+}
+
+impl Default for WebdavRequestLimitsV1 {
+    fn default() -> Self {
+        Self {
+            concurrency: default_webdav_direct_concurrency(),
+            put_qps: None,
+            head_qps: None,
+            mkcol_qps: None,
+            burst: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WebdavRawTreeDirectSettingsV1 {
+    #[serde(default)]
+    pub mode: WebdavRawTreeDirectModeV1,
+    #[serde(default = "default_true")]
+    pub resume_by_size: bool,
+    #[serde(default)]
+    pub limits: Option<WebdavRequestLimitsV1>,
+}
+
+impl Default for WebdavRawTreeDirectSettingsV1 {
+    fn default() -> Self {
+        Self {
+            mode: WebdavRawTreeDirectModeV1::Off,
+            resume_by_size: true,
+            limits: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct PipelineWebdavV1 {
+    #[serde(default)]
+    pub raw_tree_direct: WebdavRawTreeDirectSettingsV1,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]

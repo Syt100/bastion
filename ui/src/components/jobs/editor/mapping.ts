@@ -8,6 +8,7 @@ import type {
   FsSymlinkPolicy,
   JobEditorForm,
   SnapshotMode,
+  WebdavRawTreeDirectMode,
 } from './types'
 import { cronToSimpleSchedule } from './schedule'
 
@@ -57,6 +58,12 @@ function normalizeArtifactFormat(value: unknown): ArtifactFormat {
   return 'archive_v1'
 }
 
+function normalizeWebdavRawTreeDirectMode(value: unknown): WebdavRawTreeDirectMode {
+  if (value === 'auto') return 'auto'
+  if (value === 'on') return 'on'
+  return 'off'
+}
+
 function normalizeOptionalPositiveInt(value: number | null): number | null {
   if (typeof value !== 'number') return null
   const n = Math.floor(value)
@@ -73,6 +80,33 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
   const encryptionEnabled = artifactFormat === 'raw_tree_v1' ? false : encType === 'age_x25519'
   const encryptionKeyName =
     encryptionEnabled && typeof enc?.key_name === 'string' && enc.key_name.trim() ? enc.key_name : 'default'
+
+  const pipelineWebdav = pipeline?.webdav as Record<string, unknown> | undefined
+  const rawTreeDirect = pipelineWebdav?.raw_tree_direct as Record<string, unknown> | undefined
+  const webdavRawTreeDirectMode = normalizeWebdavRawTreeDirectMode(rawTreeDirect?.mode)
+  const webdavRawTreeDirectResumeBySize =
+    typeof rawTreeDirect?.resume_by_size === 'boolean' ? rawTreeDirect.resume_by_size : true
+  const rawTreeDirectLimits = rawTreeDirect?.limits as Record<string, unknown> | undefined
+  const webdavRawTreeDirectConcurrency =
+    typeof rawTreeDirectLimits?.concurrency === 'number' && rawTreeDirectLimits.concurrency > 0
+      ? Math.floor(rawTreeDirectLimits.concurrency)
+      : 4
+  const webdavRawTreeDirectPutQps =
+    typeof rawTreeDirectLimits?.put_qps === 'number' && rawTreeDirectLimits.put_qps > 0
+      ? Math.floor(rawTreeDirectLimits.put_qps)
+      : 20
+  const webdavRawTreeDirectHeadQps =
+    typeof rawTreeDirectLimits?.head_qps === 'number' && rawTreeDirectLimits.head_qps > 0
+      ? Math.floor(rawTreeDirectLimits.head_qps)
+      : 50
+  const webdavRawTreeDirectMkcolQps =
+    typeof rawTreeDirectLimits?.mkcol_qps === 'number' && rawTreeDirectLimits.mkcol_qps > 0
+      ? Math.floor(rawTreeDirectLimits.mkcol_qps)
+      : 50
+  const webdavRawTreeDirectBurst =
+    typeof rawTreeDirectLimits?.burst === 'number' && rawTreeDirectLimits.burst > 0
+      ? Math.floor(rawTreeDirectLimits.burst)
+      : 10
 
   const target = spec.target as Record<string, unknown> | undefined
   const targetType = target?.type === 'local_dir' ? 'local_dir' : 'webdav'
@@ -164,6 +198,13 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     targetType,
     webdavBaseUrl: typeof target?.base_url === 'string' ? target.base_url : '',
     webdavSecretName: typeof target?.secret_name === 'string' ? target.secret_name : '',
+    webdavRawTreeDirectMode,
+    webdavRawTreeDirectResumeBySize,
+    webdavRawTreeDirectConcurrency,
+    webdavRawTreeDirectPutQps,
+    webdavRawTreeDirectHeadQps,
+    webdavRawTreeDirectMkcolQps,
+    webdavRawTreeDirectBurst,
     localBaseDir: typeof target?.base_dir === 'string' ? target.base_dir : '',
     partSizeMiB,
     notifyMode,
@@ -190,6 +231,23 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
         : form.encryptionEnabled
           ? ({ type: 'age_x25519' as const, key_name: form.encryptionKeyName.trim() } as const)
           : ({ type: 'none' as const } as const),
+    webdav: {
+      raw_tree_direct: {
+        mode: form.webdavRawTreeDirectMode,
+        resume_by_size: form.webdavRawTreeDirectResumeBySize,
+        ...(form.webdavRawTreeDirectMode !== 'off'
+          ? {
+              limits: {
+                concurrency: Math.max(1, Math.floor(form.webdavRawTreeDirectConcurrency || 1)),
+                put_qps: normalizeOptionalPositiveInt(form.webdavRawTreeDirectPutQps),
+                head_qps: normalizeOptionalPositiveInt(form.webdavRawTreeDirectHeadQps),
+                mkcol_qps: normalizeOptionalPositiveInt(form.webdavRawTreeDirectMkcolQps),
+                burst: normalizeOptionalPositiveInt(form.webdavRawTreeDirectBurst),
+              },
+            }
+          : {}),
+      },
+    },
   }
 
   const notifications =

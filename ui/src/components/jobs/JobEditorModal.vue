@@ -252,18 +252,31 @@ function onJobTypeChanged(): void {
   clearFieldError('vaultwardenConsistencyPolicy')
   clearFieldError('vaultwardenConsistencyFailThreshold')
   clearFieldError('vaultwardenUploadOnConsistencyFailure')
+
+  // Keep WebDAV raw-tree direct upload settings valid when switching job types.
+  if (form.jobType !== 'filesystem') {
+    form.webdavRawTreeDirectMode = 'off'
+  }
 }
 
 function onTargetTypeChanged(): void {
   clearFieldError('webdavBaseUrl')
   clearFieldError('webdavSecretName')
   clearFieldError('localBaseDir')
+
+  // Direct upload only applies to WebDAV targets.
+  if (form.targetType !== 'webdav') {
+    form.webdavRawTreeDirectMode = 'off'
+  }
 }
 
 function onArtifactFormatChanged(): void {
   // raw_tree_v1 does not support encryption; keep the toggle off.
   if (form.artifactFormat === 'raw_tree_v1') {
     form.encryptionEnabled = false
+  } else {
+    // Direct upload only applies to raw_tree_v1.
+    form.webdavRawTreeDirectMode = 'off'
   }
   clearFieldError('encryptionKeyName')
 }

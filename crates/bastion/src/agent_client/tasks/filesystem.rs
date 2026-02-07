@@ -317,6 +317,7 @@ pub(super) async fn run_filesystem_backup(
     let consistency_policy = source.consistency_policy;
     let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
     let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
+    let webdav_direct = pipeline.webdav.raw_tree_direct.clone();
     let encryption = super::payload_encryption(pipeline.encryption);
     let artifact_format = pipeline.format;
     let artifact_format_for_summary = artifact_format.clone();
@@ -341,25 +342,38 @@ pub(super) async fn run_filesystem_backup(
     let mut raw_tree_webdav_direct_upload: Option<
         backup::filesystem::RawTreeWebdavDirectUploadConfig,
     > = None;
-    if allow_rolling_upload
-        && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
-        && let TargetResolvedV1::Webdav {
-            base_url,
-            username,
-            password,
-            ..
-        } = &target
-    {
-        raw_tree_webdav_direct_upload = Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
-            handle: tokio::runtime::Handle::current(),
-            base_url: base_url.clone(),
-            credentials: bastion_targets::WebdavCredentials {
-                username: username.clone(),
-                password: password.clone(),
-            },
-            max_attempts: 3,
-            resume_by_size: true,
-        });
+    if webdav_direct.mode != bastion_core::job_spec::WebdavRawTreeDirectModeV1::Off {
+        let supported = allow_rolling_upload
+            && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+            && matches!(target, TargetResolvedV1::Webdav { .. });
+
+        if !supported && webdav_direct.mode == bastion_core::job_spec::WebdavRawTreeDirectModeV1::On
+        {
+            anyhow::bail!(
+                "webdav raw-tree direct upload is required by config but not supported by this run (format/target/policy)"
+            );
+        }
+
+        if supported
+            && let TargetResolvedV1::Webdav {
+                base_url,
+                username,
+                password,
+                ..
+            } = &target
+        {
+            raw_tree_webdav_direct_upload =
+                Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
+                    handle: tokio::runtime::Handle::current(),
+                    base_url: base_url.clone(),
+                    credentials: bastion_targets::WebdavCredentials {
+                        username: username.clone(),
+                        password: password.clone(),
+                    },
+                    max_attempts: 3,
+                    resume_by_size: webdav_direct.resume_by_size,
+                });
+        }
     }
     let using_webdav_raw_tree_direct_upload = raw_tree_webdav_direct_upload.is_some();
 
