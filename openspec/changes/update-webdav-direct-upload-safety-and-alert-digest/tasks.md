@@ -11,16 +11,16 @@
 - [x] Web UI: expose direct upload mode + limits in filesystem job editor
 
 ### 2.2 WebDAV request limits + concurrent uploads
-- [ ] Add request limiter (concurrency + qps) to `WebdavClient` and apply to PUT/HEAD/MKCOL
-- [ ] Add backpressure handling for 429/503 (+ Retry-After) in upload paths
-- [ ] Make staged raw-tree `data/` uploads concurrent (bounded)
-- [ ] Make raw-tree direct upload concurrent (bounded pipeline) while preserving index ordering
-- [ ] Add regression tests (limits, completion marker last, concurrency ceiling)
+- [x] Add request limiter (concurrency + qps) to `WebdavClient` and apply to PUT/HEAD/MKCOL
+- [x] Add backpressure handling for 429/503 (+ Retry-After) in upload paths
+- [x] Make staged raw-tree `data/` uploads concurrent (bounded)
+- [x] Ensure raw-tree direct upload respects WebDAV limits (rate + concurrency)
+- [x] Add regression tests (limits, completion marker last, concurrency ceiling)
 
 ### 2.3 Alert digest + runs list de-noising
-- [ ] Extend runs list endpoint (`GET /api/jobs/:id/runs`) to return high-signal digest fields
-- [ ] Update Web UI runs list to show capped high-signal badges only (and keep detail evidence)
-- [ ] Add backend + UI tests for digest and de-noising rules
+- [x] Extend runs list endpoint (`GET /api/jobs/:id/runs`) to return high-signal digest fields
+- [x] Update Web UI runs list to show capped high-signal badges only (and keep detail evidence)
+- [x] Add backend + UI tests for digest and de-noising rules
 
 ## 3. Validation
-- [ ] Run `scripts/ci.sh`
+- [x] Run `scripts/ci.sh`

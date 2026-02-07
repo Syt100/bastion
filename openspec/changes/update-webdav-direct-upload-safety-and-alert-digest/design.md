@@ -91,14 +91,13 @@ Update to:
 - Limiter still applies as a safety valve.
 
 ### Direct raw-tree upload to WebDAV during packaging
-Current direct upload is synchronous (scan → per file `block_on(PUT)`), so it is safe but slow and still risks QPS spikes.
-Update to a bounded pipeline:
-- **producer**: scans filesystem and sends work items (bounded channel)
-- **workers (N)**: upload (HEAD optional) + stream-hash PUT + capture after-handle fingerprint
-- **writer**: records entries in index deterministically (preserve scan order by sequence ID)
-- After the pipeline completes, packaging proceeds to write index/manifest; `complete.json` is still last.
+Current direct upload is synchronous (scan → per file `block_on(PUT)`), which keeps memory bounded and preserves deterministic index ordering.
 
-This avoids building an unbounded in-memory queue while enabling concurrency.
+We keep it synchronous for now, but enforce WebDAV request limits via `WebdavClient` so direct upload cannot overwhelm the server:
+- rate limiting (PUT/HEAD/MKCOL qps + burst)
+- concurrency cap (max in-flight requests)
+
+A future optimization could introduce a bounded concurrent pipeline, but it is not required for safety.
 
 ## 5. Alert digest / de-noising strategy
 
@@ -144,4 +143,3 @@ Extend `GET /api/jobs/:id/runs` items with the fields above, including for runni
 - UI:
   - runs list shows only high-signal badges in priority order
   - detail page continues to show full consistency samples/evidence
-
