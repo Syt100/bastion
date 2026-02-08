@@ -23,6 +23,7 @@ const attrs = useAttrs()
 const scroller = ref<HTMLElement | null>(null)
 const showTop = ref(false)
 const showBottom = ref(false)
+const hasOverflowY = ref(false)
 
 const shadowFrom = computed(() => props.shadowFrom ?? 'var(--app-surface)')
 const shadowSize = computed(() => `${Math.max(8, Math.floor(props.shadowSizePx ?? 16))}px`)
@@ -39,9 +40,13 @@ const bottomShadowStyle = computed(() => ({
 
 function update(): void {
   const el = scroller.value
-  if (!el) return
+  if (!el) {
+    hasOverflowY.value = false
+    return
+  }
 
   const hasOverflow = el.scrollHeight > el.clientHeight + 1
+  hasOverflowY.value = hasOverflow
   if (!hasOverflow) {
     showTop.value = false
     showBottom.value = false
@@ -94,7 +99,8 @@ onBeforeUnmount(() => {
   <div class="relative h-full min-h-0" :class="props.wrapperClass">
     <div
       ref="scroller"
-      class="h-full min-h-0 overflow-y-auto overscroll-contain"
+      class="h-full min-h-0 overflow-y-auto"
+      :class="hasOverflowY ? 'overscroll-contain' : 'overscroll-auto'"
       v-bind="attrs"
     >
       <slot />
