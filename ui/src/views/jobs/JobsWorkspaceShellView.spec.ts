@@ -428,6 +428,92 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(jobsStore.runNow).toHaveBeenCalledWith('job1')
   })
 
+
+  it('bulk run keeps selected active jobs when rows leave current page', async () => {
+    uiStore.jobsWorkspaceLayoutMode = 'list'
+    uiStore.jobsWorkspaceListView = 'table'
+    jobsStore.items = [
+      {
+        id: 'job1',
+        name: 'Job 1',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+      {
+        id: 'job2',
+        name: 'Job 2',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+    ]
+    jobsStore.total = 40
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    wrapper.findComponent({ name: 'NDataTable' }).vm.$emit('update:checked-row-keys', ['job1'])
+    await wrapper.vm.$nextTick()
+
+    // Simulate moving to another page where selected rows are not loaded.
+    jobsStore.items = [
+      {
+        id: 'job3',
+        name: 'Job 3',
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+        archived_at: null,
+        latest_run_id: null,
+        latest_run_status: null,
+        latest_run_started_at: null,
+        latest_run_ended_at: null,
+      },
+    ]
+    await wrapper.vm.$nextTick()
+
+    const toolbar = wrapper.find('.app-selection-toolbar')
+    expect(toolbar.exists()).toBe(true)
+
+    const runBtn = toolbar.findAll('button').find((b) => b.text() === 'jobs.actions.runNow')
+    expect(runBtn).toBeTruthy()
+    await runBtn!.trigger('click')
+    await flushPromises()
+
+    expect(jobsStore.runNow).toHaveBeenCalledTimes(1)
+    expect(jobsStore.runNow).toHaveBeenCalledWith('job1')
+  })
+
   it('bulk archive requires confirmation and only archives eligible jobs', async () => {
     uiStore.jobsWorkspaceLayoutMode = 'list'
     uiStore.jobsWorkspaceListView = 'table'

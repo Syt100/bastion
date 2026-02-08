@@ -263,26 +263,65 @@ const hasActiveFilters = computed<boolean>(() => {
 const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilters.value)
 
 const selectedJobIds = ref<string[]>([])
+const selectedJobArchived = ref<Record<string, boolean>>({})
 const listSelectMode = ref<boolean>(false)
 
 const nodeJobsById = computed(() => new Map(nodeScopedJobs.value.map((j) => [j.id, j])))
-const selectedJobs = computed<JobListItem[]>(() =>
-  selectedJobIds.value.map((id) => nodeJobsById.value.get(id)).filter((v): v is JobListItem => !!v),
+
+function syncSelectedJobArchived(): void {
+  if (selectedJobIds.value.length === 0) {
+    if (Object.keys(selectedJobArchived.value).length > 0) {
+      selectedJobArchived.value = {}
+    }
+    return
+  }
+
+  const nextArchived: Record<string, boolean> = {}
+  for (const id of selectedJobIds.value) {
+    const current = nodeJobsById.value.get(id)
+    if (current) {
+      nextArchived[id] = !!current.archived_at
+      continue
+    }
+    if (Object.prototype.hasOwnProperty.call(selectedJobArchived.value, id)) {
+      nextArchived[id] = selectedJobArchived.value[id] === true
+    }
+  }
+  selectedJobArchived.value = nextArchived
+}
+
+const selectedJobs = computed<Array<{ id: string; archived: boolean }>>(() =>
+  selectedJobIds.value
+    .map((id) => {
+      const current = nodeJobsById.value.get(id)
+      if (current) {
+        return { id, archived: !!current.archived_at }
+      }
+      if (Object.prototype.hasOwnProperty.call(selectedJobArchived.value, id)) {
+        return { id, archived: selectedJobArchived.value[id] === true }
+      }
+      return null
+    })
+    .filter((v): v is { id: string; archived: boolean } => !!v),
 )
-const selectedActiveJobs = computed<JobListItem[]>(() => selectedJobs.value.filter((j) => !j.archived_at))
-const selectedArchivedJobs = computed<JobListItem[]>(() => selectedJobs.value.filter((j) => !!j.archived_at))
+const selectedActiveJobs = computed(() => selectedJobs.value.filter((j) => !j.archived))
+const selectedArchivedJobs = computed(() => selectedJobs.value.filter((j) => j.archived))
 
 function setJobSelected(jobId: string, checked: boolean): void {
   const next = new Set(selectedJobIds.value)
   if (checked) next.add(jobId)
   else next.delete(jobId)
   selectedJobIds.value = [...next]
+  syncSelectedJobArchived()
 }
 
-watch(nodeScopedJobs, () => {
-  const allowed = new Set(nodeScopedJobs.value.map((j) => j.id))
-  selectedJobIds.value = selectedJobIds.value.filter((id) => allowed.has(id))
-})
+function clearSelectedJobs(): void {
+  selectedJobIds.value = []
+  selectedJobArchived.value = {}
+}
+
+watch(selectedJobIds, syncSelectedJobArchived)
+watch(nodeScopedJobs, syncSelectedJobArchived)
 
 watch(jobsListView, () => {
   if (jobsListView.value !== 'list') {
@@ -363,6 +402,16 @@ async function confirmBulkAction(): Promise<void> {
       )
       const ok = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.length - ok
+      if (ok > 0) {
+        const nextArchived = { ...selectedJobArchived.value }
+        results.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            const target = targets[idx]
+            if (target) nextArchived[target.id] = true
+          }
+        })
+        selectedJobArchived.value = nextArchived
+      }
       const summary = t('jobs.workspace.bulk.archiveSummary', { ok, skipped, failed })
       if (failed > 0) message.warning(summary)
       else message.success(summary)
@@ -372,6 +421,16 @@ async function confirmBulkAction(): Promise<void> {
       const results = await Promise.allSettled(targets.map((j) => jobs.unarchiveJob(j.id)))
       const ok = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.length - ok
+      if (ok > 0) {
+        const nextArchived = { ...selectedJobArchived.value }
+        results.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            const target = targets[idx]
+            if (target) nextArchived[target.id] = false
+          }
+        })
+        selectedJobArchived.value = nextArchived
+      }
       const summary = t('jobs.workspace.bulk.unarchiveSummary', { ok, skipped, failed })
       if (failed > 0) message.warning(summary)
       else message.success(summary)
@@ -696,7 +755,7 @@ watch(jobsPageSize, () => {
 watch(nodeId, () => {
   const pageChanged = jobsPage.value !== 1
   jobsPage.value = 1
-  selectedJobIds.value = []
+  clearSelectedJobs()
   listSelectMode.value = false
   bulkConfirmOpen.value = false
   bulkConfirmKind.value = null
@@ -769,7 +828,7 @@ onBeforeUnmount(() => {
             class="mb-3"
             :count="selectedJobIds.length"
             :hint="t('common.selectionLoadedHint')"
-            @clear="selectedJobIds = []"
+            @clear="clearSelectedJobs"
           >
             <template #actions>
               <n-button
