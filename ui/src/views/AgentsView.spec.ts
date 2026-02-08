@@ -2,6 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
+import { createNaiveButtonStub, createNaiveInputStub, createNaiveStub } from '@/test-utils/naiveUiStubs'
+import type { AgentListItem } from '@/stores/agents'
+
 const messageApi = {
   error: vi.fn(),
   success: vi.fn(),
@@ -10,7 +13,7 @@ const messageApi = {
 
 const agentsApi = {
   loading: false,
-  items: [],
+  items: [] as AgentListItem[],
   refresh: vi.fn().mockResolvedValue(undefined),
   listLabelIndex: vi.fn().mockResolvedValue([]),
   createEnrollmentToken: vi.fn(),
@@ -55,31 +58,6 @@ vi.mock('@/lib/media', async () => {
 vi.mock('naive-ui', async () => {
   const vue = await import('vue')
 
-  const stub = (name: string) =>
-    vue.defineComponent({
-      name,
-      props: ['value', 'show', 'loading', 'columns', 'data', 'options', 'title', 'subtitle'],
-      emits: ['update:value', 'update:show', 'update:checked', 'update:checked-row-keys'],
-      setup(_, { slots }) {
-        return () => vue.h('div', { 'data-stub': name }, slots.default?.())
-      },
-    })
-
-  const button = vue.defineComponent({
-    name: 'NButton',
-    setup(_, { slots, attrs }) {
-      return () =>
-        vue.h(
-          'button',
-          {
-            'data-stub': 'NButton',
-            onClick: (attrs as { onClick?: ((evt: MouseEvent) => void) | undefined }).onClick,
-          },
-          slots.default?.(),
-        )
-    },
-  })
-
   const modal = vue.defineComponent({
     name: 'NModal',
     props: ['show'],
@@ -101,30 +79,23 @@ vi.mock('naive-ui', async () => {
     },
   })
 
-  const input = vue.defineComponent({
-    name: 'NInput',
-    inheritAttrs: false,
-    props: ['value', 'type', 'readonly'],
-    setup(props) {
-      return () => {
-        const type = (props as { type?: string }).type
-        const value = (props as { value?: string }).value
-        const tag = type === 'textarea' ? 'textarea' : 'input'
-        return vue.h(tag, { 'data-stub': 'NInput', value: value ?? '' })
-      }
-    },
-  })
+  const stub = (name: string) =>
+    createNaiveStub(name, {
+      props: ['value', 'show', 'loading', 'columns', 'data', 'options', 'title', 'subtitle'],
+      emits: ['update:value', 'update:show', 'update:checked', 'update:checked-row-keys'],
+    })
 
   return {
-    NButton: button,
+    NButton: createNaiveButtonStub(),
     NCard: stub('NCard'),
     NCheckbox: stub('NCheckbox'),
     NDataTable: stub('NDataTable'),
     NForm: stub('NForm'),
     NFormItem: formItem,
-    NInput: input,
+    NInput: createNaiveInputStub(),
     NInputNumber: stub('NInputNumber'),
     NModal: modal,
+    NPagination: stub('NPagination'),
     NPopconfirm: stub('NPopconfirm'),
     NRadioButton: stub('NRadioButton'),
     NRadioGroup: stub('NRadioGroup'),
@@ -140,7 +111,32 @@ import AgentsView from './AgentsView.vue'
 describe('AgentsView enrollment token modal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeApi.query = {}
+    agentsApi.items = []
     agentsApi.createEnrollmentToken.mockResolvedValue({ token: 'tok1', expires_at: 1234 })
+  })
+
+  it('shows pagination when the filtered list is large', async () => {
+    agentsApi.items = Array.from({ length: 25 }, (_, idx) => ({
+      id: `agent-${idx}`,
+      name: `Agent ${idx}`,
+      revoked: false,
+      last_seen_at: null,
+      online: idx % 2 === 0,
+      labels: [],
+      desired_config_snapshot_id: null,
+      applied_config_snapshot_id: null,
+      config_sync_status: 'offline',
+      last_config_sync_attempt_at: null,
+      last_config_sync_error_kind: null,
+      last_config_sync_error: null,
+      last_config_sync_error_at: null,
+    }))
+
+    const wrapper = mount(AgentsView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-stub="NPagination"]').exists()).toBe(true)
   })
 
   it('renders an enroll command template that includes hub url and token', async () => {
@@ -156,10 +152,10 @@ describe('AgentsView enrollment token modal', () => {
     await createBtn!.trigger('click')
     await flushPromises()
 
-    const labels = wrapper.findAll('[data-stub=\"NFormItemLabel\"]').map((n) => n.text())
+    const labels = wrapper.findAll('[data-stub="NFormItemLabel"]').map((n) => n.text())
     expect(labels).toContain('agents.tokenModal.enrollCommand')
 
-    const inputs = wrapper.findAll('textarea[data-stub=\"NInput\"], input[data-stub=\"NInput\"]')
+    const inputs = wrapper.findAll('textarea[data-stub="NInput"], input[data-stub="NInput"]')
     const values = inputs.map((n) => String((n.element as HTMLInputElement).value))
     const command = values.find((v) => v.includes('bastion agent')) ?? null
 

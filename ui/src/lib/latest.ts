@@ -3,6 +3,7 @@ import { onBeforeUnmount } from 'vue'
 export type LatestRequestHandle = {
   signal: AbortSignal
   isStale: () => boolean
+  finish: () => void
 }
 
 export type LatestRequestController = {
@@ -10,7 +11,7 @@ export type LatestRequestController = {
   abort: () => void
 }
 
-export function useLatestRequest(): LatestRequestController {
+function createLatestRequestController(): LatestRequestController {
   let controller: AbortController | null = null
   let generation = 0
 
@@ -22,13 +23,30 @@ export function useLatestRequest(): LatestRequestController {
   function next(): LatestRequestHandle {
     generation += 1
     abort()
-    controller = new AbortController()
     const g = generation
-    return { signal: controller.signal, isStale: () => generation !== g }
-  }
+    const current = new AbortController()
+    controller = current
 
-  onBeforeUnmount(() => abort())
+    return {
+      signal: current.signal,
+      isStale: () => generation !== g,
+      finish: () => {
+        if (generation === g && controller === current) {
+          controller = null
+        }
+      },
+    }
+  }
 
   return { next, abort }
 }
 
+export function createLatestRequest(): LatestRequestController {
+  return createLatestRequestController()
+}
+
+export function useLatestRequest(): LatestRequestController {
+  const latest = createLatestRequestController()
+  onBeforeUnmount(() => latest.abort())
+  return latest
+}

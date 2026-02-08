@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
+import { createLatestRequest } from '@/lib/latest'
 import type { RunStatus } from '@/stores/jobs'
 
 export type DashboardOverviewResponse = {
@@ -53,13 +54,25 @@ export type DashboardOverviewResponse = {
 export const useDashboardStore = defineStore('dashboard', () => {
   const loading = ref<boolean>(false)
   const overview = ref<DashboardOverviewResponse | null>(null)
+  const latestRefresh = createLatestRequest()
 
   async function refresh(): Promise<void> {
+    const current = latestRefresh.next()
     loading.value = true
     try {
-      overview.value = await apiFetch<DashboardOverviewResponse>('/api/dashboard/overview')
+      const nextOverview = await apiFetch<DashboardOverviewResponse>('/api/dashboard/overview', {
+        signal: current.signal,
+      })
+      if (current.isStale() || current.signal.aborted) return
+      overview.value = nextOverview
+    } catch (error) {
+      if (current.isStale() || current.signal.aborted) return
+      throw error
     } finally {
-      loading.value = false
+      if (!current.isStale()) {
+        loading.value = false
+        current.finish()
+      }
     }
   }
 

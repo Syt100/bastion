@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
+import { createLatestRequest } from '@/lib/latest'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OverlapPolicy = 'reject' | 'queue'
@@ -180,31 +181,27 @@ export type RetentionApplyResponse = {
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
-  let refreshRequestSeq = 0
-  let refreshAbortController: AbortController | null = null
+  const latestRefresh = createLatestRequest()
 
   async function refresh(params?: { includeArchived?: boolean }): Promise<void> {
-    const requestSeq = ++refreshRequestSeq
-    refreshAbortController?.abort()
-    const abortController = new AbortController()
-    refreshAbortController = abortController
+    const current = latestRefresh.next()
     loading.value = true
     try {
       const q = new URLSearchParams()
       if (params?.includeArchived) q.set('include_archived', 'true')
       const suffix = q.toString() ? '?' + q.toString() : ''
       const nextItems = await apiFetch<JobListItem[]>('/api/jobs' + suffix, {
-        signal: abortController.signal,
+        signal: current.signal,
       })
-      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
+      if (current.isStale() || current.signal.aborted) return
       items.value = nextItems
     } catch (error) {
-      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
+      if (current.isStale() || current.signal.aborted) return
       throw error
     } finally {
-      if (requestSeq === refreshRequestSeq) {
+      if (!current.isStale()) {
         loading.value = false
-        refreshAbortController = null
+        current.finish()
       }
     }
   }

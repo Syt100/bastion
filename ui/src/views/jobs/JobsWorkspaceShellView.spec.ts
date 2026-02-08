@@ -138,6 +138,7 @@ vi.mock('naive-ui', async () => {
     NIcon: stub('NIcon'),
     NInput: stub('NInput'),
     NModal: modal,
+    NPagination: stub('NPagination'),
     NPopover: stub('NPopover'),
     NRadioButton: stub('NRadioButton'),
     NRadioGroup: stub('NRadioGroup'),
@@ -231,6 +232,39 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
       },
     ]
     jobsStore.loading = false
+  })
+
+  it('shows pagination when filtered jobs exceed one page', () => {
+    jobsStore.items = Array.from({ length: 25 }, (_, idx) => ({
+      id: `job-${idx}`,
+      name: `Job ${idx}`,
+      agent_id: null,
+      schedule: null,
+      schedule_timezone: 'UTC',
+      overlap_policy: 'queue',
+      created_at: idx + 1,
+      updated_at: idx + 1,
+      archived_at: null,
+      latest_run_id: null,
+      latest_run_status: null,
+      latest_run_started_at: null,
+      latest_run_ended_at: null,
+    }))
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-stub="NPagination"]').exists()).toBe(true)
   })
 
   it('renders a scrollable job list container on desktop', () => {

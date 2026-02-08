@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, onMounted } from 'vue'
+import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NEmpty, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import {
+  NButton,
+  NCard,
+  NDataTable,
+  NEmpty,
+  NSkeleton,
+  NSpace,
+  NTag,
+  useMessage,
+  type DataTableColumns,
+} from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -27,8 +37,61 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
 const overview = computed(() => dashboard.overview)
+const showInitialSkeleton = computed(() => dashboard.loading && !overview.value)
 const offlineAgents = computed(() => overview.value?.stats.agents.offline ?? 0)
 const failedNotifications = computed(() => overview.value?.stats.notifications.failed ?? 0)
+
+const trendDays = computed(() => overview.value?.trend_7d.map((d) => d.day) ?? [])
+const trendSuccess = computed(() => overview.value?.trend_7d.map((d) => d.success) ?? [])
+const trendFailed = computed(() => overview.value?.trend_7d.map((d) => d.failed) ?? [])
+
+const trendChartTarget = ref<HTMLElement | null>(null)
+const trendChartReady = ref(false)
+let trendChartObserver: IntersectionObserver | null = null
+
+function stopTrendChartObserver(): void {
+  trendChartObserver?.disconnect()
+  trendChartObserver = null
+}
+
+function ensureTrendChartWhenVisible(): void {
+  if (trendChartReady.value) return
+  if (trendDays.value.length === 0) return
+
+  const target = trendChartTarget.value
+  if (!target) return
+
+  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+    trendChartReady.value = true
+    return
+  }
+
+  if (trendChartObserver) return
+
+  trendChartObserver = new window.IntersectionObserver(
+    (entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return
+      trendChartReady.value = true
+      stopTrendChartObserver()
+    },
+    {
+      root: null,
+      // Start preparing chart slightly before users reach the chart area.
+      rootMargin: '200px 0px',
+    },
+  )
+
+  trendChartObserver.observe(target)
+}
+
+watch([trendDays, trendChartTarget], () => {
+  if (trendDays.value.length === 0) {
+    trendChartReady.value = false
+    stopTrendChartObserver()
+    return
+  }
+  ensureTrendChartWhenVisible()
+})
 
 async function refresh(): Promise<void> {
   try {
@@ -40,11 +103,12 @@ async function refresh(): Promise<void> {
 
 onMounted(() => {
   void refresh()
+  ensureTrendChartWhenVisible()
 })
 
-const trendDays = computed(() => overview.value?.trend_7d.map((d) => d.day) ?? [])
-const trendSuccess = computed(() => overview.value?.trend_7d.map((d) => d.success) ?? [])
-const trendFailed = computed(() => overview.value?.trend_7d.map((d) => d.failed) ?? [])
+onBeforeUnmount(() => {
+  stopTrendChartObserver()
+})
 
 function statusTagType(status: string): 'success' | 'error' | 'warning' | 'info' | 'default' {
   if (status === 'success') return 'success'
@@ -135,9 +199,11 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="text-sm app-text-muted">{{ t('dashboard.health.offlineAgents') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
-            {{ offlineAgents }}
+            <n-skeleton v-if="showInitialSkeleton" text width="3rem" />
+            <template v-else>{{ offlineAgents }}</template>
           </div>
-          <n-button size="small" tertiary @click="openOfflineAgents">
+          <n-skeleton v-if="showInitialSkeleton" text width="8rem" />
+          <n-button v-else size="small" tertiary @click="openOfflineAgents">
             {{ t('dashboard.health.viewOfflineAgents') }}
           </n-button>
         </div>
@@ -147,9 +213,11 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="text-sm app-text-muted">{{ t('dashboard.health.notificationFailures') }}</div>
         <div class="mt-2 flex items-baseline justify-between gap-3">
           <div class="text-3xl font-semibold tabular-nums">
-            {{ failedNotifications }}
+            <n-skeleton v-if="showInitialSkeleton" text width="3rem" />
+            <template v-else>{{ failedNotifications }}</template>
           </div>
-          <n-button size="small" tertiary @click="openNotificationFailures">
+          <n-skeleton v-if="showInitialSkeleton" text width="9rem" />
+          <n-button v-else size="small" tertiary @click="openNotificationFailures">
             {{ t('dashboard.health.viewNotificationQueue') }}
           </n-button>
         </div>
@@ -161,17 +229,22 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.agents') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
-            {{ overview?.stats.agents.online ?? 0 }}
+            <n-skeleton v-if="showInitialSkeleton" text width="3.5rem" />
+            <template v-else>{{ overview?.stats.agents.online ?? 0 }}</template>
           </div>
           <div class="text-sm app-text-muted tabular-nums">
-            {{ t('dashboard.cards.ofActive', { active: overview?.stats.agents.active ?? 0 }) }}
+            <n-skeleton v-if="showInitialSkeleton" text width="5rem" />
+            <template v-else>{{ t('dashboard.cards.ofActive', { active: overview?.stats.agents.active ?? 0 }) }}</template>
           </div>
         </div>
         <div class="mt-2 text-sm app-text-muted tabular-nums">
-          {{ t('dashboard.cards.offline', { count: overview?.stats.agents.offline ?? 0 }) }}
-          <span v-if="(overview?.stats.agents.revoked ?? 0) > 0" class="ml-2">
-            {{ t('dashboard.cards.revoked', { count: overview?.stats.agents.revoked ?? 0 }) }}
-          </span>
+          <n-skeleton v-if="showInitialSkeleton" text width="8rem" />
+          <template v-else>
+            {{ t('dashboard.cards.offline', { count: overview?.stats.agents.offline ?? 0 }) }}
+            <span v-if="(overview?.stats.agents.revoked ?? 0) > 0" class="ml-2">
+              {{ t('dashboard.cards.revoked', { count: overview?.stats.agents.revoked ?? 0 }) }}
+            </span>
+          </template>
         </div>
       </n-card>
 
@@ -179,10 +252,12 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="text-sm app-text-muted">{{ t('dashboard.cards.jobs') }}</div>
         <div class="mt-2 flex items-baseline justify-between">
           <div class="text-3xl font-semibold tabular-nums">
-            {{ overview?.stats.jobs.active ?? 0 }}
+            <n-skeleton v-if="showInitialSkeleton" text width="3.5rem" />
+            <template v-else>{{ overview?.stats.jobs.active ?? 0 }}</template>
           </div>
           <div class="text-sm app-text-muted tabular-nums">
-            {{ t('dashboard.cards.archived', { count: overview?.stats.jobs.archived ?? 0 }) }}
+            <n-skeleton v-if="showInitialSkeleton" text width="4.5rem" />
+            <template v-else>{{ t('dashboard.cards.archived', { count: overview?.stats.jobs.archived ?? 0 }) }}</template>
           </div>
         </div>
       </n-card>
@@ -192,15 +267,24 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
           <div>
             <div class="text-xs app-text-muted">{{ t('dashboard.cards.success') }}</div>
-            <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.success_24h ?? 0 }}</div>
+            <div class="text-xl font-semibold tabular-nums">
+              <n-skeleton v-if="showInitialSkeleton" text width="2.5rem" />
+              <template v-else>{{ overview?.stats.runs.success_24h ?? 0 }}</template>
+            </div>
           </div>
           <div>
             <div class="text-xs app-text-muted">{{ t('dashboard.cards.failed') }}</div>
-            <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.failed_24h ?? 0 }}</div>
+            <div class="text-xl font-semibold tabular-nums">
+              <n-skeleton v-if="showInitialSkeleton" text width="2.5rem" />
+              <template v-else>{{ overview?.stats.runs.failed_24h ?? 0 }}</template>
+            </div>
           </div>
           <div>
             <div class="text-xs app-text-muted">{{ t('dashboard.cards.rejected') }}</div>
-            <div class="text-xl font-semibold tabular-nums">{{ overview?.stats.runs.rejected_24h ?? 0 }}</div>
+            <div class="text-xl font-semibold tabular-nums">
+              <n-skeleton v-if="showInitialSkeleton" text width="2.5rem" />
+              <template v-else>{{ overview?.stats.runs.rejected_24h ?? 0 }}</template>
+            </div>
           </div>
         </div>
       </n-card>
@@ -210,21 +294,32 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
           <div>
             <div class="text-xs app-text-muted">{{ t('dashboard.cards.running') }}</div>
-            <div class="text-2xl font-semibold tabular-nums">{{ overview?.stats.runs.running ?? 0 }}</div>
+            <div class="text-2xl font-semibold tabular-nums">
+              <n-skeleton v-if="showInitialSkeleton" text width="3rem" />
+              <template v-else>{{ overview?.stats.runs.running ?? 0 }}</template>
+            </div>
           </div>
           <div>
             <div class="text-xs app-text-muted">{{ t('dashboard.cards.queued') }}</div>
-            <div class="text-2xl font-semibold tabular-nums">{{ overview?.stats.runs.queued ?? 0 }}</div>
+            <div class="text-2xl font-semibold tabular-nums">
+              <n-skeleton v-if="showInitialSkeleton" text width="3rem" />
+              <template v-else>{{ overview?.stats.runs.queued ?? 0 }}</template>
+            </div>
           </div>
         </div>
       </n-card>
     </div>
 
     <n-card class="app-card" :bordered="false" :title="t('dashboard.trend7d')">
-      <div class="h-64">
-        <AppEmptyState v-if="dashboard.loading && !overview" :title="t('common.loading')" loading />
+      <div ref="trendChartTarget" class="h-64">
+        <AppEmptyState v-if="showInitialSkeleton" :title="t('common.loading')" loading />
         <div v-else-if="trendDays.length === 0" class="h-full flex items-center justify-center">
           <n-empty :description="t('dashboard.trendEmpty')" />
+        </div>
+        <div v-else-if="!trendChartReady" class="h-full flex items-center justify-center px-4">
+          <div class="w-full max-w-[30rem] space-y-2">
+            <n-skeleton text :repeat="4" />
+          </div>
         </div>
         <Suspense v-else>
           <template #default>

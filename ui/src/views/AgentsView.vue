@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -10,6 +10,7 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NPagination,
   NRadioButton,
   NRadioGroup,
   NSelect,
@@ -142,6 +143,17 @@ const visibleAgents = computed<AgentListItem[]>(() => {
     return name.includes(q) || id.includes(q)
   })
 })
+
+const agentsPage = ref<number>(1)
+const agentsPageSize = ref<number>(20)
+const agentsPageSizeOptions = [20, 50, 100]
+
+const pagedVisibleAgents = computed<AgentListItem[]>(() => {
+  const start = (agentsPage.value - 1) * agentsPageSize.value
+  return visibleAgents.value.slice(start, start + agentsPageSize.value)
+})
+
+const agentsPageCount = computed<number>(() => Math.max(1, Math.ceil(visibleAgents.value.length / agentsPageSize.value)))
 
 function clearFilters(): void {
   searchText.value = ''
@@ -570,7 +582,23 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
   },
 ])
 
-watch([selectedLabels, labelsMode], refresh, { deep: true })
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleRefresh(): void {
+  if (refreshDebounceTimer != null) clearTimeout(refreshDebounceTimer)
+  refreshDebounceTimer = setTimeout(() => {
+    refreshDebounceTimer = null
+    void refresh()
+  }, 220)
+}
+
+watch([selectedLabels, labelsMode], scheduleRefresh, { deep: true })
+watch([searchText, statusFilter, selectedLabels, labelsMode], () => {
+  agentsPage.value = 1
+}, { deep: true })
+watch([() => visibleAgents.value.length, agentsPageSize], () => {
+  if (agentsPage.value > agentsPageCount.value) agentsPage.value = agentsPageCount.value
+})
 watch(
   () => route.query.status,
   () => applyRouteFilters(),
@@ -586,9 +614,15 @@ watch(confirmOpen, (open) => {
   confirmAgent.value = null
 })
 
-onMounted(async () => {
-  await refreshLabelIndex()
-  await refresh()
+onMounted(() => {
+  void Promise.allSettled([refreshLabelIndex(), refresh()])
+})
+
+onBeforeUnmount(() => {
+  if (refreshDebounceTimer != null) {
+    clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = null
+  }
 })
 </script>
 
@@ -696,7 +730,7 @@ onMounted(async () => {
       </AppEmptyState>
 
       <n-card
-        v-for="agent in visibleAgents"
+        v-for="agent in pagedVisibleAgents"
         :key="agent.id"
         size="small"
         class="app-card"
@@ -762,6 +796,17 @@ onMounted(async () => {
           </div>
         </template>
       </n-card>
+
+      <div v-if="visibleAgents.length > agentsPageSize" class="mt-3 flex justify-end">
+        <n-pagination
+          v-model:page="agentsPage"
+          v-model:page-size="agentsPageSize"
+          :item-count="visibleAgents.length"
+          :page-sizes="agentsPageSizeOptions"
+          show-size-picker
+          size="small"
+        />
+      </div>
     </div>
 
     <div v-else>
@@ -793,7 +838,18 @@ onMounted(async () => {
             :row-key="(row) => row.id"
             :loading="agents.loading"
             :columns="columns"
-            :data="visibleAgents"
+            :data="pagedVisibleAgents"
+          />
+        </div>
+
+        <div v-if="visibleAgents.length > agentsPageSize" class="mt-3 flex justify-end">
+          <n-pagination
+            v-model:page="agentsPage"
+            v-model:page-size="agentsPageSize"
+            :item-count="visibleAgents.length"
+            :page-sizes="agentsPageSizeOptions"
+            show-size-picker
+            size="small"
           />
         </div>
       </n-card>

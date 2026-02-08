@@ -30,6 +30,14 @@ import { useAuthStore } from '@/stores/auth'
 
 const EmptyView = { render: () => null }
 
+function mobileMeta(titleKey: string, backTo: string | null) {
+  return { titleKey, mobileTopBar: { titleKey, backTo } }
+}
+
+const settingsRootMeta = mobileMeta('settings.title', null)
+const settingsSectionMeta = (titleKey: string) => mobileMeta(titleKey, '/settings')
+const settingsNotificationsMeta = (titleKey: string) => mobileMeta(titleKey, '/settings/notifications')
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -81,12 +89,12 @@ const router = createRouter({
             {
               path: 'settings',
               component: SettingsShellView,
-              meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } },
+              meta: settingsRootMeta,
               children: [
                 {
                   path: 'storage',
                   component: SettingsStorageView,
-                  meta: { titleKey: 'settings.menu.storage', mobileTopBar: { titleKey: 'settings.menu.storage', backTo: null } },
+                  meta: mobileMeta('settings.menu.storage', null),
                 },
               ],
             },
@@ -96,37 +104,28 @@ const router = createRouter({
         {
           path: 'settings',
           component: SettingsShellView,
-          meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } },
+          meta: settingsRootMeta,
           children: [
-            { path: '', component: SettingsIndexView, meta: { titleKey: 'settings.title', mobileTopBar: { titleKey: 'settings.title', backTo: null } } },
+            { path: '', component: SettingsIndexView, meta: settingsRootMeta },
             {
               path: 'appearance',
               component: AppearanceView,
-              meta: {
-                titleKey: 'settings.menu.appearance',
-                mobileTopBar: { titleKey: 'settings.menu.appearance', backTo: '/settings' },
-              },
+              meta: settingsSectionMeta('settings.menu.appearance'),
             },
             {
               path: 'about',
               component: AboutView,
-              meta: { titleKey: 'settings.menu.about', mobileTopBar: { titleKey: 'settings.menu.about', backTo: '/settings' } },
+              meta: settingsSectionMeta('settings.menu.about'),
             },
             {
               path: 'hub-runtime-config',
               component: HubRuntimeConfigView,
-              meta: {
-                titleKey: 'settings.menu.runtimeConfig',
-                mobileTopBar: { titleKey: 'settings.menu.runtimeConfig', backTo: '/settings' },
-              },
+              meta: settingsSectionMeta('settings.menu.runtimeConfig'),
             },
             {
               path: 'bulk-operations',
               component: BulkOperationsView,
-              meta: {
-                titleKey: 'settings.menu.bulkOperations',
-                mobileTopBar: { titleKey: 'settings.menu.bulkOperations', backTo: '/settings' },
-              },
+              meta: settingsSectionMeta('settings.menu.bulkOperations'),
             },
             {
               path: 'storage',
@@ -135,32 +134,32 @@ const router = createRouter({
             {
               path: 'notifications',
               component: NotificationsShellView,
-              meta: { titleKey: 'settings.menu.notifications', mobileTopBar: { titleKey: 'settings.menu.notifications', backTo: '/settings' } },
+              meta: settingsSectionMeta('settings.menu.notifications'),
               children: [
                 {
                   path: '',
                   component: NotificationsIndexView,
-                  meta: { titleKey: 'settings.menu.notifications', mobileTopBar: { titleKey: 'settings.menu.notifications', backTo: '/settings' } },
+                  meta: settingsSectionMeta('settings.menu.notifications'),
                 },
                 {
                   path: 'channels',
                   component: NotificationsChannelsView,
-                  meta: { titleKey: 'settings.notifications.tabs.channels', mobileTopBar: { titleKey: 'settings.notifications.tabs.channels', backTo: '/settings/notifications' } },
+                  meta: settingsNotificationsMeta('settings.notifications.tabs.channels'),
                 },
                 {
                   path: 'destinations',
                   component: NotificationsDestinationsView,
-                  meta: { titleKey: 'settings.notifications.tabs.destinations', mobileTopBar: { titleKey: 'settings.notifications.tabs.destinations', backTo: '/settings/notifications' } },
+                  meta: settingsNotificationsMeta('settings.notifications.tabs.destinations'),
                 },
                 {
                   path: 'templates',
                   component: NotificationsTemplatesView,
-                  meta: { titleKey: 'settings.notifications.tabs.templates', mobileTopBar: { titleKey: 'settings.notifications.tabs.templates', backTo: '/settings/notifications' } },
+                  meta: settingsNotificationsMeta('settings.notifications.tabs.templates'),
                 },
                 {
                   path: 'queue',
                   component: NotificationsQueueView,
-                  meta: { titleKey: 'settings.notifications.tabs.queue', mobileTopBar: { titleKey: 'settings.notifications.tabs.queue', backTo: '/settings/notifications' } },
+                  meta: settingsNotificationsMeta('settings.notifications.tabs.queue'),
                 },
               ],
             },
@@ -171,7 +170,7 @@ const router = createRouter({
             {
               path: 'maintenance/cleanup',
               component: MaintenanceCleanupView,
-              meta: { titleKey: 'settings.maintenance.cleanup.title', mobileTopBar: { titleKey: 'settings.maintenance.cleanup.title', backTo: '/settings' } },
+              meta: settingsSectionMeta('settings.maintenance.cleanup.title'),
             },
           ],
         },

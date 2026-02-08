@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
+import { createNaiveStub } from '@/test-utils/naiveUiStubs'
+
 const messageApi = {
   error: vi.fn(),
   success: vi.fn(),
@@ -9,14 +11,7 @@ const messageApi = {
 }
 
 vi.mock('naive-ui', async () => {
-  const vue = await import('vue')
-  const stub = (name: string) =>
-    vue.defineComponent({
-      name,
-      setup(_, { slots }) {
-        return () => vue.h('div', { 'data-stub': name }, slots.default?.())
-      },
-    })
+  const stub = (name: string) => createNaiveStub(name)
 
   return {
     NAlert: stub('NAlert'),

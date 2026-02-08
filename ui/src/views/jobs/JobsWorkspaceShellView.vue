@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NIcon, NInput, NModal, NRadioButton, NRadioGroup, NSelect, NSwitch, NTag, useMessage, type DataTableColumns, type DropdownOption } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NIcon, NInput, NModal, NPagination, NRadioButton, NRadioGroup, NSelect, NSwitch, NTag, useMessage, type DataTableColumns, type DropdownOption } from 'naive-ui'
 import { CreateOutline, PlayOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
@@ -49,6 +49,10 @@ const listLatestStatusFilter = ref<RunStatus | 'never' | 'all'>('all')
 const listScheduleFilter = ref<'all' | 'manual' | 'scheduled'>('all')
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
+
+const jobsPage = ref<number>(1)
+const jobsPageSize = ref<number>(20)
+const jobsPageSizeOptions = [20, 50, 100]
 
 const sortOptions = computed(() => [
   { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
@@ -286,6 +290,13 @@ const filteredJobs = computed<JobListItem[]>(() => {
   })
   return sorted
 })
+
+const pagedFilteredJobs = computed<JobListItem[]>(() => {
+  const start = (jobsPage.value - 1) * jobsPageSize.value
+  return filteredJobs.value.slice(start, start + jobsPageSize.value)
+})
+
+const jobsPageCount = computed<number>(() => Math.max(1, Math.ceil(filteredJobs.value.length / jobsPageSize.value)))
 
 const selectedJobIds = ref<string[]>([])
 const listSelectMode = ref<boolean>(false)
@@ -656,14 +667,14 @@ const tableColumns = computed<DataTableColumns<JobListItem>>(() => [
   },
 ])
 
-onMounted(async () => {
-  await refresh()
-  try {
+onMounted(() => {
+  void Promise.allSettled([
+    refresh(),
     // Ensure node context labels are friendly (agent name vs id).
-    await agents.refresh()
-  } catch (error) {
-    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
-  }
+    agents.refresh().catch((error) => {
+      message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
+    }),
+  ])
 })
 
 watch(layoutMode, () => {
@@ -680,8 +691,15 @@ watch(layoutMode, () => {
 })
 
 watch(showArchived, () => void refresh())
+watch([searchText, sortKey, listLatestStatusFilter, listScheduleFilter, showArchived], () => {
+  jobsPage.value = 1
+})
+watch([() => filteredJobs.value.length, jobsPageSize], () => {
+  if (jobsPage.value > jobsPageCount.value) jobsPage.value = jobsPageCount.value
+})
 
 watch(nodeId, () => {
+  jobsPage.value = 1
   selectedJobIds.value = []
   listSelectMode.value = false
   bulkConfirmOpen.value = false
@@ -946,7 +964,7 @@ onBeforeUnmount(() => {
                       :row-key="(row) => row.id"
                       :loading="jobs.loading"
                       :columns="tableColumns"
-                      :data="filteredJobs"
+                      :data="pagedFilteredJobs"
                       :scroll-x="1200"
                       :row-class-name="(row) => (selectedJobIds.includes(row.id) || isSelected(row.id) ? 'app-picker-row--checked' : '')"
                       :row-props="(row) => ({ style: 'cursor: pointer;', onDblclick: () => openJob(row.id) })"
@@ -957,7 +975,7 @@ onBeforeUnmount(() => {
 
                 <template v-else>
                   <button
-                    v-for="job in filteredJobs"
+                    v-for="job in pagedFilteredJobs"
                     :key="job.id"
                     type="button"
                     class="app-list-row group"
@@ -1049,6 +1067,17 @@ onBeforeUnmount(() => {
                   </button>
                 </template>
               </ScrollShadowPane>
+
+              <div v-if="filteredJobs.length > jobsPageSize" class="mt-3 flex justify-end">
+                <n-pagination
+                  v-model:page="jobsPage"
+                  v-model:page-size="jobsPageSize"
+                  :item-count="filteredJobs.length"
+                  :page-sizes="jobsPageSizeOptions"
+                  show-size-picker
+                  size="small"
+                />
+              </div>
             </div>
           </div>
         </n-card>
@@ -1155,7 +1184,7 @@ onBeforeUnmount(() => {
         <n-card v-else class="app-card" :bordered="false">
           <div class="app-divide-y">
             <button
-              v-for="job in filteredJobs"
+              v-for="job in pagedFilteredJobs"
               :key="job.id"
               type="button"
               class="app-list-row"
@@ -1198,6 +1227,17 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </button>
+          </div>
+
+          <div v-if="filteredJobs.length > jobsPageSize" class="mt-3 flex justify-end">
+            <n-pagination
+              v-model:page="jobsPage"
+              v-model:page-size="jobsPageSize"
+              :item-count="filteredJobs.length"
+              :page-sizes="jobsPageSizeOptions"
+              show-size-picker
+              size="small"
+            />
           </div>
         </n-card>
       </div>

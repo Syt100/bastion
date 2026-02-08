@@ -103,6 +103,18 @@ export default defineConfig({
     __BASTION_UI_BUILD_TIME_UNIX__: JSON.stringify(uiBuildTimeUnix),
     __BASTION_UI_GIT_SHA__: JSON.stringify(uiGitSha),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/.test(id)) {
+            return 'vendor-echarts'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {
