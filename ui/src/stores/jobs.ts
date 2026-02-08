@@ -181,23 +181,30 @@ export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
   let refreshRequestSeq = 0
+  let refreshAbortController: AbortController | null = null
 
   async function refresh(params?: { includeArchived?: boolean }): Promise<void> {
     const requestSeq = ++refreshRequestSeq
+    refreshAbortController?.abort()
+    const abortController = new AbortController()
+    refreshAbortController = abortController
     loading.value = true
     try {
       const q = new URLSearchParams()
       if (params?.includeArchived) q.set('include_archived', 'true')
       const suffix = q.toString() ? '?' + q.toString() : ''
-      const nextItems = await apiFetch<JobListItem[]>('/api/jobs' + suffix)
-      if (requestSeq !== refreshRequestSeq) return
+      const nextItems = await apiFetch<JobListItem[]>('/api/jobs' + suffix, {
+        signal: abortController.signal,
+      })
+      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
       items.value = nextItems
     } catch (error) {
-      if (requestSeq !== refreshRequestSeq) return
+      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
       throw error
     } finally {
       if (requestSeq === refreshRequestSeq) {
         loading.value = false
+        refreshAbortController = null
       }
     }
   }

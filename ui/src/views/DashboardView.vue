@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, h, onMounted } from 'vue'
+import { computed, defineAsyncComponent, h, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NCard, NDataTable, NEmpty, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
-import BackupTrendChart from '@/components/BackupTrendChart.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import { useDashboardStore, type DashboardOverviewResponse } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
@@ -14,6 +13,8 @@ import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+
+const BackupTrendChart = defineAsyncComponent(() => import('@/components/BackupTrendChart.vue'))
 
 const { t } = useI18n()
 const message = useMessage()
@@ -225,7 +226,14 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
         <div v-else-if="trendDays.length === 0" class="h-full flex items-center justify-center">
           <n-empty :description="t('dashboard.trendEmpty')" />
         </div>
-        <BackupTrendChart v-else :days="trendDays" :success="trendSuccess" :failed="trendFailed" class="h-full" />
+        <Suspense v-else>
+          <template #default>
+            <BackupTrendChart :days="trendDays" :success="trendSuccess" :failed="trendFailed" class="h-full" />
+          </template>
+          <template #fallback>
+            <AppEmptyState :title="t('common.loading')" loading />
+          </template>
+        </Suspense>
       </div>
     </n-card>
 

@@ -79,6 +79,39 @@ describe('useAgentsStore', () => {
     expect(agents.loading).toBe(false)
   })
 
+  it('aborts stale refresh requests when a newer refresh starts', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const signals: AbortSignal[] = []
+    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      signals.push((init?.signal ?? null) as AbortSignal)
+      if (signals.length === 1) return first.promise
+      return second.promise
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const agents = useAgentsStore()
+    const p1 = agents.refresh()
+    await Promise.resolve()
+
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+
+    const p2 = agents.refresh({ labels: ['prod'] })
+
+    expect(signals).toHaveLength(2)
+    expect(signals[0]?.aborted).toBe(true)
+
+    second.resolve(buildAgentsResponse('newer'))
+    await p2
+
+    first.reject(new Error('aborted by newer refresh'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(agents.items.map((item) => item.id)).toEqual(['newer'])
+    expect(agents.loading).toBe(false)
+  })
+
   it('ignores stale refresh failures after a newer success', async () => {
     const first = deferredResponse()
     const second = deferredResponse()

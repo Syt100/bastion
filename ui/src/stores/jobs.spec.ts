@@ -75,6 +75,39 @@ describe('useJobsStore', () => {
     expect(jobs.loading).toBe(false)
   })
 
+  it('aborts stale jobs refresh requests when a newer refresh starts', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const signals: AbortSignal[] = []
+    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      signals.push((init?.signal ?? null) as AbortSignal)
+      if (signals.length === 1) return first.promise
+      return second.promise
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = useJobsStore()
+    const p1 = jobs.refresh()
+    await Promise.resolve()
+
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+
+    const p2 = jobs.refresh({ includeArchived: true })
+
+    expect(signals).toHaveLength(2)
+    expect(signals[0]?.aborted).toBe(true)
+
+    second.resolve(buildJobsResponse('newer'))
+    await p2
+
+    first.reject(new Error('aborted by newer refresh'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(jobs.items.map((item) => item.id)).toEqual(['newer'])
+    expect(jobs.loading).toBe(false)
+  })
+
   it('ignores stale jobs refresh failures after a newer success', async () => {
     const first = deferredResponse()
     const second = deferredResponse()

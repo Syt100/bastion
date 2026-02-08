@@ -65,8 +65,13 @@ export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
   let refreshRequestSeq = 0
+  let refreshAbortController: AbortController | null = null
+
   async function refresh(filters?: { labels?: string[]; labelsMode?: AgentsLabelsMode }): Promise<void> {
     const requestSeq = ++refreshRequestSeq
+    refreshAbortController?.abort()
+    const abortController = new AbortController()
+    refreshAbortController = abortController
     loading.value = true
     try {
       const q = new URLSearchParams()
@@ -76,15 +81,18 @@ export const useAgentsStore = defineStore('agents', () => {
       if (filters?.labelsMode) q.set('labels_mode', filters.labelsMode)
       const suffix = q.toString() ? '?' + q.toString() : ''
 
-      const nextItems = await apiFetch<AgentListItem[]>('/api/agents' + suffix)
-      if (requestSeq !== refreshRequestSeq) return
+      const nextItems = await apiFetch<AgentListItem[]>('/api/agents' + suffix, {
+        signal: abortController.signal,
+      })
+      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
       items.value = nextItems
     } catch (error) {
-      if (requestSeq !== refreshRequestSeq) return
+      if (requestSeq !== refreshRequestSeq || abortController.signal.aborted) return
       throw error
     } finally {
       if (requestSeq === refreshRequestSeq) {
         loading.value = false
+        refreshAbortController = null
       }
     }
   }

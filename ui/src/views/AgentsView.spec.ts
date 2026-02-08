@@ -103,6 +103,7 @@ vi.mock('naive-ui', async () => {
 
   const input = vue.defineComponent({
     name: 'NInput',
+    inheritAttrs: false,
     props: ['value', 'type', 'readonly'],
     setup(props) {
       return () => {
