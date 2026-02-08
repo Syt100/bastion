@@ -153,7 +153,7 @@ async fn list_jobs_includes_latest_run_fields() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = resp.json::<serde_json::Value>().await.expect("json");
-    let arr = body.as_array().expect("array");
+    let arr = body["items"].as_array().expect("items array");
 
     let job1_row = arr
         .iter()
@@ -188,6 +188,190 @@ async fn list_jobs_includes_latest_run_fields() {
             .map(|v| v.is_null())
             .unwrap_or(false)
     );
+    assert_eq!(body["total"].as_i64(), Some(2));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_jobs_supports_remote_filters_sort_and_pagination() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+    let session = seed_admin_session(&pool).await;
+
+    let alpha_hub = jobs_repo::create_job(
+        &pool,
+        "alpha-hub",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/tmp"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create alpha-hub");
+
+    let beta_node = jobs_repo::create_job(
+        &pool,
+        "beta-node",
+        Some("node-1"),
+        Some("0 * * * *"),
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/tmp"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create beta-node");
+
+    let gamma_node = jobs_repo::create_job(
+        &pool,
+        "gamma-node",
+        Some("node-1"),
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/tmp"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create gamma-node");
+
+    jobs_repo::archive_job(&pool, &gamma_node.id)
+        .await
+        .expect("archive gamma-node");
+
+    runs_repo::create_run(
+        &pool,
+        &alpha_hub.id,
+        runs_repo::RunStatus::Success,
+        100,
+        Some(120),
+        None,
+        None,
+    )
+    .await
+    .expect("create alpha run");
+
+    runs_repo::create_run(
+        &pool,
+        &gamma_node.id,
+        runs_repo::RunStatus::Failed,
+        200,
+        Some(220),
+        None,
+        None,
+    )
+    .await
+    .expect("create gamma run");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let cookie = format!("bastion_session={}", session.id);
+
+    let scoped = client
+        .get(format!(
+            "{}/api/jobs?node_id=node-1&include_archived=true&schedule_mode=scheduled&latest_status=never&sort=name_desc&page=1&page_size=10",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("scoped request");
+    assert_eq!(scoped.status(), StatusCode::OK);
+    let scoped_body: serde_json::Value = scoped.json().await.expect("scoped json");
+    assert_eq!(scoped_body["total"].as_i64(), Some(1));
+    assert_eq!(
+        scoped_body["items"][0]["id"].as_str(),
+        Some(beta_node.id.as_str())
+    );
+
+    let hub_success = client
+        .get(format!(
+            "{}/api/jobs?node_id=hub&q=alpha&latest_status=success&page=1&page_size=1",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("hub request");
+    assert_eq!(hub_success.status(), StatusCode::OK);
+    let hub_body: serde_json::Value = hub_success.json().await.expect("hub json");
+    assert_eq!(hub_body["total"].as_i64(), Some(1));
+    assert_eq!(
+        hub_body["items"][0]["id"].as_str(),
+        Some(alpha_hub.id.as_str())
+    );
+
+    let page1 = client
+        .get(format!(
+            "{}/api/jobs?include_archived=true&sort=name_asc&page=1&page_size=2",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("page1 request");
+    assert_eq!(page1.status(), StatusCode::OK);
+    let page1_body: serde_json::Value = page1.json().await.expect("page1 json");
+    assert_eq!(page1_body["total"].as_i64(), Some(3));
+    assert_eq!(page1_body["page"].as_i64(), Some(1));
+    assert_eq!(page1_body["page_size"].as_i64(), Some(2));
+    assert_eq!(page1_body["items"][0]["name"].as_str(), Some("alpha-hub"));
+    assert_eq!(page1_body["items"][1]["name"].as_str(), Some("beta-node"));
+
+    let page2 = client
+        .get(format!(
+            "{}/api/jobs?include_archived=true&sort=name_asc&page=2&page_size=2",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("page2 request");
+    assert_eq!(page2.status(), StatusCode::OK);
+    let page2_body: serde_json::Value = page2.json().await.expect("page2 json");
+    assert_eq!(page2_body["items"][0]["name"].as_str(), Some("gamma-node"));
 
     server.abort();
 }

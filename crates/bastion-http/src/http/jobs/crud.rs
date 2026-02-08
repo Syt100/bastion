@@ -2,7 +2,7 @@ use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 use tower_cookies::Cookies;
 
 use bastion_storage::hub_runtime_config_repo;
@@ -127,82 +127,308 @@ pub(in crate::http) struct JobListItem {
     latest_run_ended_at: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct ListJobsResponse {
+    items: Vec<JobListItem>,
+    page: i64,
+    page_size: i64,
+    total: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListJobsQuery {
     include_archived: Option<bool>,
+    node_id: Option<String>,
+    q: Option<String>,
+    latest_status: Option<String>,
+    schedule_mode: Option<String>,
+    sort: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+enum JobNodeFilter {
+    Any,
+    Hub,
+    Agent(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobLatestStatusFilter {
+    All,
+    Never,
+    Status(runs_repo::RunStatus),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobScheduleModeFilter {
+    All,
+    Manual,
+    Scheduled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobSort {
+    UpdatedDesc,
+    UpdatedAsc,
+    NameAsc,
+    NameDesc,
+}
+
+fn normalize_search_query(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+}
+
+fn parse_node_filter(value: Option<&str>) -> JobNodeFilter {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return JobNodeFilter::Any;
+    };
+
+    if value == "hub" {
+        return JobNodeFilter::Hub;
+    }
+    if value == "all" {
+        return JobNodeFilter::Any;
+    }
+
+    JobNodeFilter::Agent(value.to_string())
+}
+
+fn parse_latest_status_filter(value: Option<&str>) -> Result<JobLatestStatusFilter, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("all");
+
+    match value {
+        "all" => Ok(JobLatestStatusFilter::All),
+        "never" => Ok(JobLatestStatusFilter::Never),
+        other => {
+            let parsed = other.parse::<runs_repo::RunStatus>().map_err(|_| {
+                AppError::bad_request("invalid_latest_status", "Invalid latest_status")
+            })?;
+            Ok(JobLatestStatusFilter::Status(parsed))
+        }
+    }
+}
+
+fn parse_schedule_mode_filter(value: Option<&str>) -> Result<JobScheduleModeFilter, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("all");
+
+    match value {
+        "all" => Ok(JobScheduleModeFilter::All),
+        "manual" => Ok(JobScheduleModeFilter::Manual),
+        "scheduled" => Ok(JobScheduleModeFilter::Scheduled),
+        _ => Err(AppError::bad_request(
+            "invalid_schedule_mode",
+            "Invalid schedule_mode",
+        )),
+    }
+}
+
+fn parse_jobs_sort(value: Option<&str>) -> Result<JobSort, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("updated_desc");
+
+    match value {
+        "updated_desc" => Ok(JobSort::UpdatedDesc),
+        "updated_asc" => Ok(JobSort::UpdatedAsc),
+        "name_asc" => Ok(JobSort::NameAsc),
+        "name_desc" => Ok(JobSort::NameDesc),
+        _ => Err(AppError::bad_request("invalid_sort", "Invalid sort")),
+    }
+}
+
+fn push_jobs_list_filters(
+    qb: &mut QueryBuilder<sqlx::Sqlite>,
+    include_archived: bool,
+    node_filter: &JobNodeFilter,
+    search: Option<&str>,
+    latest_status_filter: JobLatestStatusFilter,
+    schedule_mode_filter: JobScheduleModeFilter,
+) {
+    let mut has_where = false;
+    let mut push_next = |qb: &mut QueryBuilder<sqlx::Sqlite>| {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+    };
+
+    if !include_archived {
+        push_next(qb);
+        qb.push("j.archived_at IS NULL");
+    }
+
+    match node_filter {
+        JobNodeFilter::Any => {}
+        JobNodeFilter::Hub => {
+            push_next(qb);
+            qb.push("j.agent_id IS NULL");
+        }
+        JobNodeFilter::Agent(agent_id) => {
+            push_next(qb);
+            qb.push("j.agent_id = ");
+            qb.push_bind(agent_id.clone());
+        }
+    }
+
+    if let Some(search) = search {
+        let pattern = format!("%{}%", search.to_lowercase());
+        push_next(qb);
+        qb.push("(LOWER(j.name) LIKE ");
+        qb.push_bind(pattern.clone());
+        qb.push(" OR LOWER(j.id) LIKE ");
+        qb.push_bind(pattern);
+        qb.push(")");
+    }
+
+    match latest_status_filter {
+        JobLatestStatusFilter::All => {}
+        JobLatestStatusFilter::Never => {
+            push_next(qb);
+            qb.push("r.id IS NULL");
+        }
+        JobLatestStatusFilter::Status(status) => {
+            push_next(qb);
+            qb.push("r.status = ");
+            qb.push_bind(status.as_str());
+        }
+    }
+
+    match schedule_mode_filter {
+        JobScheduleModeFilter::All => {}
+        JobScheduleModeFilter::Manual => {
+            push_next(qb);
+            qb.push("j.schedule IS NULL");
+        }
+        JobScheduleModeFilter::Scheduled => {
+            push_next(qb);
+            qb.push("j.schedule IS NOT NULL");
+        }
+    }
 }
 
 pub(in crate::http) async fn list_jobs(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
     Query(q): Query<ListJobsQuery>,
-) -> Result<Json<Vec<JobListItem>>, AppError> {
+) -> Result<Json<ListJobsResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
     let include_archived = q.include_archived.unwrap_or(false);
+    let node_filter = parse_node_filter(q.node_id.as_deref());
+    let search = normalize_search_query(q.q.as_deref());
+    let latest_status_filter = parse_latest_status_filter(q.latest_status.as_deref())?;
+    let schedule_mode_filter = parse_schedule_mode_filter(q.schedule_mode.as_deref())?;
+    let sort = parse_jobs_sort(q.sort.as_deref())?;
 
-    let rows = if include_archived {
-        sqlx::query(
-            r#"
-            SELECT
-              j.id,
-              j.name,
-              j.agent_id,
-              j.schedule,
-              j.schedule_timezone,
-              j.overlap_policy,
-              j.created_at,
-              j.updated_at,
-              j.archived_at,
-              r.id AS latest_run_id,
-              r.status AS latest_run_status,
-              r.started_at AS latest_run_started_at,
-              r.ended_at AS latest_run_ended_at
-            FROM jobs j
-            LEFT JOIN runs r
-              ON r.id = (
-                SELECT id FROM runs
-                WHERE job_id = j.id
-                ORDER BY started_at DESC
-                LIMIT 1
-              )
-            ORDER BY j.created_at DESC
-            "#,
-        )
-        .fetch_all(&state.db)
-        .await?
+    let pagination_requested = q.page.is_some() || q.page_size.is_some();
+    let page = q.page.unwrap_or(1);
+    if page < 1 {
+        return Err(AppError::bad_request("invalid_page", "Invalid page"));
+    }
+
+    let mut total_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        r#"
+        SELECT COUNT(*) AS total
+        FROM jobs j
+        LEFT JOIN runs r
+          ON r.id = (
+            SELECT id FROM runs
+            WHERE job_id = j.id
+            ORDER BY started_at DESC
+            LIMIT 1
+          )
+        "#,
+    );
+    push_jobs_list_filters(
+        &mut total_qb,
+        include_archived,
+        &node_filter,
+        search.as_deref(),
+        latest_status_filter,
+        schedule_mode_filter,
+    );
+
+    let total_row = total_qb.build().fetch_one(&state.db).await?;
+    let total = total_row.get::<i64, _>("total");
+
+    let page_size = if pagination_requested {
+        let page_size = q.page_size.unwrap_or(20);
+        if page_size < 1 {
+            return Err(AppError::bad_request(
+                "invalid_page_size",
+                "Invalid page_size",
+            ));
+        }
+        page_size.clamp(1, 100)
     } else {
-        sqlx::query(
-            r#"
-            SELECT
-              j.id,
-              j.name,
-              j.agent_id,
-              j.schedule,
-              j.schedule_timezone,
-              j.overlap_policy,
-              j.created_at,
-              j.updated_at,
-              j.archived_at,
-              r.id AS latest_run_id,
-              r.status AS latest_run_status,
-              r.started_at AS latest_run_started_at,
-              r.ended_at AS latest_run_ended_at
-            FROM jobs j
-            LEFT JOIN runs r
-              ON r.id = (
-                SELECT id FROM runs
-                WHERE job_id = j.id
-                ORDER BY started_at DESC
-                LIMIT 1
-              )
-            WHERE j.archived_at IS NULL
-            ORDER BY j.created_at DESC
-            "#,
-        )
-        .fetch_all(&state.db)
-        .await?
+        total
     };
+
+    let mut rows_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        r#"
+        SELECT
+          j.id,
+          j.name,
+          j.agent_id,
+          j.schedule,
+          j.schedule_timezone,
+          j.overlap_policy,
+          j.created_at,
+          j.updated_at,
+          j.archived_at,
+          r.id AS latest_run_id,
+          r.status AS latest_run_status,
+          r.started_at AS latest_run_started_at,
+          r.ended_at AS latest_run_ended_at
+        FROM jobs j
+        LEFT JOIN runs r
+          ON r.id = (
+            SELECT id FROM runs
+            WHERE job_id = j.id
+            ORDER BY started_at DESC
+            LIMIT 1
+          )
+        "#,
+    );
+    push_jobs_list_filters(
+        &mut rows_qb,
+        include_archived,
+        &node_filter,
+        search.as_deref(),
+        latest_status_filter,
+        schedule_mode_filter,
+    );
+
+    match sort {
+        JobSort::UpdatedDesc => rows_qb.push(" ORDER BY j.updated_at DESC, j.id ASC"),
+        JobSort::UpdatedAsc => rows_qb.push(" ORDER BY j.updated_at ASC, j.id ASC"),
+        JobSort::NameAsc => rows_qb.push(" ORDER BY j.name COLLATE NOCASE ASC, j.id ASC"),
+        JobSort::NameDesc => rows_qb.push(" ORDER BY j.name COLLATE NOCASE DESC, j.id ASC"),
+    };
+
+    if pagination_requested {
+        let offset = (page - 1).saturating_mul(page_size);
+        rows_qb.push(" LIMIT ");
+        rows_qb.push_bind(page_size);
+        rows_qb.push(" OFFSET ");
+        rows_qb.push_bind(offset);
+    }
+
+    let rows = rows_qb.build().fetch_all(&state.db).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -231,7 +457,16 @@ pub(in crate::http) async fn list_jobs(
         });
     }
 
-    Ok(Json(out))
+    Ok(Json(ListJobsResponse {
+        items: out,
+        page: if pagination_requested { page } else { 1 },
+        page_size: if pagination_requested {
+            page_size
+        } else {
+            total
+        },
+        total,
+    }))
 }
 
 pub(in crate::http) async fn create_job(

@@ -15,6 +15,9 @@ const messageApi = {
 const jobsStore = reactive({
   items: [] as JobListItem[],
   loading: false,
+  total: 0,
+  page: 1,
+  pageSize: 20,
   refresh: vi.fn().mockResolvedValue(undefined),
   runNow: vi.fn().mockResolvedValue({ run_id: 'r1', status: 'success' }),
   archiveJob: vi.fn().mockResolvedValue(undefined),
@@ -232,9 +235,11 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
       },
     ]
     jobsStore.loading = false
+    jobsStore.total = jobsStore.items.length
   })
 
   it('shows pagination when filtered jobs exceed one page', () => {
+    jobsStore.total = 25
     jobsStore.items = Array.from({ length: 25 }, (_, idx) => ({
       id: `job-${idx}`,
       name: `Job ${idx}`,

@@ -14,23 +14,29 @@ function deferredResponse() {
   return { promise, resolve, reject }
 }
 
-function buildJobsResponse(id: string): Response {
+function buildJobsResponse(id: string, total = 1): Response {
   return new Response(
-    JSON.stringify([
-      {
-        id,
-        name: id,
-        agent_id: null,
-        schedule: null,
-        schedule_timezone: 'UTC',
-        overlap_policy: 'queue',
-        created_at: 1,
-        updated_at: 1,
-      },
-    ]),
+    JSON.stringify({
+      items: [
+        {
+          id,
+          name: id,
+          agent_id: null,
+          schedule: null,
+          schedule_timezone: 'UTC',
+          overlap_policy: 'queue',
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+      page: 1,
+      page_size: 20,
+      total,
+    }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   )
 }
+
 
 describe('useJobsStore', () => {
   beforeEach(() => {
@@ -46,6 +52,7 @@ describe('useJobsStore', () => {
     await jobs.refresh()
 
     expect(jobs.items).toHaveLength(1)
+    expect(jobs.total).toBe(1)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/jobs',
       expect.objectContaining({ credentials: 'include' }),

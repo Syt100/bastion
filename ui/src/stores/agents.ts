@@ -20,7 +20,16 @@ export type AgentListItem = {
   last_config_sync_error: string | null
 }
 
+export type AgentListStatusFilter = 'all' | 'online' | 'offline' | 'revoked'
+
 export type AgentsLabelsMode = 'and' | 'or'
+
+export type AgentsListResponse = {
+  items: AgentListItem[]
+  page: number
+  page_size: number
+  total: number
+}
 
 export type AgentLabelIndexItem = {
   label: string
@@ -65,9 +74,19 @@ export type SyncConfigNowResponse = {
 export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
+  const total = ref<number>(0)
+  const page = ref<number>(1)
+  const pageSize = ref<number>(20)
   const latestRefresh = createLatestRequest()
 
-  async function refresh(filters?: { labels?: string[]; labelsMode?: AgentsLabelsMode }): Promise<void> {
+  async function refresh(filters?: {
+    labels?: string[]
+    labelsMode?: AgentsLabelsMode
+    status?: AgentListStatusFilter
+    q?: string
+    page?: number
+    pageSize?: number
+  }): Promise<void> {
     const current = latestRefresh.next()
     loading.value = true
     try {
@@ -76,13 +95,20 @@ export const useAgentsStore = defineStore('agents', () => {
         for (const label of filters.labels) q.append('labels[]', label)
       }
       if (filters?.labelsMode) q.set('labels_mode', filters.labelsMode)
+      if (filters?.status && filters.status !== 'all') q.set('status', filters.status)
+      if (filters?.q?.trim()) q.set('q', filters.q.trim())
+      if (filters?.page !== undefined) q.set('page', String(filters.page))
+      if (filters?.pageSize !== undefined) q.set('page_size', String(filters.pageSize))
       const suffix = q.toString() ? '?' + q.toString() : ''
 
-      const nextItems = await apiFetch<AgentListItem[]>('/api/agents' + suffix, {
+      const response = await apiFetch<AgentsListResponse>('/api/agents' + suffix, {
         signal: current.signal,
       })
       if (current.isStale() || current.signal.aborted) return
-      items.value = nextItems
+      items.value = response.items
+      total.value = response.total
+      page.value = response.page
+      pageSize.value = response.page_size
     } catch (error) {
       if (current.isStale() || current.signal.aborted) return
       throw error
@@ -165,6 +191,9 @@ export const useAgentsStore = defineStore('agents', () => {
   return {
     items,
     loading,
+    total,
+    page,
+    pageSize,
     refresh,
     listLabelIndex,
     setAgentLabels,

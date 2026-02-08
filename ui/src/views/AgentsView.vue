@@ -23,7 +23,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
+import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentListStatusFilter, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
@@ -74,7 +74,7 @@ const labelsMode = ref<AgentsLabelsMode>('and')
 const selectedAgentIds = ref<string[]>([])
 
 const searchText = ref<string>('')
-const statusFilter = ref<'all' | 'online' | 'offline' | 'revoked'>('all')
+const statusFilter = ref<AgentListStatusFilter>('all')
 
 function applyRouteFilters(): void {
   const raw = route.query.status
@@ -129,31 +129,19 @@ const statusOptions = computed(() => [
   { label: t('agents.status.revoked'), value: 'revoked' },
 ])
 
-const visibleAgents = computed<AgentListItem[]>(() => {
-  const q = searchText.value.trim().toLowerCase()
-
-  return agents.items.filter((a) => {
-    if (statusFilter.value === 'revoked' && !a.revoked) return false
-    if (statusFilter.value === 'online' && (a.revoked || !a.online)) return false
-    if (statusFilter.value === 'offline' && (a.revoked || a.online)) return false
-
-    if (!q) return true
-    const name = (a.name ?? '').toLowerCase()
-    const id = a.id.toLowerCase()
-    return name.includes(q) || id.includes(q)
-  })
-})
-
 const agentsPage = ref<number>(1)
 const agentsPageSize = ref<number>(20)
 const agentsPageSizeOptions = [20, 50, 100]
 
-const pagedVisibleAgents = computed<AgentListItem[]>(() => {
-  const start = (agentsPage.value - 1) * agentsPageSize.value
-  return visibleAgents.value.slice(start, start + agentsPageSize.value)
+const hasActiveFilters = computed<boolean>(() => {
+  return (
+    searchText.value.trim().length > 0 ||
+    statusFilter.value !== 'all' ||
+    selectedLabels.value.length > 0
+  )
 })
 
-const agentsPageCount = computed<number>(() => Math.max(1, Math.ceil(visibleAgents.value.length / agentsPageSize.value)))
+const listBaseEmpty = computed<boolean>(() => agents.total === 0 && !hasActiveFilters.value)
 
 function clearFilters(): void {
   searchText.value = ''
@@ -162,9 +150,24 @@ function clearFilters(): void {
   labelsMode.value = 'and'
 }
 
+function resetToFirstPageAndRefresh(): void {
+  const pageChanged = agentsPage.value !== 1
+  agentsPage.value = 1
+  if (!pageChanged) {
+    scheduleRefresh()
+  }
+}
+
 async function refresh(): Promise<void> {
   try {
-    await agents.refresh({ labels: selectedLabels.value, labelsMode: labelsMode.value })
+    await agents.refresh({
+      labels: selectedLabels.value,
+      labelsMode: labelsMode.value,
+      status: statusFilter.value,
+      q: searchText.value,
+      page: agentsPage.value,
+      pageSize: agentsPageSize.value,
+    })
   } catch (error) {
     message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
   }
@@ -592,16 +595,27 @@ function scheduleRefresh(): void {
   }, 220)
 }
 
-watch([selectedLabels, labelsMode], scheduleRefresh, { deep: true })
-watch([searchText, statusFilter, selectedLabels, labelsMode], () => {
-  agentsPage.value = 1
-}, { deep: true })
-watch([() => visibleAgents.value.length, agentsPageSize], () => {
-  if (agentsPage.value > agentsPageCount.value) agentsPage.value = agentsPageCount.value
+watch([selectedLabels, labelsMode], resetToFirstPageAndRefresh, { deep: true })
+watch([searchText, statusFilter], resetToFirstPageAndRefresh)
+watch(agentsPage, () => {
+  void refresh()
+})
+watch(agentsPageSize, () => {
+  if (agentsPage.value !== 1) {
+    agentsPage.value = 1
+    return
+  }
+  void refresh()
 })
 watch(
   () => route.query.status,
-  () => applyRouteFilters(),
+  () => {
+    const previous = statusFilter.value
+    applyRouteFilters()
+    if (statusFilter.value !== previous) {
+      resetToFirstPageAndRefresh()
+    }
+  },
 )
 watch(detailModalOpen, (open) => {
   if (open) return
@@ -708,15 +722,15 @@ onBeforeUnmount(() => {
     </ListToolbar>
 
     <div v-if="!isDesktop" class="space-y-3">
-      <AppEmptyState v-if="agents.loading && visibleAgents.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
       <AppEmptyState
-        v-else-if="!agents.loading && visibleAgents.length === 0"
-        :title="agents.items.length === 0 ? t('agents.empty.title') : t('common.noData')"
-        :description="agents.items.length === 0 ? t('agents.empty.description') : undefined"
+        v-else-if="!agents.loading && agents.items.length === 0"
+        :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
+        :description="listBaseEmpty ? t('agents.empty.description') : undefined"
       >
         <template #actions>
           <n-button
-            v-if="agents.items.length === 0"
+            v-if="listBaseEmpty"
             type="primary"
             size="small"
             @click="openTokenModal"
@@ -730,7 +744,7 @@ onBeforeUnmount(() => {
       </AppEmptyState>
 
       <n-card
-        v-for="agent in pagedVisibleAgents"
+        v-for="agent in agents.items"
         :key="agent.id"
         size="small"
         class="app-card"
@@ -797,11 +811,11 @@ onBeforeUnmount(() => {
         </template>
       </n-card>
 
-      <div v-if="visibleAgents.length > agentsPageSize" class="mt-3 flex justify-end">
+      <div v-if="agents.total > agentsPageSize" class="mt-3 flex justify-end">
         <n-pagination
           v-model:page="agentsPage"
           v-model:page-size="agentsPageSize"
-          :item-count="visibleAgents.length"
+          :item-count="agents.total"
           :page-sizes="agentsPageSizeOptions"
           show-size-picker
           size="small"
@@ -810,15 +824,15 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else>
-      <AppEmptyState v-if="agents.loading && visibleAgents.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
       <AppEmptyState
-        v-else-if="!agents.loading && visibleAgents.length === 0"
-        :title="agents.items.length === 0 ? t('agents.empty.title') : t('common.noData')"
-        :description="agents.items.length === 0 ? t('agents.empty.description') : undefined"
+        v-else-if="!agents.loading && agents.items.length === 0"
+        :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
+        :description="listBaseEmpty ? t('agents.empty.description') : undefined"
       >
         <template #actions>
           <n-button
-            v-if="agents.items.length === 0"
+            v-if="listBaseEmpty"
             type="primary"
             size="small"
             @click="openTokenModal"
@@ -838,15 +852,15 @@ onBeforeUnmount(() => {
             :row-key="(row) => row.id"
             :loading="agents.loading"
             :columns="columns"
-            :data="pagedVisibleAgents"
+            :data="agents.items"
           />
         </div>
 
-        <div v-if="visibleAgents.length > agentsPageSize" class="mt-3 flex justify-end">
+        <div v-if="agents.total > agentsPageSize" class="mt-3 flex justify-end">
           <n-pagination
             v-model:page="agentsPage"
             v-model:page-size="agentsPageSize"
-            :item-count="visibleAgents.length"
+            :item-count="agents.total"
             :page-sizes="agentsPageSizeOptions"
             show-size-picker
             size="small"

@@ -25,6 +25,17 @@ export type JobListItem = {
   latest_run_ended_at?: number | null
 }
 
+export type JobsListSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc'
+export type JobsListLatestStatusFilter = RunStatus | 'never' | 'all'
+export type JobsListScheduleMode = 'all' | 'manual' | 'scheduled'
+
+export type JobsListResponse = {
+  items: JobListItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
 export type JobDetail = JobListItem & {
   spec: { v: 1; type: JobType } & Record<string, unknown>
 }
@@ -181,20 +192,42 @@ export type RetentionApplyResponse = {
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
+  const total = ref<number>(0)
+  const page = ref<number>(1)
+  const pageSize = ref<number>(20)
   const latestRefresh = createLatestRequest()
 
-  async function refresh(params?: { includeArchived?: boolean }): Promise<void> {
+  async function refresh(params?: {
+    includeArchived?: boolean
+    nodeId?: string
+    q?: string
+    latestStatus?: JobsListLatestStatusFilter
+    scheduleMode?: JobsListScheduleMode
+    sort?: JobsListSort
+    page?: number
+    pageSize?: number
+  }): Promise<void> {
     const current = latestRefresh.next()
     loading.value = true
     try {
       const q = new URLSearchParams()
       if (params?.includeArchived) q.set('include_archived', 'true')
+      if (params?.nodeId?.trim()) q.set('node_id', params.nodeId.trim())
+      if (params?.q?.trim()) q.set('q', params.q.trim())
+      if (params?.latestStatus && params.latestStatus !== 'all') q.set('latest_status', params.latestStatus)
+      if (params?.scheduleMode && params.scheduleMode !== 'all') q.set('schedule_mode', params.scheduleMode)
+      if (params?.sort) q.set('sort', params.sort)
+      if (params?.page !== undefined) q.set('page', String(params.page))
+      if (params?.pageSize !== undefined) q.set('page_size', String(params.pageSize))
       const suffix = q.toString() ? '?' + q.toString() : ''
-      const nextItems = await apiFetch<JobListItem[]>('/api/jobs' + suffix, {
+      const response = await apiFetch<JobsListResponse>('/api/jobs' + suffix, {
         signal: current.signal,
       })
       if (current.isStale() || current.signal.aborted) return
-      items.value = nextItems
+      items.value = response.items
+      total.value = response.total
+      page.value = response.page
+      pageSize.value = response.page_size
     } catch (error) {
       if (current.isStale() || current.signal.aborted) return
       throw error
@@ -411,6 +444,9 @@ export const useJobsStore = defineStore('jobs', () => {
   return {
     items,
     loading,
+    total,
+    page,
+    pageSize,
     refresh,
     getJob,
     createJob,

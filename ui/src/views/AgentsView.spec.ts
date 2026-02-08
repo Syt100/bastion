@@ -14,6 +14,9 @@ const messageApi = {
 const agentsApi = {
   loading: false,
   items: [] as AgentListItem[],
+  total: 0,
+  page: 1,
+  pageSize: 20,
   refresh: vi.fn().mockResolvedValue(undefined),
   listLabelIndex: vi.fn().mockResolvedValue([]),
   createEnrollmentToken: vi.fn(),
@@ -113,10 +116,12 @@ describe('AgentsView enrollment token modal', () => {
     vi.clearAllMocks()
     routeApi.query = {}
     agentsApi.items = []
+    agentsApi.total = 0
     agentsApi.createEnrollmentToken.mockResolvedValue({ token: 'tok1', expires_at: 1234 })
   })
 
   it('shows pagination when the filtered list is large', async () => {
+    agentsApi.total = 25
     agentsApi.items = Array.from({ length: 25 }, (_, idx) => ({
       id: `agent-${idx}`,
       name: `Agent ${idx}`,

@@ -14,27 +14,33 @@ function deferredResponse() {
   return { promise, resolve, reject }
 }
 
-function buildAgentsResponse(id: string): Response {
+function buildAgentsResponse(id: string, total = 1): Response {
   return new Response(
-    JSON.stringify([
-      {
-        id,
-        name: null,
-        revoked: false,
-        last_seen_at: null,
-        online: false,
-        labels: [],
-        desired_config_snapshot_id: null,
-        applied_config_snapshot_id: null,
-        config_sync_status: 'offline',
-        last_config_sync_attempt_at: null,
-        last_config_sync_error_kind: null,
-        last_config_sync_error: null,
-      },
-    ]),
+    JSON.stringify({
+      items: [
+        {
+          id,
+          name: null,
+          revoked: false,
+          last_seen_at: null,
+          online: false,
+          labels: [],
+          desired_config_snapshot_id: null,
+          applied_config_snapshot_id: null,
+          config_sync_status: 'offline',
+          last_config_sync_attempt_at: null,
+          last_config_sync_error_kind: null,
+          last_config_sync_error: null,
+        },
+      ],
+      page: 1,
+      page_size: 20,
+      total,
+    }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   )
 }
+
 
 describe('useAgentsStore', () => {
   beforeEach(() => {
@@ -50,6 +56,7 @@ describe('useAgentsStore', () => {
     await agents.refresh()
 
     expect(agents.items).toHaveLength(1)
+    expect(agents.total).toBe(1)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/agents',
       expect.objectContaining({ credentials: 'include' }),

@@ -247,56 +247,20 @@ const activeFilterChips = computed<PickerActiveChip[]>(() => {
   return chips
 })
 
-const nodeScopedJobs = computed<JobListItem[]>(() => {
-  const id = nodeId.value
-  if (id === 'hub') return jobs.items.filter((j) => j.agent_id === null)
-  return jobs.items.filter((j) => j.agent_id === id)
+const pagedFilteredJobs = computed<JobListItem[]>(() => jobs.items)
+const nodeScopedJobs = computed<JobListItem[]>(() => jobs.items)
+
+const hasActiveFilters = computed<boolean>(() => {
+  return (
+    showArchived.value ||
+    searchText.value.trim().length > 0 ||
+    listLatestStatusFilter.value !== 'all' ||
+    listScheduleFilter.value !== 'all' ||
+    sortKey.value !== 'updated_desc'
+  )
 })
 
-const filteredJobs = computed<JobListItem[]>(() => {
-  const q = searchText.value.trim().toLowerCase()
-  const list = nodeScopedJobs.value.filter((j) => {
-    if (!q) return true
-    return j.name.toLowerCase().includes(q) || j.id.toLowerCase().includes(q)
-  })
-
-  const latestStatus = listLatestStatusFilter.value
-  const scheduleMode = listScheduleFilter.value
-
-  const filtered = list.filter((j) => {
-    if (latestStatus !== 'all') {
-      if (latestStatus === 'never') {
-        if (j.latest_run_status != null) return false
-      } else if (j.latest_run_status !== latestStatus) {
-        return false
-      }
-    }
-
-    if (scheduleMode !== 'all') {
-      if (scheduleMode === 'manual' && j.schedule != null) return false
-      if (scheduleMode === 'scheduled' && j.schedule == null) return false
-    }
-
-    return true
-  })
-
-  const sorted = filtered.slice()
-  sorted.sort((a, b) => {
-    if (sortKey.value === 'updated_asc') return a.updated_at - b.updated_at
-    if (sortKey.value === 'updated_desc') return b.updated_at - a.updated_at
-    if (sortKey.value === 'name_asc') return a.name.localeCompare(b.name)
-    if (sortKey.value === 'name_desc') return b.name.localeCompare(a.name)
-    return 0
-  })
-  return sorted
-})
-
-const pagedFilteredJobs = computed<JobListItem[]>(() => {
-  const start = (jobsPage.value - 1) * jobsPageSize.value
-  return filteredJobs.value.slice(start, start + jobsPageSize.value)
-})
-
-const jobsPageCount = computed<number>(() => Math.max(1, Math.ceil(filteredJobs.value.length / jobsPageSize.value)))
+const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilters.value)
 
 const selectedJobIds = ref<string[]>([])
 const listSelectMode = ref<boolean>(false)
@@ -425,7 +389,16 @@ async function confirmBulkAction(): Promise<void> {
 
 async function refresh(): Promise<void> {
   try {
-    await jobs.refresh({ includeArchived: showArchived.value })
+    await jobs.refresh({
+      includeArchived: showArchived.value,
+      nodeId: nodeId.value,
+      q: searchText.value,
+      latestStatus: listLatestStatusFilter.value,
+      scheduleMode: listScheduleFilter.value,
+      sort: sortKey.value,
+      page: jobsPage.value,
+      pageSize: jobsPageSize.value,
+    })
   } catch (error) {
     message.error(formatToastError(t('errors.fetchJobsFailed'), error, t))
   }
@@ -437,6 +410,24 @@ function clearFilters(): void {
   sortKey.value = 'updated_desc'
   listLatestStatusFilter.value = 'all'
   listScheduleFilter.value = 'all'
+}
+
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleRefresh(): void {
+  if (refreshDebounceTimer != null) clearTimeout(refreshDebounceTimer)
+  refreshDebounceTimer = setTimeout(() => {
+    refreshDebounceTimer = null
+    void refresh()
+  }, 220)
+}
+
+function resetToFirstPageAndRefresh(): void {
+  const pageChanged = jobsPage.value !== 1
+  jobsPage.value = 1
+  if (!pageChanged) {
+    scheduleRefresh()
+  }
 }
 
 function openCreate(): void {
@@ -690,24 +681,36 @@ watch(layoutMode, () => {
   }
 })
 
-watch(showArchived, () => void refresh())
-watch([searchText, sortKey, listLatestStatusFilter, listScheduleFilter, showArchived], () => {
-  jobsPage.value = 1
+watch([searchText, sortKey, listLatestStatusFilter, listScheduleFilter, showArchived], resetToFirstPageAndRefresh)
+watch(jobsPage, () => {
+  void refresh()
 })
-watch([() => filteredJobs.value.length, jobsPageSize], () => {
-  if (jobsPage.value > jobsPageCount.value) jobsPage.value = jobsPageCount.value
+watch(jobsPageSize, () => {
+  if (jobsPage.value !== 1) {
+    jobsPage.value = 1
+    return
+  }
+  void refresh()
 })
 
 watch(nodeId, () => {
+  const pageChanged = jobsPage.value !== 1
   jobsPage.value = 1
   selectedJobIds.value = []
   listSelectMode.value = false
   bulkConfirmOpen.value = false
   bulkConfirmKind.value = null
+  if (!pageChanged) {
+    void refresh()
+  }
 })
 
 onBeforeUnmount(() => {
   splitResizeCleanup?.()
+  if (refreshDebounceTimer != null) {
+    clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = null
+  }
 })
 </script>
 
@@ -920,7 +923,7 @@ onBeforeUnmount(() => {
 
           <div class="mt-3 space-y-2">
             <div class="text-xs app-text-muted">
-              {{ t('jobs.workspace.filters.resultsCount', { filtered: filteredJobs.length, total: nodeScopedJobs.length }) }}
+              {{ t('jobs.workspace.filters.resultsCount', { filtered: jobs.total, total: jobs.total }) }}
             </div>
             <PickerActiveChipsRow
               :chips="activeFilterChips"
@@ -931,14 +934,14 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="mt-2 flex-1 min-h-0">
-            <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
+            <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
             <AppEmptyState
-              v-else-if="!jobs.loading && filteredJobs.length === 0"
-              :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
-              :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
+              v-else-if="!jobs.loading && jobs.items.length === 0"
+              :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
+              :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
             >
               <template #actions>
-                <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
+                <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
                   {{ t('jobs.actions.create') }}
                 </n-button>
                 <n-button v-else size="small" @click="clearFilters">
@@ -1068,11 +1071,11 @@ onBeforeUnmount(() => {
                 </template>
               </ScrollShadowPane>
 
-              <div v-if="filteredJobs.length > jobsPageSize" class="mt-3 flex justify-end">
+              <div v-if="jobs.total > jobsPageSize" class="mt-3 flex justify-end">
                 <n-pagination
                   v-model:page="jobsPage"
                   v-model:page-size="jobsPageSize"
-                  :item-count="filteredJobs.length"
+                  :item-count="jobs.total"
                   :page-sizes="jobsPageSizeOptions"
                   show-size-picker
                   size="small"
@@ -1165,14 +1168,14 @@ onBeforeUnmount(() => {
           </template>
         </ListToolbar>
 
-        <AppEmptyState v-if="jobs.loading && filteredJobs.length === 0" :title="t('common.loading')" loading />
+        <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
         <AppEmptyState
-          v-else-if="!jobs.loading && filteredJobs.length === 0"
-          :title="jobs.items.length === 0 ? t('jobs.empty.title') : t('common.noData')"
-          :description="jobs.items.length === 0 ? t('jobs.empty.description') : undefined"
+          v-else-if="!jobs.loading && jobs.items.length === 0"
+          :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
+          :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
         >
           <template #actions>
-            <n-button v-if="jobs.items.length === 0" type="primary" size="small" @click="openCreate">
+            <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
               {{ t('jobs.actions.create') }}
             </n-button>
             <n-button v-else size="small" @click="clearFilters">
@@ -1229,11 +1232,11 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <div v-if="filteredJobs.length > jobsPageSize" class="mt-3 flex justify-end">
+          <div v-if="jobs.total > jobsPageSize" class="mt-3 flex justify-end">
             <n-pagination
               v-model:page="jobsPage"
               v-model:page-size="jobsPageSize"
-              :item-count="filteredJobs.length"
+              :item-count="jobs.total"
               :page-sizes="jobsPageSizeOptions"
               show-size-picker
               size="small"

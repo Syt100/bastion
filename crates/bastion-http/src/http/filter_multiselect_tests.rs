@@ -430,7 +430,7 @@ async fn agents_list_supports_label_filter_and_or() {
         }
 
         let body: serde_json::Value = resp.json().await.expect("json");
-        let arr = body.as_array().expect("array");
+        let arr = body["items"].as_array().expect("items array");
         let ids: Vec<&str> = arr
             .iter()
             .filter_map(|v| v.get("id").and_then(|s| s.as_str()))
@@ -440,7 +440,131 @@ async fn agents_list_supports_label_filter_and_or() {
             assert!(ids.contains(id), "expected id {id} in response");
         }
         assert_eq!(ids.len(), expected_ids.len());
+        assert_eq!(body["total"].as_i64(), Some(expected_ids.len() as i64));
     }
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn agents_list_supports_status_search_and_pagination() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    auth::create_user(&pool, "admin", "pw")
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    sqlx::query(
+        "INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind("online-new")
+    .bind("Online New")
+    .bind(vec![0u8; 32])
+    .bind(now - 1)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert online-new");
+
+    sqlx::query(
+        "INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind("offline-1")
+    .bind("Offline")
+    .bind(vec![0u8; 32])
+    .bind(now - 2)
+    .bind(now - 3600)
+    .execute(&pool)
+    .await
+    .expect("insert offline");
+
+    sqlx::query(
+        "INSERT INTO agents (id, name, key_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind("online-old")
+    .bind("Online Old")
+    .bind(vec![0u8; 32])
+    .bind(now - 3)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert online-old");
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let cookie = format!("bastion_session={}", session.id);
+
+    let resp = client
+        .get(format!(
+            "{}/api/agents?status=online&q=online&page=1&page_size=1",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["total"].as_i64(), Some(2));
+    assert_eq!(body["page"].as_i64(), Some(1));
+    assert_eq!(body["page_size"].as_i64(), Some(1));
+    assert_eq!(
+        body["items"][0]["id"].as_str(),
+        Some("online-new"),
+        "first page should return newest online agent",
+    );
+
+    let resp2 = client
+        .get(format!(
+            "{}/api/agents?status=online&q=online&page=2&page_size=1",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("request page2");
+    assert_eq!(resp2.status(), StatusCode::OK);
+
+    let body2: serde_json::Value = resp2.json().await.expect("json page2");
+    assert_eq!(body2["items"][0]["id"].as_str(), Some("online-old"));
 
     server.abort();
 }
