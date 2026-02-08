@@ -41,6 +41,12 @@ fi
 echo "==> UI: install"
 npm ci --prefix ui
 
+echo "==> UI: lint"
+npm run lint:check --prefix ui
+
+echo "==> UI: type-check"
+npm run type-check --prefix ui
+
 echo "==> UI: build"
 npm run build-only --prefix ui
 

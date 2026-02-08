@@ -180,16 +180,25 @@ export type RetentionApplyResponse = {
 export const useJobsStore = defineStore('jobs', () => {
   const items = ref<JobListItem[]>([])
   const loading = ref<boolean>(false)
+  let refreshRequestSeq = 0
 
   async function refresh(params?: { includeArchived?: boolean }): Promise<void> {
+    const requestSeq = ++refreshRequestSeq
     loading.value = true
     try {
       const q = new URLSearchParams()
       if (params?.includeArchived) q.set('include_archived', 'true')
-      const suffix = q.toString() ? `?${q.toString()}` : ''
-      items.value = await apiFetch<JobListItem[]>(`/api/jobs${suffix}`)
+      const suffix = q.toString() ? '?' + q.toString() : ''
+      const nextItems = await apiFetch<JobListItem[]>('/api/jobs' + suffix)
+      if (requestSeq !== refreshRequestSeq) return
+      items.value = nextItems
+    } catch (error) {
+      if (requestSeq !== refreshRequestSeq) return
+      throw error
     } finally {
-      loading.value = false
+      if (requestSeq === refreshRequestSeq) {
+        loading.value = false
+      }
     }
   }
 

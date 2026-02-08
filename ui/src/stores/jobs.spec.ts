@@ -4,6 +4,34 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from './auth'
 import { useJobsStore } from './jobs'
 
+function deferredResponse() {
+  let resolve: (value: Response | PromiseLike<Response>) => void = () => undefined
+  let reject: (reason?: unknown) => void = () => undefined
+  const promise = new Promise<Response>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function buildJobsResponse(id: string): Response {
+  return new Response(
+    JSON.stringify([
+      {
+        id,
+        name: id,
+        agent_id: null,
+        schedule: null,
+        schedule_timezone: 'UTC',
+        overlap_policy: 'queue',
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
 describe('useJobsStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -11,23 +39,7 @@ describe('useJobsStore', () => {
   })
 
   it('refreshes jobs list', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          {
-            id: 'j1',
-            name: 'job1',
-            agent_id: null,
-            schedule: null,
-            schedule_timezone: 'UTC',
-            overlap_policy: 'queue',
-            created_at: 1,
-            updated_at: 1,
-          },
-        ]),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+    const fetchMock = vi.fn().mockResolvedValue(buildJobsResponse('j1'))
     vi.stubGlobal('fetch', fetchMock)
 
     const jobs = useJobsStore()
@@ -38,6 +50,52 @@ describe('useJobsStore', () => {
       '/api/jobs',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  it('ignores stale jobs refresh success responses', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = useJobsStore()
+    const p1 = jobs.refresh()
+    const p2 = jobs.refresh({ includeArchived: true })
+
+    second.resolve(buildJobsResponse('newer'))
+    await p2
+
+    first.resolve(buildJobsResponse('older'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(jobs.items.map((item) => item.id)).toEqual(['newer'])
+    expect(jobs.loading).toBe(false)
+  })
+
+  it('ignores stale jobs refresh failures after a newer success', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const jobs = useJobsStore()
+    const p1 = jobs.refresh()
+    const p2 = jobs.refresh()
+
+    second.resolve(buildJobsResponse('stable'))
+    await p2
+
+    first.reject(new Error('stale network error'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(jobs.items.map((item) => item.id)).toEqual(['stable'])
+    expect(jobs.loading).toBe(false)
   })
 
   it('creates job with CSRF header', async () => {

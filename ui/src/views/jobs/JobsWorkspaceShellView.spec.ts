@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 
 import type { JobListItem } from '@/stores/jobs'
+import type { JobsWorkspaceLayoutMode, JobsWorkspaceListView } from '@/stores/ui'
 
 const messageApi = {
   error: vi.fn(),
@@ -26,8 +27,8 @@ const agentsStore = reactive({
 })
 
 const uiStore = reactive({
-  jobsWorkspaceLayoutMode: 'split' as const,
-  jobsWorkspaceListView: 'list' as const,
+  jobsWorkspaceLayoutMode: 'split' as JobsWorkspaceLayoutMode,
+  jobsWorkspaceListView: 'list' as JobsWorkspaceListView,
   jobsWorkspaceSplitListWidthPx: 360,
   setJobsWorkspaceLayoutMode: vi.fn(),
   setJobsWorkspaceListView: vi.fn(),
@@ -206,10 +207,10 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     uiStore.jobsWorkspaceLayoutMode = 'split'
     uiStore.jobsWorkspaceListView = 'list'
     uiStore.setJobsWorkspaceLayoutMode = vi.fn((v: unknown) => {
-      uiStore.jobsWorkspaceLayoutMode = v as 'split' | 'list' | 'detail'
+      uiStore.jobsWorkspaceLayoutMode = v as JobsWorkspaceLayoutMode
     })
     uiStore.setJobsWorkspaceListView = vi.fn((v: unknown) => {
-      uiStore.jobsWorkspaceListView = v as 'list' | 'table'
+      uiStore.jobsWorkspaceListView = v as JobsWorkspaceListView
     })
 
     jobsStore.items = [

@@ -64,8 +64,9 @@ export type SyncConfigNowResponse = {
 export const useAgentsStore = defineStore('agents', () => {
   const items = ref<AgentListItem[]>([])
   const loading = ref<boolean>(false)
-
+  let refreshRequestSeq = 0
   async function refresh(filters?: { labels?: string[]; labelsMode?: AgentsLabelsMode }): Promise<void> {
+    const requestSeq = ++refreshRequestSeq
     loading.value = true
     try {
       const q = new URLSearchParams()
@@ -73,11 +74,18 @@ export const useAgentsStore = defineStore('agents', () => {
         for (const label of filters.labels) q.append('labels[]', label)
       }
       if (filters?.labelsMode) q.set('labels_mode', filters.labelsMode)
-      const suffix = q.toString() ? `?${q.toString()}` : ''
+      const suffix = q.toString() ? '?' + q.toString() : ''
 
-      items.value = await apiFetch<AgentListItem[]>(`/api/agents${suffix}`)
+      const nextItems = await apiFetch<AgentListItem[]>('/api/agents' + suffix)
+      if (requestSeq !== refreshRequestSeq) return
+      items.value = nextItems
+    } catch (error) {
+      if (requestSeq !== refreshRequestSeq) return
+      throw error
     } finally {
-      loading.value = false
+      if (requestSeq === refreshRequestSeq) {
+        loading.value = false
+      }
     }
   }
 

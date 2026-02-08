@@ -4,6 +4,38 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAgentsStore } from './agents'
 import { useAuthStore } from './auth'
 
+function deferredResponse() {
+  let resolve: (value: Response | PromiseLike<Response>) => void = () => undefined
+  let reject: (reason?: unknown) => void = () => undefined
+  const promise = new Promise<Response>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function buildAgentsResponse(id: string): Response {
+  return new Response(
+    JSON.stringify([
+      {
+        id,
+        name: null,
+        revoked: false,
+        last_seen_at: null,
+        online: false,
+        labels: [],
+        desired_config_snapshot_id: null,
+        applied_config_snapshot_id: null,
+        config_sync_status: 'offline',
+        last_config_sync_attempt_at: null,
+        last_config_sync_error_kind: null,
+        last_config_sync_error: null,
+      },
+    ]),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
 describe('useAgentsStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -11,27 +43,7 @@ describe('useAgentsStore', () => {
   })
 
   it('refreshes the agents list', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          {
-            id: 'a1',
-            name: null,
-            revoked: false,
-            last_seen_at: null,
-            online: false,
-            labels: [],
-            desired_config_snapshot_id: null,
-            applied_config_snapshot_id: null,
-            config_sync_status: 'offline',
-            last_config_sync_attempt_at: null,
-            last_config_sync_error_kind: null,
-            last_config_sync_error: null,
-          },
-        ]),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+    const fetchMock = vi.fn().mockResolvedValue(buildAgentsResponse('a1'))
     vi.stubGlobal('fetch', fetchMock)
 
     const agents = useAgentsStore()
@@ -42,6 +54,52 @@ describe('useAgentsStore', () => {
       '/api/agents',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  it('ignores stale refresh success responses', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const agents = useAgentsStore()
+    const p1 = agents.refresh()
+    const p2 = agents.refresh({ labels: ['prod'] })
+
+    second.resolve(buildAgentsResponse('newer'))
+    await p2
+
+    first.resolve(buildAgentsResponse('older'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(agents.items.map((item) => item.id)).toEqual(['newer'])
+    expect(agents.loading).toBe(false)
+  })
+
+  it('ignores stale refresh failures after a newer success', async () => {
+    const first = deferredResponse()
+    const second = deferredResponse()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const agents = useAgentsStore()
+    const p1 = agents.refresh()
+    const p2 = agents.refresh()
+
+    second.resolve(buildAgentsResponse('stable'))
+    await p2
+
+    first.reject(new Error('stale network error'))
+    await expect(p1).resolves.toBeUndefined()
+
+    expect(agents.items.map((item) => item.id)).toEqual(['stable'])
+    expect(agents.loading).toBe(false)
   })
 
   it('creates an enrollment token with CSRF header', async () => {

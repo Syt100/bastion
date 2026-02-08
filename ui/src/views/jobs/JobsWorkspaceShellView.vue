@@ -458,7 +458,7 @@ function onJobRowClick(jobId: string): void {
   openJob(jobId)
 }
 
-function jobRowOverflowOptions(_job: JobListItem): DropdownOption[] {
+function jobRowOverflowOptions(): DropdownOption[] {
   return [{ label: t('jobs.workspace.actions.openDetails'), key: 'open_details' }]
 }
 
@@ -1041,7 +1041,7 @@ onBeforeUnmount(() => {
                         </n-button>
                         <OverflowActionsButton
                           size="small"
-                          :options="jobRowOverflowOptions(job)"
+                          :options="jobRowOverflowOptions()"
                           @select="(key) => onSelectJobRowOverflow(job, key)"
                         />
                       </div>

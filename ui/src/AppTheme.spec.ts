@@ -14,6 +14,13 @@ type UiStateMock = {
   locale: string
 }
 
+type ThemeOverridesMock = {
+  common?: {
+    cardColor?: string
+    tableHeaderColor?: string
+  }
+}
+
 let uiState: UiStateMock = {
   darkMode: false,
   themeId: 'mint-teal',
@@ -94,10 +101,12 @@ describe('App theme overrides', () => {
         stubs: { 'router-view': { template: '<div />' } },
       },
     })
-    const overrides = wrapper.findComponent({ name: 'NConfigProvider' }).props('themeOverrides') as any
+    const overrides = wrapper
+      .findComponent({ name: 'NConfigProvider' })
+      .props('themeOverrides') as ThemeOverridesMock
     expect(overrides).toBeTruthy()
-    expect(overrides.common.cardColor).toBe(UI_PLAIN_SURFACE_COLORS.dark)
-    expect(overrides.common.tableHeaderColor).toBe(UI_PLAIN_SURFACE_2_COLORS.dark)
+    expect(overrides.common?.cardColor).toBe(UI_PLAIN_SURFACE_COLORS.dark)
+    expect(overrides.common?.tableHeaderColor).toBe(UI_PLAIN_SURFACE_2_COLORS.dark)
     expect(JSON.stringify(overrides)).not.toContain('var(')
   })
 
