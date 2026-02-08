@@ -112,6 +112,9 @@ export default defineConfig({
           }
           return undefined
         },
+        // Keep manual chunking scoped to explicit matches so shared app/runtime deps
+        // are not unintentionally hoisted into the heavy echarts vendor chunk.
+        onlyExplicitManualChunks: true,
       },
     },
   },

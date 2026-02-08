@@ -101,6 +101,7 @@ const messages = {
     runs7d: '近 7 天运行情况',
     trend7d: '近 7 天趋势',
     trendEmpty: '近 7 天暂无已完成的运行',
+    trendPreparing: '正在准备趋势图...',
     trendUnavailable: '趋势图暂未提供',
     cards: {
       agents: '在线客户端',
@@ -138,6 +139,7 @@ const messages = {
       actions: {
         open: '打开',
       },
+      preparingTable: '正在准备桌面表格...',
     },
     chart: {
       success: '成功',

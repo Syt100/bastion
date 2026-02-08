@@ -1,30 +1,26 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  NButton,
-  NCard,
-  NDataTable,
-  NEmpty,
-  NSkeleton,
-  NSpace,
-  NTag,
-  useMessage,
-  type DataTableColumns,
-} from 'naive-ui'
+import { NButton, NCard, NEmpty, NSkeleton, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
-import { useDashboardStore, type DashboardOverviewResponse } from '@/stores/dashboard'
+import InlineLoadingDots from '@/components/loading/InlineLoadingDots.vue'
+import { useDashboardStore } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { useViewportLazyReady } from '@/lib/viewportLazyReady'
 
-const BackupTrendChart = defineAsyncComponent(() => import('@/components/BackupTrendChart.vue'))
+const loadBackupTrendChart = () => import('@/components/BackupTrendChart.vue')
+const BackupTrendChart = defineAsyncComponent(loadBackupTrendChart)
+
+const loadRecentRunsDesktopTable = () => import('@/components/dashboard/DashboardRecentRunsDesktopTable.vue')
+const DashboardRecentRunsDesktopTable = defineAsyncComponent(loadRecentRunsDesktopTable)
 
 const { t } = useI18n()
 const message = useMessage()
@@ -40,58 +36,43 @@ const overview = computed(() => dashboard.overview)
 const showInitialSkeleton = computed(() => dashboard.loading && !overview.value)
 const offlineAgents = computed(() => overview.value?.stats.agents.offline ?? 0)
 const failedNotifications = computed(() => overview.value?.stats.notifications.failed ?? 0)
+const recentRuns = computed(() => overview.value?.recent_runs ?? [])
 
 const trendDays = computed(() => overview.value?.trend_7d.map((d) => d.day) ?? [])
 const trendSuccess = computed(() => overview.value?.trend_7d.map((d) => d.success) ?? [])
 const trendFailed = computed(() => overview.value?.trend_7d.map((d) => d.failed) ?? [])
 
-const trendChartTarget = ref<HTMLElement | null>(null)
-const trendChartReady = ref(false)
-let trendChartObserver: IntersectionObserver | null = null
-
-function stopTrendChartObserver(): void {
-  trendChartObserver?.disconnect()
-  trendChartObserver = null
-}
-
-function ensureTrendChartWhenVisible(): void {
-  if (trendChartReady.value) return
-  if (trendDays.value.length === 0) return
-
-  const target = trendChartTarget.value
-  if (!target) return
-
-  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
-    trendChartReady.value = true
-    return
-  }
-
-  if (trendChartObserver) return
-
-  trendChartObserver = new window.IntersectionObserver(
-    (entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return
-      trendChartReady.value = true
-      stopTrendChartObserver()
-    },
-    {
-      root: null,
-      // Start preparing chart slightly before users reach the chart area.
-      rootMargin: '200px 0px',
-    },
-  )
-
-  trendChartObserver.observe(target)
-}
-
-watch([trendDays, trendChartTarget], () => {
-  if (trendDays.value.length === 0) {
-    trendChartReady.value = false
-    stopTrendChartObserver()
-    return
-  }
-  ensureTrendChartWhenVisible()
+const trendSectionEnabled = computed(() => trendDays.value.length > 0)
+const { target: trendChartTarget, ready: trendChartReady } = useViewportLazyReady(trendSectionEnabled, {
+  rootMargin: '200px 0px',
 })
+
+const recentRunsSectionEnabled = computed(() => isDesktop.value && recentRuns.value.length > 0)
+const { target: recentRunsTarget, ready: recentRunsReady } = useViewportLazyReady(recentRunsSectionEnabled, {
+  rootMargin: '180px 0px',
+})
+
+function scheduleIdlePrefetchRecentTable(): void {
+  if (typeof window === 'undefined') return
+
+  const win = window as Window & {
+    requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number
+  }
+
+  if (typeof win.requestIdleCallback === 'function') {
+    win.requestIdleCallback(
+      () => {
+        void loadRecentRunsDesktopTable()
+      },
+      { timeout: 3000 },
+    )
+    return
+  }
+
+  window.setTimeout(() => {
+    void loadRecentRunsDesktopTable()
+  }, 1200)
+}
 
 async function refresh(): Promise<void> {
   try {
@@ -103,11 +84,7 @@ async function refresh(): Promise<void> {
 
 onMounted(() => {
   void refresh()
-  ensureTrendChartWhenVisible()
-})
-
-onBeforeUnmount(() => {
-  stopTrendChartObserver()
+  scheduleIdlePrefetchRecentTable()
 })
 
 function statusTagType(status: string): 'success' | 'error' | 'warning' | 'info' | 'default' {
@@ -125,9 +102,14 @@ function nodeLabel(row: { node_id: string; node_name?: string | null }): string 
 }
 
 function openRun(row: { run_id: string; node_id: string; job_id: string }): void {
-  void router.push(
-    `/n/${encodeURIComponent(row.node_id)}/jobs/${encodeURIComponent(row.job_id)}/history/runs/${encodeURIComponent(row.run_id)}`,
-  )
+  const path =
+    '/n/' +
+    encodeURIComponent(row.node_id) +
+    '/jobs/' +
+    encodeURIComponent(row.job_id) +
+    '/history/runs/' +
+    encodeURIComponent(row.run_id)
+  void router.push(path)
 }
 
 function openOfflineAgents(): void {
@@ -137,61 +119,12 @@ function openOfflineAgents(): void {
 function openNotificationFailures(): void {
   void router.push({ path: '/settings/notifications/queue', query: { status: 'failed' } })
 }
-
-type RecentRun = DashboardOverviewResponse['recent_runs'][number]
-
-const columns = computed<DataTableColumns<RecentRun>>(() => [
-  {
-    title: t('dashboard.recent.columns.status'),
-    key: 'status',
-    render: (row) =>
-      h(
-        NSpace,
-        { size: 8, align: 'center', wrapItem: false },
-        {
-          default: () => [
-            h(
-              NTag,
-              { type: statusTagType(row.status), size: 'small', bordered: false },
-              { default: () => runStatusLabel(t, row.status) },
-            ),
-            row.executed_offline
-              ? h(NTag, { type: 'info', size: 'small', bordered: false }, { default: () => t('runs.badges.offline') })
-              : null,
-          ],
-        },
-      ),
-  },
-  { title: t('dashboard.recent.columns.job'), key: 'job_name', render: (row) => row.job_name },
-  { title: t('dashboard.recent.columns.node'), key: 'node', render: (row) => nodeLabel(row) },
-  {
-    title: t('dashboard.recent.columns.startedAt'),
-    key: 'started_at',
-    render: (row) => h('span', { class: 'font-mono tabular-nums' }, formatUnixSeconds(row.started_at)),
-  },
-  {
-    title: t('dashboard.recent.columns.endedAt'),
-    key: 'ended_at',
-    render: (row) => h('span', { class: 'font-mono tabular-nums' }, row.ended_at ? formatUnixSeconds(row.ended_at) : '-'),
-  },
-  { title: t('dashboard.recent.columns.error'), key: 'error', render: (row) => row.error ?? '-' },
-  {
-    title: t('dashboard.recent.columns.actions'),
-    key: 'actions',
-    render: (row) =>
-      h(
-        NButton,
-        { size: 'small', tertiary: true, onClick: () => openRun(row) },
-        { default: () => t('dashboard.recent.actions.open') },
-      ),
-  },
-])
 </script>
 
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('dashboard.title')" :subtitle="t('dashboard.subtitle')">
-      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button :loading="dashboard.loading" @click="refresh">{{ t('common.refresh') }}</n-button>
     </PageHeader>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -317,7 +250,11 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
           <n-empty :description="t('dashboard.trendEmpty')" />
         </div>
         <div v-else-if="!trendChartReady" class="h-full flex items-center justify-center px-4">
-          <div class="w-full max-w-[30rem] space-y-2">
+          <div class="w-full max-w-[30rem] space-y-3">
+            <div class="flex items-center gap-2 text-sm app-text-muted">
+              <InlineLoadingDots />
+              <span>{{ t('dashboard.trendPreparing') }}</span>
+            </div>
             <n-skeleton text :repeat="4" />
           </div>
         </div>
@@ -333,13 +270,13 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
     </n-card>
 
     <n-card class="app-card" :bordered="false" :title="t('dashboard.recent.title')">
-      <AppEmptyState v-if="dashboard.loading && (overview?.recent_runs?.length ?? 0) === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!dashboard.loading && (overview?.recent_runs?.length ?? 0) === 0" :title="t('dashboard.recent.empty')" />
+      <AppEmptyState v-if="dashboard.loading && recentRuns.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!dashboard.loading && recentRuns.length === 0" :title="t('dashboard.recent.empty')" />
 
-      <div v-else>
+      <div v-else ref="recentRunsTarget" class="min-h-[12rem]">
         <div v-if="!isDesktop" class="space-y-3">
           <n-card
-            v-for="row in overview?.recent_runs ?? []"
+            v-for="row in recentRuns"
             :key="row.run_id"
             size="small"
             class="app-card"
@@ -375,9 +312,24 @@ const columns = computed<DataTableColumns<RecentRun>>(() => [
           </n-card>
         </div>
 
-        <div v-else class="overflow-x-auto">
-          <n-data-table :loading="dashboard.loading" :columns="columns" :data="overview?.recent_runs ?? []" />
+        <div v-else-if="!recentRunsReady" class="rounded app-panel-inset p-4 space-y-3">
+          <div class="flex items-center gap-2 text-sm app-text-muted">
+            <InlineLoadingDots />
+            <span>{{ t('dashboard.recent.preparingTable') }}</span>
+          </div>
+          <n-skeleton text :repeat="5" />
         </div>
+
+        <Suspense v-else>
+          <template #default>
+            <DashboardRecentRunsDesktopTable :rows="recentRuns" :loading="dashboard.loading" @open-run="openRun" />
+          </template>
+          <template #fallback>
+            <div class="rounded app-panel-inset p-4 space-y-2">
+              <n-skeleton text :repeat="5" />
+            </div>
+          </template>
+        </Suspense>
       </div>
     </n-card>
   </div>

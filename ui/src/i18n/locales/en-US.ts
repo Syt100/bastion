@@ -101,6 +101,7 @@ const messages = {
     runs7d: 'Runs (Last 7 Days)',
     trend7d: 'Trend (Last 7 Days)',
     trendEmpty: 'No completed runs in the last 7 days',
+    trendPreparing: 'Preparing trend chart...',
     trendUnavailable: 'Trend chart is not available yet',
     cards: {
       agents: 'Agents online',
@@ -138,6 +139,7 @@ const messages = {
       actions: {
         open: 'Open',
       },
+      preparingTable: 'Preparing desktop table...',
     },
     chart: {
       success: 'Success',
