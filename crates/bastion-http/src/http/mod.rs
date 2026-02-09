@@ -482,3 +482,6 @@ mod jobs_list_tests;
 
 #[cfg(test)]
 mod dashboard_tests;
+
+#[cfg(test)]
+mod auth_tests;

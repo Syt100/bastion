@@ -10,6 +10,12 @@ pub struct UserRow {
     pub password_hash: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateFirstUserResult {
+    Created,
+    AlreadyInitialized,
+}
+
 pub async fn users_count(db: &SqlitePool) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar("SELECT COUNT(1) FROM users")
         .fetch_one(db)
@@ -30,6 +36,30 @@ pub async fn create_user(
         .execute(db)
         .await?;
     Ok(())
+}
+
+pub async fn create_first_user(
+    db: &SqlitePool,
+    username: &str,
+    password: &str,
+) -> Result<CreateFirstUserResult, anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let password_hash = super::hash_password(password)?;
+
+    let result = sqlx::query(
+        "INSERT INTO users (username, password_hash, created_at) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)",
+    )
+    .bind(username)
+    .bind(password_hash)
+    .bind(now)
+    .execute(db)
+    .await?;
+
+    if result.rows_affected() > 0 {
+        Ok(CreateFirstUserResult::Created)
+    } else {
+        Ok(CreateFirstUserResult::AlreadyInitialized)
+    }
 }
 
 pub async fn find_user_by_username(

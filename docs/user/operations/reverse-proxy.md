@@ -8,6 +8,7 @@ Bastion itself can serve HTTP and WebSocket traffic. For public access, deploy i
 - If your reverse proxy is not on the same host as Bastion, configure trusted proxies:
   - `--trusted-proxy <proxy-ip>/32` (repeatable)
   - or `BASTION_TRUSTED_PROXIES=10.0.0.10/32,10.0.0.0/24`
+- Forwarded headers are trust boundaries. Prefer overwriting `X-Forwarded-For` at the edge proxy (`$remote_addr`) instead of appending untrusted inbound values.
 - WebSocket endpoints (must allow upgrade):
   - `/agent/ws` (Agent <-> Hub)
   - `/api/runs/<id>/events/ws` (live run events)
@@ -36,7 +37,7 @@ server {
 
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
 
     proxy_set_header Upgrade $http_upgrade;

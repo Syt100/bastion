@@ -11,6 +11,30 @@ use super::shared::require_csrf;
 use super::{AppError, AppState};
 use bastion_storage::auth;
 
+const MIN_SETUP_PASSWORD_LEN: usize = 12;
+
+fn validate_username(username: &str) -> Result<&str, AppError> {
+    let username = username.trim();
+    if username.is_empty() {
+        return Err(
+            AppError::bad_request("invalid_username", "Username is required")
+                .with_details(json!({ "field": "username" })),
+        );
+    }
+    Ok(username)
+}
+
+fn validate_setup_password(password: &str) -> Result<(), AppError> {
+    if password.len() < MIN_SETUP_PASSWORD_LEN {
+        return Err(AppError::bad_request(
+            "invalid_password",
+            format!("Password must be at least {MIN_SETUP_PASSWORD_LEN} characters"),
+        )
+        .with_details(json!({ "field": "password", "min_length": MIN_SETUP_PASSWORD_LEN })));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub(super) struct SetupStatusResponse {
     needs_setup: bool,
@@ -35,15 +59,19 @@ pub(super) async fn setup_initialize(
     state: axum::extract::State<AppState>,
     Json(req): Json<SetupInitializeRequest>,
 ) -> Result<StatusCode, AppError> {
-    let count = auth::users_count(&state.db).await?;
-    if count != 0 {
-        return Err(AppError::conflict(
-            "already_initialized",
-            "Setup is already complete",
-        ));
+    let username = validate_username(&req.username)?;
+    validate_setup_password(&req.password)?;
+
+    match auth::create_first_user(&state.db, username, &req.password).await? {
+        auth::CreateFirstUserResult::Created => {}
+        auth::CreateFirstUserResult::AlreadyInitialized => {
+            return Err(AppError::conflict(
+                "already_initialized",
+                "Setup is already complete",
+            ));
+        }
     }
 
-    auth::create_user(&state.db, &req.username, &req.password).await?;
     tracing::info!("setup initialized");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -66,6 +94,8 @@ pub(super) async fn login(
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
+    let username = validate_username(&req.username)?;
+
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let client_ip = shared::effective_client_ip(&state, &headers, peer.ip());
     let client_ip_str = client_ip.to_string();
@@ -81,7 +111,7 @@ pub(super) async fn login(
         .with_details(json!({ "retry_after_seconds": retry_after })));
     }
 
-    let Some(user) = auth::find_user_by_username(&state.db, &req.username).await? else {
+    let Some(user) = auth::find_user_by_username(&state.db, username).await? else {
         let _ = auth::record_login_failure(&state.db, &client_ip_str, now).await;
         tracing::debug!(client_ip = %client_ip, "login failed: user not found");
         return Err(AppError::unauthorized(

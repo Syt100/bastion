@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use futures_util::StreamExt;
 use tempfile::TempDir;
+use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use bastion_storage::secrets::SecretsCrypto;
@@ -12,8 +14,17 @@ use bastion_engine::agent_manager::AgentManager;
 use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
 
-#[tokio::test]
-async fn run_events_ws_supports_after_seq_and_push() {
+struct WsHarness {
+    _temp: TempDir,
+    addr: std::net::SocketAddr,
+    pool: sqlx::SqlitePool,
+    run_id: String,
+    session_id: String,
+    run_events_bus: Arc<RunEventsBus>,
+    server: JoinHandle<()>,
+}
+
+async fn setup_ws_harness(insecure_http: bool) -> WsHarness {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
@@ -64,7 +75,7 @@ async fn run_events_ws_supports_after_seq_and_push() {
     let config = Arc::new(Config {
         bind: "127.0.0.1:0".parse().expect("bind"),
         data_dir: temp.path().to_path_buf(),
-        insecure_http: true,
+        insecure_http,
         debug_errors: false,
         hub_timezone: "UTC".to_string(),
         run_retention_days: 180,
@@ -105,13 +116,33 @@ async fn run_events_ws_supports_after_seq_and_push() {
         .expect("serve");
     });
 
-    let url = format!("ws://{}/api/runs/{}/events/ws?after=1", addr, run.id);
+    WsHarness {
+        _temp: temp,
+        addr,
+        pool,
+        run_id: run.id,
+        session_id: session.id,
+        run_events_bus,
+        server,
+    }
+}
+
+#[tokio::test]
+async fn run_events_ws_supports_after_seq_and_push() {
+    let harness = setup_ws_harness(true).await;
+
+    let url = format!(
+        "ws://{}/api/runs/{}/events/ws?after=1",
+        harness.addr, harness.run_id
+    );
     let mut req = url.into_client_request().expect("ws request");
-    req.headers_mut()
-        .insert("origin", format!("http://{addr}").parse().expect("origin"));
+    req.headers_mut().insert(
+        "origin",
+        format!("http://{}", harness.addr).parse().expect("origin"),
+    );
     req.headers_mut().insert(
         "cookie",
-        format!("bastion_session={}", session.id)
+        format!("bastion_session={}", harness.session_id)
             .parse()
             .expect("cookie"),
     );
@@ -129,10 +160,17 @@ async fn run_events_ws_supports_after_seq_and_push() {
     let first: serde_json::Value = serde_json::from_str(&text).expect("json");
     assert_eq!(first["seq"].as_i64().unwrap_or_default(), 2);
 
-    let _ =
-        run_events::append_and_broadcast(&pool, &run_events_bus, &run.id, "info", "e3", "e3", None)
-            .await
-            .expect("event3");
+    let _ = run_events::append_and_broadcast(
+        &harness.pool,
+        &harness.run_events_bus,
+        &harness.run_id,
+        "info",
+        "e3",
+        "e3",
+        None,
+    )
+    .await
+    .expect("event3");
 
     let msg = tokio::time::timeout(std::time::Duration::from_secs(1), socket.next())
         .await
@@ -143,5 +181,69 @@ async fn run_events_ws_supports_after_seq_and_push() {
     let second: serde_json::Value = serde_json::from_str(&text).expect("json");
     assert_eq!(second["seq"].as_i64().unwrap_or_default(), 3);
 
-    server.abort();
+    harness.server.abort();
+}
+
+#[tokio::test]
+async fn run_events_ws_rejects_origin_with_mismatched_port() {
+    let harness = setup_ws_harness(true).await;
+
+    let url = format!(
+        "ws://{}/api/runs/{}/events/ws",
+        harness.addr, harness.run_id
+    );
+    let mut req = url.into_client_request().expect("ws request");
+    req.headers_mut()
+        .insert("origin", "http://127.0.0.1:1".parse().expect("origin"));
+    req.headers_mut().insert(
+        "cookie",
+        format!("bastion_session={}", harness.session_id)
+            .parse()
+            .expect("cookie"),
+    );
+
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("expected invalid origin rejection");
+    match err {
+        WsError::Http(resp) => assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED),
+        other => panic!("unexpected ws error: {other:?}"),
+    }
+
+    harness.server.abort();
+}
+
+#[tokio::test]
+async fn run_events_ws_rejects_origin_with_mismatched_scheme() {
+    let harness = setup_ws_harness(false).await;
+
+    let url = format!(
+        "ws://{}/api/runs/{}/events/ws",
+        harness.addr, harness.run_id
+    );
+    let mut req = url.into_client_request().expect("ws request");
+    req.headers_mut().insert(
+        "origin",
+        format!("http://{}", harness.addr).parse().expect("origin"),
+    );
+    req.headers_mut().insert(
+        "x-forwarded-proto",
+        "https".parse().expect("x-forwarded-proto"),
+    );
+    req.headers_mut().insert(
+        "cookie",
+        format!("bastion_session={}", harness.session_id)
+            .parse()
+            .expect("cookie"),
+    );
+
+    let err = tokio_tungstenite::connect_async(req)
+        .await
+        .expect_err("expected invalid origin rejection");
+    match err {
+        WsError::Http(resp) => assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED),
+        other => panic!("unexpected ws error: {other:?}"),
+    }
+
+    harness.server.abort();
 }

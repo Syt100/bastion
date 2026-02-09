@@ -13,7 +13,7 @@ use tower_cookies::Cookies;
 use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_storage::runs_repo;
 
-use super::super::shared::{is_trusted_proxy, require_session};
+use super::super::shared::{is_trusted_proxy, request_is_https, require_session};
 use super::super::{AppError, AppState};
 
 #[derive(Debug, Deserialize)]
@@ -57,43 +57,99 @@ fn require_ws_same_origin(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
 
-    let expected_host = if is_trusted_proxy(state, peer_ip) {
+    let origin = match url::Url::parse(origin) {
+        Ok(url) => url,
+        Err(_) => return Err(AppError::unauthorized("invalid_origin", "Invalid origin")),
+    };
+
+    let trusted_peer = is_trusted_proxy(state, peer_ip);
+    let expected_scheme = if trusted_peer {
+        headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(",").next())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .and_then(normalize_origin_scheme)
+            .unwrap_or_else(|| {
+                if request_is_https(state, headers, peer_ip) {
+                    "https".to_string()
+                } else {
+                    "http".to_string()
+                }
+            })
+    } else if request_is_https(state, headers, peer_ip) {
+        "https".to_string()
+    } else {
+        "http".to_string()
+    };
+
+    let expected_authority_raw = if trusted_peer {
         headers
             .get("x-forwarded-host")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
-            .map(|s| s.trim().to_string())
+            .and_then(|v| v.split(",").next())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
             .or_else(|| {
                 headers
                     .get(axum::http::header::HOST)
                     .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
             })
     } else {
         headers
             .get(axum::http::header::HOST)
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
     }
     .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
 
-    let expected_host = expected_host
-        .split(':')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
+    let expected_authority = expected_authority_raw
+        .parse::<axum::http::uri::Authority>()
+        .map_err(|_| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
 
-    let origin_host = match url::Url::parse(origin) {
-        Ok(url) => url.host_str().unwrap_or("").to_ascii_lowercase(),
-        Err(_) => return Err(AppError::unauthorized("invalid_origin", "Invalid origin")),
-    };
+    let expected_host = expected_authority.host().to_ascii_lowercase();
+    let expected_port = expected_authority
+        .port_u16()
+        .unwrap_or_else(|| default_port_for_scheme(&expected_scheme));
 
-    if origin_host != expected_host {
+    let origin_scheme = normalize_origin_scheme(origin.scheme())
+        .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
+    let origin_host = origin
+        .host_str()
+        .map(|v| v.to_ascii_lowercase())
+        .ok_or_else(|| AppError::unauthorized("invalid_origin", "Invalid origin"))?;
+    let origin_port = origin
+        .port_or_known_default()
+        .unwrap_or_else(|| default_port_for_scheme(&origin_scheme));
+
+    if origin_scheme != expected_scheme
+        || origin_host != expected_host
+        || origin_port != expected_port
+    {
         return Err(AppError::unauthorized("invalid_origin", "Invalid origin"));
     }
 
     Ok(())
+}
+
+fn normalize_origin_scheme(raw: &str) -> Option<String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "http" | "ws" => Some("http".to_string()),
+        "https" | "wss" => Some("https".to_string()),
+        _ => None,
+    }
+}
+
+fn default_port_for_scheme(scheme: &str) -> u16 {
+    if scheme.eq_ignore_ascii_case("https") {
+        443
+    } else {
+        80
+    }
 }
 
 async fn handle_run_events_socket(
