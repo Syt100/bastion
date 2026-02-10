@@ -34,6 +34,7 @@ jobs:
           key: ${{ runner.os }}-bastion-tools-${{ env.GITLEAKS_VERSION }}
 
       - name: Setup Go
+        if: steps.cache-gitleaks.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
