@@ -41,7 +41,8 @@ async fn archive_job_without_cascade_does_not_enqueue_snapshot_deletes() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -129,7 +130,8 @@ async fn archive_job_with_cascade_enqueues_deletes_for_unpinned_snapshots_only()
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -302,7 +304,8 @@ async fn archive_job_with_cascade_enqueues_deletes_across_pages() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")

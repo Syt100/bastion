@@ -128,10 +128,13 @@ mod tests {
             .unwrap();
         match dec {
             PayloadDecryption::AgeX25519 { identity: got } => {
-                assert_eq!(got.trim(), identity.trim());
+                assert!(
+                    got.trim() == identity.trim(),
+                    "decryption identity should match stored identity"
+                );
                 age::x25519::Identity::from_str(got.trim()).unwrap();
             }
-            other => panic!("unexpected decryption variant: {other:?}"),
+            _ => panic!("unexpected decryption variant"),
         }
     }
 

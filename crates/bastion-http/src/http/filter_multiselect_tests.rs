@@ -41,7 +41,8 @@ async fn cleanup_list_accepts_multi_value_query_params() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -206,7 +207,8 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -328,7 +330,8 @@ async fn agents_list_supports_label_filter_and_or() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -451,7 +454,8 @@ async fn agents_list_supports_status_search_and_pagination() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -574,7 +578,8 @@ async fn agent_labels_reject_invalid_label() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")

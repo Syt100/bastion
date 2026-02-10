@@ -134,7 +134,8 @@ async fn delete_job_snapshot_requires_csrf() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -195,7 +196,8 @@ async fn list_job_snapshots_returns_items() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -311,7 +313,8 @@ async fn delete_job_snapshot_enqueues_task_and_event() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -468,7 +471,8 @@ async fn delete_job_snapshots_bulk_rejects_empty_run_ids() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")
@@ -546,7 +550,8 @@ async fn pin_and_unpin_snapshot_and_force_delete_guardrail() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")

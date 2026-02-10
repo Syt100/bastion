@@ -28,7 +28,8 @@ async fn setup_ws_harness(insecure_http: bool) -> WsHarness {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");
 
-    auth::create_user(&pool, "admin", "pw")
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
         .await
         .expect("create user");
     let user = auth::find_user_by_username(&pool, "admin")

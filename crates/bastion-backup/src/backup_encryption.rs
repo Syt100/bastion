@@ -184,14 +184,20 @@ mod tests {
             .await
             .unwrap()
             .expect("identity stored");
-        assert_eq!(stored.trim(), created.trim());
+        assert!(
+            stored.trim() == created.trim(),
+            "stored identity should match created identity"
+        );
         age::x25519::Identity::from_str(stored.trim()).unwrap();
 
         // Second call should return the stored identity (no rotation on read).
         let second = ensure_age_identity(&pool, &crypto, "primary")
             .await
             .unwrap();
-        assert_eq!(second.trim(), created.trim());
+        assert!(
+            second.trim() == created.trim(),
+            "ensure_age_identity should return the persisted identity"
+        );
     }
 
     #[tokio::test]
@@ -235,7 +241,10 @@ mod tests {
                 .unwrap()
                 .expect("node secret");
 
-        assert_eq!(node_plain, hub_plain);
+        assert!(
+            node_plain == hub_plain,
+            "distributed node identity should match hub identity"
+        );
         let node_str = String::from_utf8(node_plain).unwrap();
         age::x25519::Identity::from_str(node_str.trim()).unwrap();
     }
@@ -284,7 +293,7 @@ mod tests {
                 assert!(recipient.starts_with("age1"));
                 age::x25519::Recipient::from_str(&recipient).unwrap();
             }
-            other => panic!("unexpected payload encryption: {other:?}"),
+            _ => panic!("unexpected payload encryption variant"),
         }
     }
 

@@ -227,7 +227,7 @@ mod tests {
             TargetAccess::LocalDir { run_dir: got } => {
                 assert_eq!(got, run_dir);
             }
-            other => panic!("unexpected access variant: {other:?}"),
+            _ => panic!("unexpected access variant"),
         }
         assert_eq!(resolved.run.id, run.id);
     }

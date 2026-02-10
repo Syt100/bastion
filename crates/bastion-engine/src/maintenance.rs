@@ -94,7 +94,8 @@ mod tests {
 
         let now = 10_000_000_i64;
 
-        auth::create_user(&pool, "admin", "pw")
+        let user_password = uuid::Uuid::new_v4().to_string();
+        auth::create_user(&pool, "admin", &user_password)
             .await
             .expect("create user");
         let user = auth::find_user_by_username(&pool, "admin")
