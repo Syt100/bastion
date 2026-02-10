@@ -135,14 +135,14 @@ async fn setup_initialize_is_atomic_under_concurrency() {
         .post(&url)
         .json(&serde_json::json!({
             "username": "admin1",
-            "password": "very-strong-pass-1"
+            "password": "test passphrase 111!"
         }))
         .send();
     let req2 = client
         .post(&url)
         .json(&serde_json::json!({
             "username": "admin2",
-            "password": "very-strong-pass-2"
+            "password": "test passphrase 222!"
         }))
         .send();
 

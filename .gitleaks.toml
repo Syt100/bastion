@@ -1,0 +1,14 @@
+title = "Bastion gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow historical test fixture passphrases in auth concurrency tests"
+paths = [
+  'crates/bastion-http/src/http/auth_tests.rs',
+]
+regexTarget = "match"
+regexes = [
+  'password": "very-strong-pass-[12]"',
+]
