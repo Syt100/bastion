@@ -33,6 +33,6 @@
 - [ ] 6.3 Document developer workflow for adding a new source or target driver
 
 ## 7. Validation and rollout
-- [ ] 7.1 Run `bash scripts/ci.sh`
+- [x] 7.1 Run `bash scripts/ci.sh`
 - [ ] 7.2 Run staged rollout verification in mixed-version environments
 - [ ] 7.3 Mark all completed tasks and prepare milestone commits
