@@ -1445,6 +1445,7 @@ const messages = {
     invalid_host: 'SMTP host is required',
     invalid_port: 'Invalid SMTP port',
     invalid_password: 'Password is required',
+    invalid_password_min_length: 'Password must be at least {minLength} characters',
     permission_denied: 'Permission denied',
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',

@@ -7,6 +7,7 @@ const t = (key: string, params?: Record<string, unknown>): string => {
   const dict: Record<string, string> = {
     'apiErrors.invalid_webhook_url': 'Webhook URL is invalid',
     'apiErrors.rate_limited': `Rate limited${params?.seconds ? ` (${params.seconds}s)` : ''}`,
+    'apiErrors.invalid_password_min_length': `Password must be at least ${params?.minLength ?? '?'} characters`,
   }
   return dict[key] ?? key
 }
@@ -33,6 +34,18 @@ describe('toApiErrorInfo', () => {
     const info = toApiErrorInfo(err, t)
     expect(info.code).toBe('rate_limited')
     expect(info.message).toBe('Rate limited (12s)')
+  })
+
+  it('localizes invalid_password with min_length', () => {
+    const err = new ApiError(400, 'Password must be at least 12 characters', {
+      error: 'invalid_password',
+      message: 'Password must be at least 12 characters',
+      details: { field: 'password', min_length: 12 },
+    })
+    const info = toApiErrorInfo(err, t)
+    expect(info.code).toBe('invalid_password')
+    expect(info.field).toBe('password')
+    expect(info.message).toBe('Password must be at least 12 characters')
   })
 
   it('falls back to backend message for unknown codes', () => {

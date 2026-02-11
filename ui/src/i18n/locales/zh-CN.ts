@@ -1440,6 +1440,7 @@ const messages = {
     invalid_host: 'SMTP 主机不能为空',
     invalid_port: 'SMTP 端口不正确',
     invalid_password: '密码不能为空',
+    invalid_password_min_length: '密码至少需要 {minLength} 个字符',
     permission_denied: '无权限访问该目录',
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',

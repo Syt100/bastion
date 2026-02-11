@@ -32,12 +32,22 @@ function extractRetryAfter(details: unknown): number | undefined {
   return Math.floor(n)
 }
 
+function extractMinLength(details: unknown): number | undefined {
+  if (!details || typeof details !== 'object') return undefined
+  if (!('min_length' in details)) return undefined
+  const raw = (details as { min_length?: unknown }).min_length
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.floor(n)
+}
+
 export function toApiErrorInfo(error: unknown, t?: Translator): ApiErrorInfo {
   if (error instanceof ApiError) {
     const code = error.body?.error
     const details = error.body?.details
     const field = extractField(details)
     const retryAfterSeconds = extractRetryAfter(details)
+    const minLength = extractMinLength(details)
     const requestId = error.requestId && error.requestId.trim() ? error.requestId.trim() : undefined
 
     if (t && code) {
@@ -45,7 +55,11 @@ export function toApiErrorInfo(error: unknown, t?: Translator): ApiErrorInfo {
       const localized =
         code === 'rate_limited' && retryAfterSeconds
           ? translateOrNull(t, key, { seconds: retryAfterSeconds })
-          : translateOrNull(t, key)
+          : code === 'invalid_password' && minLength
+            ? translateOrNull(t, 'apiErrors.invalid_password_min_length', {
+                minLength,
+              })
+            : translateOrNull(t, key)
 
       if (localized) {
         const message = withRequestIdSuffix(localized, requestId, error.status, t)
