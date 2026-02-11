@@ -15,6 +15,7 @@ use crate::run_events_bus::RunEventsBus;
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
+use super::planner::plan_sqlite_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
 
@@ -59,15 +60,38 @@ pub(super) async fn execute_sqlite_run(
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
 
-    let (on_part_finished, parts_uploader) = rolling_archive::prepare_archive_part_uploader(
+    let planned = plan_sqlite_execution(&pipeline, &target)
+        .map_err(|error| anyhow::anyhow!("execution planning failed: {error}"))?;
+    let planner_fields = planned
+        .plan
+        .observability_fields(&planned.source_driver, &planned.target_driver);
+    let planner_summary = planned
+        .plan
+        .summary_payload(&planned.source_driver, &planned.target_driver);
+    run_events::append_and_broadcast(
         db,
-        secrets,
-        &target,
-        &job.id,
+        run_events_bus,
         run_id,
-        artifact_format.clone(),
+        "info",
+        "planning",
+        "planning",
+        Some(planner_fields),
     )
     .await?;
+
+    let (on_part_finished, parts_uploader) = if planned.plan.allow_rolling_upload {
+        rolling_archive::prepare_archive_part_uploader(
+            db,
+            secrets,
+            &target,
+            &job.id,
+            run_id,
+            artifact_format.clone(),
+        )
+        .await?
+    } else {
+        (None, None)
+    };
 
     let build = tokio::task::spawn_blocking(move || {
         backup::sqlite::build_sqlite_run(
@@ -213,6 +237,7 @@ pub(super) async fn execute_sqlite_run(
         "sqlite": {
             "path": sqlite_path,
             "snapshot_name": build.snapshot_name,
-        }
+        },
+        "planner": planner_summary,
     }))
 }

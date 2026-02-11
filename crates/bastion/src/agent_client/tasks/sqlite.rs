@@ -11,6 +11,7 @@ use bastion_core::manifest::ArtifactFormatV1;
 use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1};
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+use super::planner::plan_sqlite_execution;
 
 struct UploadProgressBuilder {
     last_ts: Option<i64>,
@@ -92,17 +93,39 @@ pub(super) async fn run_sqlite_backup(
     super::send_run_event(tx, ctx.run_id, "info", "snapshot", "snapshot", None).await?;
     let sqlite_path = source.path.clone();
     let part_size = target_part_size_bytes(&target);
-    let encryption = super::payload_encryption(pipeline.encryption);
-    let artifact_format = pipeline.format;
+    let encryption = super::payload_encryption(pipeline.encryption.clone());
+    let artifact_format = pipeline.format.clone();
     let artifact_format_for_totals = artifact_format.clone();
     let started_at = ctx.started_at;
 
-    let (on_part_finished, parts_uploader) = super::prepare_archive_part_uploader(
-        &target,
-        ctx.job_id,
+    let planned = plan_sqlite_execution(&pipeline, &target)
+        .map_err(|error| anyhow::anyhow!("execution planning failed: {error}"))?;
+    let planner_fields = planned
+        .plan
+        .observability_fields(&planned.source_driver, &planned.target_driver);
+    let planner_summary = planned
+        .plan
+        .summary_payload(&planned.source_driver, &planned.target_driver);
+    super::send_run_event(
+        tx,
         ctx.run_id,
-        artifact_format.clone(),
-    );
+        "info",
+        "planning",
+        "planning",
+        Some(planner_fields),
+    )
+    .await?;
+
+    let (on_part_finished, parts_uploader) = if planned.plan.allow_rolling_upload {
+        super::prepare_archive_part_uploader(
+            &target,
+            ctx.job_id,
+            ctx.run_id,
+            artifact_format.clone(),
+        )
+    } else {
+        (None, None)
+    };
 
     let data_dir_buf = ctx.data_dir.to_path_buf();
     let job_id_clone = ctx.job_id.to_string();
@@ -269,6 +292,7 @@ pub(super) async fn run_sqlite_backup(
                 "lines": check.lines,
             })),
         },
+        "planner": planner_summary,
     }))
 }
 

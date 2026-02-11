@@ -1,4 +1,5 @@
 mod filesystem;
+mod planner;
 mod sqlite;
 mod vaultwarden;
 

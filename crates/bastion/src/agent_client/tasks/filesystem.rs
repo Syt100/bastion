@@ -12,6 +12,7 @@ use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1
 use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+use super::planner::plan_filesystem_execution;
 
 #[cfg(unix)]
 fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
@@ -335,17 +336,30 @@ pub(super) async fn run_filesystem_backup(
                 None
             }
         });
-    let encryption = super::payload_encryption(pipeline.encryption);
-    let artifact_format = pipeline.format;
+    let encryption = super::payload_encryption(pipeline.encryption.clone());
+    let artifact_format = pipeline.format.clone();
     let artifact_format_for_summary = artifact_format.clone();
     let started_at = ctx.started_at;
 
-    let allow_rolling_upload = !matches!(
-        (consistency_policy, upload_on_consistency_failure),
-        (ConsistencyPolicyV1::Fail, false)
-    );
+    let planned = plan_filesystem_execution(&pipeline, &source, &target)
+        .map_err(|error| anyhow::anyhow!("execution planning failed: {error}"))?;
+    let planner_fields = planned
+        .plan
+        .observability_fields(&planned.source_driver, &planned.target_driver);
+    let planner_summary = planned
+        .plan
+        .summary_payload(&planned.source_driver, &planned.target_driver);
+    super::send_run_event(
+        tx,
+        ctx.run_id,
+        "info",
+        "planning",
+        "planning",
+        Some(planner_fields),
+    )
+    .await?;
 
-    let (on_part_finished, parts_uploader) = if allow_rolling_upload {
+    let (on_part_finished, parts_uploader) = if planned.plan.allow_rolling_upload {
         super::prepare_archive_part_uploader(
             &target,
             ctx.job_id,
@@ -359,46 +373,32 @@ pub(super) async fn run_filesystem_backup(
     let mut raw_tree_webdav_direct_upload: Option<
         backup::filesystem::RawTreeWebdavDirectUploadConfig,
     > = None;
-    if webdav_direct.mode != bastion_core::job_spec::WebdavRawTreeDirectModeV1::Off {
-        let supported = allow_rolling_upload
-            && artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
-            && matches!(target, TargetResolvedV1::Webdav { .. });
-
-        if !supported && webdav_direct.mode == bastion_core::job_spec::WebdavRawTreeDirectModeV1::On
-        {
-            anyhow::bail!(
-                "webdav raw-tree direct upload is required by config but not supported by this run (format/target/policy)"
-            );
-        }
-
-        if supported
-            && let TargetResolvedV1::Webdav {
-                base_url,
-                username,
-                password,
-                ..
-            } = &target
-        {
-            raw_tree_webdav_direct_upload =
-                Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
-                    handle: tokio::runtime::Handle::current(),
-                    base_url: base_url.clone(),
-                    credentials: bastion_targets::WebdavCredentials {
-                        username: username.clone(),
-                        password: password.clone(),
-                    },
-                    max_attempts: 3,
-                    resume_by_size: webdav_direct.resume_by_size,
-                    limits: webdav_limits.clone(),
-                });
-        }
+    if planned.plan.enable_raw_tree_webdav_direct_upload
+        && let TargetResolvedV1::Webdav {
+            base_url,
+            username,
+            password,
+            ..
+        } = &target
+    {
+        raw_tree_webdav_direct_upload = Some(backup::filesystem::RawTreeWebdavDirectUploadConfig {
+            handle: tokio::runtime::Handle::current(),
+            base_url: base_url.clone(),
+            credentials: bastion_targets::WebdavCredentials {
+                username: username.clone(),
+                password: password.clone(),
+            },
+            max_attempts: 3,
+            resume_by_size: webdav_direct.resume_by_size,
+            limits: webdav_limits.clone(),
+        });
     }
     let using_webdav_raw_tree_direct_upload = raw_tree_webdav_direct_upload.is_some();
 
     // For raw_tree_v1 + local_dir targets, avoid duplicating the staged `data/` tree by linking the
     // staging `data/` dir to the final target run dir (best-effort; falls back to normal staging).
     let mut direct_target_run_dir: Option<std::path::PathBuf> = None;
-    if artifact_format == bastion_core::manifest::ArtifactFormatV1::RawTreeV1
+    if planned.plan.link_stage_data_to_local_target
         && let TargetResolvedV1::LocalDir { base_dir, .. } = &target
     {
         let target_run_dir = std::path::Path::new(base_dir)
@@ -677,7 +677,8 @@ pub(super) async fn run_filesystem_backup(
                 "errors_total": issues.errors_total,
                 "snapshot": snapshot_summary.clone(),
                 "consistency": consistency,
-            }
+            },
+            "planner": planner_summary.clone(),
         });
 
         let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
@@ -845,7 +846,8 @@ pub(super) async fn run_filesystem_backup(
             "errors_total": issues.errors_total,
             "snapshot": snapshot_summary.clone(),
             "consistency": consistency,
-        }
+        },
+        "planner": planner_summary,
     });
 
     if error_policy == FsErrorPolicy::SkipFail && issues.errors_total > 0 {

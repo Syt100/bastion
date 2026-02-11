@@ -15,6 +15,7 @@ use crate::run_events_bus::RunEventsBus;
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
+use super::planner::plan_vaultwarden_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
 
@@ -62,12 +63,26 @@ pub(super) async fn execute_vaultwarden_run(
     let artifact_format = pipeline.format.clone();
     let encryption = backup_encryption::ensure_payload_encryption(db, secrets, &pipeline).await?;
 
-    let allow_rolling_upload = !matches!(
-        (consistency_policy, upload_on_consistency_failure),
-        (job_spec::ConsistencyPolicyV1::Fail, false)
-    );
+    let planned = plan_vaultwarden_execution(&pipeline, &source, &target)
+        .map_err(|error| anyhow::anyhow!("execution planning failed: {error}"))?;
+    let planner_fields = planned
+        .plan
+        .observability_fields(&planned.source_driver, &planned.target_driver);
+    let planner_summary = planned
+        .plan
+        .summary_payload(&planned.source_driver, &planned.target_driver);
+    run_events::append_and_broadcast(
+        db,
+        run_events_bus,
+        run_id,
+        "info",
+        "planning",
+        "planning",
+        Some(planner_fields),
+    )
+    .await?;
 
-    let (on_part_finished, parts_uploader) = if allow_rolling_upload {
+    let (on_part_finished, parts_uploader) = if planned.plan.allow_rolling_upload {
         rolling_archive::prepare_archive_part_uploader(
             db,
             secrets,
@@ -154,7 +169,8 @@ pub(super) async fn execute_vaultwarden_run(
                 "data_dir": vw_data_dir,
                 "db": "db.sqlite3",
                 "consistency": consistency,
-            }
+            },
+            "planner": planner_summary.clone(),
         });
 
         let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
@@ -253,7 +269,8 @@ pub(super) async fn execute_vaultwarden_run(
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",
             "consistency": consistency,
-        }
+        },
+        "planner": planner_summary,
     });
 
     if consistency_failed {

@@ -11,6 +11,7 @@ use bastion_core::progress::{ProgressKindV1, ProgressSnapshotV1, ProgressUnitsV1
 use bastion_core::run_failure::RunFailedWithSummary;
 
 use super::super::targets::{store_artifacts_to_resolved_target, target_part_size_bytes};
+use super::planner::plan_vaultwarden_execution;
 
 struct UploadProgressBuilder {
     last_ts: Option<i64>,
@@ -95,17 +96,30 @@ pub(super) async fn run_vaultwarden_backup(
     let consistency_fail_threshold = source.consistency_fail_threshold.unwrap_or(0);
     let upload_on_consistency_failure = source.upload_on_consistency_failure.unwrap_or(false);
     let part_size = target_part_size_bytes(&target);
-    let encryption = super::payload_encryption(pipeline.encryption);
-    let artifact_format = pipeline.format;
+    let encryption = super::payload_encryption(pipeline.encryption.clone());
+    let artifact_format = pipeline.format.clone();
     let artifact_format_for_summary = artifact_format.clone();
     let started_at = ctx.started_at;
 
-    let allow_rolling_upload = !matches!(
-        (consistency_policy, upload_on_consistency_failure),
-        (ConsistencyPolicyV1::Fail, false)
-    );
+    let planned = plan_vaultwarden_execution(&pipeline, &source, &target)
+        .map_err(|error| anyhow::anyhow!("execution planning failed: {error}"))?;
+    let planner_fields = planned
+        .plan
+        .observability_fields(&planned.source_driver, &planned.target_driver);
+    let planner_summary = planned
+        .plan
+        .summary_payload(&planned.source_driver, &planned.target_driver);
+    super::send_run_event(
+        tx,
+        ctx.run_id,
+        "info",
+        "planning",
+        "planning",
+        Some(planner_fields),
+    )
+    .await?;
 
-    let (on_part_finished, parts_uploader) = if allow_rolling_upload {
+    let (on_part_finished, parts_uploader) = if planned.plan.allow_rolling_upload {
         super::prepare_archive_part_uploader(
             &target,
             ctx.job_id,
@@ -193,7 +207,8 @@ pub(super) async fn run_vaultwarden_backup(
                 "data_dir": vw_data_dir,
                 "db": "db.sqlite3",
                 "consistency": consistency,
-            }
+            },
+            "planner": planner_summary.clone(),
         });
 
         let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
@@ -304,7 +319,8 @@ pub(super) async fn run_vaultwarden_backup(
             "data_dir": vw_data_dir,
             "db": "db.sqlite3",
             "consistency": consistency,
-        }
+        },
+        "planner": planner_summary,
     });
 
     if consistency_failed {
