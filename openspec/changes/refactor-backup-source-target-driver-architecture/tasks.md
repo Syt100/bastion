@@ -8,11 +8,11 @@
 - [x] 2.3 Add contract tests for registry lookup, unknown-driver handling, and capability exposure
 
 ## 3. Job spec and protocol compatibility
-- [ ] 3.1 Introduce `JobSpecV2` source/target envelopes with explicit `type`, `version`, `config`, and `auth_refs`
-- [ ] 3.2 Add V1 -> V2 translation layer and keep V1 API acceptance
-- [ ] 3.3 Add validation rules to prevent inline credentials and enforce secret reference semantics
-- [ ] 3.4 Add backward-compatible Hub-Agent protocol fields for driver identifiers and capabilities
-- [ ] 3.5 Add regression tests for mixed V1/V2 jobs and mixed Hub-Agent versions
+- [x] 3.1 Introduce `JobSpecV2` source/target envelopes with explicit `type`, `version`, `config`, and `auth_refs`
+- [x] 3.2 Add V1 -> V2 translation layer and keep V1 API acceptance
+- [x] 3.3 Add validation rules to prevent inline credentials and enforce secret reference semantics
+- [x] 3.4 Add backward-compatible Hub-Agent protocol fields for driver identifiers and capabilities
+- [x] 3.5 Add regression tests for mixed V1/V2 jobs and mixed Hub-Agent versions
 
 ## 4. Execution planner and runtime migration
 - [ ] 4.1 Implement capability-based `ExecutionPlanner` to derive execution mode from source/target/pipeline

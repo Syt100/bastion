@@ -10,9 +10,13 @@ use tracing::warn;
 
 use bastion_backup as backup;
 use bastion_core::agent_protocol::{
-    AgentToHubMessageV1, BackupRunTaskV1, EncryptionResolvedV1, JobSpecResolvedV1, PROTOCOL_VERSION,
+    AgentToHubMessageV1, BackupRunTaskV1, DriverRefV1, EncryptionResolvedV1, JobSpecResolvedV1,
+    PROTOCOL_VERSION, TargetDriverCapabilitiesV1, TargetResolvedV1,
 };
 use bastion_core::progress::{PROGRESS_SNAPSHOT_EVENT_KIND_V1, ProgressSnapshotV1};
+use bastion_core::run_failure::RunFailedWithSummary;
+use bastion_driver_api::DriverId;
+use bastion_driver_registry::builtins;
 
 use super::managed::save_task_result;
 
@@ -30,6 +34,167 @@ type ArchivePartUploader = (
     Option<ArchivePartUploadHandle>,
 );
 
+fn expected_source_driver(spec: &JobSpecResolvedV1) -> DriverRefV1 {
+    let kind = match spec {
+        JobSpecResolvedV1::Filesystem { .. } => "filesystem",
+        JobSpecResolvedV1::Sqlite { .. } => "sqlite",
+        JobSpecResolvedV1::Vaultwarden { .. } => "vaultwarden",
+    };
+
+    DriverRefV1 {
+        kind: kind.to_string(),
+        version: 1,
+    }
+}
+
+fn expected_target_driver(spec: &JobSpecResolvedV1) -> DriverRefV1 {
+    let kind = match spec {
+        JobSpecResolvedV1::Filesystem { target, .. }
+        | JobSpecResolvedV1::Sqlite { target, .. }
+        | JobSpecResolvedV1::Vaultwarden { target, .. } => match target {
+            TargetResolvedV1::Webdav { .. } => "webdav",
+            TargetResolvedV1::LocalDir { .. } => "local_dir",
+        },
+    };
+
+    DriverRefV1 {
+        kind: kind.to_string(),
+        version: 1,
+    }
+}
+
+fn capabilities_satisfy(
+    installed: TargetDriverCapabilitiesV1,
+    required: TargetDriverCapabilitiesV1,
+) -> bool {
+    (!required.supports_archive_rolling_upload || installed.supports_archive_rolling_upload)
+        && (!required.supports_raw_tree_direct_upload || installed.supports_raw_tree_direct_upload)
+        && (!required.supports_cleanup_run || installed.supports_cleanup_run)
+        && (!required.supports_restore_reader || installed.supports_restore_reader)
+}
+
+fn to_protocol_target_capabilities(
+    caps: bastion_driver_api::TargetDriverCapabilities,
+) -> TargetDriverCapabilitiesV1 {
+    TargetDriverCapabilitiesV1 {
+        supports_archive_rolling_upload: caps.supports_archive_rolling_upload,
+        supports_raw_tree_direct_upload: caps.supports_raw_tree_direct_upload,
+        supports_cleanup_run: caps.supports_cleanup_run,
+        supports_restore_reader: caps.supports_restore_reader,
+    }
+}
+
+fn driver_label(driver: &DriverRefV1) -> String {
+    format!("{}@{}", driver.kind, driver.version)
+}
+
+fn fail_driver_check(
+    code: &'static str,
+    message: impl Into<String>,
+    expected: &DriverRefV1,
+    received: Option<&DriverRefV1>,
+) -> anyhow::Error {
+    anyhow::Error::new(RunFailedWithSummary::new(
+        code,
+        message,
+        serde_json::json!({
+            "error_code": code,
+            "expected": driver_label(expected),
+            "received": received.map(driver_label),
+        }),
+    ))
+}
+
+fn validate_task_driver_metadata(task: &BackupRunTaskV1) -> Result<(), anyhow::Error> {
+    let expected_source = expected_source_driver(&task.spec);
+    let expected_target = expected_target_driver(&task.spec);
+
+    if let Some(source_driver) = task.source_driver.as_ref()
+        && source_driver != &expected_source
+    {
+        return Err(fail_driver_check(
+            "driver_mismatch",
+            format!(
+                "source driver mismatch: expected {}, got {}",
+                driver_label(&expected_source),
+                driver_label(source_driver)
+            ),
+            &expected_source,
+            Some(source_driver),
+        ));
+    }
+
+    if let Some(target_driver) = task.target_driver.as_ref()
+        && target_driver != &expected_target
+    {
+        return Err(fail_driver_check(
+            "driver_mismatch",
+            format!(
+                "target driver mismatch: expected {}, got {}",
+                driver_label(&expected_target),
+                driver_label(target_driver)
+            ),
+            &expected_target,
+            Some(target_driver),
+        ));
+    }
+
+    if task.target_driver.is_none() && task.target_capabilities.is_none() {
+        // Compatibility mode for tasks sent by older hubs.
+        return Ok(());
+    }
+
+    let target_driver = task.target_driver.as_ref().unwrap_or(&expected_target);
+    let id = DriverId::new(target_driver.kind.clone(), target_driver.version).map_err(|error| {
+        anyhow::Error::new(RunFailedWithSummary::new(
+            "unsupported_driver",
+            format!("invalid target driver metadata: {error}"),
+            serde_json::json!({
+                "error_code": "unsupported_driver",
+                "target_driver": driver_label(target_driver),
+            }),
+        ))
+    })?;
+
+    let installed_caps = builtins::target_registry()
+        .target_capabilities(&id)
+        .map(to_protocol_target_capabilities)
+        .map_err(|error| {
+            anyhow::Error::new(RunFailedWithSummary::new(
+                "unsupported_driver",
+                format!(
+                    "target driver is not installed on agent: {}",
+                    driver_label(target_driver)
+                ),
+                serde_json::json!({
+                    "error_code": "unsupported_driver",
+                    "target_driver": driver_label(target_driver),
+                    "details": error.to_string(),
+                }),
+            ))
+        })?;
+
+    if let Some(required_caps) = task.target_capabilities
+        && !capabilities_satisfy(installed_caps, required_caps)
+    {
+        return Err(anyhow::Error::new(RunFailedWithSummary::new(
+            "driver_capability_mismatch",
+            format!(
+                "target driver capabilities are insufficient for {}",
+                driver_label(target_driver)
+            ),
+            serde_json::json!({
+                "error_code": "driver_capability_mismatch",
+                "target_driver": driver_label(target_driver),
+                "required": required_caps,
+                "installed": installed_caps,
+            }),
+        )));
+    }
+
+    Ok(())
+}
+
 pub(super) async fn handle_backup_task(
     data_dir: &Path,
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
@@ -40,6 +205,8 @@ pub(super) async fn handle_backup_task(
     let job_id = task.job_id.clone();
     let started_at = time::OffsetDateTime::from_unix_timestamp(task.started_at)
         .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+
+    validate_task_driver_metadata(&task)?;
 
     send_run_event(tx, &run_id, "info", "start", "start", None).await?;
 
@@ -246,6 +413,86 @@ mod tests {
         ) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
+    }
+
+    fn sqlite_local_task() -> BackupRunTaskV1 {
+        BackupRunTaskV1 {
+            run_id: "run-1".to_string(),
+            job_id: "job-1".to_string(),
+            started_at: 123,
+            spec: JobSpecResolvedV1::Sqlite {
+                v: 1,
+                pipeline: Default::default(),
+                source: bastion_core::job_spec::SqliteSource {
+                    path: "/tmp/db.sqlite3".to_string(),
+                    integrity_check: false,
+                },
+                target: TargetResolvedV1::LocalDir {
+                    base_dir: "/tmp/out".to_string(),
+                    part_size_bytes: 1024 * 1024,
+                },
+            },
+            source_driver: None,
+            target_driver: None,
+            target_capabilities: None,
+        }
+    }
+
+    #[test]
+    fn validate_task_driver_metadata_accepts_legacy_tasks_without_driver_fields() {
+        let task = sqlite_local_task();
+        validate_task_driver_metadata(&task).expect("legacy compatibility");
+    }
+
+    #[test]
+    fn validate_task_driver_metadata_rejects_mismatched_target_driver() {
+        let mut task = sqlite_local_task();
+        task.target_driver = Some(DriverRefV1 {
+            kind: "webdav".to_string(),
+            version: 1,
+        });
+
+        let err = validate_task_driver_metadata(&task).expect_err("must fail");
+        let Some(run_error) = err.downcast_ref::<RunFailedWithSummary>() else {
+            panic!("expected RunFailedWithSummary");
+        };
+        assert_eq!(run_error.code, "driver_mismatch");
+    }
+
+    #[test]
+    fn validate_task_driver_metadata_rejects_unknown_target_driver() {
+        let mut task = sqlite_local_task();
+        task.target_driver = Some(DriverRefV1 {
+            kind: "unknown_target".to_string(),
+            version: 1,
+        });
+
+        let err = validate_task_driver_metadata(&task).expect_err("must fail");
+        let Some(run_error) = err.downcast_ref::<RunFailedWithSummary>() else {
+            panic!("expected RunFailedWithSummary");
+        };
+        assert_eq!(run_error.code, "driver_mismatch");
+    }
+
+    #[test]
+    fn validate_task_driver_metadata_rejects_capability_mismatch() {
+        let mut task = sqlite_local_task();
+        task.target_driver = Some(DriverRefV1 {
+            kind: "local_dir".to_string(),
+            version: 1,
+        });
+        task.target_capabilities = Some(TargetDriverCapabilitiesV1 {
+            supports_archive_rolling_upload: true,
+            supports_raw_tree_direct_upload: true,
+            supports_cleanup_run: false,
+            supports_restore_reader: true,
+        });
+
+        let err = validate_task_driver_metadata(&task).expect_err("must fail");
+        let Some(run_error) = err.downcast_ref::<RunFailedWithSummary>() else {
+            panic!("expected RunFailedWithSummary");
+        };
+        assert_eq!(run_error.code, "driver_capability_mismatch");
     }
 
     #[test]

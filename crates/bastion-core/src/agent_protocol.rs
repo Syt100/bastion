@@ -77,12 +77,36 @@ pub enum JobSpecResolvedV1 {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DriverRefV1 {
+    pub kind: String,
+    pub version: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TargetDriverCapabilitiesV1 {
+    #[serde(default)]
+    pub supports_archive_rolling_upload: bool,
+    #[serde(default)]
+    pub supports_raw_tree_direct_upload: bool,
+    #[serde(default)]
+    pub supports_cleanup_run: bool,
+    #[serde(default)]
+    pub supports_restore_reader: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupRunTaskV1 {
     pub run_id: String,
     pub job_id: String,
     pub started_at: i64,
     pub spec: JobSpecResolvedV1,
+    #[serde(default)]
+    pub source_driver: Option<DriverRefV1>,
+    #[serde(default)]
+    pub target_driver: Option<DriverRefV1>,
+    #[serde(default)]
+    pub target_capabilities: Option<TargetDriverCapabilitiesV1>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -434,7 +458,10 @@ pub enum AgentToHubMessageV1 {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentToHubMessageV1, HubToAgentMessageV1, PROTOCOL_VERSION, SnapshotDeleteTaskV1};
+    use super::{
+        AgentToHubMessageV1, DriverRefV1, HubToAgentMessageV1, PROTOCOL_VERSION,
+        SnapshotDeleteTaskV1, TargetDriverCapabilitiesV1,
+    };
 
     #[test]
     fn snapshot_delete_task_round_trip() {
@@ -482,5 +509,109 @@ mod tests {
             }
             other => panic!("unexpected message: {other:?}"),
         }
+    }
+
+    #[test]
+    fn task_message_defaults_driver_metadata_when_absent() {
+        let payload = serde_json::json!({
+            "type": "task",
+            "v": PROTOCOL_VERSION,
+            "task_id": "task-1",
+            "task": {
+                "run_id": "run-1",
+                "job_id": "job-1",
+                "started_at": 123,
+                "spec": {
+                    "type": "filesystem",
+                    "v": 1,
+                    "source": {
+                        "paths": ["/tmp"]
+                    },
+                    "target": {
+                        "type": "local_dir",
+                        "base_dir": "/tmp/out",
+                        "part_size_bytes": 1048576
+                    }
+                }
+            }
+        });
+
+        let decoded = serde_json::from_value::<HubToAgentMessageV1>(payload).expect("deserialize");
+        let HubToAgentMessageV1::Task { task, .. } = decoded else {
+            panic!("expected task");
+        };
+
+        assert!(task.source_driver.is_none());
+        assert!(task.target_driver.is_none());
+        assert!(task.target_capabilities.is_none());
+    }
+
+    #[test]
+    fn task_message_round_trip_keeps_driver_metadata() {
+        let msg = HubToAgentMessageV1::Task {
+            v: PROTOCOL_VERSION,
+            task_id: "task-1".to_string(),
+            task: Box::new(super::BackupRunTaskV1 {
+                run_id: "run-1".to_string(),
+                job_id: "job-1".to_string(),
+                started_at: 123,
+                spec: super::JobSpecResolvedV1::Sqlite {
+                    v: 1,
+                    pipeline: Default::default(),
+                    source: crate::job_spec::SqliteSource {
+                        path: "/tmp/db.sqlite3".to_string(),
+                        integrity_check: false,
+                    },
+                    target: super::TargetResolvedV1::LocalDir {
+                        base_dir: "/tmp/out".to_string(),
+                        part_size_bytes: 4096,
+                    },
+                },
+                source_driver: Some(DriverRefV1 {
+                    kind: "sqlite".to_string(),
+                    version: 1,
+                }),
+                target_driver: Some(DriverRefV1 {
+                    kind: "local_dir".to_string(),
+                    version: 1,
+                }),
+                target_capabilities: Some(TargetDriverCapabilitiesV1 {
+                    supports_archive_rolling_upload: true,
+                    supports_raw_tree_direct_upload: false,
+                    supports_cleanup_run: false,
+                    supports_restore_reader: true,
+                }),
+            }),
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let decoded = serde_json::from_str::<HubToAgentMessageV1>(&json).expect("deserialize");
+        let HubToAgentMessageV1::Task { task, .. } = decoded else {
+            panic!("expected task");
+        };
+
+        assert_eq!(
+            task.source_driver,
+            Some(DriverRefV1 {
+                kind: "sqlite".to_string(),
+                version: 1,
+            })
+        );
+        assert_eq!(
+            task.target_driver,
+            Some(DriverRefV1 {
+                kind: "local_dir".to_string(),
+                version: 1,
+            })
+        );
+        assert_eq!(
+            task.target_capabilities,
+            Some(TargetDriverCapabilitiesV1 {
+                supports_archive_rolling_upload: true,
+                supports_raw_tree_direct_upload: false,
+                supports_cleanup_run: false,
+                supports_restore_reader: true,
+            })
+        );
     }
 }

@@ -3,6 +3,7 @@ use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::Message;
 
 use bastion_core::agent_protocol::{AgentToHubMessageV1, PROTOCOL_VERSION};
+use bastion_driver_registry::builtins;
 
 use super::super::identity::AgentIdentityV1;
 
@@ -19,6 +20,45 @@ impl Drop for ConnectedGuard {
     fn drop(&mut self) {
         let _ = self.0.send(false);
     }
+}
+
+fn source_driver_entries() -> Vec<serde_json::Value> {
+    vec![
+        serde_json::json!({ "kind": "filesystem", "version": 1 }),
+        serde_json::json!({ "kind": "sqlite", "version": 1 }),
+        serde_json::json!({ "kind": "vaultwarden", "version": 1 }),
+    ]
+}
+
+fn target_driver_entries() -> Vec<serde_json::Value> {
+    let registry = builtins::target_registry();
+    let mut out = Vec::new();
+
+    for id in [
+        builtins::local_dir_driver_id(),
+        builtins::webdav_driver_id(),
+    ] {
+        let capabilities = registry
+            .target_capabilities(&id)
+            .ok()
+            .map(|caps| {
+                serde_json::json!({
+                    "supports_archive_rolling_upload": caps.supports_archive_rolling_upload,
+                    "supports_raw_tree_direct_upload": caps.supports_raw_tree_direct_upload,
+                    "supports_cleanup_run": caps.supports_cleanup_run,
+                    "supports_restore_reader": caps.supports_restore_reader,
+                })
+            })
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        out.push(serde_json::json!({
+            "kind": id.kind,
+            "version": id.version,
+            "capabilities": capabilities,
+        }));
+    }
+
+    out
 }
 
 pub(super) async fn send_hello<S>(
@@ -40,6 +80,10 @@ where
         capabilities: serde_json::json!({
             "backup": ["filesystem", "sqlite", "vaultwarden"],
             "control": ["fs_list"],
+            "drivers": {
+                "source": source_driver_entries(),
+                "target": target_driver_entries(),
+            }
         }),
     };
     tx.send(Message::Text(serde_json::to_string(&hello)?.into()))
@@ -153,6 +197,31 @@ mod tests {
                 );
                 assert!(capabilities.get("backup").is_some());
                 assert!(capabilities.get("control").is_some());
+
+                let source = capabilities
+                    .get("drivers")
+                    .and_then(|v| v.get("source"))
+                    .and_then(|v| v.as_array())
+                    .expect("source drivers");
+                assert!(source.iter().any(|entry| {
+                    entry.get("kind").and_then(|v| v.as_str()) == Some("filesystem")
+                        && entry.get("version").and_then(|v| v.as_u64()) == Some(1)
+                }));
+
+                let target = capabilities
+                    .get("drivers")
+                    .and_then(|v| v.get("target"))
+                    .and_then(|v| v.as_array())
+                    .expect("target drivers");
+                assert!(target.iter().any(|entry| {
+                    entry.get("kind").and_then(|v| v.as_str()) == Some("webdav")
+                        && entry.get("version").and_then(|v| v.as_u64()) == Some(1)
+                        && entry
+                            .get("capabilities")
+                            .and_then(|v| v.get("supports_archive_rolling_upload"))
+                            .and_then(|v| v.as_bool())
+                            == Some(true)
+                }));
             }
             other => anyhow::bail!("unexpected message: {other:?}"),
         }

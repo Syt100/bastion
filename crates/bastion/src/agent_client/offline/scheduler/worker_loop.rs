@@ -119,6 +119,9 @@ async fn execute_offline_run_task(
         job_id: task.job_id.clone(),
         started_at: started_at.unix_timestamp(),
         spec: task.spec.clone(),
+        source_driver: None,
+        target_driver: None,
+        target_capabilities: None,
     };
 
     let outcome =

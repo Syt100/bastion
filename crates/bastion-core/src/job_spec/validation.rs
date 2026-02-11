@@ -6,15 +6,26 @@ use super::types::{
     EncryptionV1, FilesystemSource, JobSpecV1, NotificationsModeV1, NotificationsV1, PipelineV1,
     RetentionPolicyV1, TargetV1, VaultwardenSource, WebdavRawTreeDirectModeV1,
 };
+use super::v2::{self, JOB_SPEC_VERSION_V2, JobSpecV2};
 use crate::manifest::ArtifactFormatV1;
 
 pub fn parse_value(spec: &serde_json::Value) -> Result<JobSpecV1, anyhow::Error> {
-    Ok(serde_json::from_value(spec.clone())?)
+    let canonical = v2::parse_canonical_value(spec)?;
+    v2::translate_v2_to_v1(&canonical)
 }
 
 pub fn validate_value(spec: &serde_json::Value) -> Result<(), anyhow::Error> {
-    let spec = parse_value(spec)?;
-    validate(&spec)
+    let canonical = v2::parse_canonical_value(spec)?;
+    validate_canonical(&canonical)
+}
+
+pub fn validate_canonical(spec: &JobSpecV2) -> Result<(), anyhow::Error> {
+    if spec.v != JOB_SPEC_VERSION_V2 {
+        anyhow::bail!("unsupported canonical job spec version");
+    }
+
+    let legacy = v2::translate_v2_to_v1(spec)?;
+    validate(&legacy)
 }
 
 pub fn validate(spec: &JobSpecV1) -> Result<(), anyhow::Error> {
@@ -415,6 +426,80 @@ mod tests {
           "retention": { "enabled": true, "keep_last": 3 }
         });
         validate_value(&spec).expect("valid");
+    }
+
+    #[test]
+    fn validate_value_accepts_v2_webdav_with_auth_refs() {
+        let spec = serde_json::json!({
+          "v": 2,
+          "pipeline": {
+            "format": "archive_v1"
+          },
+          "source": {
+            "type": "sqlite",
+            "version": 1,
+            "config": {
+              "path": "/tmp/db.sqlite3",
+              "integrity_check": false
+            }
+          },
+          "target": {
+            "type": "webdav",
+            "version": 1,
+            "config": {
+              "base_url": "https://example.invalid/backup",
+              "part_size_bytes": 1048576
+            },
+            "auth_refs": {
+              "webdav_credentials": {
+                "secret_type": "webdav",
+                "secret_name": "main"
+              }
+            }
+          }
+        });
+
+        validate_value(&spec).expect("valid");
+    }
+
+    #[test]
+    fn validate_value_rejects_v2_inline_target_credentials() {
+        let spec = serde_json::json!({
+          "v": 2,
+          "pipeline": {
+            "format": "archive_v1"
+          },
+          "source": {
+            "type": "sqlite",
+            "version": 1,
+            "config": {
+              "path": "/tmp/db.sqlite3",
+              "integrity_check": false
+            }
+          },
+          "target": {
+            "type": "webdav",
+            "version": 1,
+            "config": {
+              "base_url": "https://example.invalid/backup",
+              "username": "u",
+              "password": "p"
+            },
+            "auth_refs": {
+              "webdav_credentials": {
+                "secret_type": "webdav",
+                "secret_name": "main"
+              }
+            }
+          }
+        });
+
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string()
+                .contains("credentials must use target.auth_refs"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
