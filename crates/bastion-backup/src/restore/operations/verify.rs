@@ -9,7 +9,7 @@ use bastion_storage::secrets::SecretsCrypto;
 
 use super::super::engine::RestoreEngine;
 use super::super::sinks::LocalFsSink;
-use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
+use super::super::sources::{ArtifactSource, DriverSource, RunArtifactSource};
 use super::super::{ConflictPolicy, access, verify};
 use super::progress::{OperationProgressUpdate, spawn_operation_progress_writer};
 
@@ -33,14 +33,7 @@ pub(super) async fn verify_operation(
     tokio::fs::create_dir_all(&staging_dir).await?;
 
     let handle = tokio::runtime::Handle::current();
-    let source = match access {
-        access::TargetAccess::Webdav { client, run_url } => RunArtifactSource::Webdav(Box::new(
-            WebdavSource::new(handle.clone(), *client, run_url),
-        )),
-        access::TargetAccess::LocalDir { run_dir } => {
-            RunArtifactSource::Local(LocalDirSource::new(run_dir))
-        }
-    };
+    let source = RunArtifactSource::Driver(DriverSource::new(handle, access.reader()));
 
     let manifest = source.read_manifest().await?;
     operations_repo::append_event(

@@ -4,23 +4,21 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use sqlx::SqlitePool;
-use url::Url;
 use uuid::Uuid;
 
-use bastion_backup::restore::sources::{
-    ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource,
-};
+use bastion_backup::restore::sources::{ArtifactSource, DriverSource, RunArtifactSource};
 use bastion_core::HUB_NODE_ID;
 use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_core::job_spec;
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
-use bastion_driver_registry::{OpenReaderRequest, TargetRunReader, builtins};
+use bastion_driver_api::{OpenReaderRequest, TargetRunReader};
+use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime::{self, WebdavRuntimeAuth};
 use bastion_engine::agent_manager::AgentManager;
 use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::WebdavClient;
 
 use super::{
     ARTIFACT_STREAM_MAX_BYTES, ARTIFACT_STREAM_OPEN_TIMEOUT, ARTIFACT_STREAM_PULL_TIMEOUT,
@@ -31,16 +29,10 @@ pub(super) struct HubArtifactStream {
     pub(super) cleanup_dir: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone)]
-enum RunArtifactsLocation {
-    Webdav {
-        client: Box<WebdavClient>,
-        run_url: Url,
-    },
-    LocalDir {
-        node_id: String,
-        run_dir: PathBuf,
-    },
+#[derive(Clone)]
+struct RunArtifactsLocation {
+    node_id: String,
+    reader: Arc<dyn TargetRunReader>,
 }
 
 fn target_ref(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {
@@ -57,12 +49,8 @@ async fn resolve_target_config_for_reader(
     node_id: &str,
     target: &job_spec::TargetV1,
 ) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
-    match target {
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } => {
+    let webdav_auth = match target {
+        job_spec::TargetV1::Webdav { secret_name, .. } => {
             let secret_name = secret_name.trim();
             if secret_name.is_empty() {
                 anyhow::bail!("webdav.secret_name is required");
@@ -72,28 +60,17 @@ async fn resolve_target_config_for_reader(
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
+            Some(WebdavRuntimeAuth {
+                username: credentials.username,
+                password: credentials.password,
+                secret_name: Some(secret_name.to_string()),
+            })
+        }
+        job_spec::TargetV1::LocalDir { .. } => None,
+    };
 
-            Ok((
-                builtins::webdav_driver_id(),
-                serde_json::json!({
-                    "base_url": base_url,
-                    "username": credentials.username,
-                    "password": credentials.password,
-                    "secret_name": secret_name,
-                }),
-            ))
-        }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => {
-            let base_dir = base_dir.trim();
-            if base_dir.is_empty() {
-                anyhow::bail!("local_dir.base_dir is required");
-            }
-            Ok((
-                builtins::local_dir_driver_id(),
-                serde_json::json!({ "base_dir": base_dir }),
-            ))
-        }
-    }
+    target_runtime::runtime_input_for_job_target(target, webdav_auth.as_ref())
+        .map_err(anyhow::Error::new)
 }
 
 async fn resolve_run_artifacts_location(
@@ -133,14 +110,7 @@ async fn resolve_run_artifacts_location(
         },
     )?;
 
-    match reader {
-        TargetRunReader::Webdav { client, run_url } => {
-            Ok(RunArtifactsLocation::Webdav { client, run_url })
-        }
-        TargetRunReader::LocalDir { run_dir } => {
-            Ok(RunArtifactsLocation::LocalDir { node_id, run_dir })
-        }
-    }
+    Ok(RunArtifactsLocation { node_id, reader })
 }
 
 fn artifact_stream_staging_dir(data_dir: &Path, op_id: &str, stream_id: Uuid) -> PathBuf {
@@ -189,154 +159,182 @@ pub(super) async fn open_hub_artifact_stream(
     let location = resolve_run_artifacts_location(db, secrets, run_id).await?;
 
     match artifact {
-        "payload" => match location {
-            RunArtifactsLocation::LocalDir { node_id, run_dir } if node_id == HUB_NODE_ID => {
-                let source = RunArtifactSource::Local(LocalDirSource::new(run_dir));
-                let manifest = source.read_manifest().await?;
-                let size = Some(manifest.artifacts.iter().map(|p| p.size).sum::<u64>());
-
-                let reader = source.open_payload_reader(&manifest, data_dir)?;
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: None,
-                    },
-                    size,
-                ))
-            }
-            RunArtifactsLocation::LocalDir { node_id, run_dir } => {
+        "payload" => {
+            if let Some(run_dir) = location.reader.local_run_dir()
+                && location.node_id != HUB_NODE_ID
+            {
                 let manifest =
-                    read_agent_manifest(agent_manager, &node_id, op_id, run_id, &run_dir).await?;
+                    read_agent_manifest(agent_manager, &location.node_id, op_id, run_id, &run_dir)
+                        .await?;
                 let size = Some(manifest.artifacts.iter().map(|p| p.size).sum::<u64>());
 
                 let reader = RemoteAgentPartsReader::new(
                     tokio::runtime::Handle::current(),
                     agent_manager.clone(),
-                    node_id,
+                    location.node_id,
                     op_id.to_string(),
                     run_id.to_string(),
                     run_dir,
                     manifest,
                 );
 
-                Ok((
+                return Ok((
                     HubArtifactStream {
                         reader: Arc::new(Mutex::new(Box::new(reader))),
                         cleanup_dir: None,
                     },
                     size,
-                ))
+                ));
             }
-            RunArtifactsLocation::Webdav { client, run_url } => {
-                let handle = tokio::runtime::Handle::current();
-                let source = RunArtifactSource::Webdav(Box::new(WebdavSource::new(
-                    handle.clone(),
-                    *client,
-                    run_url,
-                )));
-                let manifest = source.read_manifest().await?;
-                let size = Some(manifest.artifacts.iter().map(|p| p.size).sum::<u64>());
 
+            let has_local_dir = location.reader.local_run_dir().is_some();
+            let handle = tokio::runtime::Handle::current();
+            let source = RunArtifactSource::Driver(DriverSource::new(handle, location.reader));
+            let manifest = source.read_manifest().await?;
+            let size = Some(manifest.artifacts.iter().map(|p| p.size).sum::<u64>());
+
+            let (reader, cleanup_dir) = if has_local_dir {
+                (source.open_payload_reader(&manifest, data_dir)?, None)
+            } else {
                 let staging_dir = artifact_stream_staging_dir(data_dir, op_id, stream_id);
                 tokio::fs::create_dir_all(&staging_dir).await?;
+                (
+                    source.open_payload_reader(&manifest, &staging_dir)?,
+                    Some(staging_dir),
+                )
+            };
 
-                let reader = source.open_payload_reader(&manifest, &staging_dir)?;
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: Some(staging_dir),
-                    },
-                    size,
-                ))
-            }
-        },
-        MANIFEST_NAME | COMPLETE_NAME => match location {
-            RunArtifactsLocation::LocalDir { node_id, run_dir } if node_id == HUB_NODE_ID => {
+            Ok((
+                HubArtifactStream {
+                    reader: Arc::new(Mutex::new(reader)),
+                    cleanup_dir,
+                },
+                size,
+            ))
+        }
+        MANIFEST_NAME | COMPLETE_NAME => {
+            if let Some(run_dir) = location.reader.local_run_dir() {
                 let path = run_dir.join(artifact);
-                let (reader, size) = open_local_file_reader(path).await?;
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: None,
-                    },
-                    Some(size),
-                ))
-            }
-            RunArtifactsLocation::LocalDir { node_id, run_dir } => {
-                let (reader, size) = {
-                    let path = run_dir.join(artifact);
-                    open_agent_file_reader(agent_manager, &node_id, op_id, run_id, artifact, &path)
-                        .await?
-                };
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: None,
-                    },
-                    size,
-                ))
-            }
-            RunArtifactsLocation::Webdav { client, run_url } => {
-                let url = run_url.join(artifact)?;
-                let bytes = client.get_bytes(&url).await?;
-                let size = Some(bytes.len() as u64);
-                let reader = std::io::Cursor::new(bytes);
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(Box::new(reader))),
-                        cleanup_dir: None,
-                    },
-                    size,
-                ))
-            }
-        },
-        ENTRIES_INDEX_NAME => match location {
-            RunArtifactsLocation::LocalDir { node_id, run_dir } if node_id == HUB_NODE_ID => {
-                let path = run_dir.join(ENTRIES_INDEX_NAME);
-                let (reader, size) = open_local_file_reader(path).await?;
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: None,
-                    },
-                    Some(size),
-                ))
-            }
-            RunArtifactsLocation::LocalDir { node_id, run_dir } => {
-                let path = run_dir.join(ENTRIES_INDEX_NAME);
+                if location.node_id == HUB_NODE_ID {
+                    let (reader, size) = open_local_file_reader(path).await?;
+                    return Ok((
+                        HubArtifactStream {
+                            reader: Arc::new(Mutex::new(reader)),
+                            cleanup_dir: None,
+                        },
+                        Some(size),
+                    ));
+                }
+
                 let (reader, size) = open_agent_file_reader(
                     agent_manager,
-                    &node_id,
+                    &location.node_id,
+                    op_id,
+                    run_id,
+                    artifact,
+                    &path,
+                )
+                .await?;
+                return Ok((
+                    HubArtifactStream {
+                        reader: Arc::new(Mutex::new(reader)),
+                        cleanup_dir: None,
+                    },
+                    size,
+                ));
+            }
+
+            let bytes = location.reader.read_bytes(artifact.to_string()).await?;
+            let size = Some(bytes.len() as u64);
+            let reader = std::io::Cursor::new(bytes);
+            Ok((
+                HubArtifactStream {
+                    reader: Arc::new(Mutex::new(Box::new(reader))),
+                    cleanup_dir: None,
+                },
+                size,
+            ))
+        }
+        ENTRIES_INDEX_NAME => {
+            if let Some(run_dir) = location.reader.local_run_dir() {
+                let path = run_dir.join(ENTRIES_INDEX_NAME);
+                if location.node_id == HUB_NODE_ID {
+                    let (reader, size) = open_local_file_reader(path).await?;
+                    return Ok((
+                        HubArtifactStream {
+                            reader: Arc::new(Mutex::new(reader)),
+                            cleanup_dir: None,
+                        },
+                        Some(size),
+                    ));
+                }
+
+                let (reader, size) = open_agent_file_reader(
+                    agent_manager,
+                    &location.node_id,
                     op_id,
                     run_id,
                     ENTRIES_INDEX_NAME,
                     &path,
                 )
                 .await?;
-                Ok((
+                return Ok((
                     HubArtifactStream {
                         reader: Arc::new(Mutex::new(reader)),
                         cleanup_dir: None,
                     },
                     size,
-                ))
+                ));
             }
-            RunArtifactsLocation::Webdav { client, run_url } => {
-                let url = run_url.join(ENTRIES_INDEX_NAME)?;
-                let staging_dir = artifact_stream_staging_dir(data_dir, op_id, stream_id);
-                tokio::fs::create_dir_all(&staging_dir).await?;
-                let dest = staging_dir.join(ENTRIES_INDEX_NAME);
-                let size = client.get_to_file(&url, &dest, None, 3).await?;
-                let (reader, _) = open_local_file_reader(dest).await?;
-                Ok((
-                    HubArtifactStream {
-                        reader: Arc::new(Mutex::new(reader)),
-                        cleanup_dir: Some(staging_dir),
-                    },
-                    Some(size),
-                ))
-            }
-        },
+
+            let staging_dir = artifact_stream_staging_dir(data_dir, op_id, stream_id);
+            tokio::fs::create_dir_all(&staging_dir).await?;
+            let dest = staging_dir.join(ENTRIES_INDEX_NAME);
+            let expected = location
+                .reader
+                .head_size(ENTRIES_INDEX_NAME.to_string())
+                .await?;
+            let size = if let Some(expected_size) = expected {
+                if let Ok(meta) = tokio::fs::metadata(&dest).await {
+                    if meta.len() == expected_size {
+                        expected_size
+                    } else {
+                        location
+                            .reader
+                            .get_to_file(
+                                ENTRIES_INDEX_NAME.to_string(),
+                                dest.clone(),
+                                Some(expected_size),
+                                3,
+                            )
+                            .await?
+                    }
+                } else {
+                    location
+                        .reader
+                        .get_to_file(
+                            ENTRIES_INDEX_NAME.to_string(),
+                            dest.clone(),
+                            Some(expected_size),
+                            3,
+                        )
+                        .await?
+                }
+            } else {
+                location
+                    .reader
+                    .get_to_file(ENTRIES_INDEX_NAME.to_string(), dest.clone(), None, 3)
+                    .await?
+            };
+            let (reader, _) = open_local_file_reader(dest).await?;
+            Ok((
+                HubArtifactStream {
+                    reader: Arc::new(Mutex::new(reader)),
+                    cleanup_dir: Some(staging_dir),
+                },
+                Some(size),
+            ))
+        }
         other => anyhow::bail!("unsupported artifact: {}", other),
     }
 }

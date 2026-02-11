@@ -1,35 +1,41 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bastion_core::HUB_NODE_ID;
 use sqlx::SqlitePool;
 use tracing::debug;
-use url::Url;
 
 use bastion_core::job_spec;
-use bastion_driver_registry::{OpenReaderRequest, TargetRunReader, builtins};
+use bastion_driver_api::{OpenReaderRequest, TargetRunReader};
+use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime::{self, WebdavRuntimeAuth};
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::WebdavClient;
 
-fn redact_url(url: &Url) -> String {
-    let mut redacted = url.clone();
-    let _ = redacted.set_username("");
-    let _ = redacted.set_password(None);
-    redacted.set_query(None);
-    redacted.set_fragment(None);
-    redacted.to_string()
+pub(super) struct TargetAccess {
+    node_id: String,
+    reader: Arc<dyn TargetRunReader>,
 }
 
-#[derive(Debug)]
-pub(super) enum TargetAccess {
-    Webdav {
-        client: Box<WebdavClient>,
-        run_url: Url,
-    },
-    LocalDir {
-        run_dir: PathBuf,
-    },
+impl std::fmt::Debug for TargetAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TargetAccess")
+            .field("node_id", &self.node_id)
+            .field("target_kind", &self.reader.target_kind())
+            .field("location", &self.reader.describe_location())
+            .finish()
+    }
+}
+
+impl TargetAccess {
+    pub(super) fn reader(&self) -> Arc<dyn TargetRunReader> {
+        self.reader.clone()
+    }
+
+    pub(super) fn local_run_dir(&self) -> Option<PathBuf> {
+        self.reader.local_run_dir()
+    }
 }
 
 pub(super) struct ResolvedRunAccess {
@@ -77,32 +83,28 @@ async fn resolve_target_config_for_reader(
     node_id: &str,
     target: &job_spec::TargetV1,
 ) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
-    match target {
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } => {
+    let webdav_auth = match target {
+        job_spec::TargetV1::Webdav { secret_name, .. } => {
+            let secret_name = secret_name.trim();
+            if secret_name.is_empty() {
+                anyhow::bail!("webdav.secret_name is required");
+            }
+
             let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
-
-            Ok((
-                builtins::webdav_driver_id(),
-                serde_json::json!({
-                    "base_url": base_url,
-                    "username": credentials.username,
-                    "password": credentials.password,
-                    "secret_name": secret_name,
-                }),
-            ))
+            Some(WebdavRuntimeAuth {
+                username: credentials.username,
+                password: credentials.password,
+                secret_name: Some(secret_name.to_string()),
+            })
         }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => Ok((
-            builtins::local_dir_driver_id(),
-            serde_json::json!({ "base_dir": base_dir }),
-        )),
-    }
+        job_spec::TargetV1::LocalDir { .. } => None,
+    };
+
+    target_runtime::runtime_input_for_job_target(target, webdav_auth.as_ref())
+        .map_err(anyhow::Error::new)
 }
 
 async fn open_target_access(
@@ -125,59 +127,25 @@ async fn open_target_access(
         },
     )?;
 
-    match reader {
-        TargetRunReader::Webdav { client, run_url } => {
-            let mut base_url = run_url.clone();
-            {
-                let mut segs = base_url
-                    .path_segments_mut()
-                    .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
-                segs.pop_if_empty();
-                segs.pop();
-                segs.pop();
-            }
-            if !base_url.path().ends_with('/') {
-                base_url.set_path(&format!("{}/", base_url.path()));
-            }
+    debug!(
+        job_id = %job_id,
+        run_id = %run_id,
+        node_id = %node_id,
+        target = %reader.target_kind(),
+        location = %reader.describe_location(),
+        "resolved restore target access"
+    );
 
-            debug!(
-                job_id = %job_id,
-                run_id = %run_id,
-                target = "webdav",
-                base_url = %redact_url(&base_url),
-                run_url = %redact_url(&run_url),
-                "resolved restore target access"
-            );
-            Ok(TargetAccess::Webdav { client, run_url })
-        }
-        TargetRunReader::LocalDir { run_dir } => {
-            debug!(
-                job_id = %job_id,
-                run_id = %run_id,
-                target = "local_dir",
-                run_dir = %run_dir.display(),
-                "resolved restore target access"
-            );
-            Ok(TargetAccess::LocalDir { run_dir })
-        }
-    }
+    Ok(TargetAccess {
+        node_id: node_id.to_string(),
+        reader,
+    })
 }
 
 pub(super) async fn ensure_complete(access: &TargetAccess) -> Result<(), anyhow::Error> {
-    match access {
-        TargetAccess::Webdav { client, run_url } => {
-            let url = run_url.join(crate::backup::COMPLETE_NAME)?;
-            let exists = client.head_size(&url).await?.is_some();
-            if !exists {
-                anyhow::bail!("complete.json not found");
-            }
-        }
-        TargetAccess::LocalDir { run_dir } => {
-            let path = run_dir.join(crate::backup::COMPLETE_NAME);
-            if !path.exists() {
-                anyhow::bail!("complete.json not found");
-            }
-        }
+    let exists = access.reader.complete_exists().await?;
+    if !exists {
+        anyhow::bail!("complete.json not found");
     }
     Ok(())
 }
@@ -187,22 +155,8 @@ mod tests {
     use tempfile::TempDir;
 
     use bastion_storage::{db, jobs_repo, runs_repo, secrets::SecretsCrypto};
-    use url::Url;
 
-    use super::{TargetAccess, ensure_complete, redact_url, resolve_success_run_access};
-
-    #[test]
-    fn redact_url_strips_credentials_query_and_fragment() {
-        let url =
-            Url::parse("https://user:pass@example.com/base/path?q=1#frag").expect("parse url");
-        let redacted = redact_url(&url);
-        let parsed = Url::parse(&redacted).expect("parse redacted");
-        assert_eq!(parsed.username(), "");
-        assert!(parsed.password().is_none());
-        assert!(parsed.query().is_none());
-        assert!(parsed.fragment().is_none());
-        assert_eq!(parsed.path(), "/base/path");
-    }
+    use super::{TargetAccess, ensure_complete, resolve_success_run_access};
 
     #[tokio::test]
     async fn ensure_complete_local_dir_requires_complete_marker() {
@@ -210,9 +164,24 @@ mod tests {
         let run_dir = tmp.path().join("job1").join("run1");
         std::fs::create_dir_all(&run_dir).unwrap();
 
-        let err = ensure_complete(&TargetAccess::LocalDir { run_dir })
-            .await
-            .unwrap_err();
+        let reader = bastion_driver_registry::builtins::target_registry()
+            .open_reader(
+                &bastion_driver_registry::builtins::local_dir_driver_id(),
+                bastion_driver_api::OpenReaderRequest {
+                    job_id: "job1".to_string(),
+                    run_id: "run1".to_string(),
+                    target_config: serde_json::json!({
+                        "base_dir": tmp.path().to_string_lossy().to_string(),
+                    }),
+                },
+            )
+            .expect("open reader");
+
+        let access = TargetAccess {
+            node_id: bastion_core::HUB_NODE_ID.to_string(),
+            reader,
+        };
+        let err = ensure_complete(&access).await.unwrap_err();
         assert!(format!("{err:#}").contains("complete.json not found"));
     }
 
@@ -262,12 +231,7 @@ mod tests {
             .await
             .unwrap();
 
-        match resolved.access {
-            TargetAccess::LocalDir { run_dir: got } => {
-                assert_eq!(got, run_dir);
-            }
-            _ => panic!("unexpected access variant"),
-        }
+        assert_eq!(resolved.access.local_run_dir(), Some(run_dir));
         assert_eq!(resolved.run.id, run.id);
     }
 

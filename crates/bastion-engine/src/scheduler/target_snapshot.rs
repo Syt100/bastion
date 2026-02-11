@@ -1,12 +1,14 @@
 use bastion_core::job_spec;
-use bastion_driver_api::DriverId;
 use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime;
 
 pub(super) fn build_run_target_snapshot(
     node_id: &str,
     spec: &job_spec::JobSpecV1,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let (driver_id, target_config) = resolve_target_driver_input(spec)?;
+    let (driver_id, target_config) =
+        target_runtime::snapshot_input_for_job_target(extract_target(spec))
+            .map_err(anyhow::Error::new)?;
     let target_snapshot =
         builtins::target_registry().snapshot_redacted(&driver_id, &target_config)?;
 
@@ -14,30 +16,6 @@ pub(super) fn build_run_target_snapshot(
         "node_id": node_id,
         "target": target_snapshot,
     }))
-}
-
-fn resolve_target_driver_input(
-    spec: &job_spec::JobSpecV1,
-) -> Result<(DriverId, serde_json::Value), anyhow::Error> {
-    let target = extract_target(spec);
-
-    match target {
-        job_spec::TargetV1::LocalDir { base_dir, .. } => Ok((
-            builtins::local_dir_driver_id(),
-            serde_json::json!({ "base_dir": base_dir }),
-        )),
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } => Ok((
-            builtins::webdav_driver_id(),
-            serde_json::json!({
-                "base_url": base_url,
-                "secret_name": secret_name,
-            }),
-        )),
-    }
 }
 
 fn extract_target(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {

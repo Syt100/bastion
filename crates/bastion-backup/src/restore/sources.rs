@@ -3,9 +3,11 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::Arc;
 
 use bastion_core::backup_format::{ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
+use bastion_driver_api::TargetRunReader;
 use bastion_targets::WebdavClient;
 use tokio::runtime::Handle;
 use url::Url;
@@ -34,7 +36,19 @@ pub trait ArtifactSource: Send {
     ) -> Result<Box<dyn Read + Send>, anyhow::Error>;
 }
 
+pub struct DriverSource {
+    handle: Handle,
+    reader: Arc<dyn TargetRunReader>,
+}
+
+impl DriverSource {
+    pub fn new(handle: Handle, reader: Arc<dyn TargetRunReader>) -> Self {
+        Self { handle, reader }
+    }
+}
+
 pub enum RunArtifactSource {
+    Driver(DriverSource),
     Local(LocalDirSource),
     Webdav(Box<WebdavSource>),
 }
@@ -44,6 +58,7 @@ impl ArtifactSource for RunArtifactSource {
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<ManifestV1, anyhow::Error>> + Send + '_>> {
         match self {
+            Self::Driver(s) => s.read_manifest(),
             Self::Local(s) => s.read_manifest(),
             Self::Webdav(s) => s.read_manifest(),
         }
@@ -54,6 +69,7 @@ impl ArtifactSource for RunArtifactSource {
         staging_dir: &Path,
     ) -> Pin<Box<dyn Future<Output = Result<PathBuf, anyhow::Error>> + Send + '_>> {
         match self {
+            Self::Driver(s) => s.fetch_entries_index(staging_dir),
             Self::Local(s) => s.fetch_entries_index(staging_dir),
             Self::Webdav(s) => s.fetch_entries_index(staging_dir),
         }
@@ -65,6 +81,7 @@ impl ArtifactSource for RunArtifactSource {
         staging_dir: &Path,
     ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         match self {
+            Self::Driver(s) => s.open_payload_reader(manifest, staging_dir),
             Self::Local(s) => s.open_payload_reader(manifest, staging_dir),
             Self::Webdav(s) => s.open_payload_reader(manifest, staging_dir),
         }
@@ -77,11 +94,145 @@ impl ArtifactSource for RunArtifactSource {
         staging_dir: &Path,
     ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
         match self {
+            Self::Driver(s) => {
+                s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir)
+            }
             Self::Local(s) => s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir),
             Self::Webdav(s) => {
                 s.open_raw_tree_file_reader(archive_path, expected_size, staging_dir)
             }
         }
+    }
+}
+
+impl ArtifactSource for DriverSource {
+    fn read_manifest(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<ManifestV1, anyhow::Error>> + Send + '_>> {
+        Box::pin(async move {
+            let bytes = self.reader.read_bytes(MANIFEST_NAME.to_string()).await?;
+            Ok(serde_json::from_slice::<ManifestV1>(&bytes)?)
+        })
+    }
+
+    fn fetch_entries_index(
+        &self,
+        staging_dir: &Path,
+    ) -> Pin<Box<dyn Future<Output = Result<PathBuf, anyhow::Error>> + Send + '_>> {
+        let staging_dir = staging_dir.to_path_buf();
+        Box::pin(async move {
+            if let Some(run_dir) = self.reader.local_run_dir() {
+                return Ok(run_dir.join(ENTRIES_INDEX_NAME));
+            }
+
+            let dst = staging_dir.join(ENTRIES_INDEX_NAME);
+            let expected = self
+                .reader
+                .head_size(ENTRIES_INDEX_NAME.to_string())
+                .await?;
+            if let Some(size) = expected
+                && let Ok(meta) = tokio::fs::metadata(&dst).await
+                && meta.len() == size
+            {
+                return Ok(dst);
+            }
+
+            self.reader
+                .get_to_file(ENTRIES_INDEX_NAME.to_string(), dst.clone(), expected, 3)
+                .await?;
+            Ok(dst)
+        })
+    }
+
+    fn open_payload_reader(
+        &self,
+        manifest: &ManifestV1,
+        staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
+        if let Some(run_dir) = self.reader.local_run_dir() {
+            return Ok(Box::new(VerifiedPartsReader::new_local(
+                manifest
+                    .artifacts
+                    .iter()
+                    .map(|p| PartSpec {
+                        name: p.name.clone(),
+                        expected_size: p.size,
+                        expected_hash_alg: p.hash_alg.clone(),
+                        expected_hash: p.hash.clone(),
+                        source: PartSource::Local {
+                            path: run_dir.join(&p.name),
+                        },
+                    })
+                    .collect(),
+            )));
+        }
+
+        std::fs::create_dir_all(staging_dir)?;
+        Ok(Box::new(VerifiedPartsReader::new_driver(
+            self.handle.clone(),
+            self.reader.clone(),
+            manifest
+                .artifacts
+                .iter()
+                .map(|p| PartSpec {
+                    name: p.name.clone(),
+                    expected_size: p.size,
+                    expected_hash_alg: p.hash_alg.clone(),
+                    expected_hash: p.hash.clone(),
+                    source: PartSource::Driver {
+                        artifact: p.name.clone(),
+                        dest: staging_dir.join(&p.name),
+                    },
+                })
+                .collect(),
+        )))
+    }
+
+    fn open_raw_tree_file_reader(
+        &self,
+        archive_path: &str,
+        expected_size: u64,
+        staging_dir: &Path,
+    ) -> Result<Box<dyn Read + Send>, anyhow::Error> {
+        if let Some(run_dir) = self.reader.local_run_dir() {
+            let path = raw_tree_data_path(&run_dir, archive_path);
+            let actual = std::fs::metadata(&path)?.len();
+            if actual != expected_size {
+                anyhow::bail!(
+                    "raw-tree file size mismatch for {}: expected {}, got {}",
+                    archive_path,
+                    expected_size,
+                    actual
+                );
+            }
+            return Ok(Box::new(std::fs::File::open(path)?));
+        }
+
+        std::fs::create_dir_all(staging_dir)?;
+        let raw_dir = staging_dir.join("raw_tree");
+        std::fs::create_dir_all(&raw_dir)?;
+
+        let digest = blake3::hash(archive_path.as_bytes()).to_hex().to_string();
+        let dst = raw_dir.join(format!("{digest}.bin"));
+
+        if let Ok(meta) = std::fs::metadata(&dst)
+            && meta.len() == expected_size
+        {
+            return Ok(Box::new(std::fs::File::open(dst)?));
+        }
+
+        let artifact = raw_tree_data_artifact_path(archive_path);
+        let reader = self.reader.clone();
+        let dst_for_get = dst.clone();
+        self.handle
+            .block_on(async move {
+                reader
+                    .get_to_file(artifact, dst_for_get, Some(expected_size), 3)
+                    .await
+            })
+            .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+
+        Ok(Box::new(std::fs::File::open(dst)?))
     }
 }
 
@@ -267,9 +418,29 @@ impl ArtifactSource for WebdavSource {
     }
 }
 
+fn raw_tree_segments(archive_path: &str) -> Vec<String> {
+    archive_path
+        .trim()
+        .trim_matches('/')
+        .split('/')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn raw_tree_data_artifact_path(archive_path: &str) -> String {
+    let segments = raw_tree_segments(archive_path);
+    if segments.is_empty() {
+        "data".to_string()
+    } else {
+        format!("data/{}", segments.join("/"))
+    }
+}
+
 fn raw_tree_data_path(run_dir: &Path, archive_path: &str) -> PathBuf {
     let mut out = run_dir.join("data");
-    for seg in archive_path.split('/').filter(|s| !s.is_empty()) {
+    for seg in raw_tree_segments(archive_path) {
         out.push(seg);
     }
     out
@@ -283,14 +454,8 @@ fn raw_tree_data_url(run_url: &Url, archive_path: &str) -> Result<Url, anyhow::E
             .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
         segs.pop_if_empty();
         segs.push("data");
-        for part in archive_path
-            .trim()
-            .trim_matches('/')
-            .split('/')
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-        {
-            segs.push(part);
+        for part in raw_tree_segments(archive_path) {
+            segs.push(&part);
         }
     }
     Ok(url)
@@ -298,7 +463,7 @@ fn raw_tree_data_url(run_url: &Url, archive_path: &str) -> Result<Url, anyhow::E
 
 #[cfg(test)]
 mod tests {
-    use super::{raw_tree_data_path, raw_tree_data_url};
+    use super::{raw_tree_data_artifact_path, raw_tree_data_path, raw_tree_data_url};
 
     use std::path::Path;
 
@@ -315,6 +480,13 @@ mod tests {
             raw_tree_data_path(run_dir, "/a//b/"),
             Path::new("/tmp/run/data/a/b")
         );
+    }
+
+    #[test]
+    fn raw_tree_data_artifact_path_normalizes_segments() {
+        assert_eq!(raw_tree_data_artifact_path("a/b/c.txt"), "data/a/b/c.txt");
+        assert_eq!(raw_tree_data_artifact_path("  /a//b/  "), "data/a/b");
+        assert_eq!(raw_tree_data_artifact_path(" / "), "data");
     }
 
     #[test]
@@ -340,6 +512,7 @@ mod tests {
 enum PartSource {
     Local { path: PathBuf },
     Webdav { url: Url, dest: PathBuf },
+    Driver { artifact: String, dest: PathBuf },
 }
 
 #[derive(Debug, Clone)]
@@ -365,7 +538,8 @@ struct ActivePart {
 
 struct VerifiedPartsReader {
     handle: Option<Handle>,
-    client: Option<WebdavClient>,
+    webdav_client: Option<WebdavClient>,
+    driver_reader: Option<Arc<dyn TargetRunReader>>,
     parts: Vec<PartSpec>,
     next_index: usize,
     current: Option<ActivePart>,
@@ -375,7 +549,8 @@ impl VerifiedPartsReader {
     fn new_local(parts: Vec<PartSpec>) -> Self {
         Self {
             handle: None,
-            client: None,
+            webdav_client: None,
+            driver_reader: None,
             parts,
             next_index: 0,
             current: None,
@@ -385,7 +560,19 @@ impl VerifiedPartsReader {
     fn new_webdav(handle: Handle, client: WebdavClient, parts: Vec<PartSpec>) -> Self {
         Self {
             handle: Some(handle),
-            client: Some(client),
+            webdav_client: Some(client),
+            driver_reader: None,
+            parts,
+            next_index: 0,
+            current: None,
+        }
+    }
+
+    fn new_driver(handle: Handle, reader: Arc<dyn TargetRunReader>, parts: Vec<PartSpec>) -> Self {
+        Self {
+            handle: Some(handle),
+            webdav_client: None,
+            driver_reader: Some(reader),
             parts,
             next_index: 0,
             current: None,
@@ -424,7 +611,7 @@ impl VerifiedPartsReader {
                     .ok_or_else(|| io::Error::other("missing tokio handle"))?
                     .clone();
                 let client = self
-                    .client
+                    .webdav_client
                     .as_ref()
                     .ok_or_else(|| io::Error::other("missing webdav client"))?
                     .clone();
@@ -436,6 +623,35 @@ impl VerifiedPartsReader {
                 } else {
                     handle
                         .block_on(client.get_to_file(&url, &dest, Some(expected_size), 3))
+                        .map_err(|e| io::Error::other(e.to_string()))?;
+                    (std::fs::File::open(&dest)?, Some(dest))
+                }
+            }
+            PartSource::Driver { artifact, dest } => {
+                let expected_size = spec.expected_size;
+                let handle = self
+                    .handle
+                    .as_ref()
+                    .ok_or_else(|| io::Error::other("missing tokio handle"))?
+                    .clone();
+                let reader = self
+                    .driver_reader
+                    .as_ref()
+                    .ok_or_else(|| io::Error::other("missing driver reader"))?
+                    .clone();
+
+                if let Ok(meta) = std::fs::metadata(&dest)
+                    && meta.len() == expected_size
+                {
+                    (std::fs::File::open(&dest)?, Some(dest))
+                } else {
+                    handle
+                        .block_on(reader.get_to_file(
+                            artifact,
+                            dest.clone(),
+                            Some(expected_size),
+                            3,
+                        ))
                         .map_err(|e| io::Error::other(e.to_string()))?;
                     (std::fs::File::open(&dest)?, Some(dest))
                 }

@@ -5,9 +5,12 @@ registry + planner architecture.
 
 ## Key modules
 
-- `crates/bastion-driver-api`: shared driver contracts and capability model.
+- `crates/bastion-driver-api`: shared driver contracts and capability model, including
+  `TargetDriver::open_reader` and `TargetRunReader` reader contract.
 - `crates/bastion-driver-registry`: driver registration, target lifecycle (`open_writer`,
   `open_reader`, `cleanup_run`, `snapshot_redacted`) and built-in adapters.
+- `crates/bastion-driver-registry/src/target_runtime.rs`: shared runtime mapping helpers from
+  target specs/resolved targets to `(DriverId, target_config)`.
 - `crates/bastion-core/src/execution_planner.rs`: capability-based deterministic planner.
 - `crates/bastion-engine/src/scheduler/worker/execute/`: Hub runtime planner integration.
 - `crates/bastion/src/agent_client/tasks/`: Agent runtime planner integration.
@@ -19,16 +22,43 @@ registry + planner architecture.
      `crates/bastion-driver-registry/src/builtins.rs` (or your target registry module).
 2. **Implement lifecycle behavior**
    - Implement `TargetDriver::store_run`, `cleanup_run`, and `snapshot_redacted`.
-   - Expose reader wiring via registry `open_reader` so restore and artifact stream use the same
-     path.
-3. **Keep snapshots redacted**
+3. **Implement reader contract in the driver**
+   - Implement `TargetDriver::open_reader` and return a `TargetRunReader` implementation.
+   - Reader methods must cover:
+     - `complete_exists`
+     - `read_bytes`
+     - `head_size`
+     - `get_to_file`
+     - optional `local_run_dir` hint for node-local fast paths.
+4. **Keep snapshots redacted**
    - `snapshot_redacted` output MUST not include raw credentials.
    - Persisted run snapshot shape stays `{ node_id, target }`.
-4. **Ensure planner compatibility**
+5. **Ensure planner compatibility**
    - Set capability flags so planner can choose direct/rolling/staged modes safely.
-5. **Add tests**
+6. **Add tests**
    - Add/extend `driver_contract_*` tests in `bastion-driver-registry`.
    - Extend planner matrix tests for supported source-target-format combinations.
+
+## Shared runtime target config mapping
+
+Use shared helpers in `crates/bastion-driver-registry/src/target_runtime.rs` instead of
+hand-written per-module mapping:
+
+- `runtime_input_for_job_target(...)`
+- `runtime_input_for_resolved_target(...)`
+- `snapshot_input_for_job_target(...)`
+- `driver_id_for_job_target(...)`
+
+This keeps Hub store, Agent store, planner mapping, snapshot generation, restore reader open, and
+artifact stream reader open consistent when new targets are added.
+
+## Restore and artifact stream integration
+
+- Restore and run-entry index APIs read artifacts through `TargetRunReader` contract methods.
+- Hub artifact stream uses the same reader contract and only keeps a local-agent fast path branch
+  when a reader exposes `local_run_dir` and the run is on a remote agent.
+- For non-local readers, stream/restore paths use `head_size + get_to_file` semantics for large
+  index/payload artifacts.
 
 ## Add a new source driver
 

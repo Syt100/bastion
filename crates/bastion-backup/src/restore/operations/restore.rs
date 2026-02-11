@@ -12,7 +12,7 @@ use bastion_storage::secrets_repo;
 use super::super::engine::RestoreEngine;
 use super::super::raw_tree;
 use super::super::sinks::{LocalFsSink, WebdavSink};
-use super::super::sources::{ArtifactSource, LocalDirSource, RunArtifactSource, WebdavSource};
+use super::super::sources::{ArtifactSource, DriverSource, RunArtifactSource};
 use super::super::{ConflictPolicy, RestoreDestination, RestoreSelection, access};
 use super::progress::{OperationProgressUpdate, spawn_operation_progress_writer};
 use bastion_core::HUB_NODE_ID;
@@ -59,14 +59,7 @@ pub(super) async fn restore_operation(
     tokio::fs::create_dir_all(op_dir.join("staging")).await?;
 
     let handle = tokio::runtime::Handle::current();
-    let source = match access {
-        access::TargetAccess::Webdav { client, run_url } => RunArtifactSource::Webdav(Box::new(
-            WebdavSource::new(handle.clone(), *client, run_url),
-        )),
-        access::TargetAccess::LocalDir { run_dir } => {
-            RunArtifactSource::Local(LocalDirSource::new(run_dir))
-        }
-    };
+    let source = RunArtifactSource::Driver(DriverSource::new(handle, access.reader()));
 
     let manifest = source.read_manifest().await?;
     let artifact_format = manifest.pipeline.format.clone();

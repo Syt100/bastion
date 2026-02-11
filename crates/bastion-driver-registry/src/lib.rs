@@ -1,37 +1,19 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use bastion_driver_api::{
-    CleanupRunRequest, CleanupRunStatus, DriverError, DriverErrorKind, DriverId, SourceDriver,
-    SourceDriverCapabilities, StoreRunRequest, TargetDriver, TargetDriverCapabilities,
+    CleanupRunRequest, CleanupRunStatus, DriverError, DriverErrorKind, DriverId, OpenReaderRequest,
+    SourceDriver, SourceDriverCapabilities, StoreRunRequest, TargetDriver,
+    TargetDriverCapabilities, TargetRunReader,
 };
-use serde::Deserialize;
-use url::Url;
 
 pub mod builtins;
+pub mod target_runtime;
 
 #[derive(Default)]
 pub struct DriverRegistry {
     source_drivers: HashMap<String, Arc<dyn SourceDriver>>,
     target_drivers: HashMap<String, Arc<dyn TargetDriver>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct OpenReaderRequest {
-    pub job_id: String,
-    pub run_id: String,
-    pub target_config: serde_json::Value,
-}
-
-pub enum TargetRunReader {
-    LocalDir {
-        run_dir: PathBuf,
-    },
-    Webdav {
-        client: Box<bastion_targets::WebdavClient>,
-        run_url: Url,
-    },
 }
 
 #[derive(Clone)]
@@ -103,18 +85,6 @@ impl TargetRunWriter {
         self.aborted = true;
         Ok(())
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct LocalDirReaderConfig {
-    base_dir: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct WebdavReaderConfig {
-    base_url: String,
-    username: String,
-    password: String,
 }
 
 impl DriverRegistry {
@@ -189,68 +159,9 @@ impl DriverRegistry {
         &self,
         id: &DriverId,
         request: OpenReaderRequest,
-    ) -> Result<TargetRunReader, DriverError> {
-        let _ = self.resolve_target_driver(id)?;
-
-        match id.kind.as_str() {
-            builtins::TARGET_KIND_LOCAL_DIR => {
-                let cfg: LocalDirReaderConfig = serde_json::from_value(request.target_config)
-                    .map_err(|error| {
-                        DriverError::config(format!("invalid local_dir target config: {error}"))
-                    })?;
-                let run_dir = PathBuf::from(cfg.base_dir)
-                    .join(request.job_id)
-                    .join(request.run_id);
-                Ok(TargetRunReader::LocalDir { run_dir })
-            }
-            builtins::TARGET_KIND_WEBDAV => {
-                let cfg: WebdavReaderConfig = serde_json::from_value(request.target_config)
-                    .map_err(|error| {
-                        DriverError::config(format!("invalid webdav target config: {error}"))
-                    })?;
-
-                if cfg.base_url.trim().is_empty() {
-                    return Err(DriverError::config("webdav.base_url is required"));
-                }
-                if cfg.username.trim().is_empty() {
-                    return Err(DriverError::auth("webdav.username is required"));
-                }
-                if cfg.password.trim().is_empty() {
-                    return Err(DriverError::auth("webdav.password is required"));
-                }
-
-                let mut base_url = Url::parse(&cfg.base_url).map_err(|error| {
-                    DriverError::config(format!("invalid webdav.base_url: {error}"))
-                })?;
-                if !base_url.path().ends_with('/') {
-                    base_url.set_path(&format!("{}/", base_url.path()));
-                }
-
-                let client = bastion_targets::WebdavClient::new(
-                    base_url.clone(),
-                    bastion_targets::WebdavCredentials {
-                        username: cfg.username,
-                        password: cfg.password,
-                    },
-                )
-                .map_err(|error| DriverError::network(error.to_string()))?;
-
-                let job_url = base_url
-                    .join(&format!("{}/", request.job_id))
-                    .map_err(|error| DriverError::config(error.to_string()))?;
-                let run_url = job_url
-                    .join(&format!("{}/", request.run_id))
-                    .map_err(|error| DriverError::config(error.to_string()))?;
-
-                Ok(TargetRunReader::Webdav {
-                    client: Box::new(client),
-                    run_url,
-                })
-            }
-            _ => Err(DriverError::unsupported(format!(
-                "open_reader is not implemented for target driver: {id}"
-            ))),
-        }
+    ) -> Result<Arc<dyn TargetRunReader>, DriverError> {
+        let driver = self.resolve_target_driver(id)?;
+        driver.open_reader(request)
     }
 
     pub async fn store_run(
@@ -476,12 +387,11 @@ mod tests {
             )
             .expect("open reader");
 
-        match reader {
-            TargetRunReader::LocalDir { run_dir } => {
-                assert_eq!(run_dir, std::path::PathBuf::from("/tmp/base/job1/run1"));
-            }
-            _ => panic!("unexpected reader variant"),
-        }
+        assert_eq!(reader.target_kind(), builtins::TARGET_KIND_LOCAL_DIR);
+        assert_eq!(
+            reader.local_run_dir(),
+            Some(std::path::PathBuf::from("/tmp/base/job1/run1"))
+        );
     }
 
     #[test]

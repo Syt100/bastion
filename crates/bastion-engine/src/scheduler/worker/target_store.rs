@@ -4,8 +4,9 @@ use sqlx::SqlitePool;
 
 use bastion_core::HUB_NODE_ID;
 use bastion_core::job_spec;
-use bastion_driver_api::{DriverId, StoreRunProgress, StoreRunRequest, TargetRequestLimits};
+use bastion_driver_api::{StoreRunProgress, StoreRunRequest, TargetRequestLimits};
 use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime::{self, WebdavRuntimeAuth};
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
 use bastion_targets::WebdavCredentials;
@@ -27,34 +28,30 @@ async fn resolve_target_config_for_hub(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
     target: &job_spec::TargetV1,
-) -> Result<(DriverId, serde_json::Value), anyhow::Error> {
-    match target {
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } => {
+) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
+    let webdav_auth = match target {
+        job_spec::TargetV1::Webdav { secret_name, .. } => {
+            let secret_name = secret_name.trim();
+            if secret_name.is_empty() {
+                anyhow::bail!("webdav.secret_name is required");
+            }
+
             let cred_bytes =
                 secrets_repo::get_secret(db, secrets, HUB_NODE_ID, "webdav", secret_name)
                     .await?
                     .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-
-            Ok((
-                builtins::webdav_driver_id(),
-                serde_json::json!({
-                    "base_url": base_url,
-                    "username": credentials.username,
-                    "password": credentials.password,
-                    "secret_name": secret_name,
-                }),
-            ))
+            Some(WebdavRuntimeAuth {
+                username: credentials.username,
+                password: credentials.password,
+                secret_name: Some(secret_name.to_string()),
+            })
         }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => Ok((
-            builtins::local_dir_driver_id(),
-            serde_json::json!({ "base_dir": base_dir }),
-        )),
-    }
+        job_spec::TargetV1::LocalDir { .. } => None,
+    };
+
+    target_runtime::runtime_input_for_job_target(target, webdav_auth.as_ref())
+        .map_err(anyhow::Error::new)
 }
 
 #[allow(clippy::too_many_arguments)]

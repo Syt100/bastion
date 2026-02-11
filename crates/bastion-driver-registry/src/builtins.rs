@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use serde::Deserialize;
@@ -6,8 +6,8 @@ use url::Url;
 
 use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_driver_api::{
-    DriverError, DriverFuture, DriverId, StoreRunProgress, StoreRunRequest, TargetDriver,
-    TargetDriverCapabilities, TargetRequestLimits,
+    DriverError, DriverFuture, DriverId, OpenReaderRequest, StoreRunProgress, StoreRunRequest,
+    TargetDriver, TargetDriverCapabilities, TargetRequestLimits, TargetRunReader,
 };
 
 use crate::DriverRegistry;
@@ -47,6 +47,96 @@ pub fn target_registry() -> &'static DriverRegistry {
 #[derive(Debug, Deserialize)]
 struct LocalDirTargetConfig {
     base_dir: String,
+}
+
+#[derive(Debug, Clone)]
+struct LocalDirRunReader {
+    run_dir: PathBuf,
+}
+
+impl LocalDirRunReader {
+    fn path_for(&self, artifact: &str) -> PathBuf {
+        self.run_dir.join(artifact)
+    }
+}
+
+impl TargetRunReader for LocalDirRunReader {
+    fn target_kind(&self) -> &str {
+        TARGET_KIND_LOCAL_DIR
+    }
+
+    fn describe_location(&self) -> String {
+        self.run_dir.display().to_string()
+    }
+
+    fn local_run_dir(&self) -> Option<PathBuf> {
+        Some(self.run_dir.clone())
+    }
+
+    fn complete_exists(&self) -> DriverFuture<Result<bool, DriverError>> {
+        let path = self.path_for(COMPLETE_NAME);
+        Box::pin(async move { Ok(tokio::fs::try_exists(path).await.unwrap_or(false)) })
+    }
+
+    fn read_bytes(&self, artifact_path: String) -> DriverFuture<Result<Vec<u8>, DriverError>> {
+        let path = self.path_for(&artifact_path);
+        Box::pin(async move {
+            tokio::fs::read(&path)
+                .await
+                .map_err(|error| DriverError::io(error.to_string()))
+        })
+    }
+
+    fn head_size(&self, artifact_path: String) -> DriverFuture<Result<Option<u64>, DriverError>> {
+        let path = self.path_for(&artifact_path);
+        Box::pin(async move {
+            match tokio::fs::metadata(path).await {
+                Ok(meta) => Ok(Some(meta.len())),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(DriverError::io(error.to_string())),
+            }
+        })
+    }
+
+    fn get_to_file(
+        &self,
+        artifact_path: String,
+        dest: PathBuf,
+        expected_size: Option<u64>,
+        _retries: usize,
+    ) -> DriverFuture<Result<u64, DriverError>> {
+        let src = self.path_for(&artifact_path);
+        Box::pin(async move {
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|error| DriverError::io(error.to_string()))?;
+            }
+
+            let src_meta = tokio::fs::metadata(&src)
+                .await
+                .map_err(|error| DriverError::io(error.to_string()))?;
+            if let Some(expected) = expected_size
+                && src_meta.len() != expected
+            {
+                return Err(DriverError::io(format!(
+                    "artifact size mismatch for {}: expected {}, got {}",
+                    artifact_path,
+                    expected,
+                    src_meta.len()
+                )));
+            }
+
+            if src == dest {
+                return Ok(src_meta.len());
+            }
+
+            let copied = tokio::fs::copy(&src, &dest)
+                .await
+                .map_err(|error| DriverError::io(error.to_string()))?;
+            Ok(copied)
+        })
+    }
 }
 
 struct LocalDirTargetDriver {
@@ -131,6 +221,26 @@ impl TargetDriver for LocalDirTargetDriver {
         })
     }
 
+    fn open_reader(
+        &self,
+        request: OpenReaderRequest,
+    ) -> Result<Arc<dyn TargetRunReader>, DriverError> {
+        let cfg: LocalDirTargetConfig =
+            serde_json::from_value(request.target_config).map_err(|error| {
+                DriverError::config(format!("invalid local_dir target config: {error}"))
+            })?;
+
+        let base_dir = cfg.base_dir.trim();
+        if base_dir.is_empty() {
+            return Err(DriverError::config("local_dir.base_dir is required"));
+        }
+
+        let run_dir = Path::new(base_dir)
+            .join(request.job_id)
+            .join(request.run_id);
+        Ok(Arc::new(LocalDirRunReader { run_dir }))
+    }
+
     fn cleanup_run(
         &self,
         request: bastion_driver_api::CleanupRunRequest,
@@ -205,6 +315,91 @@ struct WebdavTargetSnapshotConfig {
     base_url: String,
     #[serde(default)]
     secret_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct WebdavRunReader {
+    client: bastion_targets::WebdavClient,
+    run_url: Url,
+}
+
+impl WebdavRunReader {
+    fn artifact_url(&self, artifact_path: &str) -> Result<Url, DriverError> {
+        self.run_url
+            .join(artifact_path)
+            .map_err(|error| DriverError::config(error.to_string()))
+    }
+}
+
+impl TargetRunReader for WebdavRunReader {
+    fn target_kind(&self) -> &str {
+        TARGET_KIND_WEBDAV
+    }
+
+    fn describe_location(&self) -> String {
+        redact_run_url(&self.run_url)
+    }
+
+    fn complete_exists(&self) -> DriverFuture<Result<bool, DriverError>> {
+        let client = self.client.clone();
+        let url = self.artifact_url(COMPLETE_NAME);
+        Box::pin(async move {
+            let url = url?;
+            let size = client
+                .head_size(&url)
+                .await
+                .map_err(|error| DriverError::network(error.to_string()))?;
+            Ok(size.is_some())
+        })
+    }
+
+    fn read_bytes(&self, artifact_path: String) -> DriverFuture<Result<Vec<u8>, DriverError>> {
+        let client = self.client.clone();
+        let url = self.artifact_url(&artifact_path);
+        Box::pin(async move {
+            let url = url?;
+            client
+                .get_bytes(&url)
+                .await
+                .map_err(|error| DriverError::network(error.to_string()))
+        })
+    }
+
+    fn head_size(&self, artifact_path: String) -> DriverFuture<Result<Option<u64>, DriverError>> {
+        let client = self.client.clone();
+        let url = self.artifact_url(&artifact_path);
+        Box::pin(async move {
+            let url = url?;
+            client
+                .head_size(&url)
+                .await
+                .map_err(|error| DriverError::network(error.to_string()))
+        })
+    }
+
+    fn get_to_file(
+        &self,
+        artifact_path: String,
+        dest: PathBuf,
+        expected_size: Option<u64>,
+        retries: usize,
+    ) -> DriverFuture<Result<u64, DriverError>> {
+        let client = self.client.clone();
+        let url = self.artifact_url(&artifact_path);
+        Box::pin(async move {
+            let url = url?;
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|error| DriverError::io(error.to_string()))?;
+            }
+            let retries = u32::try_from(retries).unwrap_or(u32::MAX);
+            client
+                .get_to_file(&url, &dest, expected_size, retries)
+                .await
+                .map_err(|error| DriverError::network(error.to_string()))
+        })
+    }
 }
 
 struct WebdavTargetDriver {
@@ -283,6 +478,53 @@ impl TargetDriver for WebdavTargetDriver {
                 "run_url": run_url.as_str(),
             }))
         })
+    }
+
+    fn open_reader(
+        &self,
+        request: OpenReaderRequest,
+    ) -> Result<Arc<dyn TargetRunReader>, DriverError> {
+        let cfg: WebdavTargetStoreConfig =
+            serde_json::from_value(request.target_config).map_err(|error| {
+                DriverError::config(format!("invalid webdav target config: {error}"))
+            })?;
+
+        let base_url = cfg.base_url.trim();
+        if base_url.is_empty() {
+            return Err(DriverError::config("webdav.base_url is required"));
+        }
+        let username = cfg.username.trim();
+        if username.is_empty() {
+            return Err(DriverError::auth("webdav.username is required"));
+        }
+        let password = cfg.password.trim();
+        if password.is_empty() {
+            return Err(DriverError::auth("webdav.password is required"));
+        }
+
+        let mut parsed_base = Url::parse(base_url)
+            .map_err(|error| DriverError::config(format!("invalid webdav.base_url: {error}")))?;
+        if !parsed_base.path().ends_with('/') {
+            parsed_base.set_path(&format!("{}/", parsed_base.path()));
+        }
+
+        let client = bastion_targets::WebdavClient::new(
+            parsed_base.clone(),
+            bastion_targets::WebdavCredentials {
+                username: username.to_string(),
+                password: password.to_string(),
+            },
+        )
+        .map_err(|error| DriverError::network(error.to_string()))?;
+
+        let job_url = parsed_base
+            .join(&format!("{}/", request.job_id))
+            .map_err(|error| DriverError::config(error.to_string()))?;
+        let run_url = job_url
+            .join(&format!("{}/", request.run_id))
+            .map_err(|error| DriverError::config(error.to_string()))?;
+
+        Ok(Arc::new(WebdavRunReader { client, run_url }))
     }
 
     fn cleanup_run(
@@ -384,6 +626,15 @@ fn to_webdav_limits(limits: TargetRequestLimits) -> bastion_targets::WebdavReque
     }
 }
 
+fn redact_run_url(run_url: &Url) -> String {
+    let mut out = run_url.clone();
+    let _ = out.set_username("");
+    let _ = out.set_password(None);
+    out.set_query(None);
+    out.set_fragment(None);
+    out.to_string()
+}
+
 fn redact_base_url(base_url: &str) -> String {
     let Ok(mut url) = Url::parse(base_url) else {
         return base_url.to_string();
@@ -446,6 +697,53 @@ mod tests {
 
         let second = driver.cleanup_run(request).await.expect("cleanup second");
         assert_eq!(second, bastion_driver_api::CleanupRunStatus::SkipNotFound);
+
+        let _ = std::fs::remove_dir_all(&base_dir);
+    }
+
+    #[tokio::test]
+    async fn driver_contract_local_dir_reader_supports_complete_and_copy() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let base_dir = std::env::temp_dir().join(format!("bastion-local-reader-{unique}"));
+        let run_dir = base_dir.join("job1").join("run1");
+        std::fs::create_dir_all(&run_dir).expect("create run dir");
+        std::fs::write(run_dir.join(COMPLETE_NAME), b"{}").expect("write complete");
+        std::fs::write(run_dir.join(MANIFEST_NAME), br#"{"v":1}"#).expect("write manifest");
+
+        let reader = target_registry()
+            .open_reader(
+                &local_dir_driver_id(),
+                bastion_driver_api::OpenReaderRequest {
+                    job_id: "job1".to_string(),
+                    run_id: "run1".to_string(),
+                    target_config: serde_json::json!({ "base_dir": base_dir.to_string_lossy().to_string() }),
+                },
+            )
+            .expect("open reader");
+
+        assert_eq!(reader.target_kind(), TARGET_KIND_LOCAL_DIR);
+        assert!(reader.complete_exists().await.expect("complete exists"));
+
+        let manifest = reader
+            .read_bytes(MANIFEST_NAME.to_string())
+            .await
+            .expect("read manifest");
+        assert_eq!(manifest, br#"{"v":1}"#.to_vec());
+
+        let staging = base_dir.join("staging");
+        let copied = reader
+            .get_to_file(
+                MANIFEST_NAME.to_string(),
+                staging.join(MANIFEST_NAME),
+                Some(manifest.len() as u64),
+                3,
+            )
+            .await
+            .expect("copy manifest");
+        assert_eq!(copied, manifest.len() as u64);
 
         let _ = std::fs::remove_dir_all(&base_dir);
     }

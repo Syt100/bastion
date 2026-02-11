@@ -4,6 +4,7 @@ use bastion_core::execution_planner::{
 };
 use bastion_core::job_spec;
 use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime;
 
 #[derive(Debug, Clone)]
 pub(super) struct PlannedExecution {
@@ -96,10 +97,7 @@ fn plan_for_target(
 }
 
 fn target_driver_ref(target: &job_spec::TargetV1) -> Result<PlannerDriverRefV1, anyhow::Error> {
-    let id = match target {
-        job_spec::TargetV1::Webdav { .. } => builtins::webdav_driver_id(),
-        job_spec::TargetV1::LocalDir { .. } => builtins::local_dir_driver_id(),
-    };
+    let id = target_runtime::driver_id_for_job_target(target);
     Ok(PlannerDriverRefV1::new(id.kind, id.version)?)
 }
 

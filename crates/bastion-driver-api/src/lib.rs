@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -132,6 +133,37 @@ pub struct TargetRequestLimits {
     pub burst: Option<u32>,
 }
 
+#[derive(Debug, Clone)]
+pub struct OpenReaderRequest {
+    pub job_id: String,
+    pub run_id: String,
+    pub target_config: serde_json::Value,
+}
+
+pub trait TargetRunReader: Send + Sync {
+    fn target_kind(&self) -> &str;
+
+    fn describe_location(&self) -> String;
+
+    fn local_run_dir(&self) -> Option<PathBuf> {
+        None
+    }
+
+    fn complete_exists(&self) -> DriverFuture<Result<bool, DriverError>>;
+
+    fn read_bytes(&self, artifact_path: String) -> DriverFuture<Result<Vec<u8>, DriverError>>;
+
+    fn head_size(&self, artifact_path: String) -> DriverFuture<Result<Option<u64>, DriverError>>;
+
+    fn get_to_file(
+        &self,
+        artifact_path: String,
+        dest: PathBuf,
+        expected_size: Option<u64>,
+        retries: usize,
+    ) -> DriverFuture<Result<u64, DriverError>>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreRunProgress {
     pub bytes_done: u64,
@@ -189,6 +221,13 @@ pub trait TargetDriver: Send + Sync {
         &self,
         request: StoreRunRequest,
     ) -> DriverFuture<Result<serde_json::Value, DriverError>>;
+
+    fn open_reader(
+        &self,
+        _request: OpenReaderRequest,
+    ) -> Result<Arc<dyn TargetRunReader>, DriverError> {
+        Err(DriverError::unsupported("open_reader is not implemented"))
+    }
 
     fn cleanup_run(
         &self,

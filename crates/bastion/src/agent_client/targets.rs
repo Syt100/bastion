@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use bastion_backup as backup;
 use bastion_core::agent_protocol::TargetResolvedV1;
-use bastion_driver_api::{DriverId, StoreRunProgress, StoreRunRequest, TargetRequestLimits};
+use bastion_driver_api::{StoreRunProgress, StoreRunRequest, TargetRequestLimits};
 use bastion_driver_registry::builtins;
+use bastion_driver_registry::target_runtime;
 
 use bastion_targets as targets;
 
@@ -28,28 +29,10 @@ fn to_driver_limits(limits: targets::WebdavRequestLimits) -> TargetRequestLimits
     }
 }
 
-fn resolve_target_config_for_agent(target: &TargetResolvedV1) -> (DriverId, serde_json::Value) {
-    match target {
-        TargetResolvedV1::Webdav {
-            base_url,
-            username,
-            password,
-            ..
-        } => (
-            builtins::webdav_driver_id(),
-            serde_json::json!({
-                "base_url": base_url,
-                "username": username,
-                "password": password,
-            }),
-        ),
-        TargetResolvedV1::LocalDir { base_dir, .. } => (
-            builtins::local_dir_driver_id(),
-            serde_json::json!({
-                "base_dir": base_dir,
-            }),
-        ),
-    }
+fn resolve_target_config_for_agent(
+    target: &TargetResolvedV1,
+) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
+    target_runtime::runtime_input_for_resolved_target(target).map_err(anyhow::Error::new)
 }
 
 pub(super) async fn store_artifacts_to_resolved_target(
@@ -60,7 +43,7 @@ pub(super) async fn store_artifacts_to_resolved_target(
     webdav_limits: Option<targets::WebdavRequestLimits>,
     on_progress: Option<Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
 ) -> Result<serde_json::Value, anyhow::Error> {
-    let (driver_id, target_config) = resolve_target_config_for_agent(target);
+    let (driver_id, target_config) = resolve_target_config_for_agent(target)?;
     let driver_progress = on_progress.map(|cb| {
         Arc::new(move |p: StoreRunProgress| {
             cb(targets::StoreRunProgress {
