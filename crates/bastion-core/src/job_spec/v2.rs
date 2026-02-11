@@ -91,7 +91,7 @@ pub fn parse_canonical_value(spec: &serde_json::Value) -> Result<JobSpecV2, anyh
     if looks_like_legacy_v1(spec) {
         let legacy: JobSpecV1 = serde_json::from_value(spec.clone())
             .context("failed to parse legacy job spec payload")?;
-        return Ok(translate_v1_to_v2(&legacy)?);
+        return translate_v1_to_v2(&legacy);
     }
 
     match serde_json::from_value::<JobSpecV2>(spec.clone()) {

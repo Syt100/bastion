@@ -5,16 +5,16 @@ use sqlx::SqlitePool;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
-use url::Url;
 
 use bastion_core::HUB_NODE_ID;
 use bastion_core::job_spec;
+use bastion_driver_api::{CleanupRunRequest, CleanupRunStatus, DriverErrorKind, DriverId};
+use bastion_driver_registry::builtins;
 use bastion_storage::incomplete_cleanup_repo;
 use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::WebdavClient;
 use bastion_targets::WebdavCredentials;
 
 use super::target_snapshot;
@@ -128,7 +128,7 @@ enum RunTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ErrorKind {
     Network,
-    Http,
+    Io,
     Auth,
     Config,
     Unknown,
@@ -138,7 +138,7 @@ impl ErrorKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::Network => "network",
-            Self::Http => "http",
+            Self::Io => "io",
             Self::Auth => "auth",
             Self::Config => "config",
             Self::Unknown => "unknown",
@@ -278,7 +278,13 @@ async fn reconcile_cleanup_tasks(
                 }
 
                 let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
-                let snapshot = target_snapshot::build_run_target_snapshot(node_id, &spec);
+                let snapshot = match target_snapshot::build_run_target_snapshot(node_id, &spec) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        warn!(run_id = %run.id, job_id = %job.id, error = %error, "failed to build target snapshot while reconciling cleanup tasks");
+                        continue;
+                    }
+                };
                 let _ = runs_repo::set_run_target_snapshot(db, &run.id, snapshot.clone()).await;
                 snapshot
             }
@@ -371,22 +377,7 @@ async fn process_task(
     let parsed = serde_json::from_value::<RunTargetSnapshot>(task.target_snapshot.clone());
     let result = match parsed {
         Ok(parsed) => match parsed.target {
-            RunTarget::LocalDir { base_dir } => {
-                let base_dir = base_dir.clone();
-                let job_id = task.job_id.clone();
-                let run_id = task.run_id.clone();
-                match tokio::task::spawn_blocking(move || {
-                    cleanup_local_dir_run(&base_dir, &job_id, &run_id)
-                })
-                .await
-                {
-                    Ok(v) => v,
-                    Err(error) => CleanupResult::Failed {
-                        kind: ErrorKind::Unknown,
-                        error: anyhow::anyhow!("join error: {error}"),
-                    },
-                }
-            }
+            RunTarget::LocalDir { base_dir } => cleanup_local_dir_run(&base_dir, task).await,
             RunTarget::Webdav {
                 base_url,
                 secret_name,
@@ -561,8 +552,8 @@ fn backoff_seconds(run_id: &str, attempts: i64, kind: ErrorKind) -> i64 {
     let attempts = attempts.max(1);
 
     let (base, cap, max_jitter) = match kind {
-        ErrorKind::Network | ErrorKind::Http => (60_i64, 6 * 60 * 60, 30_i64),
-        ErrorKind::Unknown => (5 * 60, 6 * 60 * 60, 60_i64),
+        ErrorKind::Network => (60_i64, 6 * 60 * 60, 30_i64),
+        ErrorKind::Io | ErrorKind::Unknown => (5 * 60, 6 * 60 * 60, 60_i64),
         ErrorKind::Auth | ErrorKind::Config => (6 * 60 * 60, 24 * 60 * 60, 10 * 60_i64),
     };
 
@@ -597,45 +588,20 @@ enum CleanupResult {
     },
 }
 
-fn cleanup_local_dir_run(base_dir: &str, job_id: &str, run_id: &str) -> CleanupResult {
-    use bastion_backup::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
-
-    let run_dir = std::path::Path::new(base_dir).join(job_id).join(run_id);
-    if !run_dir.exists() {
-        return CleanupResult::SkipNotFound {
-            message: "local run dir missing; nothing to cleanup",
-        };
-    }
-    if run_dir.join(COMPLETE_NAME).exists() {
-        return CleanupResult::SkipComplete;
-    }
-
-    let mut looks_like_bastion = false;
-    if run_dir.join(MANIFEST_NAME).exists() || run_dir.join(ENTRIES_INDEX_NAME).exists() {
-        looks_like_bastion = true;
-    } else if let Ok(entries) = std::fs::read_dir(&run_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("payload.part") || name.ends_with(".partial") {
-                looks_like_bastion = true;
-                break;
-            }
-        }
-    }
-    if !looks_like_bastion {
-        return CleanupResult::SkipNotFound {
-            message: "local run dir did not look like bastion data; skip cleanup",
-        };
-    }
-
-    match std::fs::remove_dir_all(&run_dir) {
-        Ok(()) => CleanupResult::Deleted,
-        Err(error) => CleanupResult::Failed {
-            kind: ErrorKind::Unknown,
-            error: anyhow::Error::from(error),
+async fn cleanup_local_dir_run(
+    base_dir: &str,
+    task: &incomplete_cleanup_repo::CleanupTaskRow,
+) -> CleanupResult {
+    run_driver_cleanup(
+        builtins::local_dir_driver_id(),
+        CleanupRunRequest {
+            job_id: task.job_id.clone(),
+            run_id: task.run_id.clone(),
+            target_snapshot: serde_json::json!({ "base_dir": base_dir }),
         },
-    }
+        "local run dir missing; nothing to cleanup",
+    )
+    .await
 }
 
 async fn cleanup_webdav_run(
@@ -646,83 +612,81 @@ async fn cleanup_webdav_run(
     secret_name: &str,
     task: &incomplete_cleanup_repo::CleanupTaskRow,
 ) -> CleanupResult {
-    match cleanup_webdav_run_inner(db, secrets, node_id, base_url, secret_name, task).await {
+    let cred_bytes =
+        match secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name).await {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => {
+                return CleanupResult::Failed {
+                    kind: ErrorKind::Config,
+                    error: anyhow::anyhow!("missing webdav secret: {secret_name}"),
+                };
+            }
+            Err(error) => {
+                return CleanupResult::Failed {
+                    kind: ErrorKind::Unknown,
+                    error,
+                };
+            }
+        };
+
+    let credentials = match WebdavCredentials::from_json(&cred_bytes) {
         Ok(v) => v,
+        Err(error) => {
+            return CleanupResult::Failed {
+                kind: ErrorKind::Config,
+                error,
+            };
+        }
+    };
+
+    run_driver_cleanup(
+        builtins::webdav_driver_id(),
+        CleanupRunRequest {
+            job_id: task.job_id.clone(),
+            run_id: task.run_id.clone(),
+            target_snapshot: serde_json::json!({
+                "base_url": base_url,
+                "username": credentials.username,
+                "password": credentials.password,
+                "secret_name": secret_name,
+            }),
+        },
+        "remote run dir missing; nothing to cleanup",
+    )
+    .await
+}
+
+async fn run_driver_cleanup(
+    driver_id: DriverId,
+    request: CleanupRunRequest,
+    skip_not_found_message: &'static str,
+) -> CleanupResult {
+    match builtins::target_registry()
+        .cleanup_run(&driver_id, request)
+        .await
+    {
+        Ok(status) => match status {
+            CleanupRunStatus::Deleted => CleanupResult::Deleted,
+            CleanupRunStatus::SkipComplete => CleanupResult::SkipComplete,
+            CleanupRunStatus::SkipNotFound => CleanupResult::SkipNotFound {
+                message: skip_not_found_message,
+            },
+        },
         Err(error) => CleanupResult::Failed {
-            kind: classify_error(&error),
-            error,
+            kind: map_driver_error_kind(error.kind),
+            error: anyhow::anyhow!(error.to_string()),
         },
     }
 }
 
-async fn cleanup_webdav_run_inner(
-    db: &SqlitePool,
-    secrets: &SecretsCrypto,
-    node_id: &str,
-    base_url: &str,
-    secret_name: &str,
-    task: &incomplete_cleanup_repo::CleanupTaskRow,
-) -> Result<CleanupResult, anyhow::Error> {
-    use bastion_backup::COMPLETE_NAME;
-
-    let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-    let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-
-    let mut base_url = Url::parse(base_url)?;
-    if !base_url.path().ends_with('/') {
-        base_url.set_path(&format!("{}/", base_url.path()));
+fn map_driver_error_kind(kind: DriverErrorKind) -> ErrorKind {
+    match kind {
+        DriverErrorKind::Unsupported | DriverErrorKind::Config => ErrorKind::Config,
+        DriverErrorKind::Auth => ErrorKind::Auth,
+        DriverErrorKind::Network => ErrorKind::Network,
+        DriverErrorKind::Io => ErrorKind::Io,
+        DriverErrorKind::Unknown => ErrorKind::Unknown,
     }
-
-    let client = WebdavClient::new(base_url.clone(), credentials)?;
-    let job_url = base_url.join(&format!("{}/", task.job_id))?;
-    let run_url = job_url.join(&format!("{}/", task.run_id))?;
-    let complete_url = run_url.join(COMPLETE_NAME)?;
-    if client.head_size(&complete_url).await?.is_some() {
-        return Ok(CleanupResult::SkipComplete);
-    }
-
-    match client.delete(&run_url).await {
-        Ok(true) => Ok(CleanupResult::Deleted),
-        Ok(false) => Ok(CleanupResult::SkipNotFound {
-            message: "remote run dir missing; nothing to cleanup",
-        }),
-        Err(error) => Ok(CleanupResult::Failed {
-            kind: classify_error(&error),
-            error,
-        }),
-    }
-}
-
-fn classify_error(error: &anyhow::Error) -> ErrorKind {
-    let msg = error.to_string();
-
-    if msg.contains("missing webdav secret") || msg.contains("invalid target snapshot") {
-        return ErrorKind::Config;
-    }
-
-    if msg.contains("HTTP 401")
-        || msg.contains("HTTP 403")
-        || msg.contains(" Unauthorized")
-        || msg.contains(" Forbidden")
-    {
-        return ErrorKind::Auth;
-    }
-
-    if msg.contains("HTTP ") {
-        return ErrorKind::Http;
-    }
-
-    if msg.contains("error sending request")
-        || msg.contains("timed out")
-        || msg.contains("dns")
-        || msg.contains("connection")
-    {
-        return ErrorKind::Network;
-    }
-
-    ErrorKind::Unknown
 }
 
 #[cfg(test)]
@@ -794,38 +758,53 @@ mod tests {
     }
 
     #[test]
-    fn classify_error_maps_known_patterns() {
+    fn map_driver_error_kind_uses_driver_taxonomy() {
         assert_eq!(
-            classify_error(&anyhow::anyhow!("missing webdav secret: foo")),
+            map_driver_error_kind(DriverErrorKind::Unsupported),
             ErrorKind::Config
         );
         assert_eq!(
-            classify_error(&anyhow::anyhow!("HTTP 401 Unauthorized")),
+            map_driver_error_kind(DriverErrorKind::Config),
+            ErrorKind::Config
+        );
+        assert_eq!(
+            map_driver_error_kind(DriverErrorKind::Auth),
             ErrorKind::Auth
         );
         assert_eq!(
-            classify_error(&anyhow::anyhow!("HTTP 500 Internal Server Error")),
-            ErrorKind::Http
-        );
-        assert_eq!(
-            classify_error(&anyhow::anyhow!("error sending request")),
+            map_driver_error_kind(DriverErrorKind::Network),
             ErrorKind::Network
         );
+        assert_eq!(map_driver_error_kind(DriverErrorKind::Io), ErrorKind::Io);
         assert_eq!(
-            classify_error(&anyhow::anyhow!("other")),
+            map_driver_error_kind(DriverErrorKind::Unknown),
             ErrorKind::Unknown
         );
     }
 
-    #[test]
-    fn cleanup_local_dir_run_handles_missing_complete_and_garbage_dirs() -> Result<(), anyhow::Error>
+    fn local_task(job_id: &str, run_id: &str) -> incomplete_cleanup_repo::CleanupTaskRow {
+        incomplete_cleanup_repo::CleanupTaskRow {
+            run_id: run_id.to_string(),
+            job_id: job_id.to_string(),
+            node_id: "hub".to_string(),
+            target_type: incomplete_cleanup_repo::CleanupTargetType::LocalDir,
+            target_snapshot: serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+            attempts: 1,
+            created_at: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn cleanup_local_dir_run_handles_missing_and_complete_dirs() -> Result<(), anyhow::Error>
     {
         let base = tempfile::TempDir::new()?;
         let base_dir = base.path().to_string_lossy().to_string();
-        let job_id = "job1";
-        let run_id = "run1";
+        let task = local_task("job1", "run1");
 
-        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+        let res = cleanup_local_dir_run(&base_dir, &task).await;
         match res {
             CleanupResult::SkipNotFound { message } => {
                 assert_eq!(message, "local run dir missing; nothing to cleanup")
@@ -833,53 +812,45 @@ mod tests {
             other => panic!("unexpected result: {other:?}"),
         }
 
-        // complete marker => never delete
-        let run_dir = base.path().join(job_id).join(run_id);
+        let run_dir = base.path().join(&task.job_id).join(&task.run_id);
         std::fs::create_dir_all(&run_dir)?;
         std::fs::write(run_dir.join(COMPLETE_NAME), b"")?;
-        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
+
+        let res = cleanup_local_dir_run(&base_dir, &task).await;
         match res {
             CleanupResult::SkipComplete => {}
             other => anyhow::bail!("expected SkipComplete, got {other:?}"),
         }
         assert!(run_dir.exists());
 
-        // unknown dir contents => skip
-        std::fs::remove_file(run_dir.join(COMPLETE_NAME))?;
-        std::fs::write(run_dir.join("foo.txt"), b"hi")?;
-        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
-        match res {
-            CleanupResult::SkipNotFound { message } => {
-                assert_eq!(
-                    message,
-                    "local run dir did not look like bastion data; skip cleanup"
-                )
-            }
-            other => panic!("unexpected result: {other:?}"),
-        }
-        assert!(run_dir.exists());
-
         Ok(())
     }
 
-    #[test]
-    fn cleanup_local_dir_run_deletes_dirs_that_look_like_bastion_data() -> Result<(), anyhow::Error>
-    {
+    #[tokio::test]
+    async fn cleanup_local_dir_run_is_idempotent_for_bastion_dirs() -> Result<(), anyhow::Error> {
         let base = tempfile::TempDir::new()?;
         let base_dir = base.path().to_string_lossy().to_string();
-        let job_id = "job1";
-        let run_id = "run1";
+        let task = local_task("job2", "run2");
 
-        let run_dir = base.path().join(job_id).join(run_id);
+        let run_dir = base.path().join(&task.job_id).join(&task.run_id);
         std::fs::create_dir_all(&run_dir)?;
         std::fs::write(run_dir.join(MANIFEST_NAME), b"{}")?;
 
-        let res = cleanup_local_dir_run(&base_dir, job_id, run_id);
-        match res {
+        let first = cleanup_local_dir_run(&base_dir, &task).await;
+        match first {
             CleanupResult::Deleted => {}
             other => anyhow::bail!("expected Deleted, got {other:?}"),
         }
         assert!(!run_dir.exists());
+
+        let second = cleanup_local_dir_run(&base_dir, &task).await;
+        match second {
+            CleanupResult::SkipNotFound { message } => {
+                assert_eq!(message, "local run dir missing; nothing to cleanup")
+            }
+            other => anyhow::bail!("expected SkipNotFound, got {other:?}"),
+        }
+
         Ok(())
     }
 }

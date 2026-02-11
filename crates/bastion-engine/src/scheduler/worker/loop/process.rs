@@ -71,13 +71,24 @@ pub(super) async fn process_run(ctx: &WorkerLoopCtx<'_>, run: runs_repo::Run) {
     }
 
     let node_id = job.agent_id.as_deref().unwrap_or(HUB_NODE_ID);
-    let snapshot = target_snapshot::build_run_target_snapshot(node_id, &spec);
-    if let Err(error) = runs_repo::set_run_target_snapshot(ctx.db, &run.id, snapshot).await {
-        warn!(
-            run_id = %run.id,
-            error = %error,
-            "failed to persist run target snapshot"
-        );
+    match target_snapshot::build_run_target_snapshot(node_id, &spec) {
+        Ok(snapshot) => {
+            if let Err(error) = runs_repo::set_run_target_snapshot(ctx.db, &run.id, snapshot).await
+            {
+                warn!(
+                    run_id = %run.id,
+                    error = %error,
+                    "failed to persist run target snapshot"
+                );
+            }
+        }
+        Err(error) => {
+            warn!(
+                run_id = %run.id,
+                error = %error,
+                "failed to build run target snapshot"
+            );
+        }
     }
 
     let started_at = OffsetDateTime::from_unix_timestamp(run.started_at)

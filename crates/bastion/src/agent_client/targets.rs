@@ -70,20 +70,24 @@ pub(super) async fn store_artifacts_to_resolved_target(
         }) as Arc<dyn Fn(StoreRunProgress) + Send + Sync>
     });
 
-    let summary = builtins::target_registry()
-        .store_run(
-            &driver_id,
-            StoreRunRequest {
-                job_id: job_id.to_string(),
-                run_id: run_id.to_string(),
-                target_config,
-                artifacts: artifacts.clone(),
-                limits: webdav_limits.map(to_driver_limits),
-                on_progress: driver_progress,
-            },
-        )
-        .await?;
+    let mut writer = builtins::target_registry().open_writer(
+        &driver_id,
+        StoreRunRequest {
+            job_id: job_id.to_string(),
+            run_id: run_id.to_string(),
+            target_config,
+            artifacts: artifacts.clone(),
+            limits: webdav_limits.map(to_driver_limits),
+            on_progress: driver_progress,
+        },
+    )?;
 
+    if let Err(error) = writer.upload().await {
+        let _ = writer.abort().await;
+        return Err(anyhow::Error::new(error));
+    }
+
+    let summary = writer.finalize().await?;
     Ok(summary)
 }
 

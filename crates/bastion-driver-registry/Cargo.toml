@@ -6,6 +6,7 @@ version.workspace = true
 
 [dependencies]
 bastion-driver-api = { path = "../bastion-driver-api" }
+bastion-core = { path = "../bastion-core" }
 bastion-targets = { path = "../bastion-targets" }
 serde.workspace = true
 serde_json.workspace = true

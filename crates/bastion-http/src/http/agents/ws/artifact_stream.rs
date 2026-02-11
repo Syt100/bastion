@@ -14,12 +14,13 @@ use bastion_core::HUB_NODE_ID;
 use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_core::job_spec;
 use bastion_core::manifest::{HashAlgorithm, ManifestV1};
+use bastion_driver_registry::{OpenReaderRequest, TargetRunReader, builtins};
 use bastion_engine::agent_manager::AgentManager;
 use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::{WebdavClient, WebdavCredentials};
+use bastion_targets::WebdavClient;
 
 use super::{
     ARTIFACT_STREAM_MAX_BYTES, ARTIFACT_STREAM_OPEN_TIMEOUT, ARTIFACT_STREAM_PULL_TIMEOUT,
@@ -32,8 +33,14 @@ pub(super) struct HubArtifactStream {
 
 #[derive(Debug, Clone)]
 enum RunArtifactsLocation {
-    Webdav { client: WebdavClient, run_url: Url },
-    LocalDir { node_id: String, run_dir: PathBuf },
+    Webdav {
+        client: Box<WebdavClient>,
+        run_url: Url,
+    },
+    LocalDir {
+        node_id: String,
+        run_dir: PathBuf,
+    },
 }
 
 fn target_ref(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {
@@ -41,6 +48,51 @@ fn target_ref(spec: &job_spec::JobSpecV1) -> &job_spec::TargetV1 {
         job_spec::JobSpecV1::Filesystem { target, .. } => target,
         job_spec::JobSpecV1::Sqlite { target, .. } => target,
         job_spec::JobSpecV1::Vaultwarden { target, .. } => target,
+    }
+}
+
+async fn resolve_target_config_for_reader(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    node_id: &str,
+    target: &job_spec::TargetV1,
+) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
+    match target {
+        job_spec::TargetV1::Webdav {
+            base_url,
+            secret_name,
+            ..
+        } => {
+            let secret_name = secret_name.trim();
+            if secret_name.is_empty() {
+                anyhow::bail!("webdav.secret_name is required");
+            }
+
+            let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
+            let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
+
+            Ok((
+                builtins::webdav_driver_id(),
+                serde_json::json!({
+                    "base_url": base_url,
+                    "username": credentials.username,
+                    "password": credentials.password,
+                    "secret_name": secret_name,
+                }),
+            ))
+        }
+        job_spec::TargetV1::LocalDir { base_dir, .. } => {
+            let base_dir = base_dir.trim();
+            if base_dir.is_empty() {
+                anyhow::bail!("local_dir.base_dir is required");
+            }
+            Ok((
+                builtins::local_dir_driver_id(),
+                serde_json::json!({ "base_dir": base_dir }),
+            ))
+        }
     }
 }
 
@@ -70,38 +122,22 @@ async fn resolve_run_artifacts_location(
     let spec = job_spec::parse_value(&job.spec)?;
     job_spec::validate(&spec)?;
 
-    match target_ref(&spec) {
-        job_spec::TargetV1::Webdav {
-            base_url,
-            secret_name,
-            ..
-        } => {
-            let secret_name = secret_name.trim();
-            if secret_name.is_empty() {
-                anyhow::bail!("webdav.secret_name is required");
-            }
+    let (driver_id, target_config) =
+        resolve_target_config_for_reader(db, secrets, &node_id, target_ref(&spec)).await?;
+    let reader = builtins::target_registry().open_reader(
+        &driver_id,
+        OpenReaderRequest {
+            job_id: run.job_id.clone(),
+            run_id: run_id.to_string(),
+            target_config,
+        },
+    )?;
 
-            let cred_bytes = secrets_repo::get_secret(db, secrets, &node_id, "webdav", secret_name)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
-
-            let mut base_url = Url::parse(base_url.trim())?;
-            if !base_url.path().ends_with('/') {
-                base_url.set_path(&format!("{}/", base_url.path()));
-            }
-            let client = WebdavClient::new(base_url.clone(), credentials)?;
-
-            let job_url = base_url.join(&format!("{}/", run.job_id))?;
-            let run_url = job_url.join(&format!("{run_id}/"))?;
+    match reader {
+        TargetRunReader::Webdav { client, run_url } => {
             Ok(RunArtifactsLocation::Webdav { client, run_url })
         }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => {
-            let base_dir = base_dir.trim();
-            if base_dir.is_empty() {
-                anyhow::bail!("local_dir.base_dir is required");
-            }
-            let run_dir = PathBuf::from(base_dir).join(&run.job_id).join(run_id);
+        TargetRunReader::LocalDir { run_dir } => {
             Ok(RunArtifactsLocation::LocalDir { node_id, run_dir })
         }
     }
@@ -195,7 +231,7 @@ pub(super) async fn open_hub_artifact_stream(
                 let handle = tokio::runtime::Handle::current();
                 let source = RunArtifactSource::Webdav(Box::new(WebdavSource::new(
                     handle.clone(),
-                    client,
+                    *client,
                     run_url,
                 )));
                 let manifest = source.read_manifest().await?;

@@ -1,10 +1,13 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bastion_driver_api::{
-    DriverError, DriverId, SourceDriver, SourceDriverCapabilities, StoreRunRequest, TargetDriver,
-    TargetDriverCapabilities,
+    CleanupRunRequest, CleanupRunStatus, DriverError, DriverErrorKind, DriverId, SourceDriver,
+    SourceDriverCapabilities, StoreRunRequest, TargetDriver, TargetDriverCapabilities,
 };
+use serde::Deserialize;
+use url::Url;
 
 pub mod builtins;
 
@@ -12,6 +15,106 @@ pub mod builtins;
 pub struct DriverRegistry {
     source_drivers: HashMap<String, Arc<dyn SourceDriver>>,
     target_drivers: HashMap<String, Arc<dyn TargetDriver>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenReaderRequest {
+    pub job_id: String,
+    pub run_id: String,
+    pub target_config: serde_json::Value,
+}
+
+pub enum TargetRunReader {
+    LocalDir {
+        run_dir: PathBuf,
+    },
+    Webdav {
+        client: Box<bastion_targets::WebdavClient>,
+        run_url: Url,
+    },
+}
+
+#[derive(Clone)]
+pub struct TargetRunWriter {
+    driver: Arc<dyn TargetDriver>,
+    request: StoreRunRequest,
+    summary: Option<serde_json::Value>,
+    uploaded: bool,
+    aborted: bool,
+}
+
+impl std::fmt::Debug for TargetRunWriter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TargetRunWriter")
+            .field("request", &self.request)
+            .field("uploaded", &self.uploaded)
+            .field("aborted", &self.aborted)
+            .field("has_summary", &self.summary.is_some())
+            .finish()
+    }
+}
+
+impl TargetRunWriter {
+    pub async fn upload(&mut self) -> Result<(), DriverError> {
+        if self.aborted {
+            return Err(DriverError::config("writer is aborted"));
+        }
+        if self.uploaded {
+            return Err(DriverError::config("writer upload already completed"));
+        }
+
+        let summary = self.driver.store_run(self.request.clone()).await?;
+        self.summary = Some(summary);
+        self.uploaded = true;
+        Ok(())
+    }
+
+    pub async fn finalize(mut self) -> Result<serde_json::Value, DriverError> {
+        if self.aborted {
+            return Err(DriverError::config("writer is aborted"));
+        }
+        self.summary
+            .take()
+            .ok_or_else(|| DriverError::config("writer finalize requires upload first"))
+    }
+
+    pub async fn abort(&mut self) -> Result<(), DriverError> {
+        if self.aborted {
+            return Ok(());
+        }
+
+        let snapshot = self.driver.snapshot_redacted(&self.request.target_config)?;
+        let cleanup = self
+            .driver
+            .cleanup_run(CleanupRunRequest {
+                job_id: self.request.job_id.clone(),
+                run_id: self.request.run_id.clone(),
+                target_snapshot: snapshot,
+            })
+            .await;
+
+        if let Err(error) = cleanup
+            && error.kind != DriverErrorKind::Unsupported
+        {
+            return Err(error);
+        }
+
+        self.summary = None;
+        self.aborted = true;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalDirReaderConfig {
+    base_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WebdavReaderConfig {
+    base_url: String,
+    username: String,
+    password: String,
 }
 
 impl DriverRegistry {
@@ -67,6 +170,89 @@ impl DriverRegistry {
             .ok_or_else(|| DriverError::unsupported(format!("unsupported target driver: {id}")))
     }
 
+    pub fn open_writer(
+        &self,
+        id: &DriverId,
+        request: StoreRunRequest,
+    ) -> Result<TargetRunWriter, DriverError> {
+        let driver = self.resolve_target_driver(id)?;
+        Ok(TargetRunWriter {
+            driver,
+            request,
+            summary: None,
+            uploaded: false,
+            aborted: false,
+        })
+    }
+
+    pub fn open_reader(
+        &self,
+        id: &DriverId,
+        request: OpenReaderRequest,
+    ) -> Result<TargetRunReader, DriverError> {
+        let _ = self.resolve_target_driver(id)?;
+
+        match id.kind.as_str() {
+            builtins::TARGET_KIND_LOCAL_DIR => {
+                let cfg: LocalDirReaderConfig = serde_json::from_value(request.target_config)
+                    .map_err(|error| {
+                        DriverError::config(format!("invalid local_dir target config: {error}"))
+                    })?;
+                let run_dir = PathBuf::from(cfg.base_dir)
+                    .join(request.job_id)
+                    .join(request.run_id);
+                Ok(TargetRunReader::LocalDir { run_dir })
+            }
+            builtins::TARGET_KIND_WEBDAV => {
+                let cfg: WebdavReaderConfig = serde_json::from_value(request.target_config)
+                    .map_err(|error| {
+                        DriverError::config(format!("invalid webdav target config: {error}"))
+                    })?;
+
+                if cfg.base_url.trim().is_empty() {
+                    return Err(DriverError::config("webdav.base_url is required"));
+                }
+                if cfg.username.trim().is_empty() {
+                    return Err(DriverError::auth("webdav.username is required"));
+                }
+                if cfg.password.trim().is_empty() {
+                    return Err(DriverError::auth("webdav.password is required"));
+                }
+
+                let mut base_url = Url::parse(&cfg.base_url).map_err(|error| {
+                    DriverError::config(format!("invalid webdav.base_url: {error}"))
+                })?;
+                if !base_url.path().ends_with('/') {
+                    base_url.set_path(&format!("{}/", base_url.path()));
+                }
+
+                let client = bastion_targets::WebdavClient::new(
+                    base_url.clone(),
+                    bastion_targets::WebdavCredentials {
+                        username: cfg.username,
+                        password: cfg.password,
+                    },
+                )
+                .map_err(|error| DriverError::network(error.to_string()))?;
+
+                let job_url = base_url
+                    .join(&format!("{}/", request.job_id))
+                    .map_err(|error| DriverError::config(error.to_string()))?;
+                let run_url = job_url
+                    .join(&format!("{}/", request.run_id))
+                    .map_err(|error| DriverError::config(error.to_string()))?;
+
+                Ok(TargetRunReader::Webdav {
+                    client: Box::new(client),
+                    run_url,
+                })
+            }
+            _ => Err(DriverError::unsupported(format!(
+                "open_reader is not implemented for target driver: {id}"
+            ))),
+        }
+    }
+
     pub async fn store_run(
         &self,
         id: &DriverId,
@@ -74,6 +260,24 @@ impl DriverRegistry {
     ) -> Result<serde_json::Value, DriverError> {
         let driver = self.resolve_target_driver(id)?;
         driver.store_run(request).await
+    }
+
+    pub async fn cleanup_run(
+        &self,
+        id: &DriverId,
+        request: CleanupRunRequest,
+    ) -> Result<CleanupRunStatus, DriverError> {
+        let driver = self.resolve_target_driver(id)?;
+        driver.cleanup_run(request).await
+    }
+
+    pub fn snapshot_redacted(
+        &self,
+        id: &DriverId,
+        target_config: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let driver = self.resolve_target_driver(id)?;
+        driver.snapshot_redacted(target_config)
     }
 
     pub fn target_capabilities(
@@ -105,7 +309,8 @@ mod tests {
 
     struct TestTargetDriver {
         id: DriverId,
-        calls: Arc<AtomicUsize>,
+        store_calls: Arc<AtomicUsize>,
+        cleanup_calls: Arc<AtomicUsize>,
     }
 
     impl TargetDriver for TestTargetDriver {
@@ -117,7 +322,7 @@ mod tests {
             TargetDriverCapabilities {
                 supports_archive_rolling_upload: true,
                 supports_raw_tree_direct_upload: false,
-                supports_cleanup_run: false,
+                supports_cleanup_run: true,
                 supports_restore_reader: true,
             }
         }
@@ -126,7 +331,7 @@ mod tests {
             &self,
             _request: StoreRunRequest,
         ) -> DriverFuture<Result<serde_json::Value, DriverError>> {
-            let calls = self.calls.clone();
+            let calls = self.store_calls.clone();
             Box::pin(async move {
                 calls.fetch_add(1, Ordering::SeqCst);
                 Ok(serde_json::json!({"ok": true}))
@@ -137,7 +342,11 @@ mod tests {
             &self,
             _request: bastion_driver_api::CleanupRunRequest,
         ) -> DriverFuture<Result<CleanupRunStatus, DriverError>> {
-            Box::pin(async { Ok(CleanupRunStatus::SkipNotFound) })
+            let calls = self.cleanup_calls.clone();
+            Box::pin(async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(CleanupRunStatus::SkipNotFound)
+            })
         }
 
         fn snapshot_redacted(
@@ -148,27 +357,37 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn resolves_registered_target_driver_and_delegates_store() {
-        let mut registry = DriverRegistry::new();
-        let calls = Arc::new(AtomicUsize::new(0));
-        let driver = Arc::new(TestTargetDriver {
-            id: DriverId::new("test_target", 1).expect("id"),
-            calls: calls.clone(),
-        });
-        registry
-            .register_target_driver(driver)
-            .expect("register driver");
-
-        let artifacts = bastion_core::backup_format::LocalRunArtifacts {
+    fn test_artifacts() -> bastion_core::backup_format::LocalRunArtifacts {
+        bastion_core::backup_format::LocalRunArtifacts {
             run_dir: std::path::PathBuf::from("/tmp/run"),
             parts: vec![],
             entries_index_path: std::path::PathBuf::from("/tmp/entries"),
             entries_count: 0,
             manifest_path: std::path::PathBuf::from("/tmp/manifest"),
             complete_path: std::path::PathBuf::from("/tmp/complete"),
-        };
+        }
+    }
+
+    fn setup_registry() -> (DriverRegistry, Arc<AtomicUsize>, Arc<AtomicUsize>, DriverId) {
+        let mut registry = DriverRegistry::new();
+        let store_calls = Arc::new(AtomicUsize::new(0));
+        let cleanup_calls = Arc::new(AtomicUsize::new(0));
         let id = DriverId::new("test_target", 1).expect("id");
+        let driver = Arc::new(TestTargetDriver {
+            id: id.clone(),
+            store_calls: store_calls.clone(),
+            cleanup_calls: cleanup_calls.clone(),
+        });
+        registry
+            .register_target_driver(driver)
+            .expect("register driver");
+        (registry, store_calls, cleanup_calls, id)
+    }
+
+    #[tokio::test]
+    async fn resolves_registered_target_driver_and_delegates_store() {
+        let (registry, store_calls, _cleanup_calls, id) = setup_registry();
+
         let summary = registry
             .store_run(
                 &id,
@@ -176,7 +395,7 @@ mod tests {
                     job_id: "j".to_string(),
                     run_id: "r".to_string(),
                     target_config: serde_json::json!({}),
-                    artifacts,
+                    artifacts: test_artifacts(),
                     limits: Some(TargetRequestLimits::default()),
                     on_progress: Some(Arc::new(|_p: StoreRunProgress| {})),
                 },
@@ -185,16 +404,93 @@ mod tests {
             .expect("store run");
 
         assert_eq!(summary["ok"], serde_json::json!(true));
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(store_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn open_writer_upload_finalize_roundtrip() {
+        let (registry, store_calls, _cleanup_calls, id) = setup_registry();
+
+        let mut writer = registry
+            .open_writer(
+                &id,
+                StoreRunRequest {
+                    job_id: "j".to_string(),
+                    run_id: "r".to_string(),
+                    target_config: serde_json::json!({}),
+                    artifacts: test_artifacts(),
+                    limits: Some(TargetRequestLimits::default()),
+                    on_progress: None,
+                },
+            )
+            .expect("open writer");
+
+        writer.upload().await.expect("upload");
+        let summary = writer.finalize().await.expect("finalize");
+        assert_eq!(summary["ok"], serde_json::json!(true));
+        assert_eq!(store_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn driver_contract_open_writer_abort_is_idempotent() {
+        let (registry, _store_calls, cleanup_calls, id) = setup_registry();
+
+        let mut writer = registry
+            .open_writer(
+                &id,
+                StoreRunRequest {
+                    job_id: "j".to_string(),
+                    run_id: "r".to_string(),
+                    target_config: serde_json::json!({}),
+                    artifacts: test_artifacts(),
+                    limits: None,
+                    on_progress: None,
+                },
+            )
+            .expect("open writer");
+
+        writer.abort().await.expect("abort once");
+        writer.abort().await.expect("abort twice");
+        assert_eq!(cleanup_calls.load(Ordering::SeqCst), 1);
+
+        let err = writer
+            .upload()
+            .await
+            .expect_err("aborted writer cannot upload");
+        assert_eq!(err.kind, bastion_driver_api::DriverErrorKind::Config);
+    }
+
+    #[test]
+    fn open_reader_local_dir_builds_run_path() {
+        let registry = builtins::target_registry();
+        let id = builtins::local_dir_driver_id();
+
+        let reader = registry
+            .open_reader(
+                &id,
+                OpenReaderRequest {
+                    job_id: "job1".to_string(),
+                    run_id: "run1".to_string(),
+                    target_config: serde_json::json!({ "base_dir": "/tmp/base" }),
+                },
+            )
+            .expect("open reader");
+
+        match reader {
+            TargetRunReader::LocalDir { run_dir } => {
+                assert_eq!(run_dir, std::path::PathBuf::from("/tmp/base/job1/run1"));
+            }
+            _ => panic!("unexpected reader variant"),
+        }
     }
 
     #[test]
     fn duplicate_target_registration_is_rejected() {
         let mut registry = DriverRegistry::new();
-        let calls = Arc::new(AtomicUsize::new(0));
         let driver = Arc::new(TestTargetDriver {
             id: DriverId::new("dup", 1).expect("id"),
-            calls: calls.clone(),
+            store_calls: Arc::new(AtomicUsize::new(0)),
+            cleanup_calls: Arc::new(AtomicUsize::new(0)),
         });
 
         registry

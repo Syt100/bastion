@@ -6,10 +6,11 @@ use tracing::debug;
 use url::Url;
 
 use bastion_core::job_spec;
+use bastion_driver_registry::{OpenReaderRequest, TargetRunReader, builtins};
 use bastion_storage::runs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::{WebdavClient, WebdavCredentials};
+use bastion_targets::WebdavClient;
 
 fn redact_url(url: &Url) -> String {
     let mut redacted = url.clone();
@@ -70,14 +71,12 @@ pub(super) async fn resolve_success_run_access(
     Ok(ResolvedRunAccess { run, access })
 }
 
-async fn open_target_access(
+async fn resolve_target_config_for_reader(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
     node_id: &str,
-    job_id: &str,
-    run_id: &str,
     target: &job_spec::TargetV1,
-) -> Result<TargetAccess, anyhow::Error> {
+) -> Result<(bastion_driver_api::DriverId, serde_json::Value), anyhow::Error> {
     match target {
         job_spec::TargetV1::Webdav {
             base_url,
@@ -87,16 +86,60 @@ async fn open_target_access(
             let cred_bytes = secrets_repo::get_secret(db, secrets, node_id, "webdav", secret_name)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
-            let credentials = WebdavCredentials::from_json(&cred_bytes)?;
+            let credentials = bastion_targets::WebdavCredentials::from_json(&cred_bytes)?;
 
-            let mut base_url = Url::parse(base_url)?;
+            Ok((
+                builtins::webdav_driver_id(),
+                serde_json::json!({
+                    "base_url": base_url,
+                    "username": credentials.username,
+                    "password": credentials.password,
+                    "secret_name": secret_name,
+                }),
+            ))
+        }
+        job_spec::TargetV1::LocalDir { base_dir, .. } => Ok((
+            builtins::local_dir_driver_id(),
+            serde_json::json!({ "base_dir": base_dir }),
+        )),
+    }
+}
+
+async fn open_target_access(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    node_id: &str,
+    job_id: &str,
+    run_id: &str,
+    target: &job_spec::TargetV1,
+) -> Result<TargetAccess, anyhow::Error> {
+    let (driver_id, target_config) =
+        resolve_target_config_for_reader(db, secrets, node_id, target).await?;
+
+    let reader = builtins::target_registry().open_reader(
+        &driver_id,
+        OpenReaderRequest {
+            job_id: job_id.to_string(),
+            run_id: run_id.to_string(),
+            target_config,
+        },
+    )?;
+
+    match reader {
+        TargetRunReader::Webdav { client, run_url } => {
+            let mut base_url = run_url.clone();
+            {
+                let mut segs = base_url
+                    .path_segments_mut()
+                    .map_err(|_| anyhow::anyhow!("run_url cannot be a base"))?;
+                segs.pop_if_empty();
+                segs.pop();
+                segs.pop();
+            }
             if !base_url.path().ends_with('/') {
                 base_url.set_path(&format!("{}/", base_url.path()));
             }
-            let client = WebdavClient::new(base_url.clone(), credentials)?;
 
-            let job_url = base_url.join(&format!("{job_id}/"))?;
-            let run_url = job_url.join(&format!("{run_id}/"))?;
             debug!(
                 job_id = %job_id,
                 run_id = %run_id,
@@ -105,13 +148,9 @@ async fn open_target_access(
                 run_url = %redact_url(&run_url),
                 "resolved restore target access"
             );
-            Ok(TargetAccess::Webdav {
-                client: Box::new(client),
-                run_url,
-            })
+            Ok(TargetAccess::Webdav { client, run_url })
         }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => {
-            let run_dir = PathBuf::from(base_dir.trim()).join(job_id).join(run_id);
+        TargetRunReader::LocalDir { run_dir } => {
             debug!(
                 job_id = %job_id,
                 run_id = %run_id,

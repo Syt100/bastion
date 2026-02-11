@@ -6,6 +6,8 @@ version.workspace = true
 
 [dependencies]
 bastion-core = { path = "../bastion-core" }
+bastion-driver-api = { path = "../bastion-driver-api" }
+bastion-driver-registry = { path = "../bastion-driver-registry" }
 bastion-storage = { path = "../bastion-storage" }
 bastion-targets = { path = "../bastion-targets" }
 age = "0.11.2"
