@@ -103,6 +103,7 @@ export default defineConfig(({ command }) => {
                   { text: 'Build and run', link: '/dev/build' },
                   { text: 'Docs site', link: '/dev/docs-site' },
                   { text: 'Architecture', link: '/dev/architecture' },
+                  { text: 'Driver platform workflow', link: '/dev/driver-platform' },
                 ],
               },
               {
@@ -190,6 +191,7 @@ export default defineConfig(({ command }) => {
                   { text: '构建与运行', link: '/zh/dev/build' },
                   { text: '文档站', link: '/zh/dev/docs-site' },
                   { text: '架构', link: '/zh/dev/architecture' },
+                  { text: '驱动平台开发流程', link: '/zh/dev/driver-platform' },
                 ],
               },
               {

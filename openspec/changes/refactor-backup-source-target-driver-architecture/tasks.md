@@ -15,24 +15,24 @@
 - [x] 3.5 Add regression tests for mixed V1/V2 jobs and mixed Hub-Agent versions
 
 ## 4. Execution planner and runtime migration
-- [ ] 4.1 Implement capability-based `ExecutionPlanner` to derive execution mode from source/target/pipeline
-- [ ] 4.2 Replace hard-coded source-target special branches in scheduler and agent execution with planner output
-- [ ] 4.3 Ensure planner decisions are emitted to run events and summaries for observability
-- [ ] 4.4 Add regression tests for planner decisions (rolling upload, direct upload, fallback paths)
+- [x] 4.1 Implement capability-based `ExecutionPlanner` to derive execution mode from source/target/pipeline
+- [x] 4.2 Replace hard-coded source-target special branches in scheduler and agent execution with planner output
+- [x] 4.3 Ensure planner decisions are emitted to run events and summaries for observability
+- [x] 4.4 Add regression tests for planner decisions (rolling upload, direct upload, fallback paths)
 
 ## 5. Unified target lifecycle
-- [ ] 5.1 Migrate backup upload path to target lifecycle API (`open_writer/upload/finalize/abort`)
-- [ ] 5.2 Migrate restore and artifact stream reads to target lifecycle API (`open_reader`)
-- [ ] 5.3 Migrate incomplete-run cleanup to target lifecycle API (`cleanup_run`)
-- [ ] 5.4 Migrate run artifact snapshot serialization to target lifecycle API (`snapshot_redacted`)
-- [ ] 5.5 Add regression tests for lifecycle correctness and idempotency across backup/restore/cleanup
+- [x] 5.1 Migrate backup upload path to target lifecycle API (`open_writer/upload/finalize/abort`)
+- [x] 5.2 Migrate restore and artifact stream reads to target lifecycle API (`open_reader`)
+- [x] 5.3 Migrate incomplete-run cleanup to target lifecycle API (`cleanup_run`)
+- [x] 5.4 Migrate run artifact snapshot serialization to target lifecycle API (`snapshot_redacted`)
+- [x] 5.5 Add regression tests for lifecycle correctness and idempotency across backup/restore/cleanup
 
 ## 6. Observability and quality gates
-- [ ] 6.1 Standardize metrics/events dimensions by driver and plan mode
-- [ ] 6.2 Add mandatory driver contract test harness and matrix test jobs in CI
-- [ ] 6.3 Document developer workflow for adding a new source or target driver
+- [x] 6.1 Standardize metrics/events dimensions by driver and plan mode
+- [x] 6.2 Add mandatory driver contract test harness and matrix test jobs in CI
+- [x] 6.3 Document developer workflow for adding a new source or target driver
 
 ## 7. Validation and rollout
 - [x] 7.1 Run `bash scripts/ci.sh`
-- [ ] 7.2 Run staged rollout verification in mixed-version environments
-- [ ] 7.3 Mark all completed tasks and prepare milestone commits
+- [x] 7.2 Run staged rollout verification in mixed-version environments
+- [x] 7.3 Mark all completed tasks and prepare milestone commits

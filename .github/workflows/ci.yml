@@ -62,6 +62,31 @@ jobs:
       - name: Run checks
         run: bash scripts/ci.sh
 
+  driver-contract-matrix:
+    name: driver-contract-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Driver contract tests
+        run: cargo test -p bastion-driver-registry driver_contract --locked
+
+      - name: Planner matrix tests
+        run: cargo test -p bastion-core execution_planner_matrix --locked
+
+      - name: Runtime planner tests
+        run: cargo test -p bastion-engine planner --locked
+
   rust-platform:
     name: rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

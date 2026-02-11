@@ -65,6 +65,12 @@ cargo fmt --check
 echo "==> Rust: clippy"
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+echo "==> Rust: driver contract tests"
+cargo test -p bastion-driver-registry driver_contract
+
+echo "==> Rust: planner matrix tests"
+cargo test -p bastion-core execution_planner_matrix
+
 echo "==> Rust: test"
 cargo test --workspace
 

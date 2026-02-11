@@ -7,6 +7,7 @@ This section is for contributors and people working on Bastion.
 - [Build and run](/dev/build)
 - [Docs site](/dev/docs-site)
 - [Architecture](/dev/architecture)
+- [Driver platform workflow](/dev/driver-platform)
 - [Design notes: backup snapshots](/dev/design/backup-snapshots)
 - [Design: Web UI style guide](/dev/design/web-ui-style-guide)
 

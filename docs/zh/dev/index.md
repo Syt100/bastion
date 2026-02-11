@@ -7,6 +7,7 @@
 - [构建与运行](/zh/dev/build)
 - [文档站](/zh/dev/docs-site)
 - [架构](/zh/dev/architecture)
+- [驱动平台开发流程](/zh/dev/driver-platform)
 - [设计说明：备份快照](/zh/dev/design/backup-snapshots)
 - [视觉规范：Web UI](/zh/dev/design/web-ui-style-guide)
 
