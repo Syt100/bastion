@@ -335,6 +335,8 @@ dependencies = [
  "bastion-backup",
  "bastion-config",
  "bastion-core",
+ "bastion-driver-api",
+ "bastion-driver-registry",
  "bastion-engine",
  "bastion-http",
  "bastion-storage",
@@ -423,6 +425,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "bastion-driver-api"
+version = "0.1.0"
+dependencies = [
+ "bastion-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bastion-driver-registry"
+version = "0.1.0"
+dependencies = [
+ "bastion-core",
+ "bastion-driver-api",
+ "bastion-targets",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "bastion-engine"
 version = "0.1.0"
 dependencies = [
@@ -430,6 +454,8 @@ dependencies = [
  "axum",
  "bastion-backup",
  "bastion-core",
+ "bastion-driver-api",
+ "bastion-driver-registry",
  "bastion-notify",
  "bastion-storage",
  "bastion-targets",

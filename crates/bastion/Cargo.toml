@@ -9,6 +9,8 @@ repository = "https://github.com/Syt100/bastion"
 
 [dependencies]
 bastion-core = { path = "../bastion-core" }
+bastion-driver-api = { path = "../bastion-driver-api" }
+bastion-driver-registry = { path = "../bastion-driver-registry" }
 bastion-backup = { path = "../bastion-backup" }
 bastion-config = { path = "../bastion-config" }
 bastion-engine = { path = "../bastion-engine" }

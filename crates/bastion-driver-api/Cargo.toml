@@ -1,0 +1,13 @@
+[package]
+name = "bastion-driver-api"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bastion-core = { path = "../bastion-core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

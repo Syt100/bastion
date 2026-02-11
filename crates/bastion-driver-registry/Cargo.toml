@@ -1,0 +1,20 @@
+[package]
+name = "bastion-driver-registry"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bastion-driver-api = { path = "../bastion-driver-api" }
+bastion-targets = { path = "../bastion-targets" }
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+bastion-core = { path = "../bastion-core" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

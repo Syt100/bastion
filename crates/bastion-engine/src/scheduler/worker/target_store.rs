@@ -4,6 +4,8 @@ use sqlx::SqlitePool;
 
 use bastion_core::HUB_NODE_ID;
 use bastion_core::job_spec;
+use bastion_driver_api::{DriverId, StoreRunProgress, StoreRunRequest, TargetRequestLimits};
+use bastion_driver_registry::builtins;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
 use bastion_targets::WebdavCredentials;
@@ -11,17 +13,21 @@ use bastion_targets::WebdavCredentials;
 use bastion_backup as backup;
 use bastion_targets as targets;
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn store_run_artifacts_to_target(
+fn to_driver_limits(limits: targets::WebdavRequestLimits) -> TargetRequestLimits {
+    TargetRequestLimits {
+        concurrency: Some(limits.concurrency),
+        put_qps: limits.put_qps,
+        head_qps: limits.head_qps,
+        mkcol_qps: limits.mkcol_qps,
+        burst: limits.burst,
+    }
+}
+
+async fn resolve_target_config_for_hub(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
-    job_id: &str,
-    run_id: &str,
     target: &job_spec::TargetV1,
-    artifacts: &backup::LocalRunArtifacts,
-    webdav_limits: Option<targets::WebdavRequestLimits>,
-    on_progress: Option<Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
-) -> Result<serde_json::Value, anyhow::Error> {
+) -> Result<(DriverId, serde_json::Value), anyhow::Error> {
     match target {
         job_spec::TargetV1::Webdav {
             base_url,
@@ -34,37 +40,58 @@ pub(super) async fn store_run_artifacts_to_target(
                     .ok_or_else(|| anyhow::anyhow!("missing webdav secret: {secret_name}"))?;
             let credentials = WebdavCredentials::from_json(&cred_bytes)?;
 
-            let run_url = targets::webdav::store_run(
-                base_url,
-                credentials,
-                job_id,
-                run_id,
-                artifacts,
-                webdav_limits,
-                on_progress.clone(),
-            )
-            .await?;
-            Ok(serde_json::json!({ "type": "webdav", "run_url": run_url.as_str() }))
+            Ok((
+                builtins::webdav_driver_id(),
+                serde_json::json!({
+                    "base_url": base_url,
+                    "username": credentials.username,
+                    "password": credentials.password,
+                    "secret_name": secret_name,
+                }),
+            ))
         }
-        job_spec::TargetV1::LocalDir { base_dir, .. } => {
-            let base_dir = base_dir.to_string();
-            let job_id = job_id.to_string();
-            let run_id = run_id.to_string();
-            let artifacts = artifacts.clone();
-            let run_dir = tokio::task::spawn_blocking(move || {
-                targets::local_dir::store_run(
-                    std::path::Path::new(&base_dir),
-                    &job_id,
-                    &run_id,
-                    &artifacts,
-                    on_progress.as_deref(),
-                )
-            })
-            .await??;
-            Ok(serde_json::json!({
-                "type": "local_dir",
-                "run_dir": run_dir.to_string_lossy().to_string()
-            }))
-        }
+        job_spec::TargetV1::LocalDir { base_dir, .. } => Ok((
+            builtins::local_dir_driver_id(),
+            serde_json::json!({ "base_dir": base_dir }),
+        )),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn store_run_artifacts_to_target(
+    db: &SqlitePool,
+    secrets: &SecretsCrypto,
+    job_id: &str,
+    run_id: &str,
+    target: &job_spec::TargetV1,
+    artifacts: &backup::LocalRunArtifacts,
+    webdav_limits: Option<targets::WebdavRequestLimits>,
+    on_progress: Option<Arc<dyn Fn(targets::StoreRunProgress) + Send + Sync>>,
+) -> Result<serde_json::Value, anyhow::Error> {
+    let (driver_id, target_config) = resolve_target_config_for_hub(db, secrets, target).await?;
+
+    let driver_progress = on_progress.map(|cb| {
+        Arc::new(move |p: StoreRunProgress| {
+            cb(targets::StoreRunProgress {
+                bytes_done: p.bytes_done,
+                bytes_total: p.bytes_total,
+            })
+        }) as Arc<dyn Fn(StoreRunProgress) + Send + Sync>
+    });
+
+    let summary = builtins::target_registry()
+        .store_run(
+            &driver_id,
+            StoreRunRequest {
+                job_id: job_id.to_string(),
+                run_id: run_id.to_string(),
+                target_config,
+                artifacts: artifacts.clone(),
+                limits: webdav_limits.map(to_driver_limits),
+                on_progress: driver_progress,
+            },
+        )
+        .await?;
+
+    Ok(summary)
 }
