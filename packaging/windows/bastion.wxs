@@ -95,8 +95,8 @@
   </Fragment>
 
   <Fragment>
-    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-      <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99" Win64="yes">
+    <ComponentGroup Id="ProductComponents">
+      <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99" Directory="INSTALLFOLDER" Win64="yes">
         <File Id="BastionExeFile" Source="$(var.SourceDir)\bastion.exe" KeyPath="yes" />
 
         <ServiceInstall
@@ -126,18 +126,12 @@
           Target="[INSTALLFOLDER]bastion.exe"
           WorkingDirectory="INSTALLFOLDER"
         />
-        <util:InternetShortcut
-          Id="StartMenuBastionWebUiShortcut"
-          Directory="ApplicationProgramsFolder"
-          Name="Bastion Web UI"
-          Target="http://127.0.0.1:9876/"
-          Type="url"
-        />
+        <util:InternetShortcut Id="StartMenuBastionWebUiShortcut" Name="Bastion Web UI" Target="http://127.0.0.1:9876/" Type="url" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\Bastion" Name="StartMenuShortcuts" Type="integer" Value="1" KeyPath="yes" />
       </Component>
 
-      <Component Id="BastionInstallRegistry" Guid="b1cb4047-6100-432c-9abe-5bedafe6984e" Win64="yes">
+      <Component Id="BastionInstallRegistry" Guid="b1cb4047-6100-432c-9abe-5bedafe6984e" Directory="INSTALLFOLDER" Win64="yes">
         <RegistryValue Root="HKLM" Key="Software\Bastion" Name="InstallMarker" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
