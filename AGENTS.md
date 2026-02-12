@@ -30,5 +30,6 @@ The environment variable `GITHUB_PAT_TOKEN` MUST be treated as a secret.
 
 - OpenSpec: for non-trivial changes, create/spec first, then implement; mark spec tasks complete when done.
 - Small tweaks: if explicitly approved as "micro", you may skip spec and change code directly.
+- After code changes, if there are user-visible changes, use `maintain-changelog-release` to update `CHANGELOG.md`.
 - UI: ensure mobile responsive behavior; you may use `chrome-devtools-mcp` to inspect/debug pages.
 - Before push: run `scripts/ci.sh` locally and ensure it passes.
