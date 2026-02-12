@@ -77,7 +77,7 @@
         />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
           <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="0">1</Publish>
-          <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
           <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="1">1</Publish>
@@ -94,7 +94,7 @@
     </UI>
 
     <InstallUISequence>
-      <Show Dialog="BastionRemoveDataDlg" Before="VerifyReadyDlg">Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA_CONFIRMED &lt;&gt; &quot;1&quot;</Show>
+      <Show Dialog="BastionRemoveDataDlg" Before="ProgressDlg">Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA_CONFIRMED &lt;&gt; &quot;1&quot;</Show>
     </InstallUISequence>
 
     <InstallExecuteSequence>

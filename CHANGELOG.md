@@ -31,6 +31,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed Windows MSI build failure caused by invalid mixed `ComponentGroup/@Directory` and per-component `Directory` usage in WiX authoring.
 - Fixed Windows MSI ICE validation failures for Start Menu shortcuts by using a per-user (`HKCU`) shortcut component key path.
 - Fixed interactive uninstall flow routing so the data-retention choice dialog appears before remove confirmation across remove entry paths.
+- Fixed Windows MSI packaging failure caused by scheduling uninstall prompt before a non-existent `VerifyReadyDlg` UI sequence action.
 
 ### Security
 - _No user-facing changes yet._
