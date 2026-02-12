@@ -47,6 +47,24 @@ enum AgentStatusFilter {
     Revoked,
 }
 
+fn invalid_page_size_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page_size", message)
+        .with_reason(reason)
+        .with_field("page_size")
+}
+
+fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page", message)
+        .with_reason(reason)
+        .with_field("page")
+}
+
+fn invalid_status_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_status", message)
+        .with_reason("unsupported_value")
+        .with_field("status")
+}
+
 fn parse_status_filter(value: Option<&str>) -> Result<AgentStatusFilter, AppError> {
     let value = value
         .map(str::trim)
@@ -58,7 +76,7 @@ fn parse_status_filter(value: Option<&str>) -> Result<AgentStatusFilter, AppErro
         "online" => Ok(AgentStatusFilter::Online),
         "offline" => Ok(AgentStatusFilter::Offline),
         "revoked" => Ok(AgentStatusFilter::Revoked),
-        _ => Err(AppError::bad_request("invalid_status", "Invalid status")),
+        _ => Err(invalid_status_error("Invalid status")),
     }
 }
 
@@ -198,12 +216,12 @@ pub(in crate::http) async fn list_agents(
                 "page" => {
                     let parsed = value
                         .parse::<i64>()
-                        .map_err(|_| AppError::bad_request("invalid_page", "Invalid page"))?;
+                        .map_err(|_| invalid_page_error("invalid_format", "Invalid page"))?;
                     page = Some(parsed);
                 }
                 "page_size" => {
                     let parsed = value.parse::<i64>().map_err(|_| {
-                        AppError::bad_request("invalid_page_size", "Invalid page_size")
+                        invalid_page_size_error("invalid_format", "Invalid page_size")
                     })?;
                     page_size = Some(parsed);
                 }
@@ -233,16 +251,16 @@ pub(in crate::http) async fn list_agents(
     let pagination_requested = page.is_some() || page_size.is_some();
     let page = page.unwrap_or(1);
     if page < 1 {
-        return Err(AppError::bad_request("invalid_page", "Invalid page"));
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
     }
 
     let page_size = if pagination_requested {
         let page_size = page_size.unwrap_or(20);
         if page_size < 1 {
-            return Err(AppError::bad_request(
-                "invalid_page_size",
-                "Invalid page_size",
-            ));
+            return Err(
+                invalid_page_size_error("must_be_positive", "Invalid page_size")
+                    .with_param("min", 1),
+            );
         }
         page_size.clamp(1, 100)
     } else {

@@ -69,6 +69,18 @@ fn invalid_path_error(reason: &'static str, message: impl Into<String>) -> AppEr
         .with_field("path")
 }
 
+fn not_directory_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("not_directory", message)
+        .with_reason("not_directory")
+        .with_field("path")
+}
+
+fn agent_fs_list_failed_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("agent_fs_list_failed", message)
+        .with_reason(reason)
+        .with_field("path")
+}
+
 pub(super) async fn fs_list(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -187,13 +199,13 @@ fn map_agent_fs_list_error(path: &str, error: anyhow::Error) -> AppError {
         let mut out = match mapped_code {
             "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
-            "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
+            "not_directory" => not_directory_error("path is not a directory"),
             "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
             "invalid_path" => invalid_path_error("required", "path is required"),
             "invalid_sort_by" => invalid_sort_by_error("unsupported_value", "invalid sort_by"),
             "invalid_sort_dir" => invalid_sort_dir_error("unsupported_value", "invalid sort_dir"),
-            _ => AppError::bad_request(
-                "agent_fs_list_failed",
+            _ => agent_fs_list_failed_error(
+                "remote_error",
                 format!("Agent filesystem list failed: {message}"),
             ),
         };
@@ -221,8 +233,8 @@ fn map_agent_fs_list_error(path: &str, error: anyhow::Error) -> AppError {
         return out;
     }
 
-    AppError::bad_request(
-        "agent_fs_list_failed",
+    agent_fs_list_failed_error(
+        "transport_error",
         format!("Agent filesystem list failed: {error}"),
     )
     .with_details(serde_json::json!({ "path": path }))
@@ -383,10 +395,8 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
     let dir = PathBuf::from(dir_path);
     let meta = std::fs::metadata(&dir).map_err(|e| map_io(dir_path, e))?;
     if !meta.is_dir() {
-        return Err(
-            AppError::bad_request("not_directory", "path is not a directory")
-                .with_details(serde_json::json!({ "path": dir_path })),
-        );
+        return Err(not_directory_error("path is not a directory")
+            .with_details(serde_json::json!({ "path": dir_path })));
     }
 
     let mut total: u64 = 0;
@@ -591,6 +601,14 @@ mod tests {
         };
         let app = map_agent_fs_list_error("/tmp", anyhow::Error::new(err));
         assert_eq!(app.code(), "agent_fs_list_failed");
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("remote_error".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
+        );
     }
 
     #[test]

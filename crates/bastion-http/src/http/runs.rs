@@ -10,6 +10,12 @@ use bastion_storage::runs_repo;
 use super::shared::require_session;
 use super::{AppError, AppState};
 
+fn invalid_kind_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_kind", message)
+        .with_reason("unsupported_value")
+        .with_field("kind")
+}
+
 #[derive(Debug, Serialize)]
 pub(super) struct RunResponse {
     id: String,
@@ -93,10 +99,7 @@ pub(super) async fn list_run_entries(
     let kind = match kind.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
         Some(v) if matches!(v, "file" | "dir" | "symlink") => Some(v.to_string()),
-        Some(_) => {
-            return Err(AppError::bad_request("invalid_kind", "invalid kind")
-                .with_details(serde_json::json!({ "field": "kind" })));
-        }
+        Some(_) => return Err(invalid_kind_error("invalid kind")),
     };
     let hide_dotfiles = hide_dotfiles.unwrap_or(false);
     let (min_size_bytes, max_size_bytes) = match (min_size_bytes, max_size_bytes) {

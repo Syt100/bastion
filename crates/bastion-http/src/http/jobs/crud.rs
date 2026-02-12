@@ -16,13 +16,34 @@ use super::super::{AppError, AppState};
 use super::validation::{validate_job_spec, validate_job_target_scope};
 use bastion_engine::scheduler;
 
+fn invalid_name_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_name", message)
+        .with_reason("required")
+        .with_field("name")
+}
+
+fn invalid_timezone_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_timezone", message)
+        .with_reason("invalid_format")
+        .with_field("schedule_timezone")
+}
+
+fn invalid_page_size_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page_size", message)
+        .with_reason(reason)
+        .with_field("page_size")
+}
+
+fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page", message)
+        .with_reason(reason)
+        .with_field("page")
+}
+
 fn require_job_name(name: &str) -> Result<&str, AppError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_name",
-            "Job name is required",
-        ));
+        return Err(invalid_name_error("Job name is required"));
     }
     Ok(name)
 }
@@ -50,7 +71,7 @@ fn normalize_timezone(value: Option<&str>, default: &str) -> Result<String, AppE
         .trim();
     let _ = v
         .parse::<chrono_tz::Tz>()
-        .map_err(|_| AppError::bad_request("invalid_timezone", "Invalid schedule timezone"))?;
+        .map_err(|_| invalid_timezone_error("Invalid schedule timezone"))?;
     Ok(v.to_string())
 }
 
@@ -340,7 +361,7 @@ pub(in crate::http) async fn list_jobs(
     let pagination_requested = q.page.is_some() || q.page_size.is_some();
     let page = q.page.unwrap_or(1);
     if page < 1 {
-        return Err(AppError::bad_request("invalid_page", "Invalid page"));
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
     }
 
     let mut total_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
@@ -371,10 +392,10 @@ pub(in crate::http) async fn list_jobs(
     let page_size = if pagination_requested {
         let page_size = q.page_size.unwrap_or(20);
         if page_size < 1 {
-            return Err(AppError::bad_request(
-                "invalid_page_size",
-                "Invalid page_size",
-            ));
+            return Err(
+                invalid_page_size_error("must_be_positive", "Invalid page_size")
+                    .with_param("min", 1),
+            );
         }
         page_size.clamp(1, 100)
     } else {

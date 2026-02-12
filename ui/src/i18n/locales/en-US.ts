@@ -1478,7 +1478,10 @@ const messages = {
     },
     unauthorized: 'Not signed in or session expired',
     internal_error: 'Internal server error',
-    invalid_name: 'Name is required',
+    invalid_name: {
+      default: 'Name is invalid',
+      required: 'Name is required',
+    },
     invalid_username: 'Username is required',
     invalid_host: 'SMTP host is required',
     invalid_port: 'Invalid SMTP port',
@@ -1486,6 +1489,14 @@ const messages = {
       default: 'Password is invalid',
       min_length: 'Password must be at least {min_length} characters',
       required_with_username: 'SMTP password is required when username is set',
+    },
+    invalid_channel: {
+      default: 'Notification channel is invalid',
+      unsupported_value: 'Notification channel is invalid',
+    },
+    invalid_kind: {
+      default: 'Type is invalid',
+      unsupported_value: 'Type is invalid',
     },
     invalid_label: {
       default: 'Label is invalid',
@@ -1549,6 +1560,33 @@ const messages = {
       required: 'Path is required',
       invalid_segment: 'Path contains invalid segment',
     },
+    invalid_page: {
+      default: 'Invalid page number',
+      invalid_format: 'Invalid page number',
+      must_be_positive: 'Page must be at least {min}',
+    },
+    invalid_page_size: {
+      default: 'Invalid page size',
+      invalid_format: 'Invalid page size',
+      must_be_positive: 'Page size must be at least {min}',
+    },
+    invalid_retention: {
+      default: 'Retention policy is invalid',
+      invalid_format: 'Retention policy is invalid',
+      invalid_policy: 'Retention policy is invalid',
+    },
+    invalid_status: {
+      default: 'Status is invalid',
+      unsupported_value: 'Status is invalid',
+    },
+    invalid_target_type: {
+      default: 'Target type is invalid',
+      unsupported_value: 'Target type is invalid',
+    },
+    invalid_snapshot: {
+      default: 'Snapshot payload is invalid',
+      invalid_payload: 'Snapshot payload is invalid',
+    },
     invalid_sort_by: {
       default: 'Invalid sort field',
       unsupported_value: 'Invalid sort field',
@@ -1561,10 +1599,33 @@ const messages = {
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',
     fs_list_failed: 'Failed to list files',
+    agent_fs_list_failed: {
+      default: 'Failed to list files from agent',
+      remote_error: 'Failed to list files from agent',
+      transport_error: 'Failed to list files from agent',
+    },
+    agent_webdav_list_failed: {
+      default: 'Failed to list WebDAV files from agent',
+      remote_error: 'Failed to list WebDAV files from agent',
+      transport_error: 'Failed to list WebDAV files from agent',
+    },
+    webdav_list_failed: {
+      default: 'Failed to list WebDAV files',
+      client_init_failed: 'Failed to initialize WebDAV client',
+      remote_http_error: 'Failed to list WebDAV files',
+      transport_error: 'Failed to list WebDAV files',
+    },
+    missing_webdav_secret: {
+      default: 'WebDAV credential not found',
+      not_found: 'WebDAV credential not found',
+    },
     snapshot_pinned: 'Snapshot is pinned; force confirmation is required to delete',
     agent_offline: 'Agent is offline',
     not_found: 'Resource not found',
-    invalid_timezone: 'Invalid timezone',
+    invalid_timezone: {
+      default: 'Invalid timezone',
+      invalid_format: 'Invalid timezone',
+    },
     invalid_run_retention_days: 'Run retention days must be > 0',
     invalid_incomplete_cleanup_days: 'Incomplete cleanup days must be >= 0',
     invalid_log_rotation: 'Invalid log rotation',

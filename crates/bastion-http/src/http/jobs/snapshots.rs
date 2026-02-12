@@ -15,6 +15,12 @@ use bastion_storage::run_artifacts_repo;
 use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
 
+fn invalid_snapshot_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_snapshot", message)
+        .with_reason("invalid_payload")
+        .with_field("target_snapshot")
+}
+
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListJobSnapshotsQuery {
     #[serde(default)]
@@ -320,7 +326,7 @@ async fn enqueue_snapshot_delete(
     }
 
     let snapshot_json = serde_json::to_string(&artifact.target_snapshot)
-        .map_err(|_| AppError::bad_request("invalid_snapshot", "Invalid target snapshot"))?;
+        .map_err(|_| invalid_snapshot_error("Invalid target snapshot"))?;
 
     let inserted = artifact_delete_repo::upsert_task_if_missing(
         &state.db,

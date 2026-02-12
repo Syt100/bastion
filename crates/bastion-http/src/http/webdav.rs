@@ -101,10 +101,38 @@ fn invalid_webdav_secret_error(
         .with_field(field)
 }
 
+fn missing_webdav_secret_error(field: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("missing_webdav_secret", message)
+        .with_reason("not_found")
+        .with_field(field)
+}
+
 fn invalid_path_error(reason: &'static str, message: impl Into<String>) -> AppError {
     AppError::bad_request("invalid_path", message)
         .with_reason(reason)
         .with_field("path")
+}
+
+fn not_directory_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("not_directory", message)
+        .with_reason("not_directory")
+        .with_field("path")
+}
+
+fn agent_webdav_list_failed_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("agent_webdav_list_failed", message)
+        .with_reason(reason)
+        .with_field("path")
+}
+
+fn webdav_list_failed_error(
+    reason: &'static str,
+    field: &'static str,
+    message: impl Into<String>,
+) -> AppError {
+    AppError::bad_request("webdav_list_failed", message)
+        .with_reason(reason)
+        .with_field(field)
 }
 
 async fn webdav_list_impl(
@@ -139,10 +167,7 @@ async fn webdav_list_impl(
             &secret_name,
         )
         .await?
-        .ok_or_else(|| {
-            AppError::bad_request("missing_webdav_secret", "WebDAV credential not found")
-                .with_details(serde_json::json!({ "field": "secret_name" }))
-        })?;
+        .ok_or_else(|| missing_webdav_secret_error("secret_name", "WebDAV credential not found"))?;
         let credentials = WebdavCredentials::from_json(&creds_bytes).map_err(|e| {
             invalid_webdav_secret_error(
                 "invalid_payload",
@@ -244,13 +269,13 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
         let mut err = match mapped_code {
             "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
-            "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
+            "not_directory" => not_directory_error("path is not a directory"),
             "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
             "invalid_path" => invalid_path_error("required", "path is required"),
             "invalid_sort_by" => invalid_sort_by_error("unsupported_value", "invalid sort_by"),
             "invalid_sort_dir" => invalid_sort_dir_error("unsupported_value", "invalid sort_dir"),
-            _ => AppError::bad_request(
-                "agent_webdav_list_failed",
+            _ => agent_webdav_list_failed_error(
+                "remote_error",
                 format!("Agent WebDAV list failed: {message}"),
             ),
         };
@@ -275,8 +300,8 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
         return err;
     }
 
-    AppError::bad_request(
-        "agent_webdav_list_failed",
+    agent_webdav_list_failed_error(
+        "transport_error",
         format!("Agent WebDAV list failed: {error}"),
     )
     .with_details(serde_json::json!({ "path": path }))
@@ -324,7 +349,7 @@ async fn list_webdav_on_hub(
     }
 
     let client = WebdavClient::new(base_url, credentials)
-        .map_err(|e| AppError::bad_request("webdav_list_failed", e.to_string()))?;
+        .map_err(|e| webdav_list_failed_error("client_init_failed", "base_url", e.to_string()))?;
 
     let propfind = client
         .propfind_depth1(&list_url)
@@ -337,7 +362,7 @@ async fn list_webdav_on_hub(
 
 fn map_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
     if let Some(_e) = error.downcast_ref::<WebdavNotDirectoryError>() {
-        return AppError::bad_request("not_directory", "path is not a directory")
+        return not_directory_error("path is not a directory")
             .with_details(serde_json::json!({ "path": path }));
     }
 
@@ -347,14 +372,22 @@ fn map_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
                 AppError::forbidden("permission_denied", "Permission denied")
             }
             StatusCode::NOT_FOUND => AppError::not_found("path_not_found", "Path not found"),
-            _ => AppError::bad_request("webdav_list_failed", format!("WebDAV list failed: {e}")),
+            _ => webdav_list_failed_error(
+                "remote_http_error",
+                "path",
+                format!("WebDAV list failed: {e}"),
+            ),
         };
         out = out.with_details(serde_json::json!({ "path": path, "status": e.status.as_u16() }));
         return out;
     }
 
-    AppError::bad_request("webdav_list_failed", format!("WebDAV list failed: {error}"))
-        .with_details(serde_json::json!({ "path": path }))
+    webdav_list_failed_error(
+        "transport_error",
+        "path",
+        format!("WebDAV list failed: {error}"),
+    )
+    .with_details(serde_json::json!({ "path": path }))
 }
 
 #[derive(Debug)]
@@ -632,6 +665,24 @@ mod tests {
     }
 
     #[test]
+    fn map_agent_webdav_list_error_unknown_code_has_reason_and_field() {
+        let err = WebdavListRemoteError {
+            code: "weird_failure".to_string(),
+            message: "some remote issue".to_string(),
+        };
+        let app = map_agent_webdav_list_error("/data", anyhow::Error::new(err));
+        assert_eq!(app.code(), "agent_webdav_list_failed");
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("remote_error".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
+        );
+    }
+
+    #[test]
     fn map_agent_webdav_list_error_invalid_sort_by_has_reason_and_field() {
         let err = WebdavListRemoteError {
             code: "invalid_sort_by".to_string(),
@@ -659,6 +710,25 @@ mod tests {
         );
         assert_eq!(
             err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
+        );
+    }
+
+    #[test]
+    fn map_webdav_list_error_server_http_status_has_reason_and_field() {
+        let err = anyhow::Error::new(WebdavHttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "boom".to_string(),
+            retry_after: None,
+        });
+        let app = map_webdav_list_error("/data", err);
+        assert_eq!(app.code(), "webdav_list_failed");
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("remote_http_error".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
             Some(&serde_json::Value::String("path".to_string()))
         );
     }

@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tower_cookies::Cookies;
 
 use bastion_core::HUB_NODE_ID;
@@ -178,7 +177,8 @@ fn validate_webdav_secret_name(name: &str) -> Result<&str, AppError> {
     if name.is_empty() {
         return Err(
             AppError::bad_request("invalid_name", "Secret name is required")
-                .with_details(json!({ "field": "name" })),
+                .with_reason("required")
+                .with_field("name"),
         );
     }
     Ok(name)
@@ -189,7 +189,8 @@ fn validate_webdav_secret_username(username: &str) -> Result<&str, AppError> {
     if username.is_empty() {
         return Err(
             AppError::bad_request("invalid_username", "Username is required")
-                .with_details(json!({ "field": "username" })),
+                .with_reason("required")
+                .with_field("username"),
         );
     }
     Ok(username)

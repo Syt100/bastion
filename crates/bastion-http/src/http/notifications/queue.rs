@@ -11,7 +11,19 @@ use bastion_storage::notifications_settings_repo;
 
 use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
-use super::validation::{destination_exists, require_supported_channel};
+use super::validation::{destination_exists, invalid_channel_error, require_supported_channel};
+
+fn invalid_page_size_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page_size", message)
+        .with_reason(reason)
+        .with_field("page_size")
+}
+
+fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page", message)
+        .with_reason(reason)
+        .with_field("page")
+}
 
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct ListQueueResponse {
@@ -70,12 +82,12 @@ pub(in crate::http) async fn list_queue(
                 "page" => {
                     let value = value
                         .parse::<i64>()
-                        .map_err(|_| AppError::bad_request("invalid_page", "Invalid page"))?;
+                        .map_err(|_| invalid_page_error("invalid_format", "Invalid page"))?;
                     page = Some(value);
                 }
                 "page_size" => {
                     let value = value.parse::<i64>().map_err(|_| {
-                        AppError::bad_request("invalid_page_size", "Invalid page_size")
+                        invalid_page_size_error("invalid_format", "Invalid page_size")
                     })?;
                     page_size = Some(value);
                 }
@@ -90,8 +102,17 @@ pub(in crate::http) async fn list_queue(
         require_supported_channel(channel)?;
     }
 
-    let page = page.unwrap_or(1).max(1);
-    let page_size = page_size.unwrap_or(20).clamp(1, 100);
+    let page = page.unwrap_or(1);
+    if page < 1 {
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
+    }
+    let page_size = page_size.unwrap_or(20);
+    if page_size < 1 {
+        return Err(
+            invalid_page_size_error("must_be_positive", "Invalid page_size").with_param("min", 1),
+        );
+    }
+    let page_size = page_size.clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 
     let status_filter = if statuses.is_empty() {
@@ -208,8 +229,8 @@ pub(in crate::http) async fn retry_now(
             }
         }
         _ => {
-            return Err(AppError::bad_request(
-                "invalid_channel",
+            return Err(invalid_channel_error(
+                row.channel.as_str(),
                 "Unsupported notification channel",
             ));
         }

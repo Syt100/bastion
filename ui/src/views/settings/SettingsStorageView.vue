@@ -139,7 +139,7 @@ async function save(): Promise<void> {
   const username = form.username.trim()
   if (!name || !username) {
     editorError.value = t('errors.secretNameOrUsernameRequired')
-    editorFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
+    editorFieldErrors.name = !name ? t('apiErrors.invalid_name.required') : undefined
     editorFieldErrors.username = !username ? t('apiErrors.invalid_username') : undefined
     return
   }

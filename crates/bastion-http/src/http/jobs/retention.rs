@@ -26,6 +26,18 @@ fn invalid_spec_error(message: impl Into<String>) -> AppError {
         .with_field("spec")
 }
 
+fn invalid_retention_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_retention", message)
+        .with_reason(reason)
+        .with_field("retention")
+}
+
+fn invalid_snapshot_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_snapshot", message)
+        .with_reason("invalid_payload")
+        .with_field("target_snapshot")
+}
+
 pub(in crate::http) async fn get_job_retention(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -64,7 +76,7 @@ pub(in crate::http) async fn put_job_retention(
     map.insert(
         "retention".to_string(),
         serde_json::to_value(&retention)
-            .map_err(|_| AppError::bad_request("invalid_retention", "Invalid retention"))?,
+            .map_err(|_| invalid_retention_error("invalid_format", "Invalid retention"))?,
     );
 
     // Validate full spec after mutation (retention rules are part of the job spec contract).
@@ -152,11 +164,11 @@ fn validate_retention_override(
     map.insert(
         "retention".to_string(),
         serde_json::to_value(retention)
-            .map_err(|_| AppError::bad_request("invalid_retention", "Invalid retention"))?,
+            .map_err(|_| invalid_retention_error("invalid_format", "Invalid retention"))?,
     );
 
     job_spec::validate_value(&spec).map_err(|e| {
-        AppError::bad_request("invalid_retention", format!("Invalid retention: {e}"))
+        invalid_retention_error("invalid_policy", format!("Invalid retention: {e}"))
     })?;
     Ok(())
 }
@@ -347,7 +359,7 @@ pub(in crate::http) async fn apply_job_retention(
         }
 
         let snapshot_json = serde_json::to_string(&artifact.target_snapshot)
-            .map_err(|_| AppError::bad_request("invalid_snapshot", "Invalid target snapshot"))?;
+            .map_err(|_| invalid_snapshot_error("Invalid target snapshot"))?;
 
         let inserted = artifact_delete_repo::upsert_task_if_missing(
             &state.db,

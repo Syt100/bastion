@@ -63,6 +63,30 @@ pub(super) fn invalid_destination_error(
         .with_field(field)
 }
 
+fn missing_webdav_secret_error(field: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("missing_webdav_secret", message)
+        .with_reason("not_found")
+        .with_field(field)
+}
+
+fn invalid_conflict_policy_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_conflict_policy", message)
+        .with_reason("unsupported_value")
+        .with_field("conflict_policy")
+}
+
+fn invalid_job_spec_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_job_spec", message)
+        .with_reason(reason)
+        .with_field("job.spec")
+}
+
+fn dispatch_failed_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("dispatch_failed", message)
+        .with_reason(reason)
+        .with_field("executor.node_id")
+}
+
 pub(super) async fn start_restore(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -76,7 +100,7 @@ pub(super) async fn start_restore(
     let conflict = req
         .conflict_policy
         .parse::<restore::ConflictPolicy>()
-        .map_err(|_| AppError::bad_request("invalid_conflict_policy", "Invalid conflict policy"))?;
+        .map_err(|_| invalid_conflict_policy_error("Invalid conflict policy"))?;
 
     if let Some(selection) = req.selection.as_ref()
         && selection
@@ -239,6 +263,33 @@ pub(super) async fn start_restore(
     )
     .await;
 
+    // Validate WebDAV destination secret in the selected executor scope before dispatch/spawn.
+    if let bastion_core::agent_protocol::RestoreDestinationV1::Webdav { secret_name, .. } =
+        &destination_for_agent
+        && bastion_storage::secrets_repo::get_secret(
+            &state.db,
+            &state.secrets,
+            &executor_node_id,
+            "webdav",
+            secret_name,
+        )
+        .await?
+        .is_none()
+    {
+        let _ = operations_repo::complete_operation(
+            &state.db,
+            &op.id,
+            operations_repo::OperationStatus::Failed,
+            None,
+            Some("missing webdav secret"),
+        )
+        .await;
+        return Err(missing_webdav_secret_error(
+            "destination.secret_name",
+            "Missing WebDAV secret for executor scope",
+        ));
+    }
+
     if executor_node_id != HUB_NODE_ID {
         if !state.agent_manager.is_connected(&executor_node_id).await {
             let _ = operations_repo::complete_operation(
@@ -269,7 +320,7 @@ pub(super) async fn start_restore(
                     Some(&msg),
                 )
                 .await;
-                return Err(AppError::bad_request("invalid_job_spec", msg));
+                return Err(invalid_job_spec_error("invalid_format", msg));
             }
         };
         if let Err(error) = job_spec::validate(&spec) {
@@ -282,7 +333,7 @@ pub(super) async fn start_restore(
                 Some(&msg),
             )
             .await;
-            return Err(AppError::bad_request("invalid_job_spec", msg));
+            return Err(invalid_job_spec_error("invalid_value", msg));
         }
 
         let pipeline = match &spec {
@@ -350,33 +401,6 @@ pub(super) async fn start_restore(
             }
         }
 
-        // Ensure any WebDAV destination secret exists in the executor scope.
-        if let bastion_core::agent_protocol::RestoreDestinationV1::Webdav { secret_name, .. } =
-            &destination_for_agent
-            && bastion_storage::secrets_repo::get_secret(
-                &state.db,
-                &state.secrets,
-                &executor_node_id,
-                "webdav",
-                secret_name,
-            )
-            .await?
-            .is_none()
-        {
-            let _ = operations_repo::complete_operation(
-                &state.db,
-                &op.id,
-                operations_repo::OperationStatus::Failed,
-                None,
-                Some("missing webdav secret"),
-            )
-            .await;
-            return Err(AppError::bad_request(
-                "missing_webdav_secret",
-                "Missing WebDAV secret for executor node",
-            ));
-        }
-
         let task = RestoreTaskV1 {
             op_id: op.id.clone(),
             run_id: run_id.clone(),
@@ -416,7 +440,7 @@ pub(super) async fn start_restore(
                 Some(&msg),
             )
             .await;
-            return Err(AppError::bad_request("dispatch_failed", msg));
+            return Err(dispatch_failed_error("persist_task_failed", msg));
         }
         state
             .agent_manager
@@ -439,7 +463,7 @@ pub(super) async fn start_restore(
                     )
                     .await;
                 });
-                AppError::bad_request("dispatch_failed", msg)
+                dispatch_failed_error("send_agent_message_failed", msg)
             })?;
 
         tracing::info!(

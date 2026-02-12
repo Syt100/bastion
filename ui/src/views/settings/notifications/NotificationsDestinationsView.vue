@@ -136,7 +136,7 @@ async function saveWecom(): Promise<void> {
   const webhookUrl = wecomForm.webhookUrl.trim()
   if (!name || !webhookUrl) {
     wecomEditorError.value = t('errors.wecomNameOrWebhookRequired')
-    wecomFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
+    wecomFieldErrors.name = !name ? t('apiErrors.invalid_name.required') : undefined
     wecomFieldErrors.webhookUrl = !webhookUrl ? t('apiErrors.invalid_webhook_url.required') : undefined
     return
   }
@@ -277,7 +277,7 @@ async function saveSmtp(): Promise<void> {
 
   if (!name) {
     smtpEditorError.value = t('errors.smtpNameRequired')
-    smtpFieldErrors.name = t('apiErrors.invalid_name')
+    smtpFieldErrors.name = t('apiErrors.invalid_name.required')
     return
   }
   if (!host) {

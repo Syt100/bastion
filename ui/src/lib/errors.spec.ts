@@ -8,6 +8,8 @@ const dict: Record<string, string> = {
   'apiErrors.invalid_webhook_url.required': 'Webhook URL is required',
   'apiErrors.invalid_password.default': 'Password is invalid',
   'apiErrors.invalid_password.min_length': 'Password must be at least {min_length} characters',
+  'apiErrors.invalid_name.default': 'Name is invalid',
+  'apiErrors.invalid_name.required': 'Name is required',
   'apiErrors.rate_limited.throttled': 'Rate limited ({seconds}s)',
   'apiErrors.invalid_to.required': 'Recipient is required',
   'apiErrors.invalid_to.invalid_format': 'Recipient is invalid',
@@ -21,6 +23,16 @@ const dict: Record<string, string> = {
   'apiErrors.invalid_selector.resolved_empty': 'Selector resolved to no agents',
   'apiErrors.invalid_path.invalid_segment': 'Path contains invalid segment',
   'apiErrors.invalid_sort_by.unsupported_value': 'Invalid sort field',
+  'apiErrors.invalid_channel.unsupported_value': 'Notification channel is invalid',
+  'apiErrors.invalid_kind.unsupported_value': 'Type is invalid',
+  'apiErrors.invalid_timezone.invalid_format': 'Invalid timezone',
+  'apiErrors.invalid_page.invalid_format': 'Invalid page number',
+  'apiErrors.invalid_page.must_be_positive': 'Page must be at least {min}',
+  'apiErrors.invalid_page_size.invalid_format': 'Invalid page size',
+  'apiErrors.invalid_page_size.must_be_positive': 'Page size must be at least {min}',
+  'apiErrors.invalid_retention.invalid_policy': 'Retention policy is invalid',
+  'apiErrors.missing_webdav_secret.not_found': 'WebDAV credential not found',
+  'apiErrors.webdav_list_failed.client_init_failed': 'Failed to initialize WebDAV client',
   'common.requestId': 'Request ID',
 }
 
@@ -165,6 +177,76 @@ describe('toApiErrorInfo', () => {
     })
     const sortInfo = toApiErrorInfo(sortErr, t)
     expect(sortInfo.message).toBe('Invalid sort field')
+  })
+
+  it('supports structured reasons for channel and kind errors', () => {
+    const channelErr = new ApiError(400, 'Unsupported notification channel', {
+      error: 'invalid_channel',
+      message: 'Unsupported notification channel',
+      details: { reason: 'unsupported_value', field: 'channel' },
+    })
+    const channelInfo = toApiErrorInfo(channelErr, t)
+    expect(channelInfo.message).toBe('Notification channel is invalid')
+
+    const kindErr = new ApiError(400, 'Invalid kind', {
+      error: 'invalid_kind',
+      message: 'Invalid kind',
+      details: { reason: 'unsupported_value', field: 'kind' },
+    })
+    const kindInfo = toApiErrorInfo(kindErr, t)
+    expect(kindInfo.message).toBe('Type is invalid')
+  })
+
+  it('supports structured reasons for timezone and pagination errors', () => {
+    const timezoneErr = new ApiError(400, 'Invalid schedule timezone', {
+      error: 'invalid_timezone',
+      message: 'Invalid schedule timezone',
+      details: { reason: 'invalid_format', field: 'schedule_timezone' },
+    })
+    const timezoneInfo = toApiErrorInfo(timezoneErr, t)
+    expect(timezoneInfo.message).toBe('Invalid timezone')
+
+    const pageErr = new ApiError(400, 'Invalid page', {
+      error: 'invalid_page',
+      message: 'Invalid page',
+      details: { reason: 'must_be_positive', field: 'page', params: { min: 1 } },
+    })
+    const pageInfo = toApiErrorInfo(pageErr, t)
+    expect(pageInfo.message).toBe('Page must be at least 1')
+
+    const pageSizeErr = new ApiError(400, 'Invalid page_size', {
+      error: 'invalid_page_size',
+      message: 'Invalid page_size',
+      details: { reason: 'invalid_format', field: 'page_size' },
+    })
+    const pageSizeInfo = toApiErrorInfo(pageSizeErr, t)
+    expect(pageSizeInfo.message).toBe('Invalid page size')
+  })
+
+  it('supports structured reasons for retention, webdav secret and webdav list errors', () => {
+    const retentionErr = new ApiError(400, 'Invalid retention: keep_days must be > 0', {
+      error: 'invalid_retention',
+      message: 'Invalid retention: keep_days must be > 0',
+      details: { reason: 'invalid_policy', field: 'retention' },
+    })
+    const retentionInfo = toApiErrorInfo(retentionErr, t)
+    expect(retentionInfo.message).toBe('Retention policy is invalid')
+
+    const missingSecretErr = new ApiError(400, 'WebDAV credential not found', {
+      error: 'missing_webdav_secret',
+      message: 'WebDAV credential not found',
+      details: { reason: 'not_found', field: 'destination.secret_name' },
+    })
+    const missingSecretInfo = toApiErrorInfo(missingSecretErr, t)
+    expect(missingSecretInfo.message).toBe('WebDAV credential not found')
+
+    const webdavErr = new ApiError(400, 'builder error', {
+      error: 'webdav_list_failed',
+      message: 'builder error',
+      details: { reason: 'client_init_failed', field: 'base_url' },
+    })
+    const webdavInfo = toApiErrorInfo(webdavErr, t)
+    expect(webdavInfo.message).toBe('Failed to initialize WebDAV client')
   })
 
   it('falls back to backend message for unknown codes', () => {

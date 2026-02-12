@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -14,7 +13,13 @@ use bastion_storage::secrets_repo;
 
 use super::super::shared::{require_csrf, require_session};
 use super::super::{AppError, AppState};
-use super::validation::{destination_exists, require_supported_channel};
+use super::validation::{destination_exists, invalid_channel_error, require_supported_channel};
+
+fn invalid_name_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_name", message)
+        .with_reason("required")
+        .with_field("name")
+}
 
 pub(in crate::http) async fn list_destinations(
     state: axum::extract::State<AppState>,
@@ -60,10 +65,7 @@ pub(in crate::http) async fn set_destination_enabled(
 
     require_supported_channel(&channel)?;
     if name.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_name", "Destination name is required")
-                .with_details(json!({ "field": "name" })),
-        );
+        return Err(invalid_name_error("Destination name is required"));
     }
 
     if !destination_exists(&state.db, &channel, name.trim()).await? {
@@ -109,10 +111,7 @@ pub(in crate::http) async fn test_destination(
 
     require_supported_channel(&channel)?;
     if name.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_name", "Destination name is required")
-                .with_details(json!({ "field": "name" })),
-        );
+        return Err(invalid_name_error("Destination name is required"));
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -164,8 +163,8 @@ pub(in crate::http) async fn test_destination(
             smtp::send_plain_text(&payload, &subject, &body).await?;
         }
         _ => {
-            return Err(AppError::bad_request(
-                "invalid_channel",
+            return Err(invalid_channel_error(
+                &channel,
                 "Unsupported notification channel",
             ));
         }

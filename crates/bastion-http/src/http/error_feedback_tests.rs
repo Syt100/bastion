@@ -1140,3 +1140,798 @@ async fn start_restore_missing_webdav_base_url_uses_structured_destination_reaso
 
     server.abort();
 }
+
+#[tokio::test]
+async fn create_job_blank_name_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/jobs", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "name": "   ",
+          "agent_id": null,
+          "schedule": null,
+          "schedule_timezone": "UTC",
+          "overlap_policy": "queue",
+          "spec": {
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/data" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+          }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_name");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "required"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "name"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn create_job_invalid_timezone_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/jobs", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "name": "job1",
+          "agent_id": null,
+          "schedule": null,
+          "schedule_timezone": "Mars/Phobos",
+          "overlap_policy": "queue",
+          "spec": {
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/data" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+          }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_timezone"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_format"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "schedule_timezone"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_jobs_invalid_page_size_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/jobs?page_size=0", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_page_size"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "must_be_positive"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "page_size"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_agents_invalid_page_size_format_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/agents?page_size=abc", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_page_size"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_format"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "page_size"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_agents_invalid_page_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/api/agents?page=0", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_page");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "must_be_positive"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "page"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_incomplete_cleanup_invalid_status_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{}/api/maintenance/incomplete-cleanup?status=unexpected",
+            base_url(addr)
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_status");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "unsupported_value"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "status"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn notification_destination_invalid_channel_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/notifications/destinations/not-a-channel/demo/enabled",
+            base_url(addr)
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({ "enabled": true }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_channel"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "unsupported_value"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "channel"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn retention_preview_invalid_retention_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job-retention",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "source": { "paths": ["/tmp"] },
+          "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/jobs/{}/retention/preview",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .json(&serde_json::json!({
+            "retention": {
+                "enabled": true,
+                "keep_last": 1,
+                "max_delete_per_tick": 0,
+                "max_delete_per_day": 100
+            }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_retention"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_policy"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "retention"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn webdav_list_missing_secret_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/nodes/hub/webdav/list", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .json(&serde_json::json!({
+            "base_url": "https://example.com/webdav/",
+            "secret_name": "missing-secret",
+            "path": "/"
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "missing_webdav_secret"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "not_found"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "secret_name"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn start_restore_missing_webdav_secret_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job-webdav-restore",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({ "v": 1, "type": "filesystem" }),
+    )
+    .await
+    .expect("create job");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1000,
+        Some(1010),
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/runs/{}/restore", base_url(addr), run.id))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "destination": {
+            "type": "webdav",
+            "base_url": "https://example.com/webdav/",
+            "secret_name": "missing-secret",
+            "prefix": "restore"
+          },
+          "conflict_policy": "overwrite"
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "missing_webdav_secret"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "not_found"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "destination.secret_name"
+    );
+
+    server.abort();
+}

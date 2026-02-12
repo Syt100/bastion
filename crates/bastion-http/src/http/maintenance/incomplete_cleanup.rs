@@ -21,18 +21,33 @@ pub(in crate::http) struct ListIncompleteCleanupTasksResponse {
 fn validate_status(status: &str) -> Result<(), AppError> {
     match status {
         "queued" | "running" | "retrying" | "blocked" | "done" | "ignored" | "abandoned" => Ok(()),
-        _ => Err(AppError::bad_request("invalid_status", "Invalid status")),
+        _ => Err(AppError::bad_request("invalid_status", "Invalid status")
+            .with_reason("unsupported_value")
+            .with_field("status")),
     }
 }
 
 fn validate_target_type(target_type: &str) -> Result<(), AppError> {
     match target_type {
         "webdav" | "local_dir" => Ok(()),
-        _ => Err(AppError::bad_request(
-            "invalid_target_type",
-            "Invalid target_type",
-        )),
+        _ => Err(
+            AppError::bad_request("invalid_target_type", "Invalid target_type")
+                .with_reason("unsupported_value")
+                .with_field("target_type"),
+        ),
     }
+}
+
+fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page", message)
+        .with_reason(reason)
+        .with_field("page")
+}
+
+fn invalid_page_size_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page_size", message)
+        .with_reason(reason)
+        .with_field("page_size")
 }
 
 pub(in crate::http) async fn list_incomplete_cleanup_tasks(
@@ -70,12 +85,12 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
                 "page" => {
                     let value = value
                         .parse::<i64>()
-                        .map_err(|_| AppError::bad_request("invalid_page", "Invalid page"))?;
+                        .map_err(|_| invalid_page_error("invalid_format", "Invalid page"))?;
                     page = Some(value);
                 }
                 "page_size" => {
                     let value = value.parse::<i64>().map_err(|_| {
-                        AppError::bad_request("invalid_page_size", "Invalid page_size")
+                        invalid_page_size_error("invalid_format", "Invalid page_size")
                     })?;
                     page_size = Some(value);
                 }
@@ -95,7 +110,10 @@ pub(in crate::http) async fn list_incomplete_cleanup_tasks(
         validate_target_type(target_type)?;
     }
 
-    let page = page.unwrap_or(1).max(1);
+    let page = page.unwrap_or(1);
+    if page < 1 {
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
+    }
     let page_size = page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
 

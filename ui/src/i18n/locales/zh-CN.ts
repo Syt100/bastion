@@ -1473,7 +1473,10 @@ const messages = {
     },
     unauthorized: '未登录或会话已过期',
     internal_error: '服务内部错误',
-    invalid_name: '名称不能为空',
+    invalid_name: {
+      default: '名称无效',
+      required: '名称不能为空',
+    },
     invalid_username: '用户名不能为空',
     invalid_host: 'SMTP 主机不能为空',
     invalid_port: 'SMTP 端口不正确',
@@ -1481,6 +1484,14 @@ const messages = {
       default: '密码不合法',
       min_length: '密码至少需要 {min_length} 个字符',
       required_with_username: '填写 SMTP 用户名时，密码不能为空',
+    },
+    invalid_channel: {
+      default: '通知通道无效',
+      unsupported_value: '通知通道无效',
+    },
+    invalid_kind: {
+      default: '类型无效',
+      unsupported_value: '类型无效',
     },
     invalid_label: {
       default: '标签不合法',
@@ -1544,6 +1555,33 @@ const messages = {
       required: '路径不能为空',
       invalid_segment: '路径包含非法片段',
     },
+    invalid_page: {
+      default: '页码无效',
+      invalid_format: '页码无效',
+      must_be_positive: '页码必须大于等于 {min}',
+    },
+    invalid_page_size: {
+      default: '分页大小无效',
+      invalid_format: '分页大小无效',
+      must_be_positive: '分页大小必须大于等于 {min}',
+    },
+    invalid_retention: {
+      default: '保留策略无效',
+      invalid_format: '保留策略格式不正确',
+      invalid_policy: '保留策略规则不合法',
+    },
+    invalid_status: {
+      default: '状态无效',
+      unsupported_value: '状态无效',
+    },
+    invalid_target_type: {
+      default: '目标类型无效',
+      unsupported_value: '目标类型无效',
+    },
+    invalid_snapshot: {
+      default: '快照内容无效',
+      invalid_payload: '快照内容无效',
+    },
     invalid_sort_by: {
       default: '排序字段无效',
       unsupported_value: '排序字段无效',
@@ -1556,10 +1594,33 @@ const messages = {
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',
     fs_list_failed: '列出文件失败',
+    agent_fs_list_failed: {
+      default: '从客户端列出文件失败',
+      remote_error: '从客户端列出文件失败',
+      transport_error: '从客户端列出文件失败',
+    },
+    agent_webdav_list_failed: {
+      default: '从客户端列出 WebDAV 文件失败',
+      remote_error: '从客户端列出 WebDAV 文件失败',
+      transport_error: '从客户端列出 WebDAV 文件失败',
+    },
+    webdav_list_failed: {
+      default: '列出 WebDAV 文件失败',
+      client_init_failed: '初始化 WebDAV 客户端失败',
+      remote_http_error: '列出 WebDAV 文件失败',
+      transport_error: '列出 WebDAV 文件失败',
+    },
+    missing_webdav_secret: {
+      default: '未找到 WebDAV 凭据',
+      not_found: '未找到 WebDAV 凭据',
+    },
     snapshot_pinned: '该快照已固定，删除需要强制确认',
     agent_offline: '客户端离线',
     not_found: '资源不存在',
-    invalid_timezone: '时区无效',
+    invalid_timezone: {
+      default: '时区无效',
+      invalid_format: '时区格式不正确',
+    },
     invalid_run_retention_days: '运行保留天数必须大于 0',
     invalid_incomplete_cleanup_days: '不完整运行清理天数必须大于等于 0',
     invalid_log_rotation: '日志轮转值无效',

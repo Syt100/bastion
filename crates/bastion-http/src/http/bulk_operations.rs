@@ -14,6 +14,12 @@ use super::{AppError, AppState};
 
 const DEFAULT_LIST_LIMIT: i64 = 50;
 
+fn invalid_kind_error() -> AppError {
+    AppError::bad_request("invalid_kind", "Invalid kind")
+        .with_reason("unsupported_value")
+        .with_field("kind")
+}
+
 fn normalize_node_ids(values: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = values
         .into_iter()
@@ -68,7 +74,7 @@ fn validate_kind(kind: &str) -> Result<&str, AppError> {
         | "sync_config_now"
         | "job_deploy"
         | "webdav_secret_distribute" => Ok(kind),
-        _ => Err(AppError::bad_request("invalid_kind", "Invalid kind")),
+        _ => Err(invalid_kind_error()),
     }
 }
 
@@ -285,7 +291,9 @@ pub(in crate::http) async fn create_bulk_operation(
                 "overwrite": parsed.overwrite.unwrap_or(false),
             })
         }
-        _ => return Err(AppError::bad_request("invalid_kind", "Invalid kind")),
+        _ => {
+            return Err(invalid_kind_error());
+        }
     };
 
     let op_id = bulk_operations_repo::create_operation(
