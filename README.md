@@ -177,6 +177,19 @@ This script includes a `gitleaks` secret scan step. If `gitleaks` is not install
 
 GitHub Actions CI runs the same script on pushes and pull requests (see `.github/workflows/ci.yml`).
 
+### Changelog and release notes
+
+- Keep user-facing changes in root `CHANGELOG.md` under `## [Unreleased]`.
+- Use the standard categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`.
+- Tag releases (`v*`) must have a matching changelog section (for example `## [v0.1.1] - 2026-02-12`), which is used as the GitHub Release body.
+
+Useful commands:
+
+```bash
+bash scripts/changelog.sh check
+bash scripts/changelog.sh extract --tag v0.1.0 --output release-notes.md
+```
+
 ## Docs
 
 - Product docs: `/docs/` (served by the Hub; can be embedded in release builds)

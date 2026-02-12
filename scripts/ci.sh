@@ -25,6 +25,12 @@ fi
 
 "${gitleaks_bin}" detect --source "${root_dir}" --redact --no-banner --exit-code 1
 
+echo "==> Changelog: check"
+bash scripts/changelog.sh check
+
+echo "==> Changelog: tests"
+bash scripts/changelog_test.sh
+
 echo "==> Rust: forbid tokio/full"
 if command -v rg >/dev/null 2>&1; then
   if rg -nU --glob 'crates/*/Cargo.toml' 'tokio\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"full"' ; then
