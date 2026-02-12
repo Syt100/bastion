@@ -28,6 +28,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed Windows MSI packaging to embed installer CAB payloads so release MSI artifacts contain the expected application payload.
 - Added release workflow sanity checks to fail Windows packaging if the generated MSI is unexpectedly tiny.
 - Fixed Windows MSI build failure caused by invalid mixed `ComponentGroup/@Directory` and per-component `Directory` usage in WiX authoring.
+- Fixed Windows MSI ICE validation failures for Start Menu shortcuts by using a per-user (`HKCU`) shortcut component key path.
 
 ### Security
 - _No user-facing changes yet._
