@@ -18,7 +18,10 @@
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/Syt100/bastion" />
     <Property Id="ARPURLUPDATEINFO" Value="https://github.com/Syt100/bastion/releases" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Bastion service and open Web UI (http://127.0.0.1:9876/)" />
     <Property Id="BASTION_REMOVE_DATA" Value="0" Secure="yes" />
+    <Property Id="BASTION_REMOVE_DATA_CONFIRMED" Value="0" />
 
     <WixVariable Id="WixUILicenseRtf" Value="packaging\windows\license.rtf" />
 
@@ -35,6 +38,20 @@
       Execute="deferred"
       Return="ignore"
       Impersonate="no"
+    />
+    <CustomAction
+      Id="SetLaunchWebUiCmd"
+      Property="WixQuietExecCmdLine"
+      Value="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='SilentlyContinue';Start-Service -Name 'Bastion' -ErrorAction SilentlyContinue;$ready=$false;for($i=0;$i -lt 30;$i++){try{$resp=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9876/api/system' -TimeoutSec 2;if($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){Start-Process 'http://127.0.0.1:9876/'}&quot;"
+      Execute="immediate"
+    />
+    <CustomAction
+      Id="RunLaunchWebUiCmd"
+      BinaryKey="WixCA"
+      DllEntry="WixQuietExec"
+      Execute="immediate"
+      Return="ignore"
+      Impersonate="yes"
     />
 
     <UI>
@@ -59,9 +76,11 @@
           Text="Also remove Bastion data (default: keep data)"
         />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="0">1</Publish>
           <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="1">1</Publish>
           <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
@@ -69,9 +88,14 @@
         </Control>
       </Dialog>
 
-      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="BastionRemoveDataDlg" Order="2">1</Publish>
-      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="BastionRemoveDataDlg" Order="3">Installed AND NOT PATCH AND REMOVE=&quot;ALL&quot;</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Property="BASTION_REMOVE_DATA_CONFIRMED" Value="0" Order="1">Installed AND REMOVE=&quot;ALL&quot;</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="SetLaunchWebUiCmd" Order="1">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="RunLaunchWebUiCmd" Order="2">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
     </UI>
+
+    <InstallUISequence>
+      <Show Dialog="BastionRemoveDataDlg" Before="VerifyReadyDlg">Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA_CONFIRMED &lt;&gt; &quot;1&quot;</Show>
+    </InstallUISequence>
 
     <InstallExecuteSequence>
       <Custom Action="SetBastionDataCleanupCmd" Before="RunBastionDataCleanup">REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA=&quot;1&quot;</Custom>

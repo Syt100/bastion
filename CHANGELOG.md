@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added a guided Windows MSI installer flow (license + install directory dialogs) instead of progress-only UX.
 - Added Windows Start Menu shortcuts for `Bastion` and `Bastion Web UI`.
 - Added an uninstall-time checkbox option to remove `C:\ProgramData\bastion` data (default remains keep data).
+- Added an install-completion checkbox (default enabled) to start Bastion and open Web UI after installation.
 
 ### Changed
 - Changed release `workflow_dispatch` artifact uploads to per-file granularity so Linux GNU `.tar.gz`, `.deb`, and `.rpm` outputs are downloaded separately (matching published release assets).
@@ -29,6 +30,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added release workflow sanity checks to fail Windows packaging if the generated MSI is unexpectedly tiny.
 - Fixed Windows MSI build failure caused by invalid mixed `ComponentGroup/@Directory` and per-component `Directory` usage in WiX authoring.
 - Fixed Windows MSI ICE validation failures for Start Menu shortcuts by using a per-user (`HKCU`) shortcut component key path.
+- Fixed interactive uninstall flow routing so the data-retention choice dialog appears before remove confirmation across remove entry paths.
 
 ### Security
 - _No user-facing changes yet._
