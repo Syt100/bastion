@@ -72,6 +72,16 @@ fn validate_kind(kind: &str) -> Result<&str, AppError> {
     }
 }
 
+fn invalid_payload_error(
+    reason: &'static str,
+    field: &'static str,
+    message: impl Into<String>,
+) -> AppError {
+    AppError::bad_request("invalid_payload", message)
+        .with_reason(reason)
+        .with_field(field)
+}
+
 async fn validate_agent_ids_exist(
     db: &sqlx::SqlitePool,
     agent_ids: &[String],
@@ -158,18 +168,22 @@ pub(in crate::http) async fn create_bulk_operation(
     let payload_json = match kind.as_str() {
         "agent_labels_add" | "agent_labels_remove" => {
             let Some(payload) = req.payload else {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload",
                     "Payload is required",
                 ));
             };
-            let parsed: AgentLabelsPayloadRequest = serde_json::from_value(payload)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+            let parsed: AgentLabelsPayloadRequest =
+                serde_json::from_value(payload).map_err(|_| {
+                    invalid_payload_error("invalid_format", "payload", "Invalid payload")
+                })?;
 
             let payload_labels = normalize_labels(parsed.labels)?;
             if payload_labels.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload.labels",
                     "Labels is required",
                 ));
             }
@@ -179,26 +193,31 @@ pub(in crate::http) async fn create_bulk_operation(
         "sync_config_now" => serde_json::json!({}),
         "job_deploy" => {
             let Some(payload) = req.payload else {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload",
                     "Payload is required",
                 ));
             };
-            let parsed: JobDeployPayloadRequest = serde_json::from_value(payload)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+            let parsed: JobDeployPayloadRequest =
+                serde_json::from_value(payload).map_err(|_| {
+                    invalid_payload_error("invalid_format", "payload", "Invalid payload")
+                })?;
 
             let source_job_id = parsed.source_job_id.trim().to_string();
             if source_job_id.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload.source_job_id",
                     "source_job_id is required",
                 ));
             }
 
             let source = jobs_repo::get_job(&state.db, &source_job_id).await?;
             if source.is_none() {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "not_found",
+                    "payload.source_job_id",
                     "Source job not found",
                 ));
             }
@@ -217,24 +236,32 @@ pub(in crate::http) async fn create_bulk_operation(
         }
         "webdav_secret_distribute" => {
             let Some(payload) = req.payload else {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload",
                     "Payload is required",
                 ));
             };
-            let parsed: WebdavDistributePayloadRequest = serde_json::from_value(payload)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+            let parsed: WebdavDistributePayloadRequest =
+                serde_json::from_value(payload).map_err(|_| {
+                    invalid_payload_error("invalid_format", "payload", "Invalid payload")
+                })?;
 
             let name = parsed.name.trim().to_string();
             if name.is_empty() {
-                return Err(AppError::bad_request("invalid_payload", "Name is required"));
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload.name",
+                    "Name is required",
+                ));
             }
 
             let exists =
                 secrets_repo::secret_exists(&state.db, HUB_NODE_ID, "webdav", &name).await?;
             if !exists {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "not_found",
+                    "payload.name",
                     "WebDAV credential not found",
                 ));
             }
@@ -309,27 +336,35 @@ pub(in crate::http) async fn preview_bulk_operation(
     let (target_agent_ids, _selector_json) = resolve_selector(&state.db, req.selector).await?;
 
     let Some(payload) = req.payload else {
-        return Err(AppError::bad_request(
-            "invalid_payload",
+        return Err(invalid_payload_error(
+            "required",
+            "payload",
             "Payload is required",
         ));
     };
     match kind.as_str() {
         "webdav_secret_distribute" => {
-            let parsed: WebdavDistributePayloadRequest = serde_json::from_value(payload)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+            let parsed: WebdavDistributePayloadRequest =
+                serde_json::from_value(payload).map_err(|_| {
+                    invalid_payload_error("invalid_format", "payload", "Invalid payload")
+                })?;
 
             let secret_name = parsed.name.trim().to_string();
             if secret_name.is_empty() {
-                return Err(AppError::bad_request("invalid_payload", "Name is required"));
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload.name",
+                    "Name is required",
+                ));
             }
             let overwrite = parsed.overwrite.unwrap_or(false);
 
             let exists =
                 secrets_repo::secret_exists(&state.db, HUB_NODE_ID, "webdav", &secret_name).await?;
             if !exists {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "not_found",
+                    "payload.name",
                     "WebDAV credential not found",
                 ));
             }
@@ -390,20 +425,24 @@ pub(in crate::http) async fn preview_bulk_operation(
             use bastion_core::job_spec;
             use bastion_engine::agent_job_resolver;
 
-            let parsed: JobDeployPayloadRequest = serde_json::from_value(payload)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid payload"))?;
+            let parsed: JobDeployPayloadRequest =
+                serde_json::from_value(payload).map_err(|_| {
+                    invalid_payload_error("invalid_format", "payload", "Invalid payload")
+                })?;
 
             let source_job_id = parsed.source_job_id.trim().to_string();
             if source_job_id.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "required",
+                    "payload.source_job_id",
                     "source_job_id is required",
                 ));
             }
 
             let Some(source) = jobs_repo::get_job(&state.db, &source_job_id).await? else {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "not_found",
+                    "payload.source_job_id",
                     "Source job not found",
                 ));
             };
@@ -428,11 +467,17 @@ pub(in crate::http) async fn preview_bulk_operation(
                 .map(|r| (r.get::<String, _>("id"), r.get::<Option<String>, _>("name")))
                 .collect::<std::collections::HashMap<String, Option<String>>>();
 
-            let spec = job_spec::parse_value(&source.spec)
-                .map_err(|_| AppError::bad_request("invalid_payload", "Invalid job spec"))?;
+            let spec = job_spec::parse_value(&source.spec).map_err(|_| {
+                invalid_payload_error(
+                    "invalid_source_job_spec",
+                    "source_job.spec",
+                    "Invalid job spec",
+                )
+            })?;
             if let Err(error) = job_spec::validate(&spec) {
-                return Err(AppError::bad_request(
-                    "invalid_payload",
+                return Err(invalid_payload_error(
+                    "invalid_source_job_spec",
+                    "source_job.spec",
                     format!("Invalid job spec: {error}"),
                 ));
             }

@@ -35,7 +35,9 @@ pub(super) async fn validate_job_target_scope(
             return Err(AppError::bad_request(
                 "invalid_webdav_secret",
                 "WebDAV credential name is required",
-            ));
+            )
+            .with_reason("required")
+            .with_field("spec.target.secret_name"));
         }
 
         let exists = secrets_repo::secret_exists(db, node_id, "webdav", secret_name).await?;
@@ -44,7 +46,8 @@ pub(super) async fn validate_job_target_scope(
                 "invalid_webdav_secret",
                 "WebDAV credential not found",
             )
-            .with_details(serde_json::json!({ "field": "spec.target.secret_name" })));
+            .with_reason("not_found")
+            .with_field("spec.target.secret_name"));
         }
     }
 

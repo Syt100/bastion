@@ -11,6 +11,9 @@ const dict: Record<string, string> = {
   'apiErrors.rate_limited.throttled': 'Rate limited ({seconds}s)',
   'apiErrors.invalid_to.required': 'Recipient is required',
   'apiErrors.invalid_to.invalid_format': 'Recipient is invalid',
+  'apiErrors.invalid_token.exhausted': 'Token has no remaining uses',
+  'apiErrors.invalid_token.default': 'Invalid token',
+  'apiErrors.invalid_cursor.missing_key': 'Invalid cursor: missing {key} key',
   'common.requestId': 'Request ID',
 }
 
@@ -67,6 +70,28 @@ describe('toApiErrorInfo', () => {
 
     const info = toApiErrorInfo(err, t)
     expect(info.message).toBe('Rate limited (9s)')
+  })
+
+  it('uses reason-specific translation for token variants', () => {
+    const err = new ApiError(401, 'Invalid enrollment token', {
+      error: 'invalid_token',
+      message: 'Invalid enrollment token',
+      details: { reason: 'exhausted', field: 'token' },
+    })
+
+    const info = toApiErrorInfo(err, t)
+    expect(info.message).toBe('Token has no remaining uses')
+  })
+
+  it('interpolates reason params for cursor errors', () => {
+    const err = new ApiError(400, 'cursor missing mtime key', {
+      error: 'invalid_cursor',
+      message: 'cursor missing mtime key',
+      details: { reason: 'missing_key', field: 'cursor', params: { key: 'mtime' } },
+    })
+
+    const info = toApiErrorInfo(err, t)
+    expect(info.message).toBe('Invalid cursor: missing mtime key')
   })
 
   it('falls back to backend message for unknown codes', () => {

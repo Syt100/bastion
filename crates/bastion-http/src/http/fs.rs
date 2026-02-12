@@ -11,8 +11,8 @@ use tracing::debug;
 use bastion_core::HUB_NODE_ID;
 
 use super::list_paging::{
-    CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key, parse_sort_by,
-    parse_sort_dir, rank_kind,
+    CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key,
+    invalid_cursor_error, parse_sort_by, parse_sort_dir, rank_kind,
 };
 use super::shared::require_session;
 use super::{AppError, AppState};
@@ -182,7 +182,7 @@ fn map_agent_fs_list_error(path: &str, error: anyhow::Error) -> AppError {
             "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
             "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
-            "invalid_cursor" => AppError::bad_request("invalid_cursor", "invalid cursor"),
+            "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
             "invalid_path" => AppError::bad_request("invalid_path", "path is required"),
             "invalid_sort_by" => AppError::bad_request("invalid_sort_by", "invalid sort_by"),
             "invalid_sort_dir" => AppError::bad_request("invalid_sort_dir", "invalid sort_dir"),
@@ -342,20 +342,22 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
             let cursor_sort_by = decoded.sort_by.unwrap_or(SortBy::Name);
             let cursor_sort_dir = decoded.sort_dir.unwrap_or(SortDir::Asc);
             if cursor_sort_by != sort_by || cursor_sort_dir != sort_dir {
-                return Err(AppError::bad_request(
-                    "invalid_cursor",
+                return Err(invalid_cursor_error(
+                    "sort_options_mismatch",
                     "cursor sort options mismatch",
                 ));
             }
             let cursor_mtime = match sort_by {
                 SortBy::Mtime => decoded.mtime.ok_or_else(|| {
-                    AppError::bad_request("invalid_cursor", "cursor missing mtime key")
+                    invalid_cursor_error("missing_key", "cursor missing mtime key")
+                        .with_param("key", "mtime")
                 })?,
                 _ => decoded.mtime.unwrap_or(0),
             };
             let cursor_size = match sort_by {
                 SortBy::Size => decoded.size.ok_or_else(|| {
-                    AppError::bad_request("invalid_cursor", "cursor missing size key")
+                    invalid_cursor_error("missing_key", "cursor missing size key")
+                        .with_param("key", "size")
                 })?,
                 _ => decoded.size.unwrap_or(0),
             };

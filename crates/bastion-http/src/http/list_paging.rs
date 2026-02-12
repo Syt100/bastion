@@ -102,12 +102,18 @@ pub(super) fn encode_cursor_key(key: &CursorKey) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
 }
 
+pub(super) fn invalid_cursor_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_cursor", message)
+        .with_reason(reason)
+        .with_field("cursor")
+}
+
 pub(super) fn decode_cursor_key(cursor: &str) -> Result<CursorKey, AppError> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(cursor)
-        .map_err(|_| AppError::bad_request("invalid_cursor", "invalid cursor encoding"))?;
+        .map_err(|_| invalid_cursor_error("invalid_encoding", "invalid cursor encoding"))?;
     serde_json::from_slice::<CursorKey>(&bytes)
-        .map_err(|_| AppError::bad_request("invalid_cursor", "invalid cursor payload"))
+        .map_err(|_| invalid_cursor_error("invalid_payload", "invalid cursor payload"))
 }
 
 pub(super) fn rank_kind(kind: &str, type_sort: Option<&str>) -> u8 {
@@ -153,5 +159,43 @@ pub(super) fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
             "invalid_sort_dir",
             "invalid sort_dir",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::Engine as _;
+
+    use super::decode_cursor_key;
+
+    #[test]
+    fn decode_cursor_key_invalid_encoding_has_structured_details() {
+        let err = decode_cursor_key("%%%").expect_err("cursor should be invalid");
+        assert_eq!(err.code(), "invalid_cursor");
+        let details = err.details().expect("details");
+        assert_eq!(
+            details.get("reason"),
+            Some(&serde_json::Value::String("invalid_encoding".to_string()))
+        );
+        assert_eq!(
+            details.get("field"),
+            Some(&serde_json::Value::String("cursor".to_string()))
+        );
+    }
+
+    #[test]
+    fn decode_cursor_key_invalid_payload_has_structured_details() {
+        let malformed_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"{");
+        let err = decode_cursor_key(&malformed_payload).expect_err("payload should be invalid");
+        assert_eq!(err.code(), "invalid_cursor");
+        let details = err.details().expect("details");
+        assert_eq!(
+            details.get("reason"),
+            Some(&serde_json::Value::String("invalid_payload".to_string()))
+        );
+        assert_eq!(
+            details.get("field"),
+            Some(&serde_json::Value::String("cursor".to_string()))
+        );
     }
 }

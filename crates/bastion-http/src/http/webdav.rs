@@ -17,8 +17,8 @@ use bastion_targets::{
 };
 
 use super::list_paging::{
-    CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key, parse_sort_by,
-    parse_sort_dir, rank_kind,
+    CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key,
+    invalid_cursor_error, parse_sort_by, parse_sort_dir, rank_kind,
 };
 use super::shared::require_session;
 use super::{AppError, AppState};
@@ -90,6 +90,16 @@ pub(super) async fn webdav_list_post(
     webdav_list_impl(&state, node_id, req).await
 }
 
+fn invalid_webdav_secret_error(
+    reason: &'static str,
+    field: &'static str,
+    message: impl Into<String>,
+) -> AppError {
+    AppError::bad_request("invalid_webdav_secret", message)
+        .with_reason(reason)
+        .with_field(field)
+}
+
 async fn webdav_list_impl(
     state: &AppState,
     node_id: String,
@@ -105,10 +115,11 @@ async fn webdav_list_impl(
     }
     let secret_name = req.secret_name.trim().to_string();
     if secret_name.is_empty() {
-        return Err(
-            AppError::bad_request("invalid_webdav_secret", "secret_name is required")
-                .with_details(serde_json::json!({ "field": "secret_name" })),
-        );
+        return Err(invalid_webdav_secret_error(
+            "required",
+            "secret_name",
+            "secret_name is required",
+        ));
     }
 
     let path = normalize_picker_path(&req.path)?;
@@ -126,11 +137,11 @@ async fn webdav_list_impl(
                 .with_details(serde_json::json!({ "field": "secret_name" }))
         })?;
         let credentials = WebdavCredentials::from_json(&creds_bytes).map_err(|e| {
-            AppError::bad_request(
-                "invalid_webdav_secret",
+            invalid_webdav_secret_error(
+                "invalid_payload",
+                "secret_name",
                 format!("Invalid WebDAV secret payload: {e}"),
             )
-            .with_details(serde_json::json!({ "field": "secret_name" }))
         })?;
 
         let (entries, next_cursor, total) =
@@ -226,7 +237,7 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
             "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
             "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
-            "invalid_cursor" => AppError::bad_request("invalid_cursor", "invalid cursor"),
+            "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
             _ => AppError::bad_request(
                 "agent_webdav_list_failed",
                 format!("Agent WebDAV list failed: {message}"),
@@ -408,20 +419,22 @@ fn page_webdav_entries(
             let cursor_sort_by = decoded.sort_by.unwrap_or(SortBy::Name);
             let cursor_sort_dir = decoded.sort_dir.unwrap_or(SortDir::Asc);
             if cursor_sort_by != sort_by || cursor_sort_dir != sort_dir {
-                return Err(AppError::bad_request(
-                    "invalid_cursor",
+                return Err(invalid_cursor_error(
+                    "sort_options_mismatch",
                     "cursor sort options mismatch",
                 ));
             }
             let cursor_mtime = match sort_by {
                 SortBy::Mtime => decoded.mtime.ok_or_else(|| {
-                    AppError::bad_request("invalid_cursor", "cursor missing mtime key")
+                    invalid_cursor_error("missing_key", "cursor missing mtime key")
+                        .with_param("key", "mtime")
                 })?,
                 _ => decoded.mtime.unwrap_or(0),
             };
             let cursor_size = match sort_by {
                 SortBy::Size => decoded.size.ok_or_else(|| {
-                    AppError::bad_request("invalid_cursor", "cursor missing size key")
+                    invalid_cursor_error("missing_key", "cursor missing size key")
+                        .with_param("key", "size")
                 })?,
                 _ => decoded.size.unwrap_or(0),
             };
