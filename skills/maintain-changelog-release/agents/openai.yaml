@@ -1,0 +1,4 @@
+interface:
+  display_name: "Changelog Release"
+  short_description: "Write changelog entries and publish release tags"
+  default_prompt: "Use $maintain-changelog-release to prepare CHANGELOG.md and publish a release tag."
