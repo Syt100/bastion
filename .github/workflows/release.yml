@@ -12,9 +12,6 @@ jobs:
   build:
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
-    env:
-      # For workflow_dispatch (branch refs), use a safe placeholder version for packaging steps that require semver.
-      BASTION_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0' }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,6 +40,54 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve release version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags --prune origin
+
+          resolve_numeric_version() {
+            local raw="${1#v}"
+            if [[ "${raw}" =~ ^([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)([-+].*)?$ ]]; then
+              echo "${BASH_REMATCH[1]}"
+              return 0
+            fi
+            return 1
+          }
+
+          short_sha="$(git rev-parse --short=8 HEAD)"
+          latest_tag="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            release_label="${GITHUB_REF_NAME}"
+            display_version="${GITHUB_REF_NAME}"
+            if ! package_version="$(resolve_numeric_version "${GITHUB_REF_NAME}")"; then
+              package_version="0.0.0"
+            fi
+          else
+            base_version="0.0.0"
+            if [ -n "${latest_tag}" ]; then
+              if parsed="$(resolve_numeric_version "${latest_tag}")"; then
+                base_version="${parsed}"
+              fi
+            fi
+            release_label="${base_version}-dh${short_sha}"
+            display_version="${release_label}"
+            package_version="${base_version}"
+          fi
+
+          {
+            echo "BASTION_RELEASE_LABEL=${release_label}"
+            echo "BASTION_VERSION=${display_version}"
+            echo "BASTION_PACKAGE_VERSION=${package_version}"
+          } >> "${GITHUB_ENV}"
+
+          echo "Resolved versions:"
+          echo "  label=${release_label}"
+          echo "  display=${display_version}"
+          echo "  package=${package_version}"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -91,7 +136,7 @@ jobs:
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: |
-          asset="bastion-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          asset="bastion-${BASTION_RELEASE_LABEL}-${{ matrix.target }}.tar.gz"
           bin_dir="target/release"
           if [ -n "${{ matrix.cargo_target }}" ]; then
             bin_dir="target/${{ matrix.cargo_target }}/release"
@@ -110,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="${BASTION_VERSION#v}"
+          version="${BASTION_PACKAGE_VERSION}"
           if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             version="0.0.0"
           fi
@@ -136,16 +181,16 @@ jobs:
             --locked \
             --features embed-web
           deb="$(ls -1 target/debian/*.deb | head -n 1)"
-          cp "${deb}" "bastion-${{ github.ref_name }}-${{ matrix.target }}.deb"
+          cp "${deb}" "bastion-${BASTION_RELEASE_LABEL}-${{ matrix.target }}.deb"
 
           # RPM package (binary-only). Run from the package directory because the repo root is a workspace manifest.
-          (cd crates/bastion && cargo generate-rpm --auto-req builtin --output "../../bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm")
+          (cd crates/bastion && cargo generate-rpm --auto-req builtin --output "../../bastion-${BASTION_RELEASE_LABEL}-${{ matrix.target }}.rpm")
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $asset = "bastion-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          $asset = "bastion-$env:BASTION_RELEASE_LABEL-${{ matrix.target }}.zip"
           Compress-Archive -Path "target\\release\\bastion.exe" -DestinationPath $asset -Force
 
       - name: Package (Windows MSI)
@@ -157,9 +202,8 @@ jobs:
           # WiX Toolset v3 (candle/light) via Chocolatey.
           choco install wixtoolset -y --no-progress
 
-          $version = $env:BASTION_VERSION
+          $version = $env:BASTION_PACKAGE_VERSION
           if (-not $version) { $version = "0.0.0" }
-          $version = $version -replace '^v',''
           if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
             $version = "0.0.0"
           }
@@ -176,7 +220,7 @@ jobs:
             "-dSourceDir=target\\release" `
             "packaging\\windows\\bastion.wxs"
 
-          $asset = "bastion-${{ github.ref_name }}-${{ matrix.target }}.msi"
+          $asset = "bastion-$env:BASTION_RELEASE_LABEL-${{ matrix.target }}.msi"
           & light.exe -nologo -spdb -o $asset $wixObj
 
           $size = (Get-Item $asset).Length
@@ -187,38 +231,38 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          asset="bastion-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          asset="bastion-${BASTION_RELEASE_LABEL}-${{ matrix.target }}.tar.gz"
           tar -C target/release -czf "${asset}" bastion
 
       - name: Upload primary package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.asset_ext }}
-          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.asset_ext }}
+          name: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.${{ matrix.asset_ext }}
+          path: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.${{ matrix.asset_ext }}
           if-no-files-found: error
 
       - name: Upload Linux GNU .deb artifact
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.deb
-          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.deb
+          name: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.deb
+          path: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.deb
           if-no-files-found: error
 
       - name: Upload Linux GNU .rpm artifact
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm
-          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm
+          name: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.rpm
+          path: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.rpm
           if-no-files-found: error
 
       - name: Upload Windows MSI artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.msi
-          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.msi
+          name: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.msi
+          path: bastion-${{ env.BASTION_RELEASE_LABEL }}-${{ matrix.target }}.msi
           if-no-files-found: error
 
   release:

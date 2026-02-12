@@ -12,6 +12,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 
 ### Changed
 - Changed release `workflow_dispatch` artifact uploads to per-file granularity so Linux GNU `.tar.gz`, `.deb`, and `.rpm` outputs are downloaded separately (matching published release assets).
+- Changed release `workflow_dispatch` version labeling to `<latest-tag>-dh<short-hash>` for build metadata and artifact naming, while keeping tag-triggered release labels unchanged.
 
 ### Deprecated
 - _No user-facing changes yet._
