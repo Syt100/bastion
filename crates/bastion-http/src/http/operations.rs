@@ -53,6 +53,16 @@ pub(super) struct StartOperationResponse {
     op_id: String,
 }
 
+pub(super) fn invalid_destination_error(
+    reason: &'static str,
+    field: &'static str,
+    message: &'static str,
+) -> AppError {
+    AppError::bad_request("invalid_destination", message)
+        .with_reason(reason)
+        .with_field(field)
+}
+
 pub(super) async fn start_restore(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -107,14 +117,16 @@ pub(super) async fn start_restore(
             let node_id = node_id.trim();
             let directory = directory.trim();
             if node_id.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
+                return Err(invalid_destination_error(
+                    "required_node_id",
+                    "destination.node_id",
                     "destination.node_id is required",
                 ));
             }
             if directory.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
+                return Err(invalid_destination_error(
+                    "required_directory",
+                    "destination.directory",
                     "destination.directory is required",
                 ));
             }
@@ -124,10 +136,14 @@ pub(super) async fn start_restore(
                 .filter(|v| !v.is_empty())
                 .map(|executor_node_id| {
                     if executor_node_id != node_id {
-                        Err(AppError::bad_request(
-                            "invalid_executor",
-                            "executor.node_id must match destination.node_id for local_fs destinations",
-                        ))
+                        Err(
+                            AppError::bad_request(
+                                "invalid_executor",
+                                "executor.node_id must match destination.node_id for local_fs destinations",
+                            )
+                            .with_reason("node_mismatch")
+                            .with_field("executor.node_id"),
+                        )
                     } else {
                         Ok(executor_node_id)
                     }
@@ -153,20 +169,23 @@ pub(super) async fn start_restore(
             let secret_name = secret_name.trim();
             let prefix = prefix.trim();
             if base_url.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
+                return Err(invalid_destination_error(
+                    "required_base_url",
+                    "destination.base_url",
                     "destination.base_url is required",
                 ));
             }
             if secret_name.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
+                return Err(invalid_destination_error(
+                    "required_secret_name",
+                    "destination.secret_name",
                     "destination.secret_name is required",
                 ));
             }
             if prefix.is_empty() {
-                return Err(AppError::bad_request(
-                    "invalid_destination",
+                return Err(invalid_destination_error(
+                    "required_prefix",
+                    "destination.prefix",
                     "destination.prefix is required",
                 ));
             }
@@ -577,4 +596,49 @@ pub(super) async fn list_run_operations(
             })
             .collect(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_destination_error_sets_reason_and_field() {
+        let app = invalid_destination_error(
+            "required_base_url",
+            "destination.base_url",
+            "destination.base_url is required",
+        );
+
+        assert_eq!(app.code(), "invalid_destination");
+        assert_eq!(app.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("required_base_url".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String(
+                "destination.base_url".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_destination_error_can_represent_other_fields() {
+        let app = invalid_destination_error(
+            "required_prefix",
+            "destination.prefix",
+            "destination.prefix is required",
+        );
+
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("required_prefix".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("destination.prefix".to_string()))
+        );
+    }
 }

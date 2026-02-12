@@ -1429,6 +1429,26 @@ const messages = {
   apiErrors: {
     invalid_credentials: '用户名或密码错误',
     rate_limited: '登录过于频繁，请在 {seconds} 秒后重试',
+    invalid_base_url: {
+      default: 'WebDAV 基础地址无效',
+      required: 'WebDAV 基础地址不能为空',
+      invalid_format: 'WebDAV 基础地址格式不正确',
+      cannot_be_base: 'WebDAV 基础地址必须是可拼接路径的层级 URL',
+    },
+    invalid_destination: {
+      default: '恢复目标配置无效',
+      required_node_id: '目标节点不能为空',
+      required_directory: '目标目录不能为空',
+      required_base_url: 'WebDAV 基础地址不能为空',
+      required_secret_name: 'WebDAV 凭据不能为空',
+      required_prefix: 'WebDAV 前缀不能为空',
+    },
+    invalid_template: {
+      default: '通知模板无效',
+      required_wecom_markdown: '企业微信模板不能为空',
+      required_email_subject: '邮件主题模板不能为空',
+      required_email_body: '邮件正文模板不能为空',
+    },
     invalid_webhook_url: {
       default: 'Webhook URL 格式不正确（必须是 http/https URL）',
       required: 'Webhook URL 不能为空',

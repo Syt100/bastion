@@ -4,7 +4,7 @@ import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'na
 import { useI18n } from 'vue-i18n'
 
 import { useNotificationsStore, type NotificationsSettings } from '@/stores/notifications'
-import { formatToastError, toApiErrorInfo } from '@/lib/errors'
+import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -20,6 +20,14 @@ const draft = reactive<NotificationsSettings>({
   templates: { wecom_markdown: '', email_subject: '', email_body: '' },
 })
 
+const fieldErrors = reactive<{ wecomMarkdown?: string; emailSubject?: string; emailBody?: string }>({})
+
+function clearFieldErrors(): void {
+  fieldErrors.wecomMarkdown = undefined
+  fieldErrors.emailSubject = undefined
+  fieldErrors.emailBody = undefined
+}
+
 function loadFromStore(): void {
   if (!notifications.settings) return
   draft.enabled = notifications.settings.enabled
@@ -32,6 +40,7 @@ function loadFromStore(): void {
 
 async function refresh(): Promise<void> {
   error.value = null
+  clearFieldErrors()
   try {
     await notifications.refreshSettings()
     loadFromStore()
@@ -43,11 +52,23 @@ async function refresh(): Promise<void> {
 async function save(): Promise<void> {
   saving.value = true
   error.value = null
+  clearFieldErrors()
   try {
     await notifications.saveSettings(JSON.parse(JSON.stringify(draft)) as NotificationsSettings)
     message.success(t('messages.notificationTemplatesSaved'))
   } catch (e) {
     const info = toApiErrorInfo(e, t)
+    const mapped = resolveApiFieldErrors(info, {
+      t,
+      fieldMap: {
+        'templates.wecom_markdown': 'wecomMarkdown',
+        'templates.email_subject': 'emailSubject',
+        'templates.email_body': 'emailBody',
+      },
+    })
+    fieldErrors.wecomMarkdown = mapped.wecomMarkdown
+    fieldErrors.emailSubject = mapped.emailSubject
+    fieldErrors.emailBody = mapped.emailBody
     error.value = info.message || String(e)
     message.error(formatToastError(t('errors.saveNotificationTemplatesFailed'), e, t))
   } finally {
@@ -73,7 +94,11 @@ onMounted(refresh)
       </n-alert>
 
       <n-form label-placement="top">
-        <n-form-item :label="t('settings.notifications.wecomTemplate')">
+        <n-form-item
+          :label="t('settings.notifications.wecomTemplate')"
+          :validation-status="fieldErrors.wecomMarkdown ? 'error' : undefined"
+          :feedback="fieldErrors.wecomMarkdown"
+        >
           <n-input
             v-model:value="draft.templates.wecom_markdown"
             type="textarea"
@@ -81,11 +106,19 @@ onMounted(refresh)
           />
         </n-form-item>
 
-        <n-form-item :label="t('settings.notifications.emailSubjectTemplate')">
+        <n-form-item
+          :label="t('settings.notifications.emailSubjectTemplate')"
+          :validation-status="fieldErrors.emailSubject ? 'error' : undefined"
+          :feedback="fieldErrors.emailSubject"
+        >
           <n-input v-model:value="draft.templates.email_subject" />
         </n-form-item>
 
-        <n-form-item :label="t('settings.notifications.emailBodyTemplate')">
+        <n-form-item
+          :label="t('settings.notifications.emailBodyTemplate')"
+          :validation-status="fieldErrors.emailBody ? 'error' : undefined"
+          :feedback="fieldErrors.emailBody"
+        >
           <n-input
             v-model:value="draft.templates.email_body"
             type="textarea"

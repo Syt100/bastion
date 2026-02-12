@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -7,7 +7,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useOperationsStore, type ConflictPolicy, type RestoreDestination } from '@/stores/operations'
 import { MODAL_WIDTH } from '@/lib/modal'
-import { formatToastError } from '@/lib/errors'
+import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 import RunEntriesPickerModal, {
   type RunEntriesPickerModalExpose,
   type RunEntriesSelection,
@@ -45,6 +45,22 @@ const selection = ref<RunEntriesSelection | null>(null)
 const entriesPicker = ref<RunEntriesPickerModalExpose | null>(null)
 const fsPicker = ref<FsPathPickerModalExpose | null>(null)
 const webdavPicker = ref<WebdavPathPickerModalExpose | null>(null)
+const fieldErrors = reactive<{
+  localFsNodeId?: string
+  localFsDirectory?: string
+  webdavBaseUrl?: string
+  webdavSecretName?: string
+  webdavPrefix?: string
+}>({})
+
+function clearFieldErrors(): void {
+  fieldErrors.localFsNodeId = undefined
+  fieldErrors.localFsDirectory = undefined
+  fieldErrors.webdavBaseUrl = undefined
+  fieldErrors.webdavSecretName = undefined
+  fieldErrors.webdavPrefix = undefined
+}
+
 
 const conflictOptions = computed(() => [
   { label: t('restore.conflict.overwrite'), value: 'overwrite' },
@@ -93,6 +109,7 @@ function open(nextRunId: string, opts?: { defaultNodeId?: string | null }): void
   webdavPrefix.value = ''
   conflictPolicy.value = 'overwrite'
   selection.value = null
+  clearFieldErrors()
   show.value = true
 
   // Best-effort: refresh WebDAV secrets for the node that will execute this restore by default.
@@ -155,6 +172,8 @@ async function start(): Promise<void> {
   const id = runId.value
   if (!id) return
 
+  clearFieldErrors()
+
   let destination: RestoreDestination
   if (destinationType.value === 'local_fs') {
     const nodeId = localFsNodeId.value.trim()
@@ -189,6 +208,22 @@ async function start(): Promise<void> {
     show.value = false
     emit('started', opId)
   } catch (error) {
+    const info = toApiErrorInfo(error, t)
+    const mapped = resolveApiFieldErrors(info, {
+      t,
+      fieldMap: {
+        'destination.node_id': 'localFsNodeId',
+        'destination.directory': 'localFsDirectory',
+        'destination.base_url': 'webdavBaseUrl',
+        'destination.secret_name': 'webdavSecretName',
+        'destination.prefix': 'webdavPrefix',
+      },
+    })
+    fieldErrors.localFsNodeId = mapped.localFsNodeId
+    fieldErrors.localFsDirectory = mapped.localFsDirectory
+    fieldErrors.webdavBaseUrl = mapped.webdavBaseUrl
+    fieldErrors.webdavSecretName = mapped.webdavSecretName
+    fieldErrors.webdavPrefix = mapped.webdavPrefix
     message.error(formatToastError(t('errors.restoreStartFailed'), error, t))
   } finally {
     starting.value = false
@@ -208,10 +243,18 @@ defineExpose<RestoreWizardModalExpose>({ open })
         </n-form-item>
 
         <template v-if="destinationType === 'local_fs'">
-          <n-form-item :label="t('restore.fields.node')">
+          <n-form-item
+            :label="t('restore.fields.node')"
+            :validation-status="fieldErrors.localFsNodeId ? 'error' : undefined"
+            :feedback="fieldErrors.localFsNodeId"
+          >
             <n-select v-model:value="localFsNodeId" :options="nodeOptions" />
           </n-form-item>
-          <n-form-item :label="t('restore.fields.destinationDir')">
+          <n-form-item
+            :label="t('restore.fields.destinationDir')"
+            :validation-status="fieldErrors.localFsDirectory ? 'error' : undefined"
+            :feedback="fieldErrors.localFsDirectory"
+          >
             <div class="space-y-1 w-full">
               <div class="flex gap-2">
                 <n-input
@@ -227,13 +270,25 @@ defineExpose<RestoreWizardModalExpose>({ open })
         </template>
 
         <template v-else>
-          <n-form-item :label="t('restore.fields.webdavBaseUrl')">
+          <n-form-item
+            :label="t('restore.fields.webdavBaseUrl')"
+            :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
+            :feedback="fieldErrors.webdavBaseUrl"
+          >
             <n-input v-model:value="webdavBaseUrl" :placeholder="t('restore.fields.webdavBaseUrlPlaceholder')" />
           </n-form-item>
-          <n-form-item :label="t('restore.fields.webdavSecret')">
+          <n-form-item
+            :label="t('restore.fields.webdavSecret')"
+            :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
+            :feedback="fieldErrors.webdavSecretName"
+          >
             <n-select v-model:value="webdavSecretName" :options="webdavSecretOptions" filterable />
           </n-form-item>
-          <n-form-item :label="t('restore.fields.webdavPrefix')">
+          <n-form-item
+            :label="t('restore.fields.webdavPrefix')"
+            :validation-status="fieldErrors.webdavPrefix ? 'error' : undefined"
+            :feedback="fieldErrors.webdavPrefix"
+          >
             <div class="space-y-1 w-full">
               <div class="flex gap-2">
                 <n-input

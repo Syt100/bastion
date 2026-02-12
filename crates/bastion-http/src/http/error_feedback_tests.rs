@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use tempfile::TempDir;
 
 use bastion_storage::secrets::SecretsCrypto;
-use bastion_storage::{auth, db};
+use bastion_storage::{auth, db, jobs_repo, runs_repo};
 
 use bastion_config::Config;
 use bastion_engine::agent_manager::AgentManager;
@@ -477,6 +477,191 @@ async fn create_job_missing_webdav_secret_returns_400_with_details_field() {
     assert_eq!(
         body["details"]["field"].as_str().unwrap_or_default(),
         "spec.target.secret_name"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn notifications_settings_missing_email_subject_uses_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .put(format!("{}/api/notifications/settings", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "enabled": true,
+          "channels": { "wecom_bot": { "enabled": true }, "email": { "enabled": true } },
+          "templates": {
+            "wecom_markdown": "**{{title}}**",
+            "email_subject": "   ",
+            "email_body": "body"
+          }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_template"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "required_email_subject"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "templates.email_subject"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn start_restore_missing_webdav_base_url_uses_structured_destination_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job1",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({ "v": 1, "type": "filesystem" }),
+    )
+    .await
+    .expect("create job");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        1000,
+        Some(1010),
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/runs/{}/restore", base_url(addr), run.id))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "destination": {
+            "type": "webdav",
+            "base_url": "   ",
+            "secret_name": "secret-1",
+            "prefix": "restore"
+          },
+          "conflict_policy": "overwrite"
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_destination"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "required_base_url"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "destination.base_url"
     );
 
     server.abort();

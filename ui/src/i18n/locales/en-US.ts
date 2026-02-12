@@ -1434,6 +1434,26 @@ const messages = {
   apiErrors: {
     invalid_credentials: 'Invalid username or password',
     rate_limited: 'Too many attempts. Retry in {seconds}s',
+    invalid_base_url: {
+      default: 'Invalid WebDAV base URL',
+      required: 'WebDAV base URL is required',
+      invalid_format: 'WebDAV base URL is invalid',
+      cannot_be_base: 'WebDAV base URL must be hierarchical',
+    },
+    invalid_destination: {
+      default: 'Restore destination is invalid',
+      required_node_id: 'Destination node is required',
+      required_directory: 'Destination directory is required',
+      required_base_url: 'WebDAV base URL is required',
+      required_secret_name: 'WebDAV credential is required',
+      required_prefix: 'WebDAV prefix is required',
+    },
+    invalid_template: {
+      default: 'Notification template is invalid',
+      required_wecom_markdown: 'WeCom template is required',
+      required_email_subject: 'Email subject template is required',
+      required_email_body: 'Email body template is required',
+    },
     invalid_webhook_url: {
       default: 'Webhook URL is invalid (must be http/https)',
       required: 'Webhook URL is required',

@@ -1,6 +1,5 @@
 use axum::Json;
 use axum::http::{HeaderMap, StatusCode};
-use serde_json::json;
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -19,6 +18,16 @@ pub(in crate::http) async fn get_settings(
     Ok(Json(settings))
 }
 
+fn invalid_template_error(
+    reason: &'static str,
+    field: &'static str,
+    message: &'static str,
+) -> AppError {
+    AppError::bad_request("invalid_template", message)
+        .with_reason(reason)
+        .with_field(field)
+}
+
 pub(in crate::http) async fn put_settings(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -29,23 +38,25 @@ pub(in crate::http) async fn put_settings(
     require_csrf(&headers, &session)?;
 
     if req.templates.wecom_markdown.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_template", "WeCom template is required")
-                .with_details(json!({ "field": "templates.wecom_markdown" })),
-        );
+        return Err(invalid_template_error(
+            "required_wecom_markdown",
+            "templates.wecom_markdown",
+            "WeCom template is required",
+        ));
     }
     if req.templates.email_subject.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_template",
+        return Err(invalid_template_error(
+            "required_email_subject",
+            "templates.email_subject",
             "Email subject template is required",
-        )
-        .with_details(json!({ "field": "templates.email_subject" })));
+        ));
     }
     if req.templates.email_body.trim().is_empty() {
-        return Err(
-            AppError::bad_request("invalid_template", "Email body template is required")
-                .with_details(json!({ "field": "templates.email_body" })),
-        );
+        return Err(invalid_template_error(
+            "required_email_body",
+            "templates.email_body",
+            "Email body template is required",
+        ));
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -85,4 +96,33 @@ pub(in crate::http) async fn put_settings(
         "notification settings updated"
     );
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_template_error_sets_reason_and_field() {
+        let app = invalid_template_error(
+            "required_email_subject",
+            "templates.email_subject",
+            "Email subject template is required",
+        );
+
+        assert_eq!(app.code(), "invalid_template");
+        assert_eq!(app.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String(
+                "required_email_subject".to_string()
+            ))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String(
+                "templates.email_subject".to_string()
+            ))
+        );
+    }
 }

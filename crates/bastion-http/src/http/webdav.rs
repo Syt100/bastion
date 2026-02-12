@@ -99,7 +99,8 @@ async fn webdav_list_impl(
     if base_url.is_empty() {
         return Err(
             AppError::bad_request("invalid_base_url", "base_url is required")
-                .with_details(serde_json::json!({ "field": "base_url" })),
+                .with_reason("required")
+                .with_field("base_url"),
         );
     }
     let secret_name = req.secret_name.trim().to_string();
@@ -267,7 +268,8 @@ async fn list_webdav_on_hub(
 ) -> Result<(Vec<WebdavListEntry>, Option<String>, u64), AppError> {
     let mut base_url = Url::parse(base_url).map_err(|_| {
         AppError::bad_request("invalid_base_url", "invalid base_url")
-            .with_details(serde_json::json!({ "field": "base_url" }))
+            .with_reason("invalid_format")
+            .with_field("base_url")
     })?;
     if !base_url.path().ends_with('/') {
         base_url.set_path(&format!("{}/", base_url.path()));
@@ -275,9 +277,11 @@ async fn list_webdav_on_hub(
 
     let mut list_url = base_url.clone();
     {
-        let mut segs = list_url
-            .path_segments_mut()
-            .map_err(|_| AppError::bad_request("invalid_base_url", "base_url cannot be a base"))?;
+        let mut segs = list_url.path_segments_mut().map_err(|_| {
+            AppError::bad_request("invalid_base_url", "base_url cannot be a base")
+                .with_reason("cannot_be_base")
+                .with_field("base_url")
+        })?;
         for part in path
             .trim_matches('/')
             .split('/')
@@ -601,6 +605,84 @@ mod tests {
         assert_eq!(
             app.details().and_then(|v| v.get("agent_error_code_mapped")),
             Some(&serde_json::Value::String("permission_denied".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn list_webdav_on_hub_invalid_base_url_has_reason_invalid_format() {
+        let err = list_webdav_on_hub(
+            "not-a-url",
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            "/",
+            WebdavListRequest {
+                base_url: "not-a-url".to_string(),
+                secret_name: "s".to_string(),
+                path: "/".to_string(),
+                cursor: None,
+                limit: None,
+                q: None,
+                kind: None,
+                hide_dotfiles: None,
+                type_sort: None,
+                sort_by: None,
+                sort_dir: None,
+                size_min_bytes: None,
+                size_max_bytes: None,
+            },
+        )
+        .await
+        .expect_err("invalid base_url should fail");
+
+        assert_eq!(err.code(), "invalid_base_url");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("invalid_format".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("base_url".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn list_webdav_on_hub_base_url_cannot_be_base_has_structured_reason() {
+        let err = list_webdav_on_hub(
+            "mailto:user@example.com",
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            "/",
+            WebdavListRequest {
+                base_url: "mailto:user@example.com".to_string(),
+                secret_name: "s".to_string(),
+                path: "/".to_string(),
+                cursor: None,
+                limit: None,
+                q: None,
+                kind: None,
+                hide_dotfiles: None,
+                type_sort: None,
+                sort_by: None,
+                sort_dir: None,
+                size_min_bytes: None,
+                size_max_bytes: None,
+            },
+        )
+        .await
+        .expect_err("non-hierarchical base_url should fail");
+
+        assert_eq!(err.code(), "invalid_base_url");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("cannot_be_base".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("base_url".to_string()))
         );
     }
 }
