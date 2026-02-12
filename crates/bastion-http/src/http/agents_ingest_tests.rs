@@ -368,6 +368,271 @@ async fn agent_ingest_runs_rejects_blank_job_id_with_structured_reason() {
 }
 
 #[tokio::test]
+async fn agent_ingest_runs_rejects_too_long_run_id_with_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let (_agent_id, agent_key) = insert_agent(&pool, "agent1").await;
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let run_id = "r".repeat(129);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/agent/runs/ingest", base_url(addr)))
+        .header("authorization", format!("Bearer {agent_key}"))
+        .json(&serde_json::json!({
+            "run": {
+                "id": run_id,
+                "job_id": "job1",
+                "status": "success",
+                "started_at": 1,
+                "ended_at": 2,
+                "events": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_run_id");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "max_length"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "run.id"
+    );
+    assert_eq!(
+        body["details"]["params"]["max_length"]
+            .as_i64()
+            .unwrap_or_default(),
+        128
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn agent_ingest_runs_rejects_too_long_job_id_with_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let (_agent_id, agent_key) = insert_agent(&pool, "agent1").await;
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let job_id = "j".repeat(129);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/agent/runs/ingest", base_url(addr)))
+        .header("authorization", format!("Bearer {agent_key}"))
+        .json(&serde_json::json!({
+            "run": {
+                "id": "r1",
+                "job_id": job_id,
+                "status": "success",
+                "started_at": 1,
+                "ended_at": 2,
+                "events": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_job_id");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "max_length"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "run.job_id"
+    );
+    assert_eq!(
+        body["details"]["params"]["max_length"]
+            .as_i64()
+            .unwrap_or_default(),
+        128
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn agent_ingest_runs_rejects_run_id_reused_by_other_job_with_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let (agent_id, agent_key) = insert_agent(&pool, "agent1").await;
+
+    let job1 = jobs_repo::create_job(
+        &pool,
+        "job1",
+        Some(&agent_id),
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/data" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job1");
+    let job2 = jobs_repo::create_job(
+        &pool,
+        "job2",
+        Some(&agent_id),
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/data" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job2");
+
+    sqlx::query(
+        "INSERT INTO runs (id, job_id, status, started_at, ended_at, summary_json, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("run1")
+    .bind(&job1.id)
+    .bind("success")
+    .bind(100_i64)
+    .bind(120_i64)
+    .bind(Option::<String>::None)
+    .bind(Option::<String>::None)
+    .execute(&pool)
+    .await
+    .expect("insert run");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/agent/runs/ingest", base_url(addr)))
+        .header("authorization", format!("Bearer {agent_key}"))
+        .json(&serde_json::json!({
+            "run": {
+                "id": "run1",
+                "job_id": job2.id,
+                "status": "success",
+                "started_at": 100,
+                "ended_at": 120,
+                "events": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_run_id");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "already_associated"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "run.id"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn agent_ingest_runs_limits_event_count() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");

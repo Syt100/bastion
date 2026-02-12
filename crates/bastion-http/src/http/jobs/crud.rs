@@ -55,6 +55,12 @@ fn normalize_timezone(value: Option<&str>, default: &str) -> Result<String, AppE
 }
 
 async fn validate_agent_id(db: &sqlx::SqlitePool, agent_id: Option<&str>) -> Result<(), AppError> {
+    fn invalid_agent_id_error(reason: &'static str, message: impl Into<String>) -> AppError {
+        AppError::bad_request("invalid_agent_id", message)
+            .with_reason(reason)
+            .with_field("agent_id")
+    }
+
     let Some(agent_id) = agent_id else {
         return Ok(());
     };
@@ -65,13 +71,10 @@ async fn validate_agent_id(db: &sqlx::SqlitePool, agent_id: Option<&str>) -> Res
         .await?;
 
     let Some(row) = row else {
-        return Err(AppError::bad_request("invalid_agent_id", "Agent not found"));
+        return Err(invalid_agent_id_error("not_found", "Agent not found"));
     };
     if row.get::<Option<i64>, _>("revoked_at").is_some() {
-        return Err(AppError::bad_request(
-            "invalid_agent_id",
-            "Agent is revoked",
-        ));
+        return Err(invalid_agent_id_error("revoked", "Agent is revoked"));
     }
 
     Ok(())

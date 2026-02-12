@@ -1511,8 +1511,20 @@ const messages = {
     invalid_job_id: {
       default: 'Job id is invalid',
       required: 'Job id is required',
+      max_length: 'Job id must be at most {max_length} characters',
       not_found: 'Job not found',
       not_assigned: 'Job is not assigned to this agent',
+    },
+    invalid_agent_id: {
+      default: 'Agent id is invalid',
+      not_found: 'Agent not found',
+      revoked: 'Agent is revoked',
+    },
+    invalid_run_id: {
+      default: 'Run id is invalid',
+      required: 'Run id is required',
+      max_length: 'Run id must be at most {max_length} characters',
+      already_associated: 'Run id is already associated with a different job',
     },
     invalid_spec: {
       default: 'Job spec is invalid',

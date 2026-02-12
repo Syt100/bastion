@@ -15,6 +15,9 @@ const dict: Record<string, string> = {
   'apiErrors.invalid_token.default': 'Invalid token',
   'apiErrors.invalid_cursor.missing_key': 'Invalid cursor: missing {key} key',
   'apiErrors.invalid_label.max_length': 'Label must be at most {max_length} characters',
+  'apiErrors.invalid_job_id.max_length': 'Job id must be at most {max_length} characters',
+  'apiErrors.invalid_agent_id.revoked': 'Agent is revoked',
+  'apiErrors.invalid_run_id.already_associated': 'Run id is already associated with a different job',
   'apiErrors.invalid_selector.resolved_empty': 'Selector resolved to no agents',
   'common.requestId': 'Request ID',
 }
@@ -116,6 +119,32 @@ describe('toApiErrorInfo', () => {
 
     const info = toApiErrorInfo(err, t)
     expect(info.message).toBe('Selector resolved to no agents')
+  })
+
+  it('supports structured reasons for run, job and agent identifiers', () => {
+    const runIdErr = new ApiError(400, 'Run id is already associated', {
+      error: 'invalid_run_id',
+      message: 'Run id is already associated',
+      details: { reason: 'already_associated', field: 'run.id' },
+    })
+    const runIdInfo = toApiErrorInfo(runIdErr, t)
+    expect(runIdInfo.message).toBe('Run id is already associated with a different job')
+
+    const jobIdErr = new ApiError(400, 'Job id is too long', {
+      error: 'invalid_job_id',
+      message: 'Job id is too long',
+      details: { reason: 'max_length', field: 'run.job_id', params: { max_length: 128 } },
+    })
+    const jobIdInfo = toApiErrorInfo(jobIdErr, t)
+    expect(jobIdInfo.message).toBe('Job id must be at most 128 characters')
+
+    const agentIdErr = new ApiError(400, 'Agent is revoked', {
+      error: 'invalid_agent_id',
+      message: 'Agent is revoked',
+      details: { reason: 'revoked', field: 'agent_id' },
+    })
+    const agentIdInfo = toApiErrorInfo(agentIdErr, t)
+    expect(agentIdInfo.message).toBe('Agent is revoked')
   })
 
   it('falls back to backend message for unknown codes', () => {

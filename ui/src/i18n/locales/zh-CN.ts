@@ -1506,8 +1506,20 @@ const messages = {
     invalid_job_id: {
       default: '任务 ID 无效',
       required: '任务 ID 不能为空',
+      max_length: '任务 ID 长度不能超过 {max_length} 个字符',
       not_found: '任务不存在',
       not_assigned: '该任务未分配给当前客户端',
+    },
+    invalid_agent_id: {
+      default: '客户端 ID 无效',
+      not_found: '客户端不存在',
+      revoked: '客户端已撤销',
+    },
+    invalid_run_id: {
+      default: '运行 ID 无效',
+      required: '运行 ID 不能为空',
+      max_length: '运行 ID 长度不能超过 {max_length} 个字符',
+      already_associated: '运行 ID 已关联到其他任务',
     },
     invalid_spec: {
       default: '任务配置不合法',

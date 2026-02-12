@@ -54,6 +54,12 @@ pub(in crate::http) async fn agent_ingest_runs(
     headers: HeaderMap,
     Json(req): Json<AgentIngestRunRequest>,
 ) -> Result<StatusCode, AppError> {
+    fn invalid_run_id_error(reason: &'static str, message: impl Into<String>) -> AppError {
+        AppError::bad_request("invalid_run_id", message)
+            .with_reason(reason)
+            .with_field("run.id")
+    }
+
     fn invalid_job_id_error(reason: &'static str, message: impl Into<String>) -> AppError {
         AppError::bad_request("invalid_job_id", message)
             .with_reason(reason)
@@ -70,14 +76,19 @@ pub(in crate::http) async fn agent_ingest_runs(
     let agent_id = authenticate_agent(&state.db, &headers).await?;
 
     let run = req.run;
-    if run.id.trim().is_empty() || run.id.len() > MAX_ID_LEN {
-        return Err(AppError::bad_request(
-            "invalid_run_id",
-            "Run id is required",
-        ));
+    if run.id.trim().is_empty() {
+        return Err(invalid_run_id_error("required", "Run id is required"));
     }
-    if run.job_id.trim().is_empty() || run.job_id.len() > MAX_ID_LEN {
+    if run.id.len() > MAX_ID_LEN {
+        return Err(invalid_run_id_error("max_length", "Run id is too long")
+            .with_param("max_length", MAX_ID_LEN));
+    }
+    if run.job_id.trim().is_empty() {
         return Err(invalid_job_id_error("required", "Job id is required"));
+    }
+    if run.job_id.len() > MAX_ID_LEN {
+        return Err(invalid_job_id_error("max_length", "Job id is too long")
+            .with_param("max_length", MAX_ID_LEN));
     }
     if run.events.len() > MAX_EVENTS_PER_RUN {
         return Err(AppError::bad_request(
@@ -141,8 +152,8 @@ pub(in crate::http) async fn agent_ingest_runs(
         .await?
         && row.get::<String, _>("job_id") != run.job_id
     {
-        return Err(AppError::bad_request(
-            "invalid_run_id",
+        return Err(invalid_run_id_error(
+            "already_associated",
             "Run id is already associated with a different job",
         ));
     }
