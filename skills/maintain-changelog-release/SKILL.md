@@ -55,8 +55,7 @@ See the full checklist in `references/release-playbook.md`.
 1. Ensure release section exists in `CHANGELOG.md` for the exact tag.
 2. Run changelog checks (and optionally full CI when requested):
    ```bash
-   bash scripts/changelog.sh check
-   bash scripts/changelog_test.sh
+   bash scripts/release-preflight.sh --tag vX.Y.Z --output release-notes.md
    ```
 3. Commit changelog changes.
 4. Create and push tag:

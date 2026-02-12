@@ -188,6 +188,7 @@ Useful commands:
 ```bash
 bash scripts/changelog.sh check
 bash scripts/changelog.sh extract --tag v0.1.0 --output release-notes.md
+bash scripts/release-preflight.sh --tag v0.1.0 --output release-notes.md
 ```
 
 ## Docs

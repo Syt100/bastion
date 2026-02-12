@@ -12,9 +12,7 @@
 Run:
 
 ```bash
-bash scripts/changelog.sh check
-bash scripts/changelog_test.sh
-bash scripts/changelog.sh extract --tag vX.Y.Z --output release-notes.md
+bash scripts/release-preflight.sh --tag vX.Y.Z --output release-notes.md
 ```
 
 Confirm `release-notes.md` starts with:

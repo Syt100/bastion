@@ -216,13 +216,10 @@ jobs:
           set -euo pipefail
           (cd dist && sha256sum * > sha256sums.txt)
 
-      - name: Validate changelog format
-        run: bash scripts/changelog.sh check
-
-      - name: Generate release notes
+      - name: Run release preflight
         run: |
           set -euo pipefail
-          bash scripts/changelog.sh extract --tag "${GITHUB_REF_NAME}" --output release-notes.md
+          bash scripts/release-preflight.sh --tag "${GITHUB_REF_NAME}" --output release-notes.md
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
