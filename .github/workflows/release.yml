@@ -177,7 +177,12 @@ jobs:
             "packaging\\windows\\bastion.wxs"
 
           $asset = "bastion-${{ github.ref_name }}-${{ matrix.target }}.msi"
-          & light.exe -nologo -o $asset $wixObj
+          & light.exe -nologo -spdb -o $asset $wixObj
+
+          $size = (Get-Item $asset).Length
+          if ($size -lt 1MB) {
+            throw "MSI output is unexpectedly small (${size} bytes): $asset"
+          }
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -185,11 +190,35 @@ jobs:
           asset="bastion-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
           tar -C target/release -czf "${asset}" bastion
 
-      - name: Upload artifact
+      - name: Upload primary package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bastion-${{ matrix.target }}
-          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.*
+          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.asset_ext }}
+          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.asset_ext }}
+          if-no-files-found: error
+
+      - name: Upload Linux GNU .deb artifact
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.deb
+          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.deb
+          if-no-files-found: error
+
+      - name: Upload Linux GNU .rpm artifact
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm
+          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.rpm
+          if-no-files-found: error
+
+      - name: Upload Windows MSI artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bastion-${{ github.ref_name }}-${{ matrix.target }}.msi
+          path: bastion-${{ github.ref_name }}-${{ matrix.target }}.msi
           if-no-files-found: error
 
   release:

@@ -11,7 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Changed
-- _No user-facing changes yet._
+- Changed release `workflow_dispatch` artifact uploads to per-file granularity so Linux GNU `.tar.gz`, `.deb`, and `.rpm` outputs are downloaded separately (matching published release assets).
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -20,7 +20,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
-- _No user-facing changes yet._
+- Fixed Windows MSI packaging to embed installer CAB payloads so release MSI artifacts contain the expected application payload.
+- Added release workflow sanity checks to fail Windows packaging if the generated MSI is unexpectedly tiny.
 
 ### Security
 - _No user-facing changes yet._
