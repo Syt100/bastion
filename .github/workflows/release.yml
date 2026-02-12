@@ -215,13 +215,22 @@ jobs:
           $wixObj = "bastion.wixobj"
           & candle.exe `
             -nologo `
+            -arch x64 `
+            -ext WixUIExtension `
+            -ext WixUtilExtension `
             -out $wixObj `
             "-dProductVersion=$version" `
             "-dSourceDir=target\\release" `
             "packaging\\windows\\bastion.wxs"
 
           $asset = "bastion-$env:BASTION_RELEASE_LABEL-${{ matrix.target }}.msi"
-          & light.exe -nologo -spdb -o $asset $wixObj
+          & light.exe `
+            -nologo `
+            -spdb `
+            -ext WixUIExtension `
+            -ext WixUtilExtension `
+            -o $asset `
+            $wixObj
 
           $size = (Get-Item $asset).Length
           if ($size -lt 1MB) {

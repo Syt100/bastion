@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product
     Id="*"
     Name="Bastion"
@@ -8,9 +9,74 @@
     Manufacturer="Bastion Contributors"
     UpgradeCode="cd8c3109-e86a-4a62-a73e-cbe52dbbd718"
   >
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Bastion is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPCONTACT" Value="Bastion Contributors" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Syt100/bastion/issues" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Syt100/bastion" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/Syt100/bastion/releases" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="BASTION_REMOVE_DATA" Value="0" Secure="yes" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="packaging\windows\license.rtf" />
+
+    <CustomAction
+      Id="SetBastionDataCleanupCmd"
+      Property="WixQuietExecCmdLine"
+      Value="&quot;[SystemFolder]cmd.exe&quot; /c if exist &quot;[CommonAppDataFolder]bastion&quot; rmdir /s /q &quot;[CommonAppDataFolder]bastion&quot;"
+      Execute="immediate"
+    />
+    <CustomAction
+      Id="RunBastionDataCleanup"
+      BinaryKey="WixCA"
+      DllEntry="WixQuietExec"
+      Execute="deferred"
+      Return="ignore"
+      Impersonate="no"
+    />
+
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <UIRef Id="WixUI_ErrorProgressText" />
+
+      <Dialog Id="BastionRemoveDataDlg" Width="370" Height="270" Title="[ProductName] Setup" NoMinimize="yes">
+        <Control Id="BannerBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Line" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Uninstall options" />
+        <Control Id="Description" Type="Text" X="20" Y="70" Width="330" Height="36" NoPrefix="yes" Text="Choose whether uninstall should also remove Bastion runtime data." />
+        <Control Id="DataHint" Type="Text" X="20" Y="109" Width="330" Height="27" NoPrefix="yes" Text="Data path: C:\ProgramData\bastion" />
+        <Control
+          Id="RemoveDataCheckbox"
+          Type="CheckBox"
+          X="20"
+          Y="142"
+          Width="330"
+          Height="18"
+          Property="BASTION_REMOVE_DATA"
+          CheckBoxValue="1"
+          Text="Also remove Bastion data (default: keep data)"
+        />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="BastionRemoveDataDlg" Order="2">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="BastionRemoveDataDlg" Order="3">Installed AND NOT PATCH AND REMOVE=&quot;ALL&quot;</Publish>
+    </UI>
+
+    <InstallExecuteSequence>
+      <Custom Action="SetBastionDataCleanupCmd" Before="RunBastionDataCleanup">REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA=&quot;1&quot;</Custom>
+      <Custom Action="RunBastionDataCleanup" Before="InstallFinalize">REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA=&quot;1&quot;</Custom>
+    </InstallExecuteSequence>
 
     <Feature Id="ProductFeature" Title="Bastion" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
@@ -19,18 +85,20 @@
 
   <Fragment>
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
+      <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="Bastion" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Bastion" />
       </Directory>
     </Directory>
   </Fragment>
 
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-      <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99">
+      <Component Id="BastionExe" Guid="7135a66f-8102-4b12-a6ac-427ed799ec99" Win64="yes">
         <File Id="BastionExeFile" Source="$(var.SourceDir)\bastion.exe" KeyPath="yes" />
 
-        <!-- Install a Windows Service entry, but do NOT start it automatically. -->
         <ServiceInstall
           Id="BastionServiceInstall"
           Name="Bastion"
@@ -48,6 +116,29 @@
           Remove="uninstall"
           Wait="yes"
         />
+      </Component>
+
+      <Component Id="StartMenuShortcuts" Guid="c3424233-408f-43c6-89dd-1fded14ff312" Directory="ApplicationProgramsFolder" Win64="yes">
+        <Shortcut
+          Id="StartMenuBastionShortcut"
+          Name="Bastion"
+          Description="Run Bastion"
+          Target="[INSTALLFOLDER]bastion.exe"
+          WorkingDirectory="INSTALLFOLDER"
+        />
+        <util:InternetShortcut
+          Id="StartMenuBastionWebUiShortcut"
+          Directory="ApplicationProgramsFolder"
+          Name="Bastion Web UI"
+          Target="http://127.0.0.1:9876/"
+          Type="url"
+        />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Bastion" Name="StartMenuShortcuts" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="BastionInstallRegistry" Guid="b1cb4047-6100-432c-9abe-5bedafe6984e" Win64="yes">
+        <RegistryValue Root="HKLM" Key="Software\Bastion" Name="InstallMarker" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
