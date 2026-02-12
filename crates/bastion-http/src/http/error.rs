@@ -29,6 +29,16 @@ impl AppError {
         self.code
     }
 
+    #[cfg(test)]
+    pub(in crate::http) fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    #[cfg(test)]
+    pub(in crate::http) fn details(&self) -> Option<&serde_json::Value> {
+        self.details.as_ref()
+    }
+
     pub(in crate::http) fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
@@ -86,8 +96,97 @@ impl AppError {
         }
     }
 
+    fn ensure_details_object(&mut self) -> &mut serde_json::Map<String, serde_json::Value> {
+        let replace = !matches!(self.details, Some(serde_json::Value::Object(_)));
+        if replace {
+            self.details = Some(serde_json::Value::Object(serde_json::Map::new()));
+        }
+        match self.details {
+            Some(serde_json::Value::Object(ref mut obj)) => obj,
+            _ => unreachable!("details should be an object"),
+        }
+    }
+
+    fn ensure_params_object(&mut self) -> &mut serde_json::Map<String, serde_json::Value> {
+        let details = self.ensure_details_object();
+        let replace = !matches!(details.get("params"), Some(serde_json::Value::Object(_)));
+        if replace {
+            details.insert(
+                "params".to_string(),
+                serde_json::Value::Object(serde_json::Map::new()),
+            );
+        }
+        match details.get_mut("params") {
+            Some(serde_json::Value::Object(obj)) => obj,
+            _ => unreachable!("params should be an object"),
+        }
+    }
+
     pub(in crate::http) fn with_details(mut self, details: serde_json::Value) -> Self {
-        self.details = Some(details);
+        match details {
+            serde_json::Value::Object(obj) => {
+                self.ensure_details_object().extend(obj);
+            }
+            value => {
+                self.details = Some(value);
+            }
+        }
+        self
+    }
+
+    pub(in crate::http) fn with_reason(mut self, reason: &'static str) -> Self {
+        self.ensure_details_object().insert(
+            "reason".to_string(),
+            serde_json::Value::String(reason.to_string()),
+        );
+        self
+    }
+
+    pub(in crate::http) fn with_field(mut self, field: &'static str) -> Self {
+        self.ensure_details_object().insert(
+            "field".to_string(),
+            serde_json::Value::String(field.to_string()),
+        );
+        self
+    }
+
+    pub(in crate::http) fn with_param(mut self, key: &'static str, value: impl Serialize) -> Self {
+        let value = serde_json::to_value(value).unwrap_or(serde_json::Value::Null);
+        self.ensure_params_object().insert(key.to_string(), value);
+        self
+    }
+
+    pub(in crate::http) fn with_violation(
+        mut self,
+        field: &'static str,
+        reason: &'static str,
+        params: Option<serde_json::Value>,
+    ) -> Self {
+        let details = self.ensure_details_object();
+        let replace = !matches!(details.get("violations"), Some(serde_json::Value::Array(_)));
+        if replace {
+            details.insert(
+                "violations".to_string(),
+                serde_json::Value::Array(Vec::new()),
+            );
+        }
+
+        if let Some(serde_json::Value::Array(violations)) = details.get_mut("violations") {
+            let mut violation = serde_json::Map::new();
+            violation.insert(
+                "field".to_string(),
+                serde_json::Value::String(field.to_string()),
+            );
+            violation.insert(
+                "reason".to_string(),
+                serde_json::Value::String(reason.to_string()),
+            );
+            if let Some(serde_json::Value::Object(params_obj)) = params {
+                violation.insert("params".to_string(), serde_json::Value::Object(params_obj));
+            }
+            violations.push(serde_json::Value::Object(violation));
+        }
+
         self
     }
 }
@@ -232,6 +331,29 @@ mod tests {
     }
 
     #[test]
+    fn structured_details_helpers_merge_correctly() {
+        let app = AppError::bad_request("invalid_password", "Password is invalid")
+            .with_reason("min_length")
+            .with_field("password")
+            .with_param("min_length", 12)
+            .with_details(serde_json::json!({ "legacy": true }))
+            .with_violation(
+                "password",
+                "min_length",
+                Some(serde_json::json!({ "min_length": 12 })),
+            );
+
+        let details = app.details.expect("details");
+        assert_eq!(details["reason"], "min_length");
+        assert_eq!(details["field"], "password");
+        assert_eq!(details["params"]["min_length"], 12);
+        assert_eq!(details["legacy"], true);
+        assert_eq!(details["violations"][0]["field"], "password");
+        assert_eq!(details["violations"][0]["reason"], "min_length");
+        assert_eq!(details["violations"][0]["params"]["min_length"], 12);
+    }
+
+    #[test]
     fn debug_details_are_gated_by_flag() {
         let _guard = debug_flag_guard();
         set_debug_errors(false);
@@ -248,7 +370,7 @@ mod tests {
         assert_eq!(app.status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(app.code, "internal_error");
         assert!(app.details.is_some());
-        let details = app.details.unwrap();
+        let details = app.details.expect("details should exist");
         assert!(details.get("debug").is_some());
 
         set_debug_errors(false);

@@ -191,11 +191,37 @@ async fn webdav_list_impl(
     }))
 }
 
+fn classify_legacy_remote_webdav_error(message: &str) -> Option<&'static str> {
+    let msg = message.to_ascii_lowercase();
+    if msg.contains("not a directory") {
+        return Some("not_directory");
+    }
+    if msg.contains("no such file") || msg.contains("not found") || msg.contains("cannot find the")
+    {
+        return Some("path_not_found");
+    }
+    if msg.contains("permission denied") || msg.contains("access is denied") {
+        return Some("permission_denied");
+    }
+    None
+}
+
 fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
     if let Some(e) = error.downcast_ref::<WebdavListRemoteError>() {
         let remote_code = e.code.trim().to_string();
         let message = e.message.trim().to_string();
-        let mut err = match remote_code.as_str() {
+
+        let (mapped_code, mapped_from_legacy_message) = match remote_code.as_str() {
+            "permission_denied" | "path_not_found" | "not_directory" | "invalid_cursor" => {
+                (remote_code.as_str(), false)
+            }
+            _ => match classify_legacy_remote_webdav_error(&message) {
+                Some(mapped) => (mapped, true),
+                None => ("agent_webdav_list_failed", false),
+            },
+        };
+
+        let mut err = match mapped_code {
             "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
             "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
@@ -205,8 +231,24 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
                 format!("Agent WebDAV list failed: {message}"),
             ),
         };
-        err =
-            err.with_details(serde_json::json!({ "path": path, "agent_error_code": remote_code }));
+
+        let mut details = serde_json::Map::new();
+        details.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
+        details.insert(
+            "agent_error_code".to_string(),
+            serde_json::Value::String(remote_code.clone()),
+        );
+        if mapped_from_legacy_message {
+            details.insert(
+                "agent_error_code_mapped".to_string(),
+                serde_json::Value::String(mapped_code.to_string()),
+            );
+        }
+
+        err = err.with_details(serde_json::Value::Object(details));
         return err;
     }
 
@@ -527,4 +569,38 @@ fn normalize_picker_path(path: &str) -> Result<String, AppError> {
     }
     debug!(path = %out, "webdav picker path normalized");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_agent_webdav_list_error_uses_structured_remote_code() {
+        let err = WebdavListRemoteError {
+            code: "not_directory".to_string(),
+            message: "legacy text should not matter".to_string(),
+        };
+        let app = map_agent_webdav_list_error("/tmp/file", anyhow::Error::new(err));
+        assert_eq!(app.code(), "not_directory");
+        assert_eq!(app.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            app.details().and_then(|v| v.get("agent_error_code")),
+            Some(&serde_json::Value::String("not_directory".to_string()))
+        );
+    }
+
+    #[test]
+    fn map_agent_webdav_list_error_legacy_message_falls_back_by_message() {
+        let err = WebdavListRemoteError {
+            code: "error".to_string(),
+            message: "Permission denied for /data".to_string(),
+        };
+        let app = map_agent_webdav_list_error("/data", anyhow::Error::new(err));
+        assert_eq!(app.code(), "permission_denied");
+        assert_eq!(
+            app.details().and_then(|v| v.get("agent_error_code_mapped")),
+            Some(&serde_json::Value::String("permission_denied".to_string()))
+        );
+    }
 }

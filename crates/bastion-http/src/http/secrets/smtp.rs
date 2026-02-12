@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -68,7 +67,8 @@ pub(in crate::http) async fn upsert_smtp_secret(
     if name.trim().is_empty() {
         return Err(
             AppError::bad_request("invalid_name", "Secret name is required")
-                .with_details(json!({ "field": "name" })),
+                .with_reason("required")
+                .with_field("name"),
         );
     }
 
@@ -76,13 +76,15 @@ pub(in crate::http) async fn upsert_smtp_secret(
     if host.is_empty() {
         return Err(
             AppError::bad_request("invalid_host", "SMTP host is required")
-                .with_details(json!({ "field": "host" })),
+                .with_reason("required")
+                .with_field("host"),
         );
     }
     if req.port == 0 {
         return Err(
             AppError::bad_request("invalid_port", "SMTP port is required")
-                .with_details(json!({ "field": "port" })),
+                .with_reason("required")
+                .with_field("port"),
         );
     }
 
@@ -90,13 +92,15 @@ pub(in crate::http) async fn upsert_smtp_secret(
     if from.is_empty() {
         return Err(
             AppError::bad_request("invalid_from", "SMTP from is required")
-                .with_details(json!({ "field": "from" })),
+                .with_reason("required")
+                .with_field("from"),
         );
     }
     if !is_valid_mailbox(from) {
         return Err(
             AppError::bad_request("invalid_from", "Invalid SMTP from address")
-                .with_details(json!({ "field": "from" })),
+                .with_reason("invalid_format")
+                .with_field("from"),
         );
     }
 
@@ -109,14 +113,17 @@ pub(in crate::http) async fn upsert_smtp_secret(
         if !is_valid_mailbox(addr) {
             return Err(
                 AppError::bad_request("invalid_to", "Invalid SMTP recipient address")
-                    .with_details(json!({ "field": "to", "index": index })),
+                    .with_reason("invalid_format")
+                    .with_field("to")
+                    .with_param("index", index),
             );
         }
         to.push(addr.to_string());
     }
     if to.is_empty() {
         return Err(AppError::bad_request("invalid_to", "SMTP to is required")
-            .with_details(json!({ "field": "to" })));
+            .with_reason("required")
+            .with_field("to"));
     }
 
     let username = req.username.trim().to_string();
@@ -125,7 +132,8 @@ pub(in crate::http) async fn upsert_smtp_secret(
             "invalid_password",
             "SMTP password is required when username is set",
         )
-        .with_details(json!({ "field": "password" })));
+        .with_reason("required_with_username")
+        .with_field("password"));
     }
 
     let payload = SmtpSecretPayload {

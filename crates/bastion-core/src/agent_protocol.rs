@@ -422,6 +422,10 @@ pub enum AgentToHubMessageV1 {
         #[serde(default)]
         total: Option<u64>,
         #[serde(default)]
+        error_code: Option<String>,
+        #[serde(default)]
+        error_details: Option<serde_json::Value>,
+        #[serde(default)]
         error: Option<String>,
     },
     WebdavListResult {

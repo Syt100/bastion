@@ -27,7 +27,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
-import { formatToastError, toApiErrorInfo } from '@/lib/errors'
+import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -137,7 +137,7 @@ async function saveWecom(): Promise<void> {
   if (!name || !webhookUrl) {
     wecomEditorError.value = t('errors.wecomNameOrWebhookRequired')
     wecomFieldErrors.name = !name ? t('apiErrors.invalid_name') : undefined
-    wecomFieldErrors.webhookUrl = !webhookUrl ? t('apiErrors.invalid_webhook_url') : undefined
+    wecomFieldErrors.webhookUrl = !webhookUrl ? t('apiErrors.invalid_webhook_url.required') : undefined
     return
   }
 
@@ -151,10 +151,16 @@ async function saveWecom(): Promise<void> {
     wecomEditorOpen.value = false
     await refresh()
   } catch (e) {
-    const info = toApiErrorInfo(e)
-    if (info?.code === 'invalid_name') wecomFieldErrors.name = t('apiErrors.invalid_name')
-    if (info?.code === 'invalid_webhook_url') wecomFieldErrors.webhookUrl = t('apiErrors.invalid_webhook_url')
-    wecomEditorError.value = info?.message ?? String(e)
+    const info = toApiErrorInfo(e, t)
+    const mapped = resolveApiFieldErrors(info, {
+      t,
+      fieldMap: {
+        webhook_url: 'webhookUrl',
+      },
+    })
+    wecomFieldErrors.name = mapped.name
+    wecomFieldErrors.webhookUrl = mapped.webhookUrl
+    wecomEditorError.value = info.message || String(e)
   } finally {
     wecomEditorSaving.value = false
   }
@@ -286,12 +292,12 @@ async function saveSmtp(): Promise<void> {
   }
   if (!from) {
     smtpEditorError.value = t('errors.smtpFromRequired')
-    smtpFieldErrors.from = t('apiErrors.invalid_from')
+    smtpFieldErrors.from = t('apiErrors.invalid_from.required')
     return
   }
   if (to.length === 0) {
     smtpEditorError.value = t('errors.smtpToRequired')
-    smtpFieldErrors.toText = t('apiErrors.invalid_to')
+    smtpFieldErrors.toText = t('apiErrors.invalid_to.required')
     return
   }
 
@@ -319,15 +325,20 @@ async function saveSmtp(): Promise<void> {
     smtpEditorOpen.value = false
     await refresh()
   } catch (e) {
-    const info = toApiErrorInfo(e)
-    const field = info?.field
-    if (field === 'name') smtpFieldErrors.name = t('apiErrors.invalid_name')
-    if (field === 'host') smtpFieldErrors.host = t('apiErrors.invalid_host')
-    if (field === 'port') smtpFieldErrors.port = t('apiErrors.invalid_port')
-    if (field === 'from') smtpFieldErrors.from = t('apiErrors.invalid_from')
-    if (field === 'to') smtpFieldErrors.toText = t('apiErrors.invalid_to')
-    if (field === 'password') smtpFieldErrors.password = t('apiErrors.invalid_password')
-    smtpEditorError.value = info?.message ?? String(e)
+    const info = toApiErrorInfo(e, t)
+    const mapped = resolveApiFieldErrors(info, {
+      t,
+      fieldMap: {
+        to: 'toText',
+      },
+    })
+    smtpFieldErrors.name = mapped.name
+    smtpFieldErrors.host = mapped.host
+    smtpFieldErrors.port = mapped.port
+    smtpFieldErrors.from = mapped.from
+    smtpFieldErrors.toText = mapped.toText
+    smtpFieldErrors.password = mapped.password
+    smtpEditorError.value = info.message || String(e)
   } finally {
     smtpEditorSaving.value = false
   }

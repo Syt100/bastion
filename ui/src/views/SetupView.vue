@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -8,7 +8,7 @@ import { apiFetch } from '@/lib/api'
 import { useSystemStore } from '@/stores/system'
 import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 import AuthLayout from '@/components/AuthLayout.vue'
-import { toApiErrorInfo } from '@/lib/errors'
+import { resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const router = useRouter()
 const message = useMessage()
@@ -20,10 +20,18 @@ const password = ref('')
 const password2 = ref('')
 const loading = ref(false)
 const errorText = ref<string | null>(null)
+const fieldErrors = reactive<{ username?: string; password?: string }>({})
 
 const passwordsMatch = computed(() => password.value === password2.value)
 
+function clearFieldErrors(): void {
+  fieldErrors.username = undefined
+  fieldErrors.password = undefined
+}
+
 async function onSubmit(): Promise<void> {
+  clearFieldErrors()
+
   if (!passwordsMatch.value) {
     errorText.value = t('errors.passwordsDoNotMatch')
     return
@@ -41,7 +49,11 @@ async function onSubmit(): Promise<void> {
     message.success(t('messages.initializedPleaseSignIn'))
     await router.push('/login')
   } catch (error) {
-    errorText.value = toApiErrorInfo(error, t).message || t('errors.setupFailed')
+    const info = toApiErrorInfo(error, t)
+    const mapped = resolveApiFieldErrors(info, { t })
+    fieldErrors.username = mapped.username
+    fieldErrors.password = mapped.password
+    errorText.value = info.message || t('errors.setupFailed')
   } finally {
     loading.value = false
   }
@@ -65,10 +77,18 @@ async function onSubmit(): Promise<void> {
       </n-alert>
 
       <n-form label-placement="top" @submit.prevent="onSubmit">
-        <n-form-item :label="t('auth.username')">
+        <n-form-item
+          :label="t('auth.username')"
+          :validation-status="fieldErrors.username ? 'error' : undefined"
+          :feedback="fieldErrors.username"
+        >
           <n-input v-model:value="username" size="large" autocomplete="username" />
         </n-form-item>
-        <n-form-item :label="t('auth.password')">
+        <n-form-item
+          :label="t('auth.password')"
+          :validation-status="fieldErrors.password ? 'error' : undefined"
+          :feedback="fieldErrors.password"
+        >
           <n-input v-model:value="password" size="large" type="password" autocomplete="new-password" />
         </n-form-item>
         <n-form-item :label="t('auth.confirmPassword')">

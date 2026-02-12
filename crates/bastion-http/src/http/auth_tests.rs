@@ -87,6 +87,20 @@ async fn setup_initialize_rejects_short_password() {
         body["error"].as_str().unwrap_or_default(),
         "invalid_password"
     );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "min_length"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "password"
+    );
+    assert_eq!(
+        body["details"]["params"]["min_length"]
+            .as_i64()
+            .unwrap_or_default(),
+        12
+    );
 
     let count = auth::users_count(&pool).await.expect("users_count");
     assert_eq!(count, 0);
@@ -118,6 +132,14 @@ async fn login_rejects_blank_username() {
     assert_eq!(
         body["error"].as_str().unwrap_or_default(),
         "invalid_username"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "required"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "username"
     );
 
     server.abort();

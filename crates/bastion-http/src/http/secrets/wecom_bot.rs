@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -60,7 +59,8 @@ pub(in crate::http) async fn upsert_wecom_bot_secret(
     if name.trim().is_empty() {
         return Err(
             AppError::bad_request("invalid_name", "Secret name is required")
-                .with_details(json!({ "field": "name" })),
+                .with_reason("required")
+                .with_field("name"),
         );
     }
 
@@ -68,17 +68,21 @@ pub(in crate::http) async fn upsert_wecom_bot_secret(
     if webhook_url.is_empty() {
         return Err(
             AppError::bad_request("invalid_webhook_url", "Webhook URL is required")
-                .with_details(json!({ "field": "webhook_url" })),
+                .with_reason("required")
+                .with_field("webhook_url"),
         );
     }
     let url = url::Url::parse(webhook_url).map_err(|_| {
         AppError::bad_request("invalid_webhook_url", "Webhook URL is invalid")
-            .with_details(json!({ "field": "webhook_url" }))
+            .with_reason("invalid_format")
+            .with_field("webhook_url")
     })?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err(
             AppError::bad_request("invalid_webhook_url", "Webhook URL must be http(s)")
-                .with_details(json!({ "field": "webhook_url" })),
+                .with_reason("invalid_scheme")
+                .with_field("webhook_url")
+                .with_param("scheme", url.scheme()),
         );
     }
 

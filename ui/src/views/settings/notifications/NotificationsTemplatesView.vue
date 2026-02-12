@@ -47,8 +47,8 @@ async function save(): Promise<void> {
     await notifications.saveSettings(JSON.parse(JSON.stringify(draft)) as NotificationsSettings)
     message.success(t('messages.notificationTemplatesSaved'))
   } catch (e) {
-    const info = toApiErrorInfo(e)
-    error.value = info?.message ?? String(e)
+    const info = toApiErrorInfo(e, t)
+    error.value = info.message || String(e)
     message.error(formatToastError(t('errors.saveNotificationTemplatesFailed'), e, t))
   } finally {
     saving.value = false

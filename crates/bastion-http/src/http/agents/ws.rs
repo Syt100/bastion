@@ -485,10 +485,19 @@ async fn handle_agent_socket(
                         entries,
                         next_cursor,
                         total,
+                        error_code,
+                        error_details,
                         error,
                     }) if v == PROTOCOL_VERSION => {
-                        let result = if let Some(error) = error {
-                            Err(error)
+                        let result = if let Some(message) = error {
+                            Err(bastion_engine::agent_manager::FsListRemoteError {
+                                code: error_code
+                                    .unwrap_or_else(|| "error".to_string())
+                                    .trim()
+                                    .to_string(),
+                                message: message.trim().to_string(),
+                                details: error_details,
+                            })
                         } else {
                             Ok(bastion_engine::agent_manager::FsListPage {
                                 entries,

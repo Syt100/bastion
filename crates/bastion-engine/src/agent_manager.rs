@@ -12,7 +12,7 @@ use bastion_core::agent_protocol::{
 use uuid::Uuid;
 
 type FsListKey = (String, String); // (agent_id, request_id)
-type FsListResult = Result<FsListPage, String>;
+type FsListResult = Result<FsListPage, FsListRemoteError>;
 type FsListSender = oneshot::Sender<FsListResult>;
 type PendingFsList = HashMap<FsListKey, FsListSender>;
 
@@ -52,6 +52,21 @@ pub struct FsListPage {
     pub next_cursor: Option<String>,
     pub total: Option<u64>,
 }
+
+#[derive(Debug, Clone)]
+pub struct FsListRemoteError {
+    pub code: String,
+    pub message: String,
+    pub details: Option<serde_json::Value>,
+}
+
+impl std::fmt::Display for FsListRemoteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for FsListRemoteError {}
 
 #[derive(Debug, Clone)]
 pub struct WebdavListOptions {
@@ -119,7 +134,11 @@ impl AgentManager {
 
         let mut pending = self.pending_fs_list.lock().await;
         for (_key, tx) in pending.extract_if(|key, _| key.0.as_str() == agent_id) {
-            let _ = tx.send(Err("agent disconnected".to_string()));
+            let _ = tx.send(Err(FsListRemoteError {
+                code: "agent_offline".to_string(),
+                message: "agent disconnected".to_string(),
+                details: None,
+            }));
         }
 
         let mut pending_webdav = self.pending_webdav_list.lock().await;
@@ -247,7 +266,7 @@ impl AgentManager {
             .await
             .remove(&(agent_id.to_string(), request_id));
 
-        result.map_err(anyhow::Error::msg)
+        result.map_err(anyhow::Error::from)
     }
 
     pub async fn fs_list(
@@ -492,7 +511,7 @@ mod tests {
         manager.unregister("agent1").await;
 
         let err = task.await.expect("task join").expect_err("should error");
-        assert_eq!(err.to_string(), "agent disconnected");
+        assert_eq!(err.to_string(), "agent_offline: agent disconnected");
     }
 
     #[tokio::test]

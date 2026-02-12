@@ -22,7 +22,7 @@ import {
   type HubRuntimeConfigFieldMeta,
   type HubRuntimeConfigGetResponse,
 } from '@/stores/hubRuntimeConfig'
-import { formatToastError, toApiErrorInfo } from '@/lib/errors'
+import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -208,15 +208,14 @@ async function save(): Promise<void> {
     message.success(t('messages.hubRuntimeConfigSaved'))
     await refresh()
   } catch (error) {
-    const info = toApiErrorInfo(error)
-    saveError.value = info?.message ?? String(error)
+    const info = toApiErrorInfo(error, t)
+    saveError.value = info.message || String(error)
 
-    if (info?.code === 'invalid_timezone') fieldErrors.hub_timezone = t('apiErrors.invalid_timezone')
-    if (info?.code === 'invalid_run_retention_days') fieldErrors.run_retention_days = t('apiErrors.invalid_run_retention_days')
-    if (info?.code === 'invalid_incomplete_cleanup_days') {
-      fieldErrors.incomplete_cleanup_days = t('apiErrors.invalid_incomplete_cleanup_days')
-    }
-    if (info?.code === 'invalid_log_rotation') fieldErrors.log_rotation = t('apiErrors.invalid_log_rotation')
+    const mapped = resolveApiFieldErrors(info, { t })
+    fieldErrors.hub_timezone = mapped.hub_timezone
+    fieldErrors.run_retention_days = mapped.run_retention_days
+    fieldErrors.incomplete_cleanup_days = mapped.incomplete_cleanup_days
+    fieldErrors.log_rotation = mapped.log_rotation
 
     message.error(formatToastError(t('errors.saveHubRuntimeConfigFailed'), error, t))
   } finally {

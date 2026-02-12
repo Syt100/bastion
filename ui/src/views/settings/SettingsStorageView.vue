@@ -31,7 +31,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
-import { formatToastError, toApiErrorInfo } from '@/lib/errors'
+import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -154,10 +154,11 @@ async function save(): Promise<void> {
     editorOpen.value = false
     await refresh()
   } catch (error) {
-    const info = toApiErrorInfo(error)
-    if (info?.code === 'invalid_name') editorFieldErrors.name = t('apiErrors.invalid_name')
-    if (info?.code === 'invalid_username') editorFieldErrors.username = t('apiErrors.invalid_username')
-    editorError.value = info?.message ?? String(error)
+    const info = toApiErrorInfo(error, t)
+    const mapped = resolveApiFieldErrors(info, { t })
+    editorFieldErrors.name = mapped.name
+    editorFieldErrors.username = mapped.username
+    editorError.value = info.message || String(error)
   } finally {
     editorSaving.value = false
   }

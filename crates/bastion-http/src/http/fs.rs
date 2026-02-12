@@ -127,12 +127,7 @@ pub(super) async fn fs_list(
             Duration::from_secs(5),
         )
         .await
-        .map_err(|error| {
-            AppError::bad_request(
-                "agent_fs_list_failed",
-                format!("Agent filesystem list failed: {error}"),
-            )
-        })?;
+        .map_err(|error| map_agent_fs_list_error(path, error))?;
 
     Ok(Json(FsListResponse {
         path: path.to_string(),
@@ -150,6 +145,81 @@ pub(super) async fn fs_list(
         next_cursor: page.next_cursor,
         total: page.total,
     }))
+}
+
+fn classify_legacy_remote_fs_error(message: &str) -> Option<&'static str> {
+    let msg = message.to_ascii_lowercase();
+    if msg.contains("not a directory") {
+        return Some("not_directory");
+    }
+    if msg.contains("no such file") || msg.contains("not found") || msg.contains("cannot find the")
+    {
+        return Some("path_not_found");
+    }
+    if msg.contains("permission denied") || msg.contains("access is denied") {
+        return Some("permission_denied");
+    }
+    None
+}
+
+fn map_agent_fs_list_error(path: &str, error: anyhow::Error) -> AppError {
+    if let Some(remote) = error.downcast_ref::<bastion_engine::agent_manager::FsListRemoteError>() {
+        let remote_code = remote.code.trim().to_string();
+        let message = remote.message.trim().to_string();
+
+        let (mapped_code, mapped_from_legacy_message) = match remote_code.as_str() {
+            "permission_denied" | "path_not_found" | "not_directory" | "invalid_cursor"
+            | "invalid_path" | "invalid_sort_by" | "invalid_sort_dir" => {
+                (remote_code.as_str(), false)
+            }
+            _ => match classify_legacy_remote_fs_error(&message) {
+                Some(mapped) => (mapped, true),
+                None => ("agent_fs_list_failed", false),
+            },
+        };
+
+        let mut out = match mapped_code {
+            "permission_denied" => AppError::forbidden("permission_denied", "Permission denied"),
+            "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
+            "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
+            "invalid_cursor" => AppError::bad_request("invalid_cursor", "invalid cursor"),
+            "invalid_path" => AppError::bad_request("invalid_path", "path is required"),
+            "invalid_sort_by" => AppError::bad_request("invalid_sort_by", "invalid sort_by"),
+            "invalid_sort_dir" => AppError::bad_request("invalid_sort_dir", "invalid sort_dir"),
+            _ => AppError::bad_request(
+                "agent_fs_list_failed",
+                format!("Agent filesystem list failed: {message}"),
+            ),
+        };
+
+        let mut details = serde_json::Map::new();
+        details.insert(
+            "path".to_string(),
+            serde_json::Value::String(path.to_string()),
+        );
+        details.insert(
+            "agent_error_code".to_string(),
+            serde_json::Value::String(remote_code.clone()),
+        );
+        if mapped_from_legacy_message {
+            details.insert(
+                "agent_error_code_mapped".to_string(),
+                serde_json::Value::String(mapped_code.to_string()),
+            );
+        }
+        if let Some(extra) = remote.details.as_ref() {
+            details.insert("agent_error_details".to_string(), extra.clone());
+        }
+
+        out = out.with_details(serde_json::Value::Object(details));
+        return out;
+    }
+
+    AppError::bad_request(
+        "agent_fs_list_failed",
+        format!("Agent filesystem list failed: {error}"),
+    )
+    .with_details(serde_json::json!({ "path": path }))
 }
 
 #[derive(Debug, Clone)]
@@ -468,6 +538,48 @@ fn list_dir_entries_paged(path: &str, opts: FsListOptions) -> Result<FsListPage,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn map_agent_fs_list_error_uses_structured_remote_code() {
+        let err = bastion_engine::agent_manager::FsListRemoteError {
+            code: "not_directory".to_string(),
+            message: "legacy text should not matter".to_string(),
+            details: None,
+        };
+        let app = map_agent_fs_list_error("/tmp/file", anyhow::Error::new(err));
+        assert_eq!(app.code(), "not_directory");
+        assert_eq!(app.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            app.details().and_then(|v| v.get("agent_error_code")),
+            Some(&serde_json::Value::String("not_directory".to_string()))
+        );
+    }
+
+    #[test]
+    fn map_agent_fs_list_error_unknown_code_falls_back_generic() {
+        let err = bastion_engine::agent_manager::FsListRemoteError {
+            code: "weird_failure".to_string(),
+            message: "some remote issue".to_string(),
+            details: None,
+        };
+        let app = map_agent_fs_list_error("/tmp", anyhow::Error::new(err));
+        assert_eq!(app.code(), "agent_fs_list_failed");
+    }
+
+    #[test]
+    fn map_agent_fs_list_error_legacy_message_falls_back_by_message() {
+        let err = bastion_engine::agent_manager::FsListRemoteError {
+            code: "error".to_string(),
+            message: "Not a directory: /tmp/file".to_string(),
+            details: None,
+        };
+        let app = map_agent_fs_list_error("/tmp/file", anyhow::Error::new(err));
+        assert_eq!(app.code(), "not_directory");
+        assert_eq!(
+            app.details().and_then(|v| v.get("agent_error_code_mapped")),
+            Some(&serde_json::Value::String("not_directory".to_string()))
+        );
+    }
 
     #[test]
     fn fs_list_paged_not_found_maps_to_path_not_found() {

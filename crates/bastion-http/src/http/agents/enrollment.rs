@@ -1,7 +1,6 @@
 use axum::Json;
 use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::Row;
 use tower_cookies::Cookies;
 use uuid::Uuid;
@@ -79,7 +78,8 @@ pub(in crate::http) async fn agent_enroll(
 ) -> Result<Json<AgentEnrollResponse>, AppError> {
     let token_hash = agent::sha256_urlsafe_token(&req.token).map_err(|_| {
         AppError::unauthorized("invalid_token", "Invalid enrollment token")
-            .with_details(json!({ "field": "token" }))
+            .with_reason("invalid_format")
+            .with_field("token")
     })?;
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
@@ -92,10 +92,10 @@ pub(in crate::http) async fn agent_enroll(
     .await?;
 
     let Some(row) = row else {
-        return Err(AppError::unauthorized(
-            "invalid_token",
-            "Invalid enrollment token",
-        ));
+        return Err(
+            AppError::unauthorized("invalid_token", "Invalid enrollment token")
+                .with_reason("not_found"),
+        );
     };
 
     let expires_at = row.get::<i64, _>("expires_at");
@@ -106,18 +106,18 @@ pub(in crate::http) async fn agent_enroll(
             .bind(&token_hash)
             .execute(&mut *tx)
             .await?;
-        return Err(AppError::unauthorized(
-            "expired_token",
-            "Enrollment token expired",
-        ));
+        return Err(
+            AppError::unauthorized("expired_token", "Enrollment token expired")
+                .with_reason("expired"),
+        );
     }
 
     if let Some(uses) = remaining_uses {
         if uses <= 0 {
-            return Err(AppError::unauthorized(
-                "invalid_token",
-                "Invalid enrollment token",
-            ));
+            return Err(
+                AppError::unauthorized("invalid_token", "Invalid enrollment token")
+                    .with_reason("exhausted"),
+            );
         }
         let new_uses = uses - 1;
         if new_uses == 0 {

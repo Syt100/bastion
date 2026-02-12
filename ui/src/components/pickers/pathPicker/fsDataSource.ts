@@ -82,12 +82,21 @@ function mapFsEntries(entries: FsListEntry[]): PathPickerEntry[] {
   }))
 }
 
+function extractStructuredAgentErrorCode(details: unknown): string | undefined {
+  if (!details || typeof details !== 'object') return undefined
+
+  const mapped = (details as { agent_error_code_mapped?: unknown }).agent_error_code_mapped
+  if (typeof mapped === 'string' && mapped.trim()) return mapped.trim()
+
+  const code = (details as { agent_error_code?: unknown }).agent_error_code
+  if (typeof code === 'string' && code.trim()) return code.trim()
+  return undefined
+}
+
 function shouldFallbackNotDirectory(info: ApiErrorInfo): boolean {
-  const code = info.code
-  if (code === 'not_directory') return true
-  if (code !== 'agent_fs_list_failed') return false
-  const msgLower = (info.message || '').toLowerCase()
-  return msgLower.includes('not a directory')
+  if (info.code === 'not_directory') return true
+  if (info.code !== 'agent_fs_list_failed') return false
+  return extractStructuredAgentErrorCode(info.details) === 'not_directory'
 }
 
 async function listOnce(nodeId: string, req: PathPickerListRequest): Promise<PathPickerListResponse> {
@@ -133,16 +142,11 @@ function mapErrorKind(info: ApiErrorInfo): PathPickerErrorKind {
   if (code === 'not_directory') return 'not_directory'
 
   if (code === 'agent_fs_list_failed') {
-    const msgLower = (info.message || '').toLowerCase()
-    if (msgLower.includes('no such file') || msgLower.includes('not found') || msgLower.includes('cannot find the')) {
-      return 'not_found'
-    }
-    if (msgLower.includes('permission denied') || msgLower.includes('access is denied')) {
-      return 'permission_denied'
-    }
-    if (msgLower.includes('not a directory')) {
-      return 'not_directory'
-    }
+    const agentCode = extractStructuredAgentErrorCode(info.details)
+    if (agentCode === 'permission_denied') return 'permission_denied'
+    if (agentCode === 'path_not_found') return 'not_found'
+    if (agentCode === 'invalid_cursor') return 'invalid_cursor'
+    if (agentCode === 'not_directory') return 'not_directory'
   }
 
   return 'error'

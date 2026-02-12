@@ -494,12 +494,28 @@ where
     })
     .await;
 
-    let (entries, next_cursor, total, error) = match result {
-        Ok(Ok(page)) => (page.entries, page.next_cursor, Some(page.total), None),
-        Ok(Err(msg)) => (Vec::new(), None, None, Some(msg)),
+    let (entries, next_cursor, total, error_code, error_details, error) = match result {
+        Ok(Ok(page)) => (
+            page.entries,
+            page.next_cursor,
+            Some(page.total),
+            None,
+            None,
+            None,
+        ),
+        Ok(Err(err)) => (
+            Vec::new(),
+            None,
+            None,
+            Some(err.code),
+            None,
+            Some(err.message),
+        ),
         Err(error) => (
             Vec::new(),
             None,
+            None,
+            Some("error".to_string()),
             None,
             Some(format!("fs list task failed: {error}")),
         ),
@@ -511,6 +527,8 @@ where
         entries,
         next_cursor,
         total,
+        error_code,
+        error_details,
         error,
     };
     send_json(tx, &msg).await

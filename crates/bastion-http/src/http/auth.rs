@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, StatusCode};
 use serde::Serialize;
-use serde_json::json;
 use tower_cookies::Cookies;
 use tower_cookies::cookie::Cookie;
 
@@ -18,7 +17,8 @@ fn validate_username(username: &str) -> Result<&str, AppError> {
     if username.is_empty() {
         return Err(
             AppError::bad_request("invalid_username", "Username is required")
-                .with_details(json!({ "field": "username" })),
+                .with_reason("required")
+                .with_field("username"),
         );
     }
     Ok(username)
@@ -30,7 +30,9 @@ fn validate_setup_password(password: &str) -> Result<(), AppError> {
             "invalid_password",
             format!("Password must be at least {MIN_SETUP_PASSWORD_LEN} characters"),
         )
-        .with_details(json!({ "field": "password", "min_length": MIN_SETUP_PASSWORD_LEN })));
+        .with_reason("min_length")
+        .with_field("password")
+        .with_param("min_length", MIN_SETUP_PASSWORD_LEN));
     }
     Ok(())
 }
@@ -108,7 +110,8 @@ pub(super) async fn login(
             "rate_limited",
             format!("Too many login attempts. Retry after {retry_after}s."),
         )
-        .with_details(json!({ "retry_after_seconds": retry_after })));
+        .with_reason("throttled")
+        .with_param("retry_after_seconds", retry_after));
     }
 
     let Some(user) = auth::find_user_by_username(&state.db, username).await? else {

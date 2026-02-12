@@ -199,19 +199,23 @@ fn normalize_rotation(value: Option<&str>) -> Result<Option<String>, AppError> {
     if v == "daily" || v == "hourly" || v == "never" {
         Ok(Some(v))
     } else {
-        Err(AppError::bad_request(
-            "invalid_log_rotation",
-            "Invalid log rotation",
-        ))
+        Err(
+            AppError::bad_request("invalid_log_rotation", "Invalid log rotation")
+                .with_reason("invalid_value")
+                .with_field("log_rotation")
+                .with_param("allowed", ["daily", "hourly", "never"]),
+        )
     }
 }
 
 fn validate_timezone(value: Option<&str>) -> Result<Option<String>, AppError> {
     let v = normalize_optional_string(value);
     let Some(v) = v else { return Ok(None) };
-    let _ = v
-        .parse::<chrono_tz::Tz>()
-        .map_err(|_| AppError::bad_request("invalid_timezone", "Invalid hub timezone"))?;
+    let _ = v.parse::<chrono_tz::Tz>().map_err(|_| {
+        AppError::bad_request("invalid_timezone", "Invalid hub timezone")
+            .with_reason("invalid_format")
+            .with_field("hub_timezone")
+    })?;
     Ok(Some(v))
 }
 
@@ -230,7 +234,10 @@ pub(in crate::http) async fn put_hub_runtime_config(
         return Err(AppError::bad_request(
             "invalid_run_retention_days",
             "run_retention_days must be > 0",
-        ));
+        )
+        .with_reason("must_be_positive")
+        .with_field("run_retention_days")
+        .with_param("min", 1));
     }
 
     if let Some(v) = req.incomplete_cleanup_days
@@ -239,7 +246,10 @@ pub(in crate::http) async fn put_hub_runtime_config(
         return Err(AppError::bad_request(
             "invalid_incomplete_cleanup_days",
             "incomplete_cleanup_days must be >= 0",
-        ));
+        )
+        .with_reason("min_value")
+        .with_field("incomplete_cleanup_days")
+        .with_param("min", 0));
     }
 
     {
@@ -256,7 +266,10 @@ pub(in crate::http) async fn put_hub_runtime_config(
             return Err(AppError::bad_request(
                 "invalid_default_backup_retention",
                 format!("default_backup_retention.keep_last must be <= {MAX_KEEP_LAST}"),
-            ));
+            )
+            .with_reason("max_exceeded")
+            .with_field("default_backup_retention.keep_last")
+            .with_param("max", MAX_KEEP_LAST));
         }
 
         if let Some(v) = r.keep_days
@@ -265,7 +278,10 @@ pub(in crate::http) async fn put_hub_runtime_config(
             return Err(AppError::bad_request(
                 "invalid_default_backup_retention",
                 format!("default_backup_retention.keep_days must be <= {MAX_KEEP_DAYS}"),
-            ));
+            )
+            .with_reason("max_exceeded")
+            .with_field("default_backup_retention.keep_days")
+            .with_param("max", MAX_KEEP_DAYS));
         }
 
         if r.max_delete_per_tick == 0 || r.max_delete_per_tick > MAX_DELETE_PER_TICK {
@@ -274,7 +290,11 @@ pub(in crate::http) async fn put_hub_runtime_config(
                 format!(
                     "default_backup_retention.max_delete_per_tick must be within 1..={MAX_DELETE_PER_TICK}"
                 ),
-            ));
+            )
+            .with_reason("out_of_range")
+            .with_field("default_backup_retention.max_delete_per_tick")
+            .with_param("min", 1)
+            .with_param("max", MAX_DELETE_PER_TICK));
         }
 
         if r.max_delete_per_day == 0 || r.max_delete_per_day > MAX_DELETE_PER_DAY {
@@ -283,7 +303,11 @@ pub(in crate::http) async fn put_hub_runtime_config(
                 format!(
                     "default_backup_retention.max_delete_per_day must be within 1..={MAX_DELETE_PER_DAY}"
                 ),
-            ));
+            )
+            .with_reason("out_of_range")
+            .with_field("default_backup_retention.max_delete_per_day")
+            .with_param("min", 1)
+            .with_param("max", MAX_DELETE_PER_DAY));
         }
 
         if r.enabled {
@@ -293,6 +317,18 @@ pub(in crate::http) async fn put_hub_runtime_config(
                 return Err(AppError::bad_request(
                     "invalid_default_backup_retention",
                     "default_backup_retention.enabled is true but both keep rules are empty",
+                )
+                .with_reason("keep_rule_required")
+                .with_field("default_backup_retention")
+                .with_violation(
+                    "default_backup_retention.keep_last",
+                    "required_when_enabled",
+                    None,
+                )
+                .with_violation(
+                    "default_backup_retention.keep_days",
+                    "required_when_enabled",
+                    None,
                 ));
             }
         }

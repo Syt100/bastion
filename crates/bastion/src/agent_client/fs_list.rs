@@ -28,6 +28,37 @@ pub(super) struct FsListPage {
     pub total: u64,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct FsListError {
+    pub code: String,
+    pub message: String,
+}
+
+impl FsListError {
+    fn new(code: &str, message: impl Into<String>) -> Self {
+        Self {
+            code: code.to_string(),
+            message: message.into(),
+        }
+    }
+
+    fn invalid_cursor(message: impl Into<String>) -> Self {
+        Self::new("invalid_cursor", message)
+    }
+
+    fn from_io(path: &str, error: std::io::Error) -> Self {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => {
+                Self::new("path_not_found", format!("path not found: {path}"))
+            }
+            std::io::ErrorKind::PermissionDenied => {
+                Self::new("permission_denied", format!("permission denied: {path}"))
+            }
+            _ => Self::new("error", format!("io error ({path}): {error}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum SortBy {
@@ -119,11 +150,12 @@ fn encode_cursor_key(key: &CursorKey) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
 }
 
-fn decode_cursor_key(cursor: &str) -> Result<CursorKey, String> {
+fn decode_cursor_key(cursor: &str) -> Result<CursorKey, FsListError> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(cursor)
-        .map_err(|_| "invalid cursor encoding".to_string())?;
-    serde_json::from_slice::<CursorKey>(&bytes).map_err(|_| "invalid cursor payload".to_string())
+        .map_err(|_| FsListError::invalid_cursor("invalid cursor encoding"))?;
+    serde_json::from_slice::<CursorKey>(&bytes)
+        .map_err(|_| FsListError::invalid_cursor("invalid cursor payload"))
 }
 
 fn rank_kind(kind: &str, type_sort: Option<&str>) -> u8 {
@@ -150,22 +182,22 @@ fn rank_kind(kind: &str, type_sort: Option<&str>) -> u8 {
     }
 }
 
-fn parse_sort_by(raw: Option<String>) -> Result<SortBy, String> {
+fn parse_sort_by(raw: Option<String>) -> Result<SortBy, FsListError> {
     match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(SortBy::Name),
         Some("name") => Ok(SortBy::Name),
         Some("mtime") => Ok(SortBy::Mtime),
         Some("size") => Ok(SortBy::Size),
-        Some(_) => Err("invalid sort_by".to_string()),
+        Some(_) => Err(FsListError::new("invalid_sort_by", "invalid sort_by")),
     }
 }
 
-fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, String> {
+fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, FsListError> {
     match raw.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(SortDir::Asc),
         Some("asc") => Ok(SortDir::Asc),
         Some("desc") => Ok(SortDir::Desc),
-        Some(_) => Err("invalid sort_dir".to_string()),
+        Some(_) => Err(FsListError::new("invalid_sort_dir", "invalid sort_dir")),
     }
 }
 
@@ -216,19 +248,19 @@ fn read_meta(path: &PathBuf) -> (u64, Option<i64>) {
 pub(super) fn fs_list_dir_entries_paged(
     path: &str,
     opts: FsListOptions,
-) -> Result<FsListPage, String> {
+) -> Result<FsListPage, FsListError> {
     const DEFAULT_LIMIT: u32 = 200;
     const MAX_LIMIT: u32 = 2000;
 
     let path = path.trim();
     if path.is_empty() {
-        return Err("path is required".to_string());
+        return Err(FsListError::new("invalid_path", "path is required"));
     }
 
     let dir = PathBuf::from(path);
-    let meta = std::fs::metadata(&dir).map_err(|e| format!("stat failed: {e}"))?;
+    let meta = std::fs::metadata(&dir).map_err(|e| FsListError::from_io(path, e))?;
     if !meta.is_dir() {
-        return Err("path is not a directory".to_string());
+        return Err(FsListError::new("not_directory", "path is not a directory"));
     }
 
     let is_legacy_full_list = opts.cursor.is_none()
@@ -244,9 +276,10 @@ pub(super) fn fs_list_dir_entries_paged(
 
     if is_legacy_full_list {
         let mut out = Vec::<FsDirEntryV1>::new();
-        let entries = std::fs::read_dir(&dir).map_err(|e| format!("read_dir failed: {e}"))?;
+        let entries = std::fs::read_dir(&dir).map_err(|e| FsListError::from_io(path, e))?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("read_dir entry failed: {e}"))?;
+            let entry = entry
+                .map_err(|e| FsListError::new("error", format!("read_dir entry failed: {e}")))?;
             let name = entry.file_name().to_string_lossy().to_string();
             if name.trim().is_empty() {
                 continue;
@@ -254,7 +287,7 @@ pub(super) fn fs_list_dir_entries_paged(
 
             let ft = entry
                 .file_type()
-                .map_err(|e| format!("file_type failed: {e}"))?;
+                .map_err(|e| FsListError::new("error", format!("file_type failed: {e}")))?;
             let kind = if ft.is_dir() {
                 "dir"
             } else if ft.is_file() {
@@ -300,18 +333,20 @@ pub(super) fn fs_list_dir_entries_paged(
             let cursor_sort_by = decoded.sort_by.unwrap_or(SortBy::Name);
             let cursor_sort_dir = decoded.sort_dir.unwrap_or(SortDir::Asc);
             if cursor_sort_by != sort_by || cursor_sort_dir != sort_dir {
-                return Err("invalid cursor: sort options mismatch".to_string());
+                return Err(FsListError::invalid_cursor(
+                    "invalid cursor: sort options mismatch",
+                ));
             }
             let cursor_mtime = match sort_by {
-                SortBy::Mtime => decoded
-                    .mtime
-                    .ok_or_else(|| "invalid cursor: missing mtime key".to_string())?,
+                SortBy::Mtime => decoded.mtime.ok_or_else(|| {
+                    FsListError::invalid_cursor("invalid cursor: missing mtime key")
+                })?,
                 _ => decoded.mtime.unwrap_or(0),
             };
             let cursor_size = match sort_by {
-                SortBy::Size => decoded
-                    .size
-                    .ok_or_else(|| "invalid cursor: missing size key".to_string())?,
+                SortBy::Size => decoded.size.ok_or_else(|| {
+                    FsListError::invalid_cursor("invalid cursor: missing size key")
+                })?,
                 _ => decoded.size.unwrap_or(0),
             };
             Some(SortKey {
@@ -330,9 +365,10 @@ pub(super) fn fs_list_dir_entries_paged(
     let mut after_cursor_total: u64 = 0;
     let mut heap = BinaryHeap::<Candidate>::new();
 
-    let entries = std::fs::read_dir(&dir).map_err(|e| format!("read_dir failed: {e}"))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| FsListError::from_io(path, e))?;
     for entry in entries {
-        let entry = entry.map_err(|e| format!("read_dir entry failed: {e}"))?;
+        let entry =
+            entry.map_err(|e| FsListError::new("error", format!("read_dir entry failed: {e}")))?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.trim().is_empty() {
             continue;
@@ -349,7 +385,7 @@ pub(super) fn fs_list_dir_entries_paged(
 
         let ft = entry
             .file_type()
-            .map_err(|e| format!("file_type failed: {e}"))?;
+            .map_err(|e| FsListError::new("error", format!("file_type failed: {e}")))?;
         let kind = if ft.is_dir() {
             "dir"
         } else if ft.is_file() {

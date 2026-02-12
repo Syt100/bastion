@@ -102,6 +102,10 @@ async fn invalid_wecom_webhook_returns_400_with_details_field() {
         body["details"]["field"].as_str().unwrap_or_default(),
         "webhook_url"
     );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_format"
+    );
 
     server.abort();
 }
@@ -176,6 +180,91 @@ async fn invalid_smtp_from_returns_400_with_details_field() {
         body["details"]["field"].as_str().unwrap_or_default(),
         "from"
     );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_format"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn invalid_smtp_password_reason_is_required_with_username() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .put(format!("{}/api/secrets/smtp/test", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token)
+        .json(&serde_json::json!({
+          "host": "smtp.example.com",
+          "port": 587,
+          "username": "mailer",
+          "password": "",
+          "from": "noreply@example.com",
+          "to": ["a@example.com"],
+          "tls": "starttls"
+        }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(
+        body["error"].as_str().unwrap_or_default(),
+        "invalid_password"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "password"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "required_with_username"
+    );
 
     server.abort();
 }
@@ -238,8 +327,12 @@ async fn login_rate_limit_includes_retry_after_details() {
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
     let body: serde_json::Value = resp.json().await.expect("json");
     assert_eq!(body["error"].as_str().unwrap_or_default(), "rate_limited");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "throttled"
+    );
     assert!(
-        body["details"]["retry_after_seconds"]
+        body["details"]["params"]["retry_after_seconds"]
             .as_i64()
             .unwrap_or_default()
             > 0
@@ -295,6 +388,10 @@ async fn agent_enroll_invalid_token_format_returns_401_with_details() {
     assert_eq!(
         body["details"]["field"].as_str().unwrap_or_default(),
         "token"
+    );
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "invalid_format"
     );
 
     server.abort();
