@@ -46,24 +46,29 @@ pub(in crate::http) fn normalize_labels(values: Vec<String>) -> Result<Vec<Strin
 }
 
 fn validate_label(value: &str) -> Result<String, AppError> {
+    fn invalid_label_error(reason: &'static str, message: impl Into<String>) -> AppError {
+        AppError::bad_request("invalid_label", message)
+            .with_reason(reason)
+            .with_field("labels")
+    }
+
     let label = value.trim();
     if label.is_empty() {
-        return Err(AppError::bad_request("invalid_label", "Label is required")
-            .with_details(serde_json::json!({ "field": "labels" })));
+        return Err(invalid_label_error("required", "Label is required"));
     }
     if label.len() > LABEL_MAX_LEN {
-        return Err(AppError::bad_request("invalid_label", "Label is too long")
-            .with_details(serde_json::json!({ "max_len": LABEL_MAX_LEN })));
+        return Err(invalid_label_error("max_length", "Label is too long")
+            .with_param("max_length", LABEL_MAX_LEN));
     }
     if !label.is_ascii() {
-        return Err(AppError::bad_request(
-            "invalid_label",
+        return Err(invalid_label_error(
+            "non_ascii",
             "Label must be ASCII lowercase",
         ));
     }
     if label != label.to_ascii_lowercase() {
-        return Err(AppError::bad_request(
-            "invalid_label",
+        return Err(invalid_label_error(
+            "not_lowercase",
             "Label must be lowercase",
         ));
     }
@@ -71,14 +76,14 @@ fn validate_label(value: &str) -> Result<String, AppError> {
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
     {
-        return Err(AppError::bad_request(
-            "invalid_label",
+        return Err(invalid_label_error(
+            "invalid_characters",
             "Label contains invalid characters",
         ));
     }
     if label.chars().next().is_some_and(|c| c == '-' || c == '_') {
-        return Err(AppError::bad_request(
-            "invalid_label",
+        return Err(invalid_label_error(
+            "invalid_leading_char",
             "Label must start with a letter or digit",
         ));
     }

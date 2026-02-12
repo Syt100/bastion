@@ -1482,6 +1482,37 @@ const messages = {
       min_length: '密码至少需要 {min_length} 个字符',
       required_with_username: '填写 SMTP 用户名时，密码不能为空',
     },
+    invalid_label: {
+      default: '标签不合法',
+      required: '标签不能为空',
+      max_length: '标签长度不能超过 {max_length} 个字符',
+      non_ascii: '标签必须为 ASCII 小写字符',
+      not_lowercase: '标签必须为小写',
+      invalid_characters: '标签包含不允许的字符',
+      invalid_leading_char: '标签必须以字母或数字开头',
+    },
+    invalid_selector: {
+      default: '批量目标选择器无效',
+      required: '选择器不能为空',
+      agent_not_found: '一个或多个所选客户端不存在',
+      resolved_empty: '选择器未匹配到任何客户端',
+    },
+    invalid_node_id: {
+      default: '节点 ID 无效',
+      required: '节点 ID 不能为空',
+      not_found: '节点不存在',
+      revoked: '节点已撤销',
+    },
+    invalid_job_id: {
+      default: '任务 ID 无效',
+      required: '任务 ID 不能为空',
+      not_found: '任务不存在',
+      not_assigned: '该任务未分配给当前客户端',
+    },
+    invalid_spec: {
+      default: '任务配置不合法',
+      invalid_format: '任务配置格式不正确',
+    },
     invalid_webdav_secret: {
       default: 'WebDAV 凭据无效',
       required: 'WebDAV 凭据不能为空',

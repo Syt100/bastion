@@ -54,6 +54,12 @@ pub(in crate::http) async fn agent_ingest_runs(
     headers: HeaderMap,
     Json(req): Json<AgentIngestRunRequest>,
 ) -> Result<StatusCode, AppError> {
+    fn invalid_job_id_error(reason: &'static str, message: impl Into<String>) -> AppError {
+        AppError::bad_request("invalid_job_id", message)
+            .with_reason(reason)
+            .with_field("run.job_id")
+    }
+
     const MAX_EVENTS_PER_RUN: usize = 2000;
     const MAX_ID_LEN: usize = 128;
     const MAX_EVENT_LEVEL_LEN: usize = 16;
@@ -71,10 +77,7 @@ pub(in crate::http) async fn agent_ingest_runs(
         ));
     }
     if run.job_id.trim().is_empty() || run.job_id.len() > MAX_ID_LEN {
-        return Err(AppError::bad_request(
-            "invalid_job_id",
-            "Job id is required",
-        ));
+        return Err(invalid_job_id_error("required", "Job id is required"));
     }
     if run.events.len() > MAX_EVENTS_PER_RUN {
         return Err(AppError::bad_request(
@@ -121,12 +124,12 @@ pub(in crate::http) async fn agent_ingest_runs(
         .await?;
 
     let Some(row) = row else {
-        return Err(AppError::bad_request("invalid_job_id", "Job not found"));
+        return Err(invalid_job_id_error("not_found", "Job not found"));
     };
     let job_agent_id = row.get::<Option<String>, _>("agent_id");
     if job_agent_id.as_deref() != Some(agent_id.as_str()) {
-        return Err(AppError::bad_request(
-            "invalid_job_id",
+        return Err(invalid_job_id_error(
+            "not_assigned",
             "Job is not assigned to this Agent",
         ));
     }

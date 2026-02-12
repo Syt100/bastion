@@ -82,13 +82,24 @@ fn invalid_payload_error(
         .with_field(field)
 }
 
+fn invalid_selector_error(
+    reason: &'static str,
+    field: &'static str,
+    message: impl Into<String>,
+) -> AppError {
+    AppError::bad_request("invalid_selector", message)
+        .with_reason(reason)
+        .with_field(field)
+}
+
 async fn validate_agent_ids_exist(
     db: &sqlx::SqlitePool,
     agent_ids: &[String],
 ) -> Result<(), AppError> {
     if agent_ids.is_empty() {
-        return Err(AppError::bad_request(
-            "invalid_selector",
+        return Err(invalid_selector_error(
+            "required",
+            "selector.node_ids",
             "Selector is required",
         ));
     }
@@ -103,8 +114,9 @@ async fn validate_agent_ids_exist(
 
     let rows = qb.build().fetch_all(db).await?;
     if rows.len() != agent_ids.len() {
-        return Err(AppError::bad_request(
-            "invalid_selector",
+        return Err(invalid_selector_error(
+            "agent_not_found",
+            "selector.node_ids",
             "One or more agents were not found",
         ));
     }
@@ -135,8 +147,9 @@ async fn resolve_selector(
         let ids = bulk_operations_repo::resolve_agent_ids_by_selector_labels(db, &labels, mode_str)
             .await?;
         if ids.is_empty() {
-            return Err(AppError::bad_request(
-                "invalid_selector",
+            return Err(invalid_selector_error(
+                "resolved_empty",
+                "selector.labels",
                 "Selector resolved to no agents",
             ));
         }
@@ -146,8 +159,9 @@ async fn resolve_selector(
         ));
     }
 
-    Err(AppError::bad_request(
-        "invalid_selector",
+    Err(invalid_selector_error(
+        "required",
+        "selector",
         "Selector is required",
     ))
 }

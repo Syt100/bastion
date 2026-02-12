@@ -6,10 +6,15 @@ use bastion_storage::secrets_repo;
 
 use super::super::AppError;
 
+fn invalid_spec_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_spec", message)
+        .with_reason("invalid_format")
+        .with_field("spec")
+}
+
 pub(super) fn validate_job_spec(spec: &serde_json::Value) -> Result<(), AppError> {
-    job_spec::validate_value(spec).map_err(|error| {
-        AppError::bad_request("invalid_spec", format!("Invalid job spec: {error}"))
-    })
+    job_spec::validate_value(spec)
+        .map_err(|error| invalid_spec_error(format!("Invalid job spec: {error}")))
 }
 
 pub(super) async fn validate_job_target_scope(
@@ -19,9 +24,8 @@ pub(super) async fn validate_job_target_scope(
 ) -> Result<(), AppError> {
     let node_id = agent_id.unwrap_or(HUB_NODE_ID);
 
-    let parsed = job_spec::parse_value(spec).map_err(|error| {
-        AppError::bad_request("invalid_spec", format!("Invalid job spec: {error}"))
-    })?;
+    let parsed = job_spec::parse_value(spec)
+        .map_err(|error| invalid_spec_error(format!("Invalid job spec: {error}")))?;
 
     let target = match &parsed {
         job_spec::JobSpecV1::Filesystem { target, .. } => target,

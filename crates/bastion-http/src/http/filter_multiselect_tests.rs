@@ -640,6 +640,14 @@ async fn agent_labels_reject_invalid_label() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: serde_json::Value = resp.json().await.expect("json");
     assert_eq!(body["error"].as_str().unwrap_or_default(), "invalid_label");
+    assert_eq!(
+        body["details"]["reason"].as_str().unwrap_or_default(),
+        "not_lowercase"
+    );
+    assert_eq!(
+        body["details"]["field"].as_str().unwrap_or_default(),
+        "labels"
+    );
 
     server.abort();
 }

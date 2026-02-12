@@ -20,6 +20,12 @@ const RETENTION_SCAN_LIMIT: u64 = 20_000;
 const PREVIEW_KEEP_LIMIT: usize = 100;
 const PREVIEW_DELETE_LIMIT: usize = 200;
 
+fn invalid_spec_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_spec", message)
+        .with_reason("invalid_format")
+        .with_field("spec")
+}
+
 pub(in crate::http) async fn get_job_retention(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -63,7 +69,7 @@ pub(in crate::http) async fn put_job_retention(
 
     // Validate full spec after mutation (retention rules are part of the job spec contract).
     job_spec::validate_value(&spec)
-        .map_err(|e| AppError::bad_request("invalid_spec", format!("Invalid job spec: {e}")))?;
+        .map_err(|e| invalid_spec_error(format!("Invalid job spec: {e}")))?;
 
     let ok = jobs_repo::update_job(
         &state.db,
@@ -142,7 +148,7 @@ fn validate_retention_override(
     let mut spec = job.spec.clone();
     let map = spec
         .as_object_mut()
-        .ok_or_else(|| AppError::bad_request("invalid_spec", "Invalid job spec"))?;
+        .ok_or_else(|| invalid_spec_error("Invalid job spec"))?;
     map.insert(
         "retention".to_string(),
         serde_json::to_value(retention)

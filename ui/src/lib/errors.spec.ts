@@ -14,6 +14,8 @@ const dict: Record<string, string> = {
   'apiErrors.invalid_token.exhausted': 'Token has no remaining uses',
   'apiErrors.invalid_token.default': 'Invalid token',
   'apiErrors.invalid_cursor.missing_key': 'Invalid cursor: missing {key} key',
+  'apiErrors.invalid_label.max_length': 'Label must be at most {max_length} characters',
+  'apiErrors.invalid_selector.resolved_empty': 'Selector resolved to no agents',
   'common.requestId': 'Request ID',
 }
 
@@ -92,6 +94,28 @@ describe('toApiErrorInfo', () => {
 
     const info = toApiErrorInfo(err, t)
     expect(info.message).toBe('Invalid cursor: missing mtime key')
+  })
+
+  it('interpolates reason params for label length errors', () => {
+    const err = new ApiError(400, 'Label is too long', {
+      error: 'invalid_label',
+      message: 'Label is too long',
+      details: { reason: 'max_length', field: 'labels', params: { max_length: 32 } },
+    })
+
+    const info = toApiErrorInfo(err, t)
+    expect(info.message).toBe('Label must be at most 32 characters')
+  })
+
+  it('uses reason-specific translation for selector errors', () => {
+    const err = new ApiError(400, 'Selector resolved to no agents', {
+      error: 'invalid_selector',
+      message: 'Selector resolved to no agents',
+      details: { reason: 'resolved_empty', field: 'selector.labels' },
+    })
+
+    const info = toApiErrorInfo(err, t)
+    expect(info.message).toBe('Selector resolved to no agents')
   })
 
   it('falls back to backend message for unknown codes', () => {

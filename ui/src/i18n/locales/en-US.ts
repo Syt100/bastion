@@ -1487,6 +1487,37 @@ const messages = {
       min_length: 'Password must be at least {min_length} characters',
       required_with_username: 'SMTP password is required when username is set',
     },
+    invalid_label: {
+      default: 'Label is invalid',
+      required: 'Label is required',
+      max_length: 'Label must be at most {max_length} characters',
+      non_ascii: 'Label must be ASCII lowercase',
+      not_lowercase: 'Label must be lowercase',
+      invalid_characters: 'Label contains invalid characters',
+      invalid_leading_char: 'Label must start with a letter or digit',
+    },
+    invalid_selector: {
+      default: 'Bulk target selector is invalid',
+      required: 'Selector is required',
+      agent_not_found: 'One or more selected agents were not found',
+      resolved_empty: 'Selector resolved to no agents',
+    },
+    invalid_node_id: {
+      default: 'Node id is invalid',
+      required: 'Node id is required',
+      not_found: 'Node not found',
+      revoked: 'Node is revoked',
+    },
+    invalid_job_id: {
+      default: 'Job id is invalid',
+      required: 'Job id is required',
+      not_found: 'Job not found',
+      not_assigned: 'Job is not assigned to this agent',
+    },
+    invalid_spec: {
+      default: 'Job spec is invalid',
+      invalid_format: 'Job spec is invalid',
+    },
     invalid_webdav_secret: {
       default: 'WebDAV credential is invalid',
       required: 'WebDAV credential is required',
