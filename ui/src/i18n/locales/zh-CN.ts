@@ -1539,6 +1539,19 @@ const messages = {
       missing_key: '分页游标无效：缺少 {key} 字段',
       remote_invalid_cursor: '分页游标无效',
     },
+    invalid_path: {
+      default: '路径无效',
+      required: '路径不能为空',
+      invalid_segment: '路径包含非法片段',
+    },
+    invalid_sort_by: {
+      default: '排序字段无效',
+      unsupported_value: '排序字段无效',
+    },
+    invalid_sort_dir: {
+      default: '排序方向无效',
+      unsupported_value: '排序方向无效',
+    },
     permission_denied: '无权限访问该目录',
     path_not_found: '路径不存在',
     not_directory: '路径不是目录',

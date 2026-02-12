@@ -19,6 +19,8 @@ const dict: Record<string, string> = {
   'apiErrors.invalid_agent_id.revoked': 'Agent is revoked',
   'apiErrors.invalid_run_id.already_associated': 'Run id is already associated with a different job',
   'apiErrors.invalid_selector.resolved_empty': 'Selector resolved to no agents',
+  'apiErrors.invalid_path.invalid_segment': 'Path contains invalid segment',
+  'apiErrors.invalid_sort_by.unsupported_value': 'Invalid sort field',
   'common.requestId': 'Request ID',
 }
 
@@ -145,6 +147,24 @@ describe('toApiErrorInfo', () => {
     })
     const agentIdInfo = toApiErrorInfo(agentIdErr, t)
     expect(agentIdInfo.message).toBe('Agent is revoked')
+  })
+
+  it('supports structured reasons for path and sort errors', () => {
+    const pathErr = new ApiError(400, 'invalid path segment', {
+      error: 'invalid_path',
+      message: 'invalid path segment',
+      details: { reason: 'invalid_segment', field: 'path' },
+    })
+    const pathInfo = toApiErrorInfo(pathErr, t)
+    expect(pathInfo.message).toBe('Path contains invalid segment')
+
+    const sortErr = new ApiError(400, 'invalid sort_by', {
+      error: 'invalid_sort_by',
+      message: 'invalid sort_by',
+      details: { reason: 'unsupported_value', field: 'sort_by' },
+    })
+    const sortInfo = toApiErrorInfo(sortErr, t)
+    expect(sortInfo.message).toBe('Invalid sort field')
   })
 
   it('falls back to backend message for unknown codes', () => {

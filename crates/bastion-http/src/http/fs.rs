@@ -12,7 +12,8 @@ use bastion_core::HUB_NODE_ID;
 
 use super::list_paging::{
     CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key,
-    invalid_cursor_error, parse_sort_by, parse_sort_dir, rank_kind,
+    invalid_cursor_error, invalid_sort_by_error, invalid_sort_dir_error, parse_sort_by,
+    parse_sort_dir, rank_kind,
 };
 use super::shared::require_session;
 use super::{AppError, AppState};
@@ -62,6 +63,12 @@ pub(super) struct FsListResponse {
     total: Option<u64>,
 }
 
+fn invalid_path_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_path", message)
+        .with_reason(reason)
+        .with_field("path")
+}
+
 pub(super) async fn fs_list(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -72,8 +79,7 @@ pub(super) async fn fs_list(
 
     let path = query.path.trim();
     if path.is_empty() {
-        return Err(AppError::bad_request("invalid_path", "path is required")
-            .with_details(serde_json::json!({ "field": "path" })));
+        return Err(invalid_path_error("required", "path is required"));
     }
 
     if node_id == HUB_NODE_ID {
@@ -183,9 +189,9 @@ fn map_agent_fs_list_error(path: &str, error: anyhow::Error) -> AppError {
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
             "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
             "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
-            "invalid_path" => AppError::bad_request("invalid_path", "path is required"),
-            "invalid_sort_by" => AppError::bad_request("invalid_sort_by", "invalid sort_by"),
-            "invalid_sort_dir" => AppError::bad_request("invalid_sort_dir", "invalid sort_dir"),
+            "invalid_path" => invalid_path_error("required", "path is required"),
+            "invalid_sort_by" => invalid_sort_by_error("unsupported_value", "invalid sort_by"),
+            "invalid_sort_dir" => invalid_sort_dir_error("unsupported_value", "invalid sort_dir"),
             _ => AppError::bad_request(
                 "agent_fs_list_failed",
                 format!("Agent filesystem list failed: {message}"),
@@ -554,6 +560,25 @@ mod tests {
         assert_eq!(
             app.details().and_then(|v| v.get("agent_error_code")),
             Some(&serde_json::Value::String("not_directory".to_string()))
+        );
+    }
+
+    #[test]
+    fn map_agent_fs_list_error_invalid_path_has_reason_and_field() {
+        let err = bastion_engine::agent_manager::FsListRemoteError {
+            code: "invalid_path".to_string(),
+            message: "path is required".to_string(),
+            details: None,
+        };
+        let app = map_agent_fs_list_error("/tmp/file", anyhow::Error::new(err));
+        assert_eq!(app.code(), "invalid_path");
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("required".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
         );
     }
 

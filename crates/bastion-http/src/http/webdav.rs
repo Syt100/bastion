@@ -18,7 +18,8 @@ use bastion_targets::{
 
 use super::list_paging::{
     CursorKey, SortBy, SortDir, SortKey, decode_cursor_key, encode_cursor_key,
-    invalid_cursor_error, parse_sort_by, parse_sort_dir, rank_kind,
+    invalid_cursor_error, invalid_sort_by_error, invalid_sort_dir_error, parse_sort_by,
+    parse_sort_dir, rank_kind,
 };
 use super::shared::require_session;
 use super::{AppError, AppState};
@@ -98,6 +99,12 @@ fn invalid_webdav_secret_error(
     AppError::bad_request("invalid_webdav_secret", message)
         .with_reason(reason)
         .with_field(field)
+}
+
+fn invalid_path_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_path", message)
+        .with_reason(reason)
+        .with_field("path")
 }
 
 async fn webdav_list_impl(
@@ -224,7 +231,8 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
         let message = e.message.trim().to_string();
 
         let (mapped_code, mapped_from_legacy_message) = match remote_code.as_str() {
-            "permission_denied" | "path_not_found" | "not_directory" | "invalid_cursor" => {
+            "permission_denied" | "path_not_found" | "not_directory" | "invalid_cursor"
+            | "invalid_path" | "invalid_sort_by" | "invalid_sort_dir" => {
                 (remote_code.as_str(), false)
             }
             _ => match classify_legacy_remote_webdav_error(&message) {
@@ -238,6 +246,9 @@ fn map_agent_webdav_list_error(path: &str, error: anyhow::Error) -> AppError {
             "path_not_found" => AppError::not_found("path_not_found", "Path not found"),
             "not_directory" => AppError::bad_request("not_directory", "path is not a directory"),
             "invalid_cursor" => invalid_cursor_error("remote_invalid_cursor", "invalid cursor"),
+            "invalid_path" => invalid_path_error("required", "path is required"),
+            "invalid_sort_by" => invalid_sort_by_error("unsupported_value", "invalid sort_by"),
+            "invalid_sort_dir" => invalid_sort_dir_error("unsupported_value", "invalid sort_dir"),
             _ => AppError::bad_request(
                 "agent_webdav_list_failed",
                 format!("Agent WebDAV list failed: {message}"),
@@ -300,8 +311,8 @@ async fn list_webdav_on_hub(
             .filter(|v| !v.is_empty())
         {
             if part == "." || part == ".." {
-                return Err(AppError::bad_request(
-                    "invalid_path",
+                return Err(invalid_path_error(
+                    "invalid_segment",
                     "invalid path segment",
                 ));
             }
@@ -572,8 +583,7 @@ fn join_picker_path(base: &str, name: &str) -> String {
 fn normalize_picker_path(path: &str) -> Result<String, AppError> {
     let path = path.trim();
     if path.is_empty() {
-        return Err(AppError::bad_request("invalid_path", "path is required")
-            .with_details(serde_json::json!({ "field": "path" })));
+        return Err(invalid_path_error("required", "path is required"));
     }
 
     let mut out = if path.starts_with('/') {
@@ -618,6 +628,38 @@ mod tests {
         assert_eq!(
             app.details().and_then(|v| v.get("agent_error_code_mapped")),
             Some(&serde_json::Value::String("permission_denied".to_string()))
+        );
+    }
+
+    #[test]
+    fn map_agent_webdav_list_error_invalid_sort_by_has_reason_and_field() {
+        let err = WebdavListRemoteError {
+            code: "invalid_sort_by".to_string(),
+            message: "invalid sort_by".to_string(),
+        };
+        let app = map_agent_webdav_list_error("/data", anyhow::Error::new(err));
+        assert_eq!(app.code(), "invalid_sort_by");
+        assert_eq!(
+            app.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("unsupported_value".to_string()))
+        );
+        assert_eq!(
+            app.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("sort_by".to_string()))
+        );
+    }
+
+    #[test]
+    fn normalize_picker_path_empty_has_reason_and_field() {
+        let err = normalize_picker_path("   ").expect_err("path should be invalid");
+        assert_eq!(err.code(), "invalid_path");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("required".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
         );
     }
 
@@ -696,6 +738,45 @@ mod tests {
         assert_eq!(
             err.details().and_then(|v| v.get("field")),
             Some(&serde_json::Value::String("base_url".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn list_webdav_on_hub_invalid_path_segment_has_reason_and_field() {
+        let err = list_webdav_on_hub(
+            "https://example.com/webdav/",
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            "/../etc",
+            WebdavListRequest {
+                base_url: "https://example.com/webdav/".to_string(),
+                secret_name: "s".to_string(),
+                path: "/../etc".to_string(),
+                cursor: None,
+                limit: None,
+                q: None,
+                kind: None,
+                hide_dotfiles: None,
+                type_sort: None,
+                sort_by: None,
+                sort_dir: None,
+                size_min_bytes: None,
+                size_max_bytes: None,
+            },
+        )
+        .await
+        .expect_err("invalid path segment should fail");
+
+        assert_eq!(err.code(), "invalid_path");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("invalid_segment".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("path".to_string()))
         );
     }
 }

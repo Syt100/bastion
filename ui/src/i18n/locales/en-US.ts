@@ -1544,6 +1544,19 @@ const messages = {
       missing_key: 'Invalid pagination cursor: missing {key} key',
       remote_invalid_cursor: 'Invalid pagination cursor',
     },
+    invalid_path: {
+      default: 'Path is invalid',
+      required: 'Path is required',
+      invalid_segment: 'Path contains invalid segment',
+    },
+    invalid_sort_by: {
+      default: 'Invalid sort field',
+      unsupported_value: 'Invalid sort field',
+    },
+    invalid_sort_dir: {
+      default: 'Invalid sort direction',
+      unsupported_value: 'Invalid sort direction',
+    },
     permission_denied: 'Permission denied',
     path_not_found: 'Path not found',
     not_directory: 'Path is not a directory',

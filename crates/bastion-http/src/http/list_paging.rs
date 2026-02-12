@@ -108,6 +108,18 @@ pub(super) fn invalid_cursor_error(reason: &'static str, message: impl Into<Stri
         .with_field("cursor")
 }
 
+pub(super) fn invalid_sort_by_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_sort_by", message)
+        .with_reason(reason)
+        .with_field("sort_by")
+}
+
+pub(super) fn invalid_sort_dir_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_sort_dir", message)
+        .with_reason(reason)
+        .with_field("sort_dir")
+}
+
 pub(super) fn decode_cursor_key(cursor: &str) -> Result<CursorKey, AppError> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(cursor)
@@ -146,7 +158,10 @@ pub(super) fn parse_sort_by(raw: Option<String>) -> Result<SortBy, AppError> {
         Some("name") => Ok(SortBy::Name),
         Some("mtime") => Ok(SortBy::Mtime),
         Some("size") => Ok(SortBy::Size),
-        Some(_) => Err(AppError::bad_request("invalid_sort_by", "invalid sort_by")),
+        Some(_) => Err(invalid_sort_by_error(
+            "unsupported_value",
+            "invalid sort_by",
+        )),
     }
 }
 
@@ -155,8 +170,8 @@ pub(super) fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
         None => Ok(SortDir::Asc),
         Some("asc") => Ok(SortDir::Asc),
         Some("desc") => Ok(SortDir::Desc),
-        Some(_) => Err(AppError::bad_request(
-            "invalid_sort_dir",
+        Some(_) => Err(invalid_sort_dir_error(
+            "unsupported_value",
             "invalid sort_dir",
         )),
     }
@@ -166,7 +181,7 @@ pub(super) fn parse_sort_dir(raw: Option<String>) -> Result<SortDir, AppError> {
 mod tests {
     use base64::Engine as _;
 
-    use super::decode_cursor_key;
+    use super::{decode_cursor_key, parse_sort_by, parse_sort_dir};
 
     #[test]
     fn decode_cursor_key_invalid_encoding_has_structured_details() {
@@ -196,6 +211,34 @@ mod tests {
         assert_eq!(
             details.get("field"),
             Some(&serde_json::Value::String("cursor".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_sort_by_invalid_value_has_reason_and_field() {
+        let err = parse_sort_by(Some("bad".to_string())).expect_err("sort_by should fail");
+        assert_eq!(err.code(), "invalid_sort_by");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("unsupported_value".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("sort_by".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_sort_dir_invalid_value_has_reason_and_field() {
+        let err = parse_sort_dir(Some("bad".to_string())).expect_err("sort_dir should fail");
+        assert_eq!(err.code(), "invalid_sort_dir");
+        assert_eq!(
+            err.details().and_then(|v| v.get("reason")),
+            Some(&serde_json::Value::String("unsupported_value".to_string()))
+        );
+        assert_eq!(
+            err.details().and_then(|v| v.get("field")),
+            Some(&serde_json::Value::String("sort_dir".to_string()))
         );
     }
 }
