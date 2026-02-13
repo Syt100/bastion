@@ -9,8 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 
 ### Added
 - Added a guided Windows MSI installer flow (license + install directory dialogs) instead of progress-only UX.
-- Added Windows Start Menu shortcuts for `Bastion` and `Bastion Web UI`.
-- Added an uninstall-time checkbox option to remove `C:\ProgramData\bastion` data (default remains keep data).
+- Added Windows Start Menu shortcuts for `Bastion`, `Bastion Web UI`, and `Uninstall Bastion (Remove data)`.
 - Added an install-completion checkbox (default enabled) to start Bastion and open Web UI after installation.
 
 ### Changed
@@ -18,6 +17,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed release `workflow_dispatch` version labeling to `<latest-tag>-dh<short-hash>` for build metadata and artifact naming, while keeping tag-triggered release labels unchanged.
 - Changed Windows x86_64 MSI packaging to explicit 64-bit mode so installs target `Program Files` instead of `Program Files (x86)` on 64-bit hosts.
 - Changed Windows installer metadata to include support/about/update links in Apps & features.
+- Changed default Windows uninstall behavior to keep `C:\ProgramData\bastion` data, with explicit data-removal uninstall entry in Start Menu.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -28,10 +28,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ### Fixed
 - Fixed Windows MSI packaging to embed installer CAB payloads so release MSI artifacts contain the expected application payload.
 - Added release workflow sanity checks to fail Windows packaging if the generated MSI is unexpectedly tiny.
-- Fixed Windows MSI build failure caused by invalid mixed `ComponentGroup/@Directory` and per-component `Directory` usage in WiX authoring.
-- Fixed Windows MSI ICE validation failures for Start Menu shortcuts by using a per-user (`HKCU`) shortcut component key path.
-- Fixed interactive uninstall flow routing so the data-retention choice dialog appears before remove confirmation across remove entry paths.
-- Fixed Windows MSI packaging failure caused by scheduling uninstall prompt before a non-existent `VerifyReadyDlg` UI sequence action.
+- Fixed install completion hangs by making Web UI launch action non-blocking and starting service during install execution.
 
 ### Security
 - _No user-facing changes yet._

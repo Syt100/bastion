@@ -21,7 +21,6 @@
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Bastion service and open Web UI (http://127.0.0.1:9876/)" />
     <Property Id="BASTION_REMOVE_DATA" Value="0" Secure="yes" />
-    <Property Id="BASTION_REMOVE_DATA_CONFIRMED" Value="0" />
 
     <WixVariable Id="WixUILicenseRtf" Value="packaging\windows\license.rtf" />
 
@@ -42,7 +41,7 @@
     <CustomAction
       Id="SetLaunchWebUiCmd"
       Property="WixQuietExecCmdLine"
-      Value="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='SilentlyContinue';Start-Service -Name 'Bastion' -ErrorAction SilentlyContinue;$ready=$false;for($i=0;$i -lt 30;$i++){try{$resp=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9876/api/system' -TimeoutSec 2;if($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){Start-Process 'http://127.0.0.1:9876/'}&quot;"
+      Value="&quot;[SystemFolder]cmd.exe&quot; /c start &quot;&quot; &quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;$ready=$false;for($i=0;$i -lt 30;$i++){try{$resp=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9876/api/system' -TimeoutSec 2;if($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){Start-Process 'http://127.0.0.1:9876/'}&quot;"
       Execute="immediate"
     />
     <CustomAction
@@ -57,45 +56,9 @@
     <UI>
       <UIRef Id="WixUI_InstallDir" />
       <UIRef Id="WixUI_ErrorProgressText" />
-
-      <Dialog Id="BastionRemoveDataDlg" Width="370" Height="270" Title="[ProductName] Setup" NoMinimize="yes">
-        <Control Id="BannerBmp" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
-        <Control Id="Line" Type="Line" X="0" Y="44" Width="370" Height="0" />
-        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Uninstall options" />
-        <Control Id="Description" Type="Text" X="20" Y="70" Width="330" Height="36" NoPrefix="yes" Text="Choose whether uninstall should also remove Bastion runtime data." />
-        <Control Id="DataHint" Type="Text" X="20" Y="109" Width="330" Height="27" NoPrefix="yes" Text="Data path: C:\ProgramData\bastion" />
-        <Control
-          Id="RemoveDataCheckbox"
-          Type="CheckBox"
-          X="20"
-          Y="142"
-          Width="330"
-          Height="18"
-          Property="BASTION_REMOVE_DATA"
-          CheckBoxValue="1"
-          Text="Also remove Bastion data (default: keep data)"
-        />
-        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
-          <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="0">1</Publish>
-          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
-        </Control>
-        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
-          <Publish Property="BASTION_REMOVE_DATA_CONFIRMED" Value="1">1</Publish>
-          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
-        </Control>
-        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
-          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
-        </Control>
-      </Dialog>
-
-      <Publish Dialog="VerifyReadyDlg" Control="Back" Property="BASTION_REMOVE_DATA_CONFIRMED" Value="0" Order="1">Installed AND REMOVE=&quot;ALL&quot;</Publish>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="SetLaunchWebUiCmd" Order="1">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="RunLaunchWebUiCmd" Order="2">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
     </UI>
-
-    <InstallUISequence>
-      <Show Dialog="BastionRemoveDataDlg" Before="ProgressDlg">Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA_CONFIRMED &lt;&gt; &quot;1&quot;</Show>
-    </InstallUISequence>
 
     <InstallExecuteSequence>
       <Custom Action="SetBastionDataCleanupCmd" Before="RunBastionDataCleanup">REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND BASTION_REMOVE_DATA=&quot;1&quot;</Custom>
@@ -136,6 +99,7 @@
         <ServiceControl
           Id="BastionServiceControl"
           Name="Bastion"
+          Start="install"
           Stop="both"
           Remove="uninstall"
           Wait="yes"
@@ -151,6 +115,13 @@
           WorkingDirectory="INSTALLFOLDER"
         />
         <util:InternetShortcut Id="StartMenuBastionWebUiShortcut" Name="Bastion Web UI" Target="http://127.0.0.1:9876/" Type="url" />
+        <Shortcut
+          Id="StartMenuBastionUninstallDataShortcut"
+          Name="Uninstall Bastion (Remove data)"
+          Description="Uninstall Bastion and remove data under C:\ProgramData\bastion"
+          Target="[SystemFolder]msiexec.exe"
+          Arguments="/x [ProductCode] BASTION_REMOVE_DATA=1"
+        />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\Bastion" Name="StartMenuShortcuts" Type="integer" Value="1" KeyPath="yes" />
       </Component>
