@@ -8,6 +8,26 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
+- _No user-facing changes yet._
+
+### Changed
+- _No user-facing changes yet._
+
+### Deprecated
+- _No user-facing changes yet._
+
+### Removed
+- _No user-facing changes yet._
+
+### Fixed
+- _No user-facing changes yet._
+
+### Security
+- _No user-facing changes yet._
+
+## [v0.2.1] - 2026-02-13
+
+### Added
 - Added a guided Windows MSI installer flow (license + install directory dialogs) instead of progress-only UX.
 - Added Windows Start Menu shortcuts for `Bastion`, `Bastion Web UI`, and `Uninstall Bastion (Remove data)`.
 - Added an install-completion checkbox (default enabled) to start Bastion and open Web UI after installation.
