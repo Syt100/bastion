@@ -41,6 +41,20 @@ cat > "${tmp_dir}/bad-category.md" <<'EOF'
 - First fix.
 EOF
 
+cat > "${tmp_dir}/bad-version-placeholder.md" <<'EOF'
+# Changelog
+
+## [Unreleased]
+
+### Added
+- Upcoming item.
+
+## [v1.2.3] - 2026-02-12
+
+### Security
+- _No user-facing changes yet._
+EOF
+
 bash "${root_dir}/scripts/changelog.sh" check --file "${tmp_dir}/ok.md"
 
 bash "${root_dir}/scripts/changelog.sh" extract --file "${tmp_dir}/ok.md" --tag v1.2.3 --output "${tmp_dir}/release-notes.md"
@@ -54,6 +68,11 @@ fi
 
 if bash "${root_dir}/scripts/changelog.sh" extract --file "${tmp_dir}/ok.md" --tag v9.9.9 --output "${tmp_dir}/missing.md"; then
   echo "expected extract with missing tag to fail" >&2
+  exit 1
+fi
+
+if bash "${root_dir}/scripts/changelog.sh" check --file "${tmp_dir}/bad-version-placeholder.md"; then
+  echo "expected bad-version-placeholder check to fail" >&2
   exit 1
 fi
 

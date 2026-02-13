@@ -56,6 +56,24 @@ check_changelog() {
   ' "$file"; then
     die "## [Unreleased] must include at least one ### category heading"
   fi
+
+  if ! awk '
+    BEGIN {
+      in_release = 0
+      invalid = 0
+    }
+    /^## \[/ {
+      in_release = ($0 ~ /^## \[(v?[0-9]+\.[0-9]+\.[0-9]+[^]]*)\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$/)
+      next
+    }
+    in_release && $0 == "- _No user-facing changes yet._" {
+      printf("%d:%s\n", NR, $0)
+      invalid = 1
+    }
+    END { exit invalid ? 1 : 0 }
+  ' "$file"; then
+    die "released version sections must not include placeholder lines like: - _No user-facing changes yet._"
+  fi
 }
 
 extract_release_notes() {

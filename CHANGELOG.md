@@ -39,21 +39,12 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Windows installer metadata to include support/about/update links in Apps & features.
 - Changed default Windows uninstall behavior to keep `C:\ProgramData\bastion` data, with explicit data-removal uninstall entry in Start Menu.
 
-### Deprecated
-- _No user-facing changes yet._
-
-### Removed
-- _No user-facing changes yet._
-
 ### Fixed
 - Fixed Windows MSI packaging to embed installer CAB payloads so release MSI artifacts contain the expected application payload.
 - Added release workflow sanity checks to fail Windows packaging if the generated MSI is unexpectedly tiny.
 - Fixed install completion hangs by making Web UI launch action non-blocking and starting service during install execution.
 - Fixed install completion launch behavior to avoid transient console flashes and use shell-based browser opening.
 - Fixed explicit "Uninstall Bastion (Remove data)" path by correctly wiring deferred cleanup command data for `BASTION_REMOVE_DATA=1`.
-
-### Security
-- _No user-facing changes yet._
 
 ## [v0.2.0] - 2026-02-12
 
