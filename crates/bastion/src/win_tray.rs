@@ -71,7 +71,7 @@ fn run_tray() -> Result<(), anyhow::Error> {
 
     loop {
         let mut msg = MSG::default();
-        let code = unsafe { GetMessageW(&mut msg, 0, 0, 0) };
+        let code = unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) };
         if code == -1 {
             anyhow::bail!("Windows message loop failed");
         }
@@ -266,7 +266,7 @@ fn load_tray_icon() -> Result<Icon, anyhow::Error> {
 fn hide_console_window() {
     unsafe {
         let hwnd = GetConsoleWindow();
-        if hwnd != 0 {
+        if !hwnd.is_null() {
             ShowWindow(hwnd, SW_HIDE);
         }
     }
