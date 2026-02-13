@@ -20,13 +20,14 @@
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Bastion service and open Web UI (http://127.0.0.1:9876/)" />
+    <Property Id="WixShellExecTarget" Value="http://127.0.0.1:9876/" />
     <Property Id="BASTION_REMOVE_DATA" Value="0" Secure="yes" />
 
     <WixVariable Id="WixUILicenseRtf" Value="packaging\windows\license.rtf" />
 
     <CustomAction
       Id="SetBastionDataCleanupCmd"
-      Property="WixQuietExecCmdLine"
+      Property="RunBastionDataCleanup"
       Value="&quot;[SystemFolder]cmd.exe&quot; /c if exist &quot;[CommonAppDataFolder]bastion&quot; rmdir /s /q &quot;[CommonAppDataFolder]bastion&quot;"
       Execute="immediate"
     />
@@ -39,15 +40,9 @@
       Impersonate="no"
     />
     <CustomAction
-      Id="SetLaunchWebUiCmd"
-      Property="WixQuietExecCmdLine"
-      Value="&quot;[SystemFolder]cmd.exe&quot; /c start &quot;&quot; &quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;$ready=$false;for($i=0;$i -lt 30;$i++){try{$resp=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9876/api/system' -TimeoutSec 2;if($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){Start-Process 'http://127.0.0.1:9876/'}&quot;"
-      Execute="immediate"
-    />
-    <CustomAction
-      Id="RunLaunchWebUiCmd"
+      Id="LaunchBastionWebUi"
       BinaryKey="WixCA"
-      DllEntry="WixQuietExec"
+      DllEntry="WixShellExec"
       Execute="immediate"
       Return="ignore"
       Impersonate="yes"
@@ -56,8 +51,7 @@
     <UI>
       <UIRef Id="WixUI_InstallDir" />
       <UIRef Id="WixUI_ErrorProgressText" />
-      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="SetLaunchWebUiCmd" Order="1">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
-      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="RunLaunchWebUiCmd" Order="2">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchBastionWebUi" Order="1">NOT Installed AND NOT WIX_UPGRADE_DETECTED AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
     </UI>
 
     <InstallExecuteSequence>

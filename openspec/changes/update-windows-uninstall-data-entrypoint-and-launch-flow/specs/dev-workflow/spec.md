@@ -6,7 +6,7 @@ The Windows MSI completion option to open Bastion Web UI SHALL avoid long-runnin
 #### Scenario: user keeps launch checkbox selected and clicks Finish
 - **WHEN** install completes and the launch option remains selected
 - **THEN** the finish action returns promptly without waiting for long readiness loops inside MSI UI thread
-- **AND** Bastion Web UI is opened only after local endpoint readiness is observed
+- **AND** Bastion Web UI is opened through the user's default browser shell after install finishes
 
 ### Requirement: Windows Install Execution Must Start Bastion Service for First Launch
 The Windows MSI install execution sequence SHALL attempt to start the Bastion service so first-run launch can succeed without manual service startup.
