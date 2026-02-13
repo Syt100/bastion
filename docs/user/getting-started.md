@@ -33,10 +33,9 @@ Examples:
   - (Optional) Enable on boot: `sudo systemctl enable bastion`
 - Windows `.msi`:
   - Install the MSI
-  - The MSI installs a Windows Service, but does **not** start it automatically
-  - Start the service (one of):
-    - Services app (`services.msc`) → `Bastion` → Start
-    - `sc start Bastion`
+  - The MSI installs a Windows Service and starts it during install
+  - The installed `Bastion` Windows Service is configured to auto-start on system boot
+  - The MSI also installs a `Bastion Tray` startup entry (runs at user sign-in)
   - (Optional) Run interactively from `C:\Program Files\Bastion\bastion.exe` (the MSI does not add PATH by default)
 
 You can also build from source (see [Developer docs](/dev/)).

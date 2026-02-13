@@ -4,6 +4,8 @@ mod i18n;
 mod logging;
 #[cfg(windows)]
 mod win_service;
+#[cfg(windows)]
+mod win_tray;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,6 +57,10 @@ async fn main() -> Result<(), anyhow::Error> {
             #[cfg(windows)]
             Command::Service(args) => {
                 win_service::run(args)?;
+            }
+            #[cfg(windows)]
+            Command::Tray(args) => {
+                win_tray::run(args)?;
             }
             Command::Keypack { command } => {
                 let _logging_guard = logging::init(&logging_args)?;

@@ -33,10 +33,9 @@
   - （可选）开机自启：`sudo systemctl enable bastion`
 - Windows `.msi`：
   - 运行 MSI 安装
-  - MSI 会安装 Windows 服务，但 **不会** 自动启动
-  - 启动服务（二选一）：
-    - 打开服务管理器（`services.msc`）→ `Bastion` → 启动
-    - `sc start Bastion`
+  - MSI 会安装 Windows 服务，并在安装阶段启动该服务
+  - 安装后的 `Bastion` Windows 服务会在系统开机时自动启动
+  - MSI 同时安装 `Bastion Tray` 启动项（用户登录后自动运行）
   - （可选）通过 `C:\\Program Files\\Bastion\\bastion.exe` 交互式启动（MSI 默认不会写入 PATH）
 
 你也可以从源码构建（见 [开发文档](/zh/dev/)）。

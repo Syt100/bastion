@@ -72,6 +72,7 @@
       <Directory Id="ProgramMenuFolder">
         <Directory Id="ApplicationProgramsFolder" Name="Bastion" />
       </Directory>
+      <Directory Id="CommonStartupFolder" />
     </Directory>
   </Fragment>
 
@@ -86,7 +87,7 @@
           DisplayName="Bastion"
           Description="Bastion - self-hosted backup orchestrator"
           Type="ownProcess"
-          Start="demand"
+          Start="auto"
           ErrorControl="normal"
           Arguments="service run"
         />
@@ -108,6 +109,14 @@
           Target="[INSTALLFOLDER]bastion.exe"
           WorkingDirectory="INSTALLFOLDER"
         />
+        <Shortcut
+          Id="StartMenuBastionTrayShortcut"
+          Name="Bastion Tray"
+          Description="Run Bastion tray"
+          Target="[INSTALLFOLDER]bastion.exe"
+          Arguments="tray run"
+          WorkingDirectory="INSTALLFOLDER"
+        />
         <util:InternetShortcut Id="StartMenuBastionWebUiShortcut" Name="Bastion Web UI" Target="http://127.0.0.1:9876/" Type="url" />
         <Shortcut
           Id="StartMenuBastionUninstallDataShortcut"
@@ -122,6 +131,18 @@
 
       <Component Id="BastionInstallRegistry" Guid="b1cb4047-6100-432c-9abe-5bedafe6984e" Directory="INSTALLFOLDER" Win64="yes">
         <RegistryValue Root="HKLM" Key="Software\Bastion" Name="InstallMarker" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="TrayAutoStart" Guid="fcb34515-5e6d-4bc1-ad53-c5df6f13ac15" Directory="CommonStartupFolder" Win64="yes">
+        <Shortcut
+          Id="StartupBastionTrayShortcut"
+          Name="Bastion Tray"
+          Description="Start Bastion tray when logging in to Windows"
+          Target="[INSTALLFOLDER]bastion.exe"
+          Arguments="tray run"
+          WorkingDirectory="INSTALLFOLDER"
+        />
+        <RegistryValue Root="HKLM" Key="Software\Bastion" Name="TrayStartupShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

@@ -36,6 +36,10 @@ pub enum Command {
     /// Run Bastion as a Windows Service (used by the MSI installer).
     #[cfg(windows)]
     Service(ServiceArgs),
+    /// Run Bastion tray integration on Windows.
+    #[cfg(windows)]
+    #[command(hide = true)]
+    Tray(TrayArgs),
     /// Manage keypacks in the Hub data directory.
     Keypack {
         #[command(subcommand)]
@@ -54,6 +58,21 @@ pub struct ServiceArgs {
 #[derive(Debug, Subcommand, Clone)]
 pub enum ServiceCommand {
     /// Run as a Windows Service (internal).
+    #[command(hide = true)]
+    Run,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Args, Clone)]
+pub struct TrayArgs {
+    #[command(subcommand)]
+    pub command: TrayCommand,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Subcommand, Clone)]
+pub enum TrayCommand {
+    /// Run Bastion tray process (internal).
     #[command(hide = true)]
     Run,
 }

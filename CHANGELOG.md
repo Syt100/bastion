@@ -8,10 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
-- _No user-facing changes yet._
+- Added Windows tray mode (`bastion tray run`) with tray actions to open Web UI and start/stop the Bastion service.
+- Added a Windows startup entry that launches Bastion Tray automatically after user sign-in.
 
 ### Changed
-- _No user-facing changes yet._
+- Changed Windows MSI service install mode to auto-start `Bastion` on system boot.
 
 ### Deprecated
 - _No user-facing changes yet._
