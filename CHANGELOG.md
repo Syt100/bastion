@@ -18,6 +18,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Web UI favicon from the default Vue icon to the new Bastion brand icon.
 - Changed Windows MSI metadata to register `ARPPRODUCTICON` and apply branded icons on Start Menu/Startup shortcuts.
 - Changed release preflight checks to validate required branding icon assets before release extraction.
+- Changed Windows tray Start Menu/Startup shortcuts to always write tray logs to `C:\ProgramData\bastion\logs\tray.log` with daily rotation.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -28,6 +29,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ### Fixed
 - Fixed Windows tray icon loading to use embedded icon resources (with `.ico` sidecar fallback) instead of attempting to load icons from `bastion.exe` file paths.
 - Fixed tray actions for standard users by avoiding privileged service access in "Open Web UI" flow and adding UAC-elevated fallback for Start/Stop service actions when access is denied.
+- Fixed tray launch behavior by detaching from the console window by default (with `BASTION_TRAY_KEEP_CONSOLE=1` debug override).
+- Fixed missing tray logs by initializing structured logging in `bastion tray run`.
 
 ### Security
 - _No user-facing changes yet._

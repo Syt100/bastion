@@ -5,11 +5,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use single_instance::SingleInstance;
+use tracing::{error, info, warn};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 use windows_service::service::{ServiceAccess, ServiceState};
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
-use windows_sys::Win32::System::Console::GetConsoleWindow;
+use windows_sys::Win32::System::Console::{FreeConsole, GetConsoleWindow};
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, MSG, PostQuitMessage, SW_HIDE, SW_SHOWNORMAL, ShowWindow,
@@ -115,7 +116,7 @@ fn handle_menu_event(
     if event.id == *open_web_ui_id {
         thread::spawn(|| {
             if let Err(error) = open_web_ui_after_readiness() {
-                eprintln!("failed to open Bastion Web UI from tray: {error:?}");
+                error!(error = ?error, "failed to open Bastion Web UI from tray");
             }
         });
         return Ok(false);
@@ -125,13 +126,15 @@ fn handle_menu_event(
         thread::spawn(|| {
             if let Err(error) = ensure_service_running(SERVICE_WAIT_TIMEOUT) {
                 if is_access_denied(&error) {
+                    warn!("start service from tray requires elevation; requesting UAC approval");
                     if let Err(elevate_error) = run_service_command_elevated("start") {
-                        eprintln!(
-                            "failed to start Bastion service from tray (and failed to request admin approval): {elevate_error:?}"
+                        error!(
+                            error = ?elevate_error,
+                            "failed to start Bastion service from tray (and failed to request admin approval)"
                         );
                     }
                 } else {
-                    eprintln!("failed to start Bastion service from tray: {error:?}");
+                    error!(error = ?error, "failed to start Bastion service from tray");
                 }
             }
         });
@@ -142,13 +145,15 @@ fn handle_menu_event(
         thread::spawn(|| {
             if let Err(error) = stop_service(SERVICE_WAIT_TIMEOUT) {
                 if is_access_denied(&error) {
+                    warn!("stop service from tray requires elevation; requesting UAC approval");
                     if let Err(elevate_error) = run_service_command_elevated("stop") {
-                        eprintln!(
-                            "failed to stop Bastion service from tray (and failed to request admin approval): {elevate_error:?}"
+                        error!(
+                            error = ?elevate_error,
+                            "failed to stop Bastion service from tray (and failed to request admin approval)"
                         );
                     }
                 } else {
-                    eprintln!("failed to stop Bastion service from tray: {error:?}");
+                    error!(error = ?error, "failed to stop Bastion service from tray");
                 }
             }
         });
@@ -337,10 +342,24 @@ fn is_access_denied(error: &anyhow::Error) -> bool {
 }
 
 fn hide_console_window() {
+    if keep_console_for_debug() {
+        return;
+    }
+
     unsafe {
         let hwnd = GetConsoleWindow();
         if !hwnd.is_null() {
+            // Hide first to avoid visual flicker, then detach from the console window entirely.
             ShowWindow(hwnd, SW_HIDE);
+            if FreeConsole() == 0 {
+                warn!("failed to detach tray process from console");
+            } else {
+                info!("detached tray process from console");
+            }
         }
     }
+}
+
+fn keep_console_for_debug() -> bool {
+    matches!(std::env::var("BASTION_TRAY_KEEP_CONSOLE"), Ok(value) if value == "1")
 }

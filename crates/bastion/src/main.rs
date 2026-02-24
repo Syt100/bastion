@@ -60,6 +60,13 @@ async fn main() -> Result<(), anyhow::Error> {
             }
             #[cfg(windows)]
             Command::Tray(args) => {
+                let _logging_guard = logging::init(&logging_args)?;
+                info!(
+                    log_file = ?logging_args.log_file,
+                    log_rotation = ?logging_args.log_rotation,
+                    log_keep_files = logging_args.log_keep_files,
+                    "logging initialized"
+                );
                 win_tray::run(args)?;
             }
             Command::Keypack { command } => {
