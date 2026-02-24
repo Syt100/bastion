@@ -8,6 +8,26 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
+- _No user-facing changes yet._
+
+### Changed
+- _No user-facing changes yet._
+
+### Deprecated
+- _No user-facing changes yet._
+
+### Removed
+- _No user-facing changes yet._
+
+### Fixed
+- _No user-facing changes yet._
+
+### Security
+- _No user-facing changes yet._
+
+## [v0.2.2] - 2026-02-24
+
+### Added
 - Added Windows tray mode (`bastion tray run`) with tray actions to open Web UI and start/stop the Bastion service.
 - Added a Windows startup entry that launches Bastion Tray automatically after user sign-in.
 - Added initial Bastion brand icon assets (`assets/branding`) with a blue shield + sync ring style.
@@ -19,12 +39,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Windows MSI metadata to register `ARPPRODUCTICON` and apply branded icons on Start Menu/Startup shortcuts.
 - Changed release preflight checks to validate required branding icon assets before release extraction.
 - Changed Windows tray Start Menu/Startup shortcuts to always write tray logs to `C:\ProgramData\bastion\logs\tray.log` with daily rotation.
-
-### Deprecated
-- _No user-facing changes yet._
-
-### Removed
-- _No user-facing changes yet._
+- Changed docs to include Windows tray usage, tray log defaults, and `BASTION_TRAY_KEEP_CONSOLE=1` debug behavior.
 
 ### Fixed
 - Fixed Windows tray icon loading to use embedded icon resources (with `.ico` sidecar fallback) instead of attempting to load icons from `bastion.exe` file paths.
@@ -32,9 +47,6 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed tray launch behavior by detaching from the console window by default (with `BASTION_TRAY_KEEP_CONSOLE=1` debug override).
 - Fixed missing tray logs by initializing structured logging in `bastion tray run`.
 - Fixed tray "Open Bastion Web UI" failures on some Windows hosts by using `ShellExecuteW` URL open behavior directly (instead of `rundll32.exe` invocation).
-
-### Security
-- _No user-facing changes yet._
 
 ## [v0.2.1] - 2026-02-13
 
