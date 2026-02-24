@@ -11,7 +11,10 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Changed
-- _No user-facing changes yet._
+- Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
+- Changed Web UI i18n startup to lazy-load only the active locale before mount and load other locales on demand, reducing initial bundle payload.
+- Changed Agent/Hub websocket relay paths to bounded queues with explicit backpressure handling to avoid unbounded memory growth under slow consumers.
+- Changed CI checks to run `clippy` for both default-feature and all-features builds.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -20,7 +23,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
-- _No user-facing changes yet._
+- Fixed Agent heartbeat persistence overhead by throttling `agents.last_seen_at` updates to reduce DB write amplification during high message throughput.
+- Fixed docs HTTP test locking to avoid holding sync mutex guards across `await` boundaries.
 
 ### Security
 - _No user-facing changes yet._
