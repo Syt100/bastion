@@ -84,10 +84,108 @@ pub async fn list_queue(
         qb.push(")");
     }
 
-    qb.push(" ORDER BY n.created_at DESC LIMIT ");
+    qb.push(" ORDER BY n.created_at DESC, n.id DESC LIMIT ");
     qb.push_bind(limit);
     qb.push(" OFFSET ");
     qb.push_bind(offset);
+
+    let rows = qb.build().fetch_all(db).await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(NotificationListItem {
+            id: row.get::<String, _>("id"),
+            run_id: row.get::<String, _>("run_id"),
+            job_id: row.get::<String, _>("job_id"),
+            job_name: row.get::<String, _>("job_name"),
+            channel: row.get::<String, _>("channel"),
+            secret_name: row.get::<String, _>("secret_name"),
+            status: row.get::<String, _>("status"),
+            attempts: row.get::<i64, _>("attempts"),
+            next_attempt_at: row.get::<i64, _>("next_attempt_at"),
+            created_at: row.get::<i64, _>("created_at"),
+            updated_at: row.get::<i64, _>("updated_at"),
+            last_error: row.get::<Option<String>, _>("last_error"),
+            destination_deleted: row.get::<i64, _>("destination_deleted") != 0,
+            destination_enabled: row.get::<i64, _>("destination_enabled") != 0,
+        });
+    }
+    Ok(out)
+}
+
+pub async fn list_queue_before(
+    db: &SqlitePool,
+    statuses: Option<&[String]>,
+    channels: Option<&[String]>,
+    limit: i64,
+    before_created_at: Option<i64>,
+    before_id: Option<&str>,
+) -> Result<Vec<NotificationListItem>, anyhow::Error> {
+    if before_created_at.is_some() ^ before_id.is_some() {
+        anyhow::bail!("cursor requires both before_created_at and before_id");
+    }
+
+    let mut qb = sqlx::QueryBuilder::new(
+        r#"
+        SELECT
+          n.id,
+          n.run_id,
+          r.job_id,
+          j.name AS job_name,
+          n.channel,
+          n.secret_name,
+          n.status,
+          n.attempts,
+          n.next_attempt_at,
+          n.created_at,
+          n.updated_at,
+          n.last_error,
+          CASE WHEN s.id IS NULL THEN 1 ELSE 0 END AS destination_deleted,
+          CASE WHEN s.id IS NULL THEN 0 ELSE COALESCE(d.enabled, 1) END AS destination_enabled
+        FROM notifications n
+        JOIN runs r ON r.id = n.run_id
+        JOIN jobs j ON j.id = r.job_id
+        LEFT JOIN secrets s ON (
+          (n.channel = 'wecom_bot' AND s.kind = 'wecom_bot' AND s.name = n.secret_name) OR
+          (n.channel = 'email' AND s.kind = 'smtp' AND s.name = n.secret_name)
+        )
+        LEFT JOIN notification_destinations d ON d.secret_kind = s.kind AND d.secret_name = s.name
+        WHERE 1=1
+        "#,
+    );
+
+    if let Some(statuses) = statuses.filter(|v| !v.is_empty()) {
+        qb.push(" AND n.status IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for status in statuses {
+                separated.push_bind(status);
+            }
+        }
+        qb.push(")");
+    }
+    if let Some(channels) = channels.filter(|v| !v.is_empty()) {
+        qb.push(" AND n.channel IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for channel in channels {
+                separated.push_bind(channel);
+            }
+        }
+        qb.push(")");
+    }
+    if let (Some(created_at), Some(id)) = (before_created_at, before_id) {
+        qb.push(" AND (n.created_at < ");
+        qb.push_bind(created_at);
+        qb.push(" OR (n.created_at = ");
+        qb.push_bind(created_at);
+        qb.push(" AND n.id < ");
+        qb.push_bind(id);
+        qb.push("))");
+    }
+
+    qb.push(" ORDER BY n.created_at DESC, n.id DESC LIMIT ");
+    qb.push_bind(limit);
 
     let rows = qb.build().fetch_all(db).await?;
 

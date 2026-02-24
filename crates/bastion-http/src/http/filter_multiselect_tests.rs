@@ -326,6 +326,203 @@ async fn notifications_queue_list_accepts_multi_value_query_params() {
 }
 
 #[tokio::test]
+async fn notifications_queue_keyset_cursor_does_not_skip_when_previous_rows_change_status() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    sqlx::query(
+        "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+    )
+    .bind("job1")
+    .bind("job1")
+    .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert job");
+    sqlx::query("INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'success', ?, ?)")
+        .bind("run1")
+        .bind("job1")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert run");
+
+    for i in 0..5_i64 {
+        let id = format!("n{}", i + 1);
+        let secret_name = format!("smtp{}", i + 1);
+        let created_at = now - i;
+        sqlx::query(
+            "INSERT INTO notifications (id, run_id, channel, secret_name, status, attempts, next_attempt_at, created_at, updated_at, last_error) VALUES (?, ?, 'email', ?, 'queued', 0, ?, ?, ?, NULL)",
+        )
+        .bind(id)
+        .bind("run1")
+        .bind(secret_name)
+        .bind(created_at)
+        .bind(created_at)
+        .bind(created_at)
+        .execute(&pool)
+        .await
+        .expect("insert notification");
+    }
+
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let cookie = format!("bastion_session={}", session.id);
+
+    let first = client
+        .get(format!(
+            "{}/api/notifications/queue?status=queued&page_size=2",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("list first");
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body: serde_json::Value = first.json().await.expect("json first");
+    let first_items = first_body["items"].as_array().expect("first items");
+    assert_eq!(first_items.len(), 2);
+    assert_eq!(first_items[0]["id"].as_str(), Some("n1"));
+    assert_eq!(first_items[1]["id"].as_str(), Some("n2"));
+    let cursor = first_body["next_cursor"]
+        .as_str()
+        .expect("next cursor")
+        .to_string();
+
+    sqlx::query("UPDATE notifications SET status = 'sent' WHERE id = 'n1'")
+        .execute(&pool)
+        .await
+        .expect("mark sent");
+
+    let second = client
+        .get(format!(
+            "{}/api/notifications/queue?status=queued&page_size=2&cursor={}",
+            base_url(addr),
+            cursor
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("list second");
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_body: serde_json::Value = second.json().await.expect("json second");
+    let second_items = second_body["items"].as_array().expect("second items");
+    assert_eq!(second_items.len(), 2);
+    assert_eq!(second_items[0]["id"].as_str(), Some("n3"));
+    assert_eq!(second_items[1]["id"].as_str(), Some("n4"));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn notifications_queue_invalid_cursor_returns_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool,
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let cookie = format!("bastion_session={}", session.id);
+
+    let resp = client
+        .get(format!(
+            "{}/api/notifications/queue?cursor=%%%",
+            base_url(addr)
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str(), Some("invalid_cursor"));
+    assert_eq!(body["details"]["reason"].as_str(), Some("invalid_encoding"));
+    assert_eq!(body["details"]["field"].as_str(), Some("cursor"));
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn agents_list_supports_label_filter_and_or() {
     let temp = TempDir::new().expect("tempdir");
     let pool = db::init(temp.path()).await.expect("db init");

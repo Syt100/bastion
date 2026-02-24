@@ -1,7 +1,8 @@
 use axum::Json;
 use axum::extract::{Path, RawQuery};
 use axum::http::{HeaderMap, StatusCode};
-use serde::Serialize;
+use base64::Engine as _;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
 
@@ -25,12 +26,46 @@ fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppEr
         .with_field("page")
 }
 
+fn invalid_cursor_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_cursor", message)
+        .with_reason(reason)
+        .with_field("cursor")
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct QueueCursor {
+    created_at: i64,
+    id: String,
+}
+
+fn encode_queue_cursor(cursor: &QueueCursor) -> String {
+    let json = serde_json::to_vec(cursor).unwrap_or_default();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
+}
+
+fn decode_queue_cursor(raw: &str) -> Result<QueueCursor, AppError> {
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw)
+        .map_err(|_| invalid_cursor_error("invalid_encoding", "invalid cursor encoding"))?;
+    let cursor = serde_json::from_slice::<QueueCursor>(&bytes)
+        .map_err(|_| invalid_cursor_error("invalid_payload", "invalid cursor payload"))?;
+    if cursor.id.trim().is_empty() {
+        return Err(invalid_cursor_error(
+            "invalid_payload",
+            "invalid cursor payload",
+        ));
+    }
+    Ok(cursor)
+}
+
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct ListQueueResponse {
     items: Vec<QueueItem>,
     page: i64,
     page_size: i64,
     total: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,6 +108,7 @@ pub(in crate::http) async fn list_queue(
     let mut channels = Vec::new();
     let mut page: Option<i64> = None;
     let mut page_size: Option<i64> = None;
+    let mut cursor: Option<String> = None;
 
     if let Some(raw) = raw {
         for (key, value) in url::form_urlencoded::parse(raw.as_bytes()) {
@@ -90,6 +126,9 @@ pub(in crate::http) async fn list_queue(
                         invalid_page_size_error("invalid_format", "Invalid page_size")
                     })?;
                     page_size = Some(value);
+                }
+                "cursor" => {
+                    cursor = Some(value.into_owned());
                 }
                 _ => {}
             }
@@ -114,6 +153,12 @@ pub(in crate::http) async fn list_queue(
     }
     let page_size = page_size.clamp(1, 100);
     let offset = (page - 1).saturating_mul(page_size);
+    let cursor = cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(decode_queue_cursor)
+        .transpose()?;
 
     let status_filter = if statuses.is_empty() {
         None
@@ -127,9 +172,31 @@ pub(in crate::http) async fn list_queue(
     };
 
     let total = notifications_repo::count_queue(&state.db, status_filter, channel_filter).await?;
-    let rows =
+    let rows = if let Some(cursor) = cursor.as_ref() {
+        notifications_repo::list_queue_before(
+            &state.db,
+            status_filter,
+            channel_filter,
+            page_size,
+            Some(cursor.created_at),
+            Some(cursor.id.as_str()),
+        )
+        .await?
+    } else {
         notifications_repo::list_queue(&state.db, status_filter, channel_filter, page_size, offset)
-            .await?;
+            .await?
+    };
+
+    let next_cursor = if rows.len() as i64 >= page_size {
+        rows.last().map(|last| {
+            encode_queue_cursor(&QueueCursor {
+                created_at: last.created_at,
+                id: last.id.clone(),
+            })
+        })
+    } else {
+        None
+    };
 
     let items = rows
         .into_iter()
@@ -153,9 +220,10 @@ pub(in crate::http) async fn list_queue(
 
     Ok(Json(ListQueueResponse {
         items,
-        page,
+        page: if cursor.is_some() { 1 } else { page },
         page_size,
         total,
+        next_cursor,
     }))
 }
 

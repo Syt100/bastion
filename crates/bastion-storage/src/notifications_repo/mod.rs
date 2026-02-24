@@ -41,7 +41,7 @@ mod transitions;
 
 pub use claim::{claim_next_due, next_due_at};
 pub use enqueue::{enqueue_emails_for_run, enqueue_for_run, enqueue_wecom_bots_for_run};
-pub use queries::{count_queue, get_notification, list_queue};
+pub use queries::{count_queue, get_notification, list_queue, list_queue_before};
 pub use transitions::{
     cancel_all_queued, cancel_queued_by_id, cancel_queued_for_channel,
     cancel_queued_for_destination, mark_canceled, mark_failed, mark_sent, reschedule,
@@ -343,5 +343,78 @@ mod tests {
         .await
         .expect("list filtered");
         assert_eq!(rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_queue_before_keeps_continuity_when_previous_rows_change_status() {
+        let temp = TempDir::new().expect("tempdir");
+        let pool = db::init(temp.path()).await.expect("db init");
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+        sqlx::query(
+            "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+        )
+        .bind("job1")
+        .bind("job1")
+        .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert job");
+
+        sqlx::query("INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'success', ?, ?)")
+            .bind("run1")
+            .bind("job1")
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .expect("insert run");
+
+        for (id, secret_name, created_at) in [
+            ("n3", "smtp3", now - 2),
+            ("n2", "smtp2", now - 1),
+            ("n1", "smtp1", now),
+        ] {
+            sqlx::query(
+                "INSERT INTO notifications (id, run_id, channel, secret_name, status, attempts, next_attempt_at, created_at, updated_at, last_error) VALUES (?, ?, 'email', ?, 'queued', 0, ?, ?, ?, NULL)",
+            )
+            .bind(id)
+            .bind("run1")
+            .bind(secret_name)
+            .bind(created_at)
+            .bind(created_at)
+            .bind(created_at)
+            .execute(&pool)
+            .await
+            .expect("insert notification");
+        }
+
+        let statuses = vec![super::STATUS_QUEUED.to_string()];
+        let first = super::list_queue_before(&pool, Some(statuses.as_slice()), None, 2, None, None)
+            .await
+            .expect("list first");
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].id, "n1");
+        assert_eq!(first[1].id, "n2");
+
+        sqlx::query("UPDATE notifications SET status = 'sent' WHERE id = 'n1'")
+            .execute(&pool)
+            .await
+            .expect("mark sent");
+
+        let second = super::list_queue_before(
+            &pool,
+            Some(statuses.as_slice()),
+            None,
+            2,
+            Some(first[1].created_at),
+            Some(first[1].id.as_str()),
+        )
+        .await
+        .expect("list second");
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].id, "n3");
     }
 }
