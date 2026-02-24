@@ -20,6 +20,24 @@ die() {
   exit 1
 }
 
+check_branding_assets() {
+  local required=(
+    "assets/branding/icon-master.svg"
+    "assets/branding/icon-master-1024.png"
+    "assets/branding/bastion.ico"
+    "ui/public/favicon.ico"
+    "ui/public/favicon-32x32.png"
+    "ui/public/favicon-16x16.png"
+  )
+
+  local file
+  for file in "${required[@]}"; do
+    if [ ! -s "${file}" ]; then
+      die "branding asset is missing or empty: ${file}"
+    fi
+  done
+}
+
 check_tag_availability() {
   local tag="$1"
   local remote_output
@@ -92,6 +110,9 @@ main() {
   echo "==> Changelog: tests"
   bash scripts/changelog_test.sh
 
+  echo "==> Branding assets: check"
+  check_branding_assets
+
   echo "==> Changelog: extract (${tag})"
   bash scripts/changelog.sh extract --tag "${tag}" --output "${output}"
 
@@ -110,6 +131,11 @@ Release notes: ${output}
 Next steps:
   git tag ${tag}
   git push origin main --tags
+
+Manual Windows smoke checks (recommended):
+  1) Install MSI and verify Apps & features icon/version/details.
+  2) Verify Start Menu icons and tray icon are shown correctly.
+  3) Open Web UI and confirm browser tab/favicon is updated.
 EOF
 }
 

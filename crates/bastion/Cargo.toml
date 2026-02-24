@@ -46,6 +46,9 @@ tray-icon = { version = "0.21.3", default-features = false }
 windows-sys = { version = "0.61.0", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
 windows-service = "0.7.0"
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
+
 [features]
 default = []
 embed-ui = ["bastion-http/embed-ui"]

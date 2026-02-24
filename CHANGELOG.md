@@ -11,10 +11,13 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added Windows tray mode (`bastion tray run`) with tray actions to open Web UI and start/stop the Bastion service.
 - Added a Windows startup entry that launches Bastion Tray automatically after user sign-in.
 - Added initial Bastion brand icon assets (`assets/branding`) with a blue shield + sync ring style.
+- Added Windows executable icon resource embedding so tray/shortcut icons use the branded icon.
 
 ### Changed
 - Changed Windows MSI service install mode to auto-start `Bastion` on system boot.
 - Changed Web UI favicon from the default Vue icon to the new Bastion brand icon.
+- Changed Windows MSI metadata to register `ARPPRODUCTICON` and apply branded icons on Start Menu/Startup shortcuts.
+- Changed release preflight checks to validate required branding icon assets before release extraction.
 
 ### Deprecated
 - _No user-facing changes yet._
