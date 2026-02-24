@@ -84,7 +84,9 @@ async function refresh(): Promise<void> {
 
 onMounted(() => {
   void refresh()
-  scheduleIdlePrefetchRecentTable()
+  if (isDesktop.value) {
+    scheduleIdlePrefetchRecentTable()
+  }
 })
 
 function statusTagType(status: string): 'success' | 'error' | 'warning' | 'info' | 'default' {

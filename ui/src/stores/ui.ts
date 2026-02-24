@@ -90,6 +90,7 @@ export const useUiStore = defineStore('ui', () => {
     })(),
   )
   const themeMode = computed(() => (darkMode.value ? 'dark' : 'light'))
+  let localeSwitchSeq = 0
 
   // Ensure i18n and docs entrypoint use the same initial locale preference.
   persistLocalePreference(locale.value)
@@ -106,11 +107,15 @@ export const useUiStore = defineStore('ui', () => {
   function setLocale(value: SupportedLocale): void {
     locale.value = value
     persistLocalePreference(value)
-    void ensureLocaleMessages(value).then(() => {
-      setI18nLocale(value)
-    }).catch(() => {
-      // Keep current locale if loading fails.
-    })
+    const seq = ++localeSwitchSeq
+    void ensureLocaleMessages(value)
+      .then(() => {
+        if (seq !== localeSwitchSeq) return
+        setI18nLocale(value)
+      })
+      .catch(() => {
+        // Keep current locale if loading fails.
+      })
   }
 
   function toggleDarkMode(): void {
