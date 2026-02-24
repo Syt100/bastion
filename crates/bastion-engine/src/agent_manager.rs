@@ -105,7 +105,7 @@ impl std::error::Error for WebdavListRemoteError {}
 
 #[derive(Debug, Clone)]
 struct AgentConnection {
-    sender: mpsc::UnboundedSender<Message>,
+    sender: mpsc::Sender<Message>,
     last_config_snapshot_id: Option<String>,
 }
 
@@ -119,7 +119,7 @@ pub struct AgentManager {
 }
 
 impl AgentManager {
-    pub async fn register(&self, agent_id: String, sender: mpsc::UnboundedSender<Message>) {
+    pub async fn register(&self, agent_id: String, sender: mpsc::Sender<Message>) {
         self.inner.write().await.insert(
             agent_id,
             AgentConnection {
@@ -179,6 +179,7 @@ impl AgentManager {
 
         sender
             .send(msg)
+            .await
             .map_err(|_| anyhow::anyhow!("agent send failed"))?;
         Ok(())
     }
@@ -200,19 +201,31 @@ impl AgentManager {
     ) -> Result<bool, anyhow::Error> {
         let text = serde_json::to_string(value)?;
 
-        let mut guard = self.inner.write().await;
-        let conn = guard
-            .get_mut(agent_id)
-            .ok_or_else(|| anyhow::anyhow!("agent not connected"))?;
+        let sender = {
+            let mut guard = self.inner.write().await;
+            let conn = guard
+                .get_mut(agent_id)
+                .ok_or_else(|| anyhow::anyhow!("agent not connected"))?;
 
-        if conn.last_config_snapshot_id.as_deref() == Some(snapshot_id) {
-            return Ok(false);
+            if conn.last_config_snapshot_id.as_deref() == Some(snapshot_id) {
+                return Ok(false);
+            }
+
+            // Mark snapshot id before enqueueing to dedupe concurrent retries on the same connection.
+            conn.last_config_snapshot_id = Some(snapshot_id.to_string());
+            conn.sender.clone()
+        };
+
+        if sender.send(Message::Text(text.into())).await.is_err() {
+            // Roll back optimistic dedupe marker when the enqueue fails.
+            if let Some(conn) = self.inner.write().await.get_mut(agent_id)
+                && conn.last_config_snapshot_id.as_deref() == Some(snapshot_id)
+            {
+                conn.last_config_snapshot_id = None;
+            }
+            return Err(anyhow::anyhow!("agent send failed"));
         }
 
-        conn.sender
-            .send(Message::Text(text.into()))
-            .map_err(|_| anyhow::anyhow!("agent send failed"))?;
-        conn.last_config_snapshot_id = Some(snapshot_id.to_string());
         Ok(true)
     }
 
@@ -480,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn pending_fs_list_page_fails_fast_on_disconnect() {
         let manager = AgentManager::default();
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = mpsc::channel(8);
         manager.register("agent1".to_string(), sender).await;
 
         let manager_task = manager.clone();
@@ -517,7 +530,7 @@ mod tests {
     #[tokio::test]
     async fn pending_artifact_stream_open_returns_structured_error_on_disconnect() {
         let manager = AgentManager::default();
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = mpsc::channel(8);
         manager.register("agent1".to_string(), sender).await;
 
         let stream_id = Uuid::new_v4().to_string();

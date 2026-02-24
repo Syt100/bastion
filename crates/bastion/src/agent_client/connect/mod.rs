@@ -30,6 +30,9 @@ use super::identity::AgentIdentityV1;
 use super::offline;
 use super::util::normalize_base_url;
 
+const AGENT_CONNECT_OUTBOX_CAPACITY: usize = 512;
+const FORCE_RECONNECT_SIGNAL_CAPACITY: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LoopAction {
     Reconnect,
@@ -38,7 +41,7 @@ pub(super) enum LoopAction {
 
 #[derive(Clone)]
 struct OutboxSink {
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
 }
 
 impl Sink<Message> for OutboxSink {
@@ -52,9 +55,15 @@ impl Sink<Message> for OutboxSink {
     }
 
     fn start_send(self: std::pin::Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
-        self.tx
-            .send(item)
-            .map_err(|_| tungstenite::Error::ConnectionClosed)
+        match self.tx.try_send(item) {
+            Ok(()) => Ok(()),
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => Err(tungstenite::Error::Io(
+                std::io::Error::new(std::io::ErrorKind::WouldBlock, "agent ws outbox is full"),
+            )),
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                Err(tungstenite::Error::ConnectionClosed)
+            }
+        }
     }
 
     fn poll_flush(
@@ -91,7 +100,7 @@ pub(super) async fn connect_and_run(
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // Outbox so long-running tasks can keep the main receive loop responsive (heartbeats + streams).
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+    let (out_tx, mut out_rx) = mpsc::channel::<Message>(AGENT_CONNECT_OUTBOX_CAPACITY);
     let send_task = tokio::spawn(async move {
         while let Some(msg) = out_rx.recv().await {
             if ws_tx.send(msg).await.is_err() {
@@ -103,7 +112,8 @@ pub(super) async fn connect_and_run(
     let mut tx = OutboxSink { tx: out_tx.clone() };
     let data_dir = data_dir.to_path_buf();
     let hub_streams = HubStreamManager::new(out_tx.clone());
-    let (force_reconnect_tx, mut force_reconnect_rx) = mpsc::unbounded_channel::<()>();
+    let (force_reconnect_tx, mut force_reconnect_rx) =
+        mpsc::channel::<()>(FORCE_RECONNECT_SIGNAL_CAPACITY);
 
     let _connected_guard = handshake::ConnectedGuard::new(connected_tx.clone());
     handshake::send_hello(&mut tx, identity).await?;
@@ -212,11 +222,11 @@ pub(super) async fn connect_and_run(
                                     match flow {
                                         Ok(handlers::HandlerFlow::Continue) => {}
                                         Ok(handlers::HandlerFlow::Reconnect) => {
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                         Err(error) => {
                                             warn!(error = %error, "task handler failed");
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                     }
                                 });
@@ -241,11 +251,11 @@ pub(super) async fn connect_and_run(
                                     match flow {
                                         Ok(handlers::HandlerFlow::Continue) => {}
                                         Ok(handlers::HandlerFlow::Reconnect) => {
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                         Err(error) => {
                                             warn!(error = %error, "restore task handler failed");
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                     }
                                 });
@@ -260,11 +270,11 @@ pub(super) async fn connect_and_run(
                                     match flow {
                                         Ok(handlers::HandlerFlow::Continue) => {}
                                         Ok(handlers::HandlerFlow::Reconnect) => {
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                         Err(error) => {
                                             warn!(error = %error, "snapshot delete handler failed");
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                     }
                                 });
@@ -309,11 +319,11 @@ pub(super) async fn connect_and_run(
                                     match flow {
                                         Ok(handlers::HandlerFlow::Continue) => {}
                                         Ok(handlers::HandlerFlow::Reconnect) => {
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                         Err(error) => {
                                             warn!(error = %error, "fs list handler failed");
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                     }
                                 });
@@ -364,11 +374,11 @@ pub(super) async fn connect_and_run(
                                     match flow {
                                         Ok(handlers::HandlerFlow::Continue) => {}
                                         Ok(handlers::HandlerFlow::Reconnect) => {
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                         Err(error) => {
                                             warn!(error = %error, "webdav list handler failed");
-                                            let _ = force_reconnect_tx.send(());
+                                            let _ = force_reconnect_tx.send(()).await;
                                         }
                                     }
                                 });
@@ -524,7 +534,7 @@ mod tests {
 
     #[tokio::test]
     async fn outbox_sink_forwards_messages_to_receiver() -> Result<(), anyhow::Error> {
-        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        let (tx, mut rx) = mpsc::channel::<Message>(4);
         let mut sink = OutboxSink { tx };
 
         sink.send(Message::Text("hello".into()))
@@ -538,7 +548,7 @@ mod tests {
 
     #[tokio::test]
     async fn outbox_sink_returns_connection_closed_when_receiver_dropped() {
-        let (tx, rx) = mpsc::unbounded_channel::<Message>();
+        let (tx, rx) = mpsc::channel::<Message>(1);
         drop(rx);
 
         let mut sink = OutboxSink { tx };
@@ -548,6 +558,28 @@ mod tests {
             .expect_err("send should fail");
 
         assert!(matches!(err, tungstenite::Error::ConnectionClosed));
+    }
+
+    #[tokio::test]
+    async fn outbox_sink_returns_would_block_when_channel_is_full() {
+        let (tx, mut rx) = mpsc::channel::<Message>(1);
+        let mut sink = OutboxSink { tx };
+
+        sink.send(Message::Text("first".into()))
+            .await
+            .expect("first send");
+        let err = sink
+            .send(Message::Text("second".into()))
+            .await
+            .expect_err("second send should fail when channel is full");
+
+        let tungstenite::Error::Io(io_err) = err else {
+            panic!("expected io error for full outbox");
+        };
+        assert_eq!(io_err.kind(), std::io::ErrorKind::WouldBlock);
+
+        let drained = rx.recv().await.expect("drain one");
+        assert!(matches!(drained, Message::Text(_)));
     }
 
     #[tokio::test]

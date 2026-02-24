@@ -41,6 +41,8 @@ mod artifact_stream_authz;
 const ARTIFACT_STREAM_MAX_BYTES: usize = 1024 * 1024;
 const ARTIFACT_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 const ARTIFACT_STREAM_PULL_TIMEOUT: Duration = Duration::from_secs(30);
+const AGENT_WS_OUTBOX_CAPACITY: usize = 512;
+const AGENT_LAST_SEEN_MIN_UPDATE_SECS: i64 = 10;
 
 const ARTIFACT_STREAM_AUTH_ERROR: &str = "artifact stream authorization failed";
 
@@ -60,21 +62,22 @@ pub(in crate::http) async fn agent_ws(
     let artifact_delete_notify = state.artifact_delete_notify.clone();
     Ok(ws.on_upgrade(move |socket| {
         handle_agent_socket(
-            data_dir,
-            db,
-            agent_id,
-            peer.ip(),
-            secrets,
-            agent_manager,
-            run_events_bus,
-            artifact_delete_notify,
+            AgentSocketContext {
+                data_dir,
+                db,
+                agent_id,
+                peer_ip: peer.ip(),
+                secrets,
+                agent_manager,
+                run_events_bus,
+                artifact_delete_notify,
+            },
             socket,
         )
     }))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn handle_agent_socket(
+struct AgentSocketContext {
     data_dir: PathBuf,
     db: SqlitePool,
     agent_id: String,
@@ -83,8 +86,19 @@ async fn handle_agent_socket(
     agent_manager: AgentManager,
     run_events_bus: Arc<RunEventsBus>,
     artifact_delete_notify: Arc<Notify>,
-    socket: WebSocket,
-) {
+}
+
+async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
+    let AgentSocketContext {
+        data_dir,
+        db,
+        agent_id,
+        peer_ip,
+        secrets,
+        agent_manager,
+        run_events_bus,
+        artifact_delete_notify,
+    } = ctx;
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     if let Err(error) = sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
         .bind(now)
@@ -94,11 +108,12 @@ async fn handle_agent_socket(
     {
         tracing::warn!(agent_id = %agent_id, error = %error, "failed to update agent last_seen_at");
     }
+    let mut last_seen_persisted_at = now;
 
     tracing::info!(agent_id = %agent_id, peer_ip = %peer_ip, "agent connected");
 
     let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Message>(AGENT_WS_OUTBOX_CAPACITY);
     agent_manager.register(agent_id.clone(), tx).await;
 
     // Streams where *this agent* pulls bytes from the Hub (Hub acts as the stream server).
@@ -139,11 +154,23 @@ async fn handle_agent_socket(
                 let text = text.to_string();
                 let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
-                let _ = sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
-                    .bind(now)
-                    .bind(&agent_id)
-                    .execute(&db)
-                    .await;
+                if should_persist_agent_last_seen(last_seen_persisted_at, now) {
+                    if let Err(error) =
+                        sqlx::query("UPDATE agents SET last_seen_at = ? WHERE id = ?")
+                            .bind(now)
+                            .bind(&agent_id)
+                            .execute(&db)
+                            .await
+                    {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            error = %error,
+                            "failed to update agent last_seen_at"
+                        );
+                    } else {
+                        last_seen_persisted_at = now;
+                    }
+                }
 
                 match serde_json::from_str::<AgentToHubMessageV1>(&text) {
                     Ok(AgentToHubMessageV1::Ping { v }) if v == PROTOCOL_VERSION => {
@@ -766,6 +793,10 @@ async fn handle_agent_socket(
     tracing::info!(agent_id = %agent_id, "agent disconnected");
 }
 
+fn should_persist_agent_last_seen(last_persisted_at: i64, now: i64) -> bool {
+    now.saturating_sub(last_persisted_at) >= AGENT_LAST_SEEN_MIN_UPDATE_SECS
+}
+
 fn normalize_delete_error_kind(kind: Option<&str>) -> &'static str {
     match kind.unwrap_or("").trim() {
         "config" => "config",
@@ -828,4 +859,27 @@ fn delete_jitter_seconds(run_id: &str, attempts: i64, max_jitter: i64) -> i64 {
     }
     hash = hash.wrapping_add(attempts as u64 * 97);
     (hash % max_jitter as u64) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AGENT_LAST_SEEN_MIN_UPDATE_SECS, should_persist_agent_last_seen};
+
+    #[test]
+    fn should_persist_last_seen_only_after_min_interval() {
+        let base = 1_700_000_000_i64;
+        assert!(!should_persist_agent_last_seen(base, base));
+        assert!(!should_persist_agent_last_seen(
+            base,
+            base + AGENT_LAST_SEEN_MIN_UPDATE_SECS - 1
+        ));
+        assert!(should_persist_agent_last_seen(
+            base,
+            base + AGENT_LAST_SEEN_MIN_UPDATE_SECS
+        ));
+        assert!(should_persist_agent_last_seen(
+            base,
+            base + AGENT_LAST_SEEN_MIN_UPDATE_SECS + 5
+        ));
+    }
 }

@@ -24,13 +24,13 @@ type PendingChunk = HashMap<StreamKey, oneshot::Sender<Result<HubStreamChunk, St
 
 #[derive(Clone)]
 pub(crate) struct HubStreamManager {
-    outbox: mpsc::UnboundedSender<Message>,
+    outbox: mpsc::Sender<Message>,
     pending_open: Arc<Mutex<PendingOpen>>,
     pending_chunk: Arc<Mutex<PendingChunk>>,
 }
 
 impl HubStreamManager {
-    pub(crate) fn new(outbox: mpsc::UnboundedSender<Message>) -> Self {
+    pub(crate) fn new(outbox: mpsc::Sender<Message>) -> Self {
         Self {
             outbox,
             pending_open: Arc::new(Mutex::new(HashMap::new())),
@@ -52,7 +52,7 @@ impl HubStreamManager {
             req,
         };
         let text = serde_json::to_string(&msg)?;
-        if self.outbox.send(Message::Text(text.into())).is_err() {
+        if self.outbox.send(Message::Text(text.into())).await.is_err() {
             let _ = self.pending_open.lock().await.remove(&stream_id);
             anyhow::bail!("hub stream open send failed");
         }
@@ -92,7 +92,7 @@ impl HubStreamManager {
             },
         };
         let text = serde_json::to_string(&msg)?;
-        if self.outbox.send(Message::Text(text.into())).is_err() {
+        if self.outbox.send(Message::Text(text.into())).await.is_err() {
             let _ = self.pending_chunk.lock().await.remove(&stream_id);
             anyhow::bail!("hub stream pull send failed");
         }
@@ -228,9 +228,7 @@ mod tests {
     use bastion_core::agent_protocol::AgentToHubMessageV1;
     use bastion_core::agent_protocol::ArtifactStreamOpenV1;
 
-    async fn recv_text_message(
-        rx: &mut mpsc::UnboundedReceiver<Message>,
-    ) -> Result<String, anyhow::Error> {
+    async fn recv_text_message(rx: &mut mpsc::Receiver<Message>) -> Result<String, anyhow::Error> {
         let msg = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .map_err(|_| anyhow::anyhow!("timeout waiting for outbox message"))?
@@ -243,7 +241,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_sends_message_and_returns_result() -> Result<(), anyhow::Error> {
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let (out_tx, mut out_rx) = mpsc::channel::<Message>(8);
         let mgr = HubStreamManager::new(out_tx);
 
         let stream_id = Uuid::new_v4();
@@ -289,7 +287,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_fails_fast_when_outbox_is_closed() {
-        let (out_tx, out_rx) = mpsc::unbounded_channel::<Message>();
+        let (out_tx, out_rx) = mpsc::channel::<Message>(1);
         drop(out_rx);
         let mgr = HubStreamManager::new(out_tx);
 
@@ -310,7 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn pull_sends_message_and_returns_chunk() -> Result<(), anyhow::Error> {
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let (out_tx, mut out_rx) = mpsc::channel::<Message>(8);
         let mgr = HubStreamManager::new(out_tx);
 
         let stream_id = Uuid::new_v4();
@@ -349,7 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn hub_stream_reader_reads_to_eof_across_chunks() -> Result<(), anyhow::Error> {
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let (out_tx, mut out_rx) = mpsc::channel::<Message>(8);
         let mgr = HubStreamManager::new(out_tx);
 
         let stream_id = Uuid::new_v4();
@@ -413,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_bytes_opens_and_pulls_until_eof() -> Result<(), anyhow::Error> {
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+        let (out_tx, mut out_rx) = mpsc::channel::<Message>(8);
         let mgr = HubStreamManager::new(out_tx);
 
         let mgr_for_read = mgr.clone();
