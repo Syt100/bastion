@@ -12,9 +12,8 @@ fn main() {
 }
 
 fn workspace_icon_path() -> PathBuf {
-    let manifest_dir = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"),
-    );
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"));
     manifest_dir.join("../../assets/branding/bastion.ico")
 }
 
