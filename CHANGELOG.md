@@ -26,7 +26,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
-- _No user-facing changes yet._
+- Fixed Windows tray icon loading to use embedded icon resources (with `.ico` sidecar fallback) instead of attempting to load icons from `bastion.exe` file paths.
+- Fixed tray actions for standard users by avoiding privileged service access in "Open Web UI" flow and adding UAC-elevated fallback for Start/Stop service actions when access is denied.
 
 ### Security
 - _No user-facing changes yet._

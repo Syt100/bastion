@@ -10,8 +10,10 @@ use tray_icon::{Icon, TrayIconBuilder};
 use windows_service::service::{ServiceAccess, ServiceState};
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 use windows_sys::Win32::System::Console::GetConsoleWindow;
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, MSG, PostQuitMessage, SW_HIDE, ShowWindow, TranslateMessage,
+    DispatchMessageW, GetMessageW, MSG, PostQuitMessage, SW_HIDE, SW_SHOWNORMAL, ShowWindow,
+    TranslateMessage,
 };
 
 use crate::config::{TrayArgs, TrayCommand};
@@ -22,6 +24,7 @@ const WEB_UI_URL: &str = "http://127.0.0.1:9876/";
 
 const SERVICE_WAIT_TIMEOUT: Duration = Duration::from_secs(25);
 const WEB_UI_WAIT_TIMEOUT: Duration = Duration::from_secs(25);
+const WEB_UI_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 pub(crate) fn run(args: TrayArgs) -> Result<(), anyhow::Error> {
@@ -121,7 +124,15 @@ fn handle_menu_event(
     if event.id == *start_service_id {
         thread::spawn(|| {
             if let Err(error) = ensure_service_running(SERVICE_WAIT_TIMEOUT) {
-                eprintln!("failed to start Bastion service from tray: {error:?}");
+                if is_access_denied(&error) {
+                    if let Err(elevate_error) = run_service_command_elevated("start") {
+                        eprintln!(
+                            "failed to start Bastion service from tray (and failed to request admin approval): {elevate_error:?}"
+                        );
+                    }
+                } else {
+                    eprintln!("failed to start Bastion service from tray: {error:?}");
+                }
             }
         });
         return Ok(false);
@@ -130,7 +141,15 @@ fn handle_menu_event(
     if event.id == *stop_service_id {
         thread::spawn(|| {
             if let Err(error) = stop_service(SERVICE_WAIT_TIMEOUT) {
-                eprintln!("failed to stop Bastion service from tray: {error:?}");
+                if is_access_denied(&error) {
+                    if let Err(elevate_error) = run_service_command_elevated("stop") {
+                        eprintln!(
+                            "failed to stop Bastion service from tray (and failed to request admin approval): {elevate_error:?}"
+                        );
+                    }
+                } else {
+                    eprintln!("failed to stop Bastion service from tray: {error:?}");
+                }
             }
         });
         return Ok(false);
@@ -144,8 +163,17 @@ fn handle_menu_event(
 }
 
 fn open_web_ui_after_readiness() -> Result<(), anyhow::Error> {
-    ensure_service_running(SERVICE_WAIT_TIMEOUT)?;
-    wait_for_web_ui(WEB_UI_WAIT_TIMEOUT)?;
+    // Opening the browser must work for non-admin users too.
+    // We probe service readiness and only attempt service start as a best effort.
+    if wait_for_web_ui(WEB_UI_PROBE_TIMEOUT).is_err() {
+        match ensure_service_running(SERVICE_WAIT_TIMEOUT) {
+            Ok(()) => {
+                let _ = wait_for_web_ui(WEB_UI_WAIT_TIMEOUT);
+            }
+            Err(error) if is_access_denied(&error) => {}
+            Err(error) => return Err(error),
+        }
+    }
     open_web_ui()
 }
 
@@ -251,8 +279,14 @@ fn open_service(access: ServiceAccess) -> Result<windows_service::service::Servi
 }
 
 fn load_tray_icon() -> Result<Icon, anyhow::Error> {
+    // winres embeds the app icon as resource ordinal 1.
+    if let Ok(icon) = Icon::from_resource(1, Some((32, 32))) {
+        return Ok(icon);
+    }
+
     let exe_path = std::env::current_exe().context("failed to resolve bastion executable path")?;
-    if let Ok(icon) = Icon::from_path(exe_path, Some((32, 32))) {
+    let sidecar_icon = exe_path.with_file_name("bastion.ico");
+    if let Ok(icon) = Icon::from_path(&sidecar_icon, Some((32, 32))) {
         return Ok(icon);
     }
 
@@ -261,6 +295,45 @@ fn load_tray_icon() -> Result<Icon, anyhow::Error> {
         rgba.extend_from_slice(&[45, 125, 255, 255]);
     }
     Icon::from_rgba(rgba, 16, 16).context("failed to create fallback tray icon")
+}
+
+fn run_service_command_elevated(action: &str) -> Result<(), anyhow::Error> {
+    let verb = wide_null("runas");
+    let file = wide_null("sc.exe");
+    let parameters = wide_null(&format!("{action} {SERVICE_NAME}"));
+
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            parameters.as_ptr(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    let status = result as isize;
+    if status <= 32 {
+        anyhow::bail!(
+            "ShellExecuteW failed while requesting admin approval for `sc.exe {action} {SERVICE_NAME}` (status={status})"
+        );
+    }
+
+    Ok(())
+}
+
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn is_access_denied(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .and_then(|io_error| io_error.raw_os_error())
+            == Some(5)
+    })
 }
 
 fn hide_console_window() {
