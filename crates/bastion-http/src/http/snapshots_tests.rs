@@ -712,3 +712,235 @@ async fn pin_and_unpin_snapshot_and_force_delete_guardrail() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn list_job_snapshots_keyset_cursor_does_not_skip_when_previous_rows_change_status() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let mut run_ids: Vec<String> = Vec::new();
+    for i in 0..5_i64 {
+        let ended_at = now - i;
+        let run = runs_repo::create_run(
+            &pool,
+            &job.id,
+            runs_repo::RunStatus::Success,
+            ended_at - 10,
+            Some(ended_at),
+            Some(serde_json::json!({ "artifact_format": "archive_v1" })),
+            None,
+        )
+        .await
+        .expect("create run");
+
+        runs_repo::set_run_target_snapshot(
+            &pool,
+            &run.id,
+            serde_json::json!({
+                "node_id": "hub",
+                "target": { "type": "local_dir", "base_dir": "/tmp" }
+            }),
+        )
+        .await
+        .expect("set snapshot");
+        run_artifacts_repo::upsert_run_artifact_from_successful_run(&pool, &run.id)
+            .await
+            .expect("index");
+        run_ids.push(run.id);
+    }
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let first = client
+        .get(format!(
+            "{}/api/jobs/{}/snapshots?status=present&limit=2",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("list first");
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body: serde_json::Value = first.json().await.expect("json first");
+    let first_items = first_body["items"].as_array().expect("first items");
+    assert_eq!(first_items.len(), 2);
+    assert_eq!(first_items[0]["run_id"].as_str(), Some(run_ids[0].as_str()));
+    assert_eq!(first_items[1]["run_id"].as_str(), Some(run_ids[1].as_str()));
+
+    let cursor = first_body["next_cursor"]
+        .as_str()
+        .expect("next cursor")
+        .to_string();
+
+    // Mutate a row before the cursor window. OFFSET pagination would skip one row here.
+    sqlx::query("UPDATE run_artifacts SET status = 'deleting' WHERE run_id = ?")
+        .bind(&run_ids[0])
+        .execute(&pool)
+        .await
+        .expect("mark deleting");
+
+    let second = client
+        .get(format!(
+            "{}/api/jobs/{}/snapshots?status=present&limit=2&cursor={}",
+            base_url(addr),
+            job.id,
+            cursor
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("list second");
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_body: serde_json::Value = second.json().await.expect("json second");
+    let second_items = second_body["items"].as_array().expect("second items");
+    assert_eq!(second_items.len(), 2);
+    assert_eq!(
+        second_items[0]["run_id"].as_str(),
+        Some(run_ids[2].as_str())
+    );
+    assert_eq!(
+        second_items[1]["run_id"].as_str(),
+        Some(run_ids[3].as_str())
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_job_snapshots_invalid_cursor_returns_structured_reason() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let job = jobs_repo::create_job(
+        &pool,
+        "job",
+        None,
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({
+            "v": 1,
+            "type": "filesystem",
+            "source": { "root": "/" },
+            "target": { "type": "local_dir", "base_dir": "/tmp" }
+        }),
+    )
+    .await
+    .expect("create job");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{}/api/jobs/{}/snapshots?cursor=%%%",
+            base_url(addr),
+            job.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["error"].as_str(), Some("invalid_cursor"));
+    assert_eq!(body["details"]["reason"].as_str(), Some("invalid_encoding"));
+    assert_eq!(body["details"]["field"].as_str(), Some("cursor"));
+
+    server.abort();
+}

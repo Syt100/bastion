@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::Path;
 use axum::extract::Query;
 use axum::http::{HeaderMap, StatusCode};
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tower_cookies::Cookies;
@@ -24,11 +25,17 @@ fn invalid_snapshot_error(message: impl Into<String>) -> AppError {
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListJobSnapshotsQuery {
     #[serde(default)]
-    cursor: Option<u64>,
+    cursor: Option<String>,
     #[serde(default)]
     limit: Option<u64>,
     #[serde(default)]
     status: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SnapshotCursor {
+    ended_at: i64,
+    run_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,7 +127,35 @@ impl From<artifact_delete_repo::ArtifactDeleteTaskSummary> for ArtifactDeleteTas
 pub(in crate::http) struct ListJobSnapshotsResponse {
     items: Vec<RunArtifactResponse>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    next_cursor: Option<u64>,
+    next_cursor: Option<String>,
+}
+
+fn invalid_snapshot_cursor_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_cursor", message)
+        .with_reason(reason)
+        .with_field("cursor")
+}
+
+fn encode_snapshot_cursor(cursor: &SnapshotCursor) -> String {
+    let json = serde_json::to_vec(cursor).unwrap_or_default();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
+}
+
+fn decode_snapshot_cursor(raw: &str) -> Result<SnapshotCursor, AppError> {
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw)
+        .map_err(|_| {
+            invalid_snapshot_cursor_error("invalid_encoding", "invalid cursor encoding")
+        })?;
+    let cursor = serde_json::from_slice::<SnapshotCursor>(&bytes)
+        .map_err(|_| invalid_snapshot_cursor_error("invalid_payload", "invalid cursor payload"))?;
+    if cursor.run_id.trim().is_empty() {
+        return Err(invalid_snapshot_cursor_error(
+            "invalid_payload",
+            "invalid cursor payload",
+        ));
+    }
+    Ok(cursor)
 }
 
 pub(in crate::http) async fn list_job_snapshots(
@@ -136,17 +171,40 @@ pub(in crate::http) async fn list_job_snapshots(
         return Err(AppError::not_found("job_not_found", "Job not found"));
     }
 
-    let cursor = query.cursor.unwrap_or(0);
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let status = query
         .status
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty());
+    let before = query
+        .cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(decode_snapshot_cursor)
+        .transpose()?;
 
-    let artifacts =
-        run_artifacts_repo::list_run_artifacts_for_job(&state.db, &job_id, cursor, limit, status)
-            .await?;
+    let artifacts = run_artifacts_repo::list_run_artifacts_for_job_before(
+        &state.db,
+        &job_id,
+        limit,
+        status,
+        before.as_ref().map(|v| v.ended_at),
+        before.as_ref().map(|v| v.run_id.as_str()),
+    )
+    .await?;
+
+    let next_cursor = if artifacts.len() as u64 >= limit {
+        artifacts.last().map(|last| {
+            encode_snapshot_cursor(&SnapshotCursor {
+                ended_at: last.ended_at,
+                run_id: last.run_id.clone(),
+            })
+        })
+    } else {
+        None
+    };
 
     let run_ids = artifacts
         .iter()
@@ -169,12 +227,6 @@ pub(in crate::http) async fn list_job_snapshots(
             out
         })
         .collect::<Vec<_>>();
-
-    let next_cursor = if items.len() as u64 >= limit {
-        Some(cursor.saturating_add(limit))
-    } else {
-        None
-    };
 
     Ok(Json(ListJobSnapshotsResponse { items, next_cursor }))
 }

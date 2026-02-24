@@ -153,7 +153,7 @@ export type RunArtifact = {
 
 export type ListJobSnapshotsResponse = {
   items: RunArtifact[]
-  next_cursor?: number | null
+  next_cursor?: string | null
 }
 
 export type RetentionPolicy = {
@@ -319,7 +319,7 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function listJobSnapshots(
     jobId: string,
-    params?: { cursor?: number; limit?: number; status?: string; signal?: AbortSignal },
+    params?: { cursor?: string; limit?: number; status?: string; signal?: AbortSignal },
   ): Promise<ListJobSnapshotsResponse> {
     const q = new URLSearchParams()
     if (params?.cursor !== undefined) q.set('cursor', String(params.cursor))

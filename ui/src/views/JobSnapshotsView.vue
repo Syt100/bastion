@@ -73,7 +73,7 @@ const targetFilter = ref<'all' | 'local_dir' | 'webdav'>('all')
 const listLoading = ref<boolean>(false)
 const listLoadingKind = ref<'refresh' | 'more' | null>(null)
 const items = ref<RunArtifact[]>([])
-const nextCursor = ref<number | null>(null)
+const nextCursor = ref<string | null>(null)
 
 const checkedRowKeys = ref<string[]>([])
 
@@ -246,8 +246,7 @@ async function refreshSnapshots(): Promise<void> {
   listLoadingKind.value = 'refresh'
 
   try {
-    const params: { cursor: number; limit: number; status?: string; signal?: AbortSignal } = {
-      cursor: 0,
+    const params: { cursor?: string; limit: number; status?: string; signal?: AbortSignal } = {
       limit: PAGE_SIZE,
       signal: req.signal,
     }
@@ -278,7 +277,7 @@ async function loadMoreSnapshots(): Promise<void> {
   listLoadingKind.value = 'more'
 
   try {
-    const params: { cursor: number; limit: number; status?: string; signal?: AbortSignal } = {
+    const params: { cursor?: string; limit: number; status?: string; signal?: AbortSignal } = {
       cursor,
       limit: PAGE_SIZE,
       signal: req.signal,

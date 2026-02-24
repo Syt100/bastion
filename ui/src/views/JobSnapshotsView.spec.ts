@@ -162,7 +162,8 @@ describe('JobSnapshotsView', () => {
     mount(JobSnapshotsView)
     expect(jobsApi.getJob).toHaveBeenCalledWith('j1')
     await flushPromises()
-    expect(jobsApi.listJobSnapshots).toHaveBeenCalledWith('j1', expect.objectContaining({ cursor: 0, limit: 50 }))
+    expect(jobsApi.listJobSnapshots).toHaveBeenCalledWith('j1', expect.objectContaining({ limit: 50 }))
+    expect(jobsApi.listJobSnapshots.mock.calls[0]?.[1]).not.toHaveProperty('cursor')
   })
 
   it('shows desktop table when viewport is >= md', () => {
