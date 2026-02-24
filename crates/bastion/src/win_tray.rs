@@ -1,5 +1,4 @@
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -267,11 +266,25 @@ fn wait_for_web_ui(timeout: Duration) -> Result<(), anyhow::Error> {
 }
 
 fn open_web_ui() -> Result<(), anyhow::Error> {
-    Command::new("rundll32.exe")
-        .arg("url.dll,FileProtocolHandler")
-        .arg(WEB_UI_URL)
-        .spawn()
-        .context("failed to launch browser for Bastion Web UI")?;
+    let verb = wide_null("open");
+    let url = wide_null(WEB_UI_URL);
+
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            url.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    let status = result as isize;
+    if status <= 32 {
+        anyhow::bail!("ShellExecuteW failed to open Bastion Web UI URL (status={status})");
+    }
+
     Ok(())
 }
 

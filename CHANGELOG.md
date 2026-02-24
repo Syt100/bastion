@@ -31,6 +31,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed tray actions for standard users by avoiding privileged service access in "Open Web UI" flow and adding UAC-elevated fallback for Start/Stop service actions when access is denied.
 - Fixed tray launch behavior by detaching from the console window by default (with `BASTION_TRAY_KEEP_CONSOLE=1` debug override).
 - Fixed missing tray logs by initializing structured logging in `bastion tray run`.
+- Fixed tray "Open Bastion Web UI" failures on some Windows hosts by using `ShellExecuteW` URL open behavior directly (instead of `rundll32.exe` invocation).
 
 ### Security
 - _No user-facing changes yet._
