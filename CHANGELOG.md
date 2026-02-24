@@ -8,13 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
-- _No user-facing changes yet._
+- Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
 
 ### Changed
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed Web UI i18n startup to lazy-load only the active locale before mount and load other locales on demand, reducing initial bundle payload.
 - Changed Agent/Hub websocket relay paths to bounded queues with explicit backpressure handling to avoid unbounded memory growth under slow consumers.
 - Changed CI checks to run `clippy` for both default-feature and all-features builds.
+- Changed offline scheduler/writer internals to bounded queues with explicit full/closed handling for more predictable memory behavior under prolonged disconnects.
+- Changed Dashboard desktop recent-runs idle prefetch to skip non-desktop viewports.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -25,9 +27,11 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ### Fixed
 - Fixed Agent heartbeat persistence overhead by throttling `agents.last_seen_at` updates to reduce DB write amplification during high message throughput.
 - Fixed docs HTTP test locking to avoid holding sync mutex guards across `await` boundaries.
+- Fixed notifications queue pagination continuity when earlier rows leave the filtered set between page fetches.
+- Fixed Web UI rapid locale toggles to enforce last-write-wins behavior and avoid stale locale activation from slower async loads.
 
 ### Security
-- _No user-facing changes yet._
+- Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.
 
 ## [v0.2.2] - 2026-02-24
 
