@@ -3,6 +3,8 @@ use std::path::Path;
 use super::io::{append_offline_event_line, write_offline_run_file_atomic};
 use super::types::{OfflineRunEventV1, OfflineRunFileV1, OfflineRunStatusV1};
 
+const OFFLINE_WRITER_COMMAND_CAPACITY: usize = 1024;
+
 #[derive(Debug)]
 enum OfflineWriterCommand {
     AppendEvent {
@@ -20,7 +22,7 @@ enum OfflineWriterCommand {
 }
 
 pub(in super::super) struct OfflineRunWriterHandle {
-    tx: tokio::sync::mpsc::UnboundedSender<OfflineWriterCommand>,
+    tx: tokio::sync::mpsc::Sender<OfflineWriterCommand>,
 }
 
 impl OfflineRunWriterHandle {
@@ -53,7 +55,8 @@ impl OfflineRunWriterHandle {
         )
         .await?;
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OfflineWriterCommand>();
+        let (tx, mut rx) =
+            tokio::sync::mpsc::channel::<OfflineWriterCommand>(OFFLINE_WRITER_COMMAND_CAPACITY);
 
         let run_id = run_id.to_string();
         let job_id = job_id.to_string();
@@ -125,14 +128,21 @@ impl OfflineRunWriterHandle {
         message: &str,
         fields: Option<serde_json::Value>,
     ) -> Result<(), anyhow::Error> {
-        self.tx
-            .send(OfflineWriterCommand::AppendEvent {
-                level: level.to_string(),
-                kind: kind.to_string(),
-                message: message.to_string(),
-                fields,
-            })
-            .map_err(|_| anyhow::anyhow!("offline writer closed"))?;
+        let cmd = OfflineWriterCommand::AppendEvent {
+            level: level.to_string(),
+            kind: kind.to_string(),
+            message: message.to_string(),
+            fields,
+        };
+        match self.tx.try_send(cmd) {
+            Ok(()) => {}
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                anyhow::bail!("offline writer queue is full");
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                anyhow::bail!("offline writer closed");
+            }
+        }
         Ok(())
     }
 
@@ -150,6 +160,7 @@ impl OfflineRunWriterHandle {
                 error,
                 respond_to: tx,
             })
+            .await
             .map_err(|_| anyhow::anyhow!("offline writer closed"))?;
 
         rx.await

@@ -111,7 +111,7 @@ pub(super) async fn offline_cron_loop(
     data_dir: PathBuf,
     agent_id: String,
     mut connected_rx: tokio::sync::watch::Receiver<bool>,
-    tx: tokio::sync::mpsc::UnboundedSender<OfflineRunTask>,
+    tx: tokio::sync::mpsc::Sender<OfflineRunTask>,
     inflight: std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
 ) {
     use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -192,17 +192,12 @@ pub(super) async fn offline_cron_loop(
                                 let run_id = uuid::Uuid::new_v4().to_string();
                                 let task = OfflineRunTask {
                                     run_id,
-                                    job_id,
+                                    job_id: job_id.clone(),
                                     job_name,
                                     spec: *spec,
                                 };
 
-                                {
-                                    let mut state = inflight.lock().await;
-                                    state.inc_job(&task.job_id);
-                                }
-
-                                if tx.send(task).is_err() {
+                                if !enqueue_offline_task(&tx, &inflight, task).await {
                                     break;
                                 }
                             }
@@ -248,12 +243,33 @@ async fn persist_offline_rejected_run(
     Ok(())
 }
 
+async fn enqueue_offline_task(
+    tx: &tokio::sync::mpsc::Sender<OfflineRunTask>,
+    inflight: &std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
+    task: OfflineRunTask,
+) -> bool {
+    let job_id = task.job_id.clone();
+    {
+        let mut state = inflight.lock().await;
+        state.inc_job(&job_id);
+    }
+
+    if tx.send(task).await.is_err() {
+        let mut state = inflight.lock().await;
+        state.dec_job(&job_id);
+        return false;
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone as _;
 
     use super::{
-        allow_due_for_local_minute, decide_cron_minute_jobs, persist_offline_rejected_run,
+        allow_due_for_local_minute, decide_cron_minute_jobs, enqueue_offline_task,
+        persist_offline_rejected_run,
     };
 
     #[test]
@@ -360,6 +376,40 @@ mod tests {
                 },
             },
         }
+    }
+
+    fn test_offline_task(job_id: &str) -> super::OfflineRunTask {
+        super::OfflineRunTask {
+            run_id: "run1".to_string(),
+            job_id: job_id.to_string(),
+            job_name: format!("job-{job_id}"),
+            spec: bastion_core::agent_protocol::JobSpecResolvedV1::Sqlite {
+                v: 1,
+                pipeline: Default::default(),
+                source: bastion_core::job_spec::SqliteSource {
+                    path: "/db.sqlite".to_string(),
+                    integrity_check: false,
+                },
+                target: bastion_core::agent_protocol::TargetResolvedV1::LocalDir {
+                    base_dir: "/tmp".to_string(),
+                    part_size_bytes: 1024,
+                },
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn enqueue_offline_task_reverts_inflight_when_channel_is_closed() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<super::OfflineRunTask>(1);
+        drop(rx);
+
+        let inflight =
+            std::sync::Arc::new(tokio::sync::Mutex::new(super::InFlightCounts::default()));
+        let ok = enqueue_offline_task(&tx, &inflight, test_offline_task("job1")).await;
+        assert!(!ok);
+
+        let state = inflight.lock().await;
+        assert_eq!(state.inflight_for_job("job1"), 0);
     }
 
     #[test]

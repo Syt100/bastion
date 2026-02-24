@@ -48,7 +48,7 @@ pub(super) async fn offline_worker_loop(
     data_dir: PathBuf,
     agent_id: String,
     run_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<OfflineRunTask>,
+    mut rx: tokio::sync::mpsc::Receiver<OfflineRunTask>,
     inflight: std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
 ) {
     offline_worker_loop_with_executor(
@@ -66,7 +66,7 @@ async fn offline_worker_loop_with_executor(
     data_dir: PathBuf,
     agent_id: String,
     run_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<OfflineRunTask>,
+    rx: &mut tokio::sync::mpsc::Receiver<OfflineRunTask>,
     inflight: std::sync::Arc<tokio::sync::Mutex<InFlightCounts>>,
     executor: &dyn OfflineTaskExecutor,
 ) {
@@ -214,7 +214,7 @@ mod tests {
         let data_dir = tmp.path().to_path_buf();
 
         let run_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OfflineRunTask>();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<OfflineRunTask>(4);
         let inflight = std::sync::Arc::new(tokio::sync::Mutex::new(InFlightCounts::default()));
 
         {
@@ -252,8 +252,8 @@ mod tests {
             run_lock: run_lock.clone(),
         };
 
-        tx.send(task("run1", "job1")).unwrap();
-        tx.send(task("run2", "job1")).unwrap();
+        tx.send(task("run1", "job1")).await.unwrap();
+        tx.send(task("run2", "job1")).await.unwrap();
         drop(tx);
 
         offline_worker_loop_with_executor(
@@ -277,7 +277,7 @@ mod tests {
         let data_dir = tmp.path().to_path_buf();
 
         let run_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OfflineRunTask>();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<OfflineRunTask>(4);
         let inflight = std::sync::Arc::new(tokio::sync::Mutex::new(InFlightCounts::default()));
 
         {
@@ -315,8 +315,8 @@ mod tests {
             calls: calls.clone(),
         };
 
-        tx.send(task("run1", "job1")).unwrap();
-        tx.send(task("run2", "job1")).unwrap();
+        tx.send(task("run1", "job1")).await.unwrap();
+        tx.send(task("run2", "job1")).await.unwrap();
         drop(tx);
 
         offline_worker_loop_with_executor(

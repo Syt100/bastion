@@ -7,13 +7,15 @@ mod worker_loop;
 
 use types::{InFlightCounts, OfflineRunTask};
 
+const OFFLINE_TASK_QUEUE_CAPACITY: usize = 256;
+
 pub(super) async fn offline_scheduler_loop(
     data_dir: PathBuf,
     agent_id: String,
     run_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
     connected_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<OfflineRunTask>();
+    let (tx, rx) = tokio::sync::mpsc::channel::<OfflineRunTask>(OFFLINE_TASK_QUEUE_CAPACITY);
     let inflight = std::sync::Arc::new(tokio::sync::Mutex::new(InFlightCounts::default()));
 
     tokio::spawn(cron_loop::offline_cron_loop(
