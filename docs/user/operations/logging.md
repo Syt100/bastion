@@ -68,6 +68,38 @@ bastion \
   --log-keep-files 30
 ```
 
+## Windows Tray Logging
+
+When running `bastion tray run` on Windows, use the same logging flags/env vars as the Hub process.
+
+- MSI-installed tray shortcuts/startup entry already pass:
+  - `--log-file "%PROGRAMDATA%\\bastion\\logs\\tray.log"`
+  - `--log-rotation daily`
+  - `--log-keep-files 30`
+- Manual launch can use the same pattern:
+
+```powershell
+& "C:\Program Files\Bastion\bastion.exe" `
+  --log-file "$env:PROGRAMDATA\bastion\logs\tray.log" `
+  --log-rotation daily `
+  --log-keep-files 30 `
+  tray run
+```
+
+### Debug: keep tray console window
+
+By default, the tray detaches from its console window.  
+To keep the console attached for troubleshooting, set:
+
+- `BASTION_TRAY_KEEP_CONSOLE=1`
+
+PowerShell example:
+
+```powershell
+$env:BASTION_TRAY_KEEP_CONSOLE = "1"
+& "C:\Program Files\Bastion\bastion.exe" tray run
+```
+
 ## Secret Redaction
 Bastion MUST NOT log secret material (passwords, tokens, private keys).
 If you include credentials directly in a URL, Bastion attempts to redact them in logs, but you should still avoid embedding secrets in URLs.

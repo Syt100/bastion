@@ -36,7 +36,30 @@ Examples:
   - The MSI installs a Windows Service and starts it during install
   - The installed `Bastion` Windows Service is configured to auto-start on system boot
   - The MSI also installs a `Bastion Tray` startup entry (runs at user sign-in)
+  - Tray menu actions:
+    - `Open Bastion Web UI`: opens `http://127.0.0.1:9876/` for the current user
+    - `Start/Stop Bastion Service`: may trigger UAC when admin rights are required
+    - `Exit Tray`: closes only the tray process (does not stop the service)
+  - Tray logs are written to `%PROGRAMDATA%\\bastion\\logs\\tray.log` by the MSI shortcuts/startup entry
+  - Debug only: set `BASTION_TRAY_KEEP_CONSOLE=1` before launching tray to keep the console attached
   - (Optional) Run interactively from `C:\Program Files\Bastion\bastion.exe` (the MSI does not add PATH by default)
+
+Example (manual tray launch):
+
+```powershell
+& "C:\Program Files\Bastion\bastion.exe" `
+  --log-file "$env:PROGRAMDATA\bastion\logs\tray.log" `
+  --log-rotation daily `
+  --log-keep-files 30 `
+  tray run
+```
+
+Example (debug with console):
+
+```powershell
+$env:BASTION_TRAY_KEEP_CONSOLE = "1"
+& "C:\Program Files\Bastion\bastion.exe" tray run
+```
 
 You can also build from source (see [Developer docs](/dev/)).
 

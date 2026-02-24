@@ -78,6 +78,38 @@ bastion \
   --log-keep-files 30
 ```
 
+## Windows 托盘日志
+
+在 Windows 上运行 `bastion tray run` 时，日志参数/环境变量与 Hub 进程一致。
+
+- MSI 安装的托盘快捷方式/开机启动项默认已带：
+  - `--log-file "%PROGRAMDATA%\\bastion\\logs\\tray.log"`
+  - `--log-rotation daily`
+  - `--log-keep-files 30`
+- 手动启动可按同样方式指定：
+
+```powershell
+& "C:\Program Files\Bastion\bastion.exe" `
+  --log-file "$env:PROGRAMDATA\bastion\logs\tray.log" `
+  --log-rotation daily `
+  --log-keep-files 30 `
+  tray run
+```
+
+### 调试：保留托盘控制台窗口
+
+托盘默认会脱离控制台窗口。  
+如需排障时保留控制台，设置：
+
+- `BASTION_TRAY_KEEP_CONSOLE=1`
+
+PowerShell 示例：
+
+```powershell
+$env:BASTION_TRAY_KEEP_CONSOLE = "1"
+& "C:\Program Files\Bastion\bastion.exe" tray run
+```
+
 ## Secret 脱敏（Redaction）
 
 Bastion **禁止**在日志中输出敏感信息（密码、token、私钥等）。

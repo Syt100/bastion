@@ -36,7 +36,30 @@
   - MSI 会安装 Windows 服务，并在安装阶段启动该服务
   - 安装后的 `Bastion` Windows 服务会在系统开机时自动启动
   - MSI 同时安装 `Bastion Tray` 启动项（用户登录后自动运行）
+  - 托盘菜单行为：
+    - `Open Bastion Web UI`：为当前用户打开 `http://127.0.0.1:9876/`
+    - `Start/Stop Bastion Service`：在需要管理员权限时会触发 UAC
+    - `Exit Tray`：仅退出托盘进程（不会停止服务）
+  - MSI 创建的托盘快捷方式/启动项会将托盘日志写入 `%PROGRAMDATA%\\bastion\\logs\\tray.log`
+  - 仅调试场景：启动前设置 `BASTION_TRAY_KEEP_CONSOLE=1` 可保留控制台窗口
   - （可选）通过 `C:\\Program Files\\Bastion\\bastion.exe` 交互式启动（MSI 默认不会写入 PATH）
+
+示例（手动启动托盘）：
+
+```powershell
+& "C:\Program Files\Bastion\bastion.exe" `
+  --log-file "$env:PROGRAMDATA\bastion\logs\tray.log" `
+  --log-rotation daily `
+  --log-keep-files 30 `
+  tray run
+```
+
+示例（调试时保留控制台）：
+
+```powershell
+$env:BASTION_TRAY_KEEP_CONSOLE = "1"
+& "C:\Program Files\Bastion\bastion.exe" tray run
+```
 
 你也可以从源码构建（见 [开发文档](/zh/dev/)）。
 
