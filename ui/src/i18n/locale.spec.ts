@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { LOCALE_COOKIE_NAME, LOCALE_STORAGE_KEY, resolveInitialLocale } from '@/i18n'
+import { LOCALE_COOKIE_NAME, LOCALE_STORAGE_KEY, i18n, initI18n, resolveInitialLocale } from '@/i18n'
 
 function setLocaleCookie(value: string): void {
   document.cookie = `${LOCALE_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/`
@@ -48,5 +48,14 @@ describe('i18n locale resolution', () => {
 
     expect(resolveInitialLocale()).toBe('en-US')
   })
-})
 
+  it('loads only the resolved startup locale bundle during init', async () => {
+    localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-CN')
+
+    await initI18n()
+
+    expect(i18n.global.locale.value).toBe('zh-CN')
+    expect(i18n.global.availableLocales).toContain('zh-CN')
+    expect(i18n.global.availableLocales).not.toContain('en-US')
+  })
+})

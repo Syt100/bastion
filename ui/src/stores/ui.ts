@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { persistLocalePreference, resolveInitialLocale, type SupportedLocale, setI18nLocale } from '@/i18n'
+import {
+  ensureLocaleMessages,
+  persistLocalePreference,
+  resolveInitialLocale,
+  type SupportedLocale,
+  setI18nLocale,
+} from '@/i18n'
 import { DEFAULT_UI_THEME_ID, isUiThemeId, type UiThemeId } from '@/theme/presets'
 import {
   DEFAULT_UI_BACKGROUND_STYLE,
@@ -87,6 +93,9 @@ export const useUiStore = defineStore('ui', () => {
 
   // Ensure i18n and docs entrypoint use the same initial locale preference.
   persistLocalePreference(locale.value)
+  void ensureLocaleMessages(locale.value).catch(() => {
+    // Keep UI responsive; missing locale bundle falls back to translation keys.
+  })
   setI18nLocale(locale.value)
 
   function setDarkMode(value: boolean): void {
@@ -97,7 +106,11 @@ export const useUiStore = defineStore('ui', () => {
   function setLocale(value: SupportedLocale): void {
     locale.value = value
     persistLocalePreference(value)
-    setI18nLocale(value)
+    void ensureLocaleMessages(value).then(() => {
+      setI18nLocale(value)
+    }).catch(() => {
+      // Keep current locale if loading fails.
+    })
   }
 
   function toggleDarkMode(): void {

@@ -1,13 +1,20 @@
 import { createI18n } from 'vue-i18n'
 
-import enUS from './locales/en-US'
-import zhCN from './locales/zh-CN'
-
 export const LOCALE_STORAGE_KEY = 'bastion.ui.locale'
 export const LOCALE_COOKIE_NAME = 'bastion_locale'
 
 export const supportedLocales = ['en-US', 'zh-CN'] as const
 export type SupportedLocale = (typeof supportedLocales)[number]
+
+type LocaleMessages = Record<string, unknown>
+type LocaleModule = { default: LocaleMessages }
+
+const localeLoaders: Record<SupportedLocale, () => Promise<LocaleModule>> = {
+  'en-US': () => import('./locales/en-US'),
+  'zh-CN': () => import('./locales/zh-CN'),
+}
+
+const loadedLocales = new Set<SupportedLocale>()
 
 function isSupportedLocale(locale: string): locale is SupportedLocale {
   return (supportedLocales as readonly string[]).includes(locale)
@@ -104,11 +111,22 @@ export const i18n = createI18n({
   legacy: false,
   locale: resolveInitialLocale(),
   fallbackLocale: 'en-US',
-  messages: {
-    'zh-CN': zhCN,
-    'en-US': enUS,
-  },
+  messages: {},
 })
+
+export async function ensureLocaleMessages(locale: SupportedLocale): Promise<void> {
+  if (loadedLocales.has(locale)) return
+  const mod = await localeLoaders[locale]()
+  i18n.global.setLocaleMessage(locale, mod.default)
+  loadedLocales.add(locale)
+}
+
+export async function initI18n(): Promise<SupportedLocale> {
+  const locale = resolveInitialLocale()
+  await ensureLocaleMessages(locale)
+  i18n.global.locale.value = locale
+  return locale
+}
 
 export function setI18nLocale(locale: SupportedLocale): void {
   i18n.global.locale.value = locale
