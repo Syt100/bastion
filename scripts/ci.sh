@@ -71,7 +71,10 @@ DOCS_BASE=/docs/ npm run build --prefix docs
 echo "==> Rust: fmt"
 cargo fmt --check
 
-echo "==> Rust: clippy"
+echo "==> Rust: clippy (default features)"
+cargo clippy --workspace --all-targets -- -D warnings
+
+echo "==> Rust: clippy (all features)"
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 echo "==> Rust: driver contract tests"

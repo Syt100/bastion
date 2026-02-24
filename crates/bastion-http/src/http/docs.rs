@@ -408,16 +408,20 @@ fn file_etag(meta: &std::fs::Metadata) -> String {
 
 #[cfg(all(test, not(feature = "embed-docs")))]
 mod tests {
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Arc, OnceLock};
 
     use axum::http::StatusCode;
     use tempfile::TempDir;
 
     use crate::http::AppState;
 
-    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(())).lock().unwrap()
+    async fn env_guard() -> tokio::sync::OwnedMutexGuard<()> {
+        static GUARD: OnceLock<Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
+        GUARD
+            .get_or_init(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+            .lock_owned()
+            .await
     }
 
     fn write_file(dir: &std::path::Path, rel: &str, content: &str) {
@@ -518,7 +522,7 @@ mod tests {
 
     #[tokio::test]
     async fn docs_are_public_redirect_and_path_safety_work_in_fs_mode() {
-        let _guard = env_guard();
+        let _guard = env_guard().await;
 
         let tmp = TempDir::new().expect("tempdir");
         let db = bastion_storage::db::init(tmp.path())
@@ -573,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn docs_entrypoint_root_redirects_to_zh_by_accept_language() {
-        let _guard = env_guard();
+        let _guard = env_guard().await;
 
         let tmp = TempDir::new().expect("tempdir");
         let db = bastion_storage::db::init(tmp.path())
@@ -616,7 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn docs_entrypoint_root_stays_english_by_default_and_sets_cookie() {
-        let _guard = env_guard();
+        let _guard = env_guard().await;
 
         let tmp = TempDir::new().expect("tempdir");
         let db = bastion_storage::db::init(tmp.path())
@@ -660,7 +664,7 @@ mod tests {
 
     #[tokio::test]
     async fn docs_entrypoint_root_query_param_overrides_cookie() {
-        let _guard = env_guard();
+        let _guard = env_guard().await;
 
         let tmp = TempDir::new().expect("tempdir");
         let db = bastion_storage::db::init(tmp.path())
