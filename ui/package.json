@@ -35,7 +35,7 @@
     "@tailwindcss/postcss": "^4.2.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^27.0.0",
-    "@types/node": "^24.10.4",
+    "@types/node": "^25.3.0",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vitest/eslint-plugin": "^1.6.9",
     "@vue/eslint-config-typescript": "^14.7.0",
