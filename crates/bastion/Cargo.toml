@@ -19,7 +19,7 @@ bastion-storage = { path = "../bastion-storage" }
 bastion-targets = { path = "../bastion-targets" }
 anyhow.workspace = true
 axum.workspace = true
-clap = { version = "4.5.48", features = ["derive", "env"] }
+clap = { version = "4.5.60", features = ["derive", "env"] }
 futures-util.workspace = true
 ipnet.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "rustls-tls"] }

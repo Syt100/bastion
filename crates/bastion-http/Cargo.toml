@@ -38,7 +38,7 @@ uuid = { workspace = true, features = ["v4"] }
 reqwest = { workspace = true, default-features = false, features = ["json", "rustls-tls"] }
 tempfile.workspace = true
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
-tower = "0.5.2"
+tower = "0.5.3"
 
 [features]
 default = []
