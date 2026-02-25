@@ -32,5 +32,5 @@
 - [ ] 5.4 Run `bash scripts/ci.sh`
 
 ## 6. Commits
-- [ ] 6.1 Commit implementation milestones with clear summaries and change points
+- [x] 6.1 Commit implementation milestones with clear summaries and change points
 - [ ] 6.2 Mark OpenSpec tasks complete and commit
