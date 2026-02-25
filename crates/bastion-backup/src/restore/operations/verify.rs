@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use sqlx::SqlitePool;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
@@ -19,23 +20,29 @@ pub(super) async fn verify_operation(
     data_dir: &Path,
     op_id: &str,
     run_id: &str,
+    cancel_token: &CancellationToken,
 ) -> Result<(), anyhow::Error> {
+    super::check_operation_canceled(op_id, cancel_token)?;
     info!(op_id = %op_id, run_id = %run_id, "verify operation started");
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
     let progress_tx =
         spawn_operation_progress_writer(db.clone(), op_id.to_string(), ProgressKindV1::Verify);
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let access::ResolvedRunAccess { run, access } =
         access::resolve_success_run_access(db, secrets, run_id).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let op_dir = super::util::operation_dir(data_dir, op_id);
     let staging_dir = op_dir.join("staging");
     tokio::fs::create_dir_all(&staging_dir).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let handle = tokio::runtime::Handle::current();
     let source = RunArtifactSource::Driver(DriverSource::new(handle, access.reader()));
 
     let manifest = source.read_manifest().await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
     operations_repo::append_event(
         db,
         op_id,
@@ -50,6 +57,7 @@ pub(super) async fn verify_operation(
     .await?;
 
     let decryption = super::util::resolve_payload_decryption(db, secrets, &manifest).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     info!(
         op_id = %op_id,
@@ -66,9 +74,13 @@ pub(super) async fn verify_operation(
     let record_count = manifest.entry_index.count;
     let sqlite_paths = verify::sqlite_paths_for_verify(&run);
     let entries_path = source.fetch_entries_index(&staging_dir).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
     let source = source;
     let manifest = manifest.clone();
     let progress_tx_verify = progress_tx.clone();
+    let op_id_for_cancel = op_id.to_string();
+    let cancel_token = cancel_token.clone();
+    let cancel_token_for_blocking = cancel_token.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let on_restore_progress = |done: ProgressUnitsV1| {
@@ -85,24 +97,40 @@ pub(super) async fn verify_operation(
                 total: None,
             }));
         };
+        let cancel_check =
+            || super::check_operation_canceled(&op_id_for_cancel, &cancel_token_for_blocking);
+        cancel_check()?;
 
         let payload = source.open_payload_reader(&manifest, &staging_dir)?;
         let mut sink = LocalFsSink::new(temp_restore_dir.clone(), ConflictPolicy::Overwrite);
-        let mut engine =
-            RestoreEngine::new(&mut sink, decryption, None, Some(&on_restore_progress))?;
+        let mut engine = RestoreEngine::new_with_cancel(
+            &mut sink,
+            decryption,
+            None,
+            Some(&on_restore_progress),
+            Some(&cancel_check),
+        )?;
         engine.restore(payload)?;
 
-        let verify = verify::verify_restored(
+        cancel_check()?;
+        let verify = verify::verify_restored_with_cancel_check(
             &entries_path,
             &temp_restore_dir,
             record_count,
             Some(&on_verify_progress),
+            Some(&cancel_check),
         )?;
 
-        let sqlite_results = verify::verify_sqlite_files(&temp_restore_dir, &sqlite_paths)?;
+        cancel_check()?;
+        let sqlite_results = verify::verify_sqlite_files_with_cancel_check(
+            &temp_restore_dir,
+            &sqlite_paths,
+            Some(&cancel_check),
+        )?;
         Ok::<_, anyhow::Error>((verify, sqlite_results))
     })
     .await??;
+    super::check_operation_canceled(op_id, &cancel_token)?;
 
     let verify = result.0;
     let sqlite_results = result.1;

@@ -51,6 +51,7 @@ pub(super) struct RestoreEngine<'a, S: RestoreSink> {
     decryption: PayloadDecryption,
     selection: Option<selection::NormalizedRestoreSelection>,
     progress: Option<RestoreProgressCtx<'a>>,
+    cancel_check: Option<&'a dyn Fn() -> Result<(), anyhow::Error>>,
 }
 
 impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
@@ -60,6 +61,16 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
         selection: Option<&RestoreSelection>,
         on_progress: Option<&'a dyn Fn(ProgressUnitsV1)>,
     ) -> Result<Self, anyhow::Error> {
+        Self::new_with_cancel(sink, decryption, selection, on_progress, None)
+    }
+
+    pub(super) fn new_with_cancel(
+        sink: &'a mut S,
+        decryption: PayloadDecryption,
+        selection: Option<&RestoreSelection>,
+        on_progress: Option<&'a dyn Fn(ProgressUnitsV1)>,
+        cancel_check: Option<&'a dyn Fn() -> Result<(), anyhow::Error>>,
+    ) -> Result<Self, anyhow::Error> {
         Ok(Self {
             sink,
             decryption,
@@ -67,14 +78,24 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
                 .map(selection::normalize_restore_selection)
                 .transpose()?,
             progress: on_progress.map(RestoreProgressCtx::new),
+            cancel_check,
         })
     }
 
+    fn check_canceled(&self) -> Result<(), anyhow::Error> {
+        if let Some(check) = self.cancel_check {
+            check()?;
+        }
+        Ok(())
+    }
+
     pub(super) fn restore(&mut self, payload: Box<dyn Read + Send>) -> Result<(), anyhow::Error> {
+        self.check_canceled()?;
         self.sink.prepare()?;
         if let Some(ctx) = self.progress.as_mut() {
             ctx.maybe_emit(true);
         }
+        self.check_canceled()?;
 
         let payload: Box<dyn Read> = payload;
         let reader: Box<dyn Read> = match self.decryption.clone() {
@@ -96,6 +117,7 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
         archive.set_preserve_mtime(true);
 
         for entry in archive.entries()? {
+            self.check_canceled()?;
             let mut entry = entry?;
             let rel_raw = entry.path()?.to_path_buf();
 
@@ -110,6 +132,7 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
             let rel = path::safe_join(Path::new(""), &rel_raw)
                 .ok_or_else(|| anyhow::anyhow!("invalid entry path: {}", rel_raw.display()))?;
 
+            self.check_canceled()?;
             self.sink.apply_entry(&mut entry, &rel)?;
 
             if let Some(ctx) = self.progress.as_mut() {
@@ -120,6 +143,7 @@ impl<'a, S: RestoreSink> RestoreEngine<'a, S> {
             }
         }
 
+        self.check_canceled()?;
         if let Some(ctx) = self.progress.as_mut() {
             ctx.maybe_emit(true);
         }

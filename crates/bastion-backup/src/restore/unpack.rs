@@ -14,6 +14,25 @@ pub(super) fn restore_from_parts(
     decryption: PayloadDecryption,
     selection: Option<&super::RestoreSelection>,
 ) -> Result<(), anyhow::Error> {
+    restore_from_parts_with_cancel_check(
+        part_paths,
+        destination_dir,
+        conflict,
+        decryption,
+        selection,
+        None,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn restore_from_parts_with_cancel_check(
+    part_paths: &[std::path::PathBuf],
+    destination_dir: &std::path::Path,
+    conflict: super::ConflictPolicy,
+    decryption: PayloadDecryption,
+    selection: Option<&super::RestoreSelection>,
+    cancel_check: Option<&dyn Fn() -> Result<(), anyhow::Error>>,
+) -> Result<(), anyhow::Error> {
     use super::engine::RestoreEngine;
     use super::sinks::LocalFsSink;
 
@@ -24,7 +43,8 @@ pub(super) fn restore_from_parts(
     let reader: Box<dyn Read + Send> = Box::new(ConcatReader { files, index: 0 });
 
     let mut sink = LocalFsSink::new(destination_dir.to_path_buf(), conflict);
-    let mut engine = RestoreEngine::new(&mut sink, decryption, selection, None)?;
+    let mut engine =
+        RestoreEngine::new_with_cancel(&mut sink, decryption, selection, None, cancel_check)?;
     engine.restore(reader)?;
     Ok(())
 }

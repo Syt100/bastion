@@ -15,6 +15,7 @@ use super::selection;
 use super::sinks::{RestoreSink, WebdavSink, remove_existing_path};
 use super::sources::ArtifactSource;
 
+#[allow(dead_code)]
 pub(super) fn restore_raw_tree_to_local_fs(
     source: &dyn ArtifactSource,
     entries_index_path: &Path,
@@ -23,6 +24,28 @@ pub(super) fn restore_raw_tree_to_local_fs(
     conflict: ConflictPolicy,
     selection: Option<&RestoreSelection>,
     on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+) -> Result<(), anyhow::Error> {
+    restore_raw_tree_to_local_fs_with_cancel_check(
+        source,
+        entries_index_path,
+        staging_dir,
+        destination_dir,
+        conflict,
+        selection,
+        on_progress,
+        None,
+    )
+}
+
+pub(super) fn restore_raw_tree_to_local_fs_with_cancel_check(
+    source: &dyn ArtifactSource,
+    entries_index_path: &Path,
+    staging_dir: &Path,
+    destination_dir: &Path,
+    conflict: ConflictPolicy,
+    selection: Option<&RestoreSelection>,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+    on_cancel_check: Option<&dyn Fn() -> Result<(), anyhow::Error>>,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(destination_dir)?;
 
@@ -44,6 +67,9 @@ pub(super) fn restore_raw_tree_to_local_fs(
     }
 
     for_each_entry(entries_index_path, |rec| {
+        if let Some(check) = on_cancel_check {
+            check()?;
+        }
         let archive_path = rec.path.clone();
 
         if let Some(sel) = selection.as_ref()
@@ -194,6 +220,9 @@ pub(super) fn restore_raw_tree_to_local_fs(
         Ok(())
     })?;
 
+    if let Some(check) = on_cancel_check {
+        check()?;
+    }
     if let Some(cb) = on_progress {
         cb(progress_done);
     }
@@ -201,6 +230,7 @@ pub(super) fn restore_raw_tree_to_local_fs(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(super) fn restore_raw_tree_to_webdav(
     source: &dyn ArtifactSource,
     entries_index_path: &Path,
@@ -208,6 +238,26 @@ pub(super) fn restore_raw_tree_to_webdav(
     sink: &mut WebdavSink,
     selection: Option<&RestoreSelection>,
     on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+) -> Result<(), anyhow::Error> {
+    restore_raw_tree_to_webdav_with_cancel_check(
+        source,
+        entries_index_path,
+        staging_dir,
+        sink,
+        selection,
+        on_progress,
+        None,
+    )
+}
+
+pub(super) fn restore_raw_tree_to_webdav_with_cancel_check(
+    source: &dyn ArtifactSource,
+    entries_index_path: &Path,
+    staging_dir: &Path,
+    sink: &mut WebdavSink,
+    selection: Option<&RestoreSelection>,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+    on_cancel_check: Option<&dyn Fn() -> Result<(), anyhow::Error>>,
 ) -> Result<(), anyhow::Error> {
     sink.prepare()?;
 
@@ -223,6 +273,9 @@ pub(super) fn restore_raw_tree_to_webdav(
     }
 
     for_each_entry(entries_index_path, |rec| {
+        if let Some(check) = on_cancel_check {
+            check()?;
+        }
         let archive_path = rec.path.clone();
 
         if let Some(sel) = selection.as_ref()
@@ -273,6 +326,9 @@ pub(super) fn restore_raw_tree_to_webdav(
         Ok(())
     })?;
 
+    if let Some(check) = on_cancel_check {
+        check()?;
+    }
     if let Some(cb) = on_progress {
         cb(progress_done);
     }

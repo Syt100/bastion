@@ -16,11 +16,22 @@ pub(super) struct VerifyResult {
     pub(super) sample_errors: Vec<String>,
 }
 
+#[allow(dead_code)]
 pub(super) fn verify_restored(
     entries_path: &Path,
     restore_dir: &Path,
     expected_count: u64,
     on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+) -> Result<VerifyResult, anyhow::Error> {
+    verify_restored_with_cancel_check(entries_path, restore_dir, expected_count, on_progress, None)
+}
+
+pub(super) fn verify_restored_with_cancel_check(
+    entries_path: &Path,
+    restore_dir: &Path,
+    expected_count: u64,
+    on_progress: Option<&dyn Fn(ProgressUnitsV1)>,
+    on_cancel_check: Option<&dyn Fn() -> Result<(), anyhow::Error>>,
 ) -> Result<VerifyResult, anyhow::Error> {
     const VERIFY_PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -39,6 +50,9 @@ pub(super) fn verify_restored(
     }
 
     for line in decoded.split(|b| *b == b'\n') {
+        if let Some(check) = on_cancel_check {
+            check()?;
+        }
         if line.is_empty() {
             continue;
         }
@@ -79,6 +93,9 @@ pub(super) fn verify_restored(
 
         match (rec.hash_alg, rec.hash) {
             (Some(HashAlgorithm::Blake3), Some(expected_hash)) => {
+                if let Some(check) = on_cancel_check {
+                    check()?;
+                }
                 let computed = parts::hash_file_blake3(&path)?;
                 if computed != expected_hash {
                     files_failed += 1;
@@ -100,6 +117,9 @@ pub(super) fn verify_restored(
 
     if let Some(cb) = on_progress {
         cb(progress_done);
+    }
+    if let Some(check) = on_cancel_check {
+        check()?;
     }
 
     if seen != expected_count && errors.len() < 10 {
@@ -144,9 +164,18 @@ pub(super) struct SqliteVerifyResult {
     pub(super) details: serde_json::Value,
 }
 
+#[allow(dead_code)]
 pub(super) fn verify_sqlite_files(
     restore_dir: &Path,
     relative_paths: &[String],
+) -> Result<SqliteVerifyResult, anyhow::Error> {
+    verify_sqlite_files_with_cancel_check(restore_dir, relative_paths, None)
+}
+
+pub(super) fn verify_sqlite_files_with_cancel_check(
+    restore_dir: &Path,
+    relative_paths: &[String],
+    on_cancel_check: Option<&dyn Fn() -> Result<(), anyhow::Error>>,
 ) -> Result<SqliteVerifyResult, anyhow::Error> {
     if relative_paths.is_empty() {
         return Ok(SqliteVerifyResult {
@@ -158,6 +187,9 @@ pub(super) fn verify_sqlite_files(
     let mut results = Vec::<serde_json::Value>::new();
     let mut all_ok = true;
     for rel in relative_paths {
+        if let Some(check) = on_cancel_check {
+            check()?;
+        }
         let path = restore_dir.join(rel);
         match sqlite_integrity_check(&path) {
             Ok(check) => {
@@ -229,7 +261,10 @@ mod tests {
 
     use bastion_storage::runs_repo::{Run, RunStatus};
 
-    use super::{sqlite_paths_for_verify, verify_restored, verify_sqlite_files};
+    use super::{
+        sqlite_paths_for_verify, verify_restored, verify_restored_with_cancel_check,
+        verify_sqlite_files, verify_sqlite_files_with_cancel_check,
+    };
 
     fn run_with_summary(summary: Option<serde_json::Value>) -> Run {
         Run {
@@ -388,5 +423,62 @@ mod tests {
         assert_eq!(res.files_ok, 0);
         assert_eq!(res.files_failed, 1);
         assert!(res.sample_errors.iter().any(|e| e.contains("missing file")));
+    }
+
+    #[test]
+    fn verify_restored_with_cancel_check_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let restore_dir = tmp.path().join("restore");
+        std::fs::create_dir_all(&restore_dir).unwrap();
+        let file_path = restore_dir.join("file.txt");
+        std::fs::write(&file_path, b"hello").unwrap();
+        let hash = super::super::parts::hash_file_blake3(&file_path).unwrap();
+
+        let entries_lines = format!(
+            "{}\n",
+            serde_json::json!({
+                "path": "file.txt",
+                "kind": "file",
+                "size": 5,
+                "hash_alg": "blake3",
+                "hash": hash,
+            })
+        );
+        let entries_path = tmp.path().join("entries_index.jsonl.zst");
+        let encoded = zstd::encode_all(entries_lines.as_bytes(), 0).unwrap();
+        std::fs::write(&entries_path, encoded).unwrap();
+
+        let err = verify_restored_with_cancel_check(
+            &entries_path,
+            &restore_dir,
+            1,
+            None,
+            Some(&|| anyhow::bail!("canceled")),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("canceled"));
+    }
+
+    #[test]
+    fn verify_sqlite_files_with_cancel_check_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let restore_dir = tmp.path();
+        let rel = "db.sqlite3".to_string();
+        let db_path = restore_dir.join(&rel);
+
+        {
+            use rusqlite::Connection;
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)", [])
+                .unwrap();
+        }
+
+        let err = verify_sqlite_files_with_cancel_check(
+            restore_dir,
+            std::slice::from_ref(&rel),
+            Some(&|| anyhow::bail!("canceled")),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("canceled"));
     }
 }

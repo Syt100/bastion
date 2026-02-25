@@ -7,7 +7,9 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::entries_index::{ListChildrenFromEntriesIndexOptions, list_children_from_entries_index};
-use super::unpack::{PayloadDecryption, restore_from_parts, safe_join};
+use super::unpack::{
+    PayloadDecryption, restore_from_parts, restore_from_parts_with_cancel_check, safe_join,
+};
 use super::{ConflictPolicy, RestoreSelection};
 use crate::backup::{BuildPipelineOptions, PayloadEncryption};
 use bastion_core::job_spec::{FilesystemSource, FsErrorPolicy, FsHardlinkPolicy, FsSymlinkPolicy};
@@ -128,6 +130,38 @@ fn restore_from_parts_respects_selected_dirs() {
     assert!(dest.join("dir").join("a.txt").exists());
     assert!(dest.join("dir").join("b.txt").exists());
     assert!(!dest.join("c.txt").exists());
+}
+
+#[test]
+fn restore_from_parts_with_cancel_check_stops_before_extracting() {
+    let tmp = tempdir().unwrap();
+    let part = tmp.path().join("payload.part000001");
+
+    let file = File::create(&part).unwrap();
+    let mut encoder = zstd::Encoder::new(file, 3).unwrap();
+    {
+        let mut tar = tar::Builder::new(&mut encoder);
+        let src = tmp.path().join("hello.txt");
+        std::fs::write(&src, b"hello").unwrap();
+        tar.append_path_with_name(&src, Path::new("hello.txt"))
+            .unwrap();
+        tar.finish().unwrap();
+    }
+    encoder.finish().unwrap();
+
+    let dest = tmp.path().join("out_canceled");
+    let err = restore_from_parts_with_cancel_check(
+        &[part],
+        &dest,
+        ConflictPolicy::Overwrite,
+        PayloadDecryption::None,
+        None,
+        Some(&|| anyhow::bail!("canceled")),
+    )
+    .unwrap_err();
+
+    assert!(err.to_string().contains("canceled"));
+    assert!(!dest.join("hello.txt").exists());
 }
 
 #[test]

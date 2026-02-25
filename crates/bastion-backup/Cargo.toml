@@ -23,6 +23,7 @@ sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 tar = "0.4.44"
 time = { workspace = true, features = ["formatting", "macros", "serde"] }
 tokio = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }

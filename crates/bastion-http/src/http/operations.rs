@@ -486,6 +486,13 @@ pub(super) async fn start_restore(
         destination_for_hub,
         conflict,
         req.selection,
+        global_cancel_registry().register_operation(&op.id),
+        Some(Box::new({
+            let op_id = op.id.clone();
+            move || {
+                global_cancel_registry().unregister_operation(&op_id);
+            }
+        })),
     )
     .await;
 
@@ -540,6 +547,13 @@ pub(super) async fn start_verify(
         state.config.data_dir.clone(),
         op.id.clone(),
         run_id.clone(),
+        global_cancel_registry().register_operation(&op.id),
+        Some(Box::new({
+            let op_id = op.id.clone();
+            move || {
+                global_cancel_registry().unregister_operation(&op_id);
+            }
+        })),
     )
     .await;
 

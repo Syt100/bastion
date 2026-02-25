@@ -3,6 +3,7 @@ use std::path::Path;
 use tracing::info;
 
 use sqlx::SqlitePool;
+use tokio_util::sync::CancellationToken;
 
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
 use bastion_storage::operations_repo;
@@ -30,7 +31,9 @@ pub(super) async fn restore_operation(
     destination: &RestoreDestination,
     conflict: ConflictPolicy,
     selection: Option<RestoreSelection>,
+    cancel_token: &CancellationToken,
 ) -> Result<(), anyhow::Error> {
+    super::check_operation_canceled(op_id, cancel_token)?;
     let destination_label = match destination {
         RestoreDestination::LocalFs { directory } => directory.display().to_string(),
         RestoreDestination::Webdav {
@@ -51,17 +54,21 @@ pub(super) async fn restore_operation(
     operations_repo::append_event(db, op_id, "info", "start", "start", None).await?;
     let progress_tx =
         spawn_operation_progress_writer(db.clone(), op_id.to_string(), ProgressKindV1::Restore);
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let access::ResolvedRunAccess { access, .. } =
         access::resolve_success_run_access(db, secrets, run_id).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let op_dir = super::util::operation_dir(data_dir, op_id);
     tokio::fs::create_dir_all(op_dir.join("staging")).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     let handle = tokio::runtime::Handle::current();
     let source = RunArtifactSource::Driver(DriverSource::new(handle, access.reader()));
 
     let manifest = source.read_manifest().await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
     let artifact_format = manifest.pipeline.format.clone();
     operations_repo::append_event(
         db,
@@ -78,6 +85,7 @@ pub(super) async fn restore_operation(
     .await?;
 
     let decryption = super::util::resolve_payload_decryption(db, secrets, &manifest).await?;
+    super::check_operation_canceled(op_id, cancel_token)?;
 
     enum ResolvedDestination {
         LocalFs {
@@ -152,6 +160,7 @@ pub(super) async fn restore_operation(
 
     operations_repo::append_event(db, op_id, "info", "restore", "restore", None).await?;
     let op_id_for_blocking = op_id.to_string();
+    let op_id_for_cancel = op_id.to_string();
     let source = source;
     let manifest = manifest.clone();
     let entries_index_path = if artifact_format == ArtifactFormatV1::RawTreeV1 {
@@ -159,8 +168,11 @@ pub(super) async fn restore_operation(
     } else {
         None
     };
+    super::check_operation_canceled(op_id, cancel_token)?;
     let selection = selection.clone();
     let progress_tx_restore = progress_tx.clone();
+    let cancel_token = cancel_token.clone();
+    let cancel_token_for_blocking = cancel_token.clone();
     let summary = tokio::task::spawn_blocking(move || {
         let on_progress = |done: ProgressUnitsV1| {
             let _ = progress_tx_restore.send(Some(OperationProgressUpdate {
@@ -169,14 +181,23 @@ pub(super) async fn restore_operation(
                 total: None,
             }));
         };
+        let cancel_check =
+            || super::check_operation_canceled(&op_id_for_cancel, &cancel_token_for_blocking);
+        cancel_check()?;
         match artifact_format {
             ArtifactFormatV1::ArchiveV1 => {
                 let payload = source.open_payload_reader(&manifest, &staging_dir)?;
+                cancel_check()?;
                 match resolved_destination {
                     ResolvedDestination::LocalFs { directory } => {
                         let mut sink = LocalFsSink::new(directory.clone(), conflict);
-                        let mut engine =
-                            RestoreEngine::new(&mut sink, decryption, selection.as_ref(), Some(&on_progress))?;
+                        let mut engine = RestoreEngine::new_with_cancel(
+                            &mut sink,
+                            decryption,
+                            selection.as_ref(),
+                            Some(&on_progress),
+                            Some(&cancel_check),
+                        )?;
                         engine.restore(payload)?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
@@ -197,8 +218,13 @@ pub(super) async fn restore_operation(
                             op_id_for_blocking,
                             staging_dir.join("webdav_sink"),
                         )?;
-                        let mut engine =
-                            RestoreEngine::new(&mut sink, decryption, selection.as_ref(), Some(&on_progress))?;
+                        let mut engine = RestoreEngine::new_with_cancel(
+                            &mut sink,
+                            decryption,
+                            selection.as_ref(),
+                            Some(&on_progress),
+                            Some(&cancel_check),
+                        )?;
                         engine.restore(payload)?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
@@ -213,7 +239,7 @@ pub(super) async fn restore_operation(
                     .ok_or_else(|| anyhow::anyhow!("missing entries index path"))?;
                 match resolved_destination {
                     ResolvedDestination::LocalFs { directory } => {
-                        raw_tree::restore_raw_tree_to_local_fs(
+                        raw_tree::restore_raw_tree_to_local_fs_with_cancel_check(
                             &source,
                             entries_index_path,
                             &staging_dir,
@@ -221,6 +247,7 @@ pub(super) async fn restore_operation(
                             conflict,
                             selection.as_ref(),
                             Some(&on_progress),
+                            Some(&cancel_check),
                         )?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "local_fs", "directory": directory.to_string_lossy().to_string() },
@@ -241,13 +268,14 @@ pub(super) async fn restore_operation(
                             op_id_for_blocking,
                             staging_dir.join("webdav_sink"),
                         )?;
-                        raw_tree::restore_raw_tree_to_webdav(
+                        raw_tree::restore_raw_tree_to_webdav_with_cancel_check(
                             &source,
                             entries_index_path,
                             &staging_dir,
                             &mut sink,
                             selection.as_ref(),
                             Some(&on_progress),
+                            Some(&cancel_check),
                         )?;
                         Ok::<_, anyhow::Error>(serde_json::json!({
                             "destination": { "type": "webdav", "prefix_url": prefix_url.as_str() },
@@ -259,6 +287,7 @@ pub(super) async fn restore_operation(
         }
     })
     .await??;
+    super::check_operation_canceled(op_id, &cancel_token)?;
 
     operations_repo::append_event(db, op_id, "info", "complete", "complete", None).await?;
     operations_repo::complete_operation(
