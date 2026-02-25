@@ -27,7 +27,7 @@
 
 ## 5. Tests and validation
 - [x] 5.1 Add backend regression tests for queued-cancel, running-cancel, idempotency, and late-result race safety
-- [ ] 5.2 Add protocol/agent integration coverage for cancel delivery and completion behavior
+- [x] 5.2 Add protocol/agent integration coverage for cancel delivery and completion behavior
 - [ ] 5.3 Add UI tests for cancel button state transitions and canceled rendering
 - [ ] 5.4 Run `bash scripts/ci.sh`
 
