@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use futures_util::SinkExt;
 use tempfile::TempDir;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use bastion_config::Config;
+use bastion_core::agent_protocol::{AgentToHubMessageV1, OperationResultV1, PROTOCOL_VERSION};
 use bastion_engine::agent_manager::AgentManager;
 use bastion_storage::secrets::SecretsCrypto;
-use bastion_storage::{db, jobs_repo, runs_repo};
+use bastion_storage::{agent_tasks_repo, db, jobs_repo, operations_repo, runs_repo};
 
 async fn start_test_server() -> (tokio::net::TcpListener, std::net::SocketAddr) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -47,6 +51,26 @@ async fn insert_agent(pool: &sqlx::SqlitePool, agent_id: &str) -> (String, Strin
         .await
         .expect("insert agent");
     (agent_id.to_string(), agent_key)
+}
+
+async fn connect_agent_ws(
+    addr: std::net::SocketAddr,
+    agent_key: &str,
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
+    let mut req = format!("ws://{addr}/agent/ws")
+        .into_client_request()
+        .expect("ws request");
+    req.headers_mut().insert(
+        "authorization",
+        format!("Bearer {agent_key}")
+            .parse()
+            .expect("authorization"),
+    );
+
+    let (socket, _) = tokio_tungstenite::connect_async(req)
+        .await
+        .expect("ws connect");
+    socket
 }
 
 #[tokio::test]
@@ -973,4 +997,244 @@ async fn agent_ingest_runs_enforces_body_size_limit() {
         .expect("response");
 
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn agent_ws_task_result_canceled_marks_cancel_requested_run_canceled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let (agent_id, agent_key) = insert_agent(&pool, "agent1").await;
+    let job = jobs_repo::create_job(
+        &pool,
+        "job1",
+        Some(&agent_id),
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({"v":1,"type":"filesystem"}),
+    )
+    .await
+    .expect("create job");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Running,
+        100,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    let _ = runs_repo::request_run_cancel(&pool, &run.id, 1, Some("manual"))
+        .await
+        .expect("request cancel")
+        .expect("run exists");
+    agent_tasks_repo::upsert_task(
+        &pool,
+        &run.id,
+        &agent_id,
+        &run.id,
+        "sent",
+        &serde_json::json!({}),
+    )
+    .await
+    .expect("upsert task");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let mut socket = connect_agent_ws(addr, &agent_key).await;
+    let msg = AgentToHubMessageV1::TaskResult {
+        v: PROTOCOL_VERSION,
+        task_id: run.id.clone(),
+        run_id: run.id.clone(),
+        status: "canceled".to_string(),
+        summary: None,
+        error: Some("canceled".to_string()),
+    };
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&msg).expect("json").into(),
+        ))
+        .await
+        .expect("send");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let run_row = runs_repo::get_run(&pool, &run.id)
+                .await
+                .expect("get run")
+                .expect("run exists");
+            let task_row = agent_tasks_repo::get_task(&pool, &run.id)
+                .await
+                .expect("get task")
+                .expect("task exists");
+            if run_row.status == runs_repo::RunStatus::Canceled && task_row.completed_at.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("wait canceled");
+
+    let events = runs_repo::list_run_events(&pool, &run.id, 50)
+        .await
+        .expect("list events");
+    assert!(events.iter().any(|e| e.kind == "canceled"));
+
+    let _ = socket.close(None).await;
+    server.abort();
+}
+
+#[tokio::test]
+async fn agent_ws_operation_result_canceled_marks_cancel_requested_operation_canceled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let (agent_id, agent_key) = insert_agent(&pool, "agent1").await;
+    let job = jobs_repo::create_job(
+        &pool,
+        "job1",
+        Some(&agent_id),
+        None,
+        Some("UTC"),
+        jobs_repo::OverlapPolicy::Queue,
+        serde_json::json!({"v":1,"type":"filesystem"}),
+    )
+    .await
+    .expect("create job");
+    let run = runs_repo::create_run(
+        &pool,
+        &job.id,
+        runs_repo::RunStatus::Success,
+        100,
+        Some(120),
+        None,
+        None,
+    )
+    .await
+    .expect("create run");
+
+    let op = operations_repo::create_operation(
+        &pool,
+        operations_repo::OperationKind::Restore,
+        Some(("run", run.id.as_str())),
+    )
+    .await
+    .expect("create op");
+    let _ = operations_repo::request_operation_cancel(&pool, &op.id, 1, Some("manual"))
+        .await
+        .expect("request cancel")
+        .expect("op exists");
+    agent_tasks_repo::upsert_task(
+        &pool,
+        &op.id,
+        &agent_id,
+        &run.id,
+        "sent",
+        &serde_json::json!({}),
+    )
+    .await
+    .expect("upsert task");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let mut socket = connect_agent_ws(addr, &agent_key).await;
+    let msg = AgentToHubMessageV1::OperationResult {
+        v: PROTOCOL_VERSION,
+        result: OperationResultV1 {
+            op_id: op.id.clone(),
+            status: "canceled".to_string(),
+            summary: None,
+            error: Some("canceled".to_string()),
+        },
+    };
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&msg).expect("json").into(),
+        ))
+        .await
+        .expect("send");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let op_row = operations_repo::get_operation(&pool, &op.id)
+                .await
+                .expect("get op")
+                .expect("op exists");
+            let task_row = agent_tasks_repo::get_task(&pool, &op.id)
+                .await
+                .expect("get task")
+                .expect("task exists");
+            if op_row.status == operations_repo::OperationStatus::Canceled
+                && task_row.completed_at.is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("wait canceled");
+
+    let events = operations_repo::list_events(&pool, &op.id, 50)
+        .await
+        .expect("list events");
+    assert!(events.iter().any(|e| e.kind == "canceled"));
+
+    let _ = socket.close(None).await;
+    server.abort();
 }
