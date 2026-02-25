@@ -37,6 +37,7 @@ pub(super) fn restore_raw_tree_to_local_fs(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn restore_raw_tree_to_local_fs_with_cancel_check(
     source: &dyn ArtifactSource,
     entries_index_path: &Path,

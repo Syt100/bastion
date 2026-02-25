@@ -356,31 +356,28 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                     )
                                     .await;
                             }
+                            let event_level = if matches!(
+                                final_status,
+                                runs_repo::RunStatus::Success | runs_repo::RunStatus::Canceled
+                            ) {
+                                "info"
+                            } else {
+                                "error"
+                            };
+                            let event_kind = if final_status == runs_repo::RunStatus::Success {
+                                "complete"
+                            } else if final_status == runs_repo::RunStatus::Canceled {
+                                "canceled"
+                            } else {
+                                "failed"
+                            };
                             let _ = run_events::append_and_broadcast(
                                 &db,
                                 &run_events_bus,
                                 &run_id,
-                                if final_status == runs_repo::RunStatus::Success {
-                                    "info"
-                                } else if final_status == runs_repo::RunStatus::Canceled {
-                                    "info"
-                                } else {
-                                    "error"
-                                },
-                                if final_status == runs_repo::RunStatus::Success {
-                                    "complete"
-                                } else if final_status == runs_repo::RunStatus::Canceled {
-                                    "canceled"
-                                } else {
-                                    "failed"
-                                },
-                                if final_status == runs_repo::RunStatus::Success {
-                                    "complete"
-                                } else if final_status == runs_repo::RunStatus::Canceled {
-                                    "canceled"
-                                } else {
-                                    "failed"
-                                },
+                                event_level,
+                                event_kind,
+                                event_kind,
                                 Some(serde_json::json!({ "agent_id": agent_id.clone() })),
                             )
                             .await;
