@@ -313,6 +313,19 @@ function shortId(value: string): string {
   return `${value.slice(0, 8)}…`
 }
 
+function formatBytesCompact(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx += 1
+  }
+  const fixed = value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)
+  return `${fixed}${units[idx]}`
+}
+
 function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${Math.max(0, Math.floor(ms))}ms`
   const secs = ms / 1000
@@ -340,7 +353,7 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
 
   const out: SummaryChip[] = []
   const push = (chip: SummaryChip): void => {
-    if (out.length >= 2) return
+    if (out.length >= 3) return
     out.push(chip)
   }
 
@@ -348,6 +361,13 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   if (errorKind) {
     const type: SummaryChip['type'] = errorKind === 'auth' || errorKind === 'config' ? 'error' : 'warning'
     push({ text: errorKind, type })
+  }
+
+  const httpStatus = toNumber(fields.http_status)
+  if (httpStatus != null) {
+    const rounded = Math.max(0, Math.floor(httpStatus))
+    const type: SummaryChip['type'] = rounded >= 500 ? 'warning' : rounded >= 400 ? 'error' : 'default'
+    push({ text: `HTTP ${rounded}`, type })
   }
 
   const attempt = toNumber(fields.attempt) ?? toNumber(fields.attempts)
@@ -393,7 +413,26 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   const secretName = toString(fields.secret_name)
   if (secretName) push({ text: secretName, type: 'default' })
 
+  const partName = toString(fields.part_name)
+  if (partName) push({ text: partName, type: 'default' })
+
+  const partSize = toNumber(fields.part_size_bytes)
+  if (partSize != null) push({ text: formatBytesCompact(partSize), type: 'default' })
+
+  const transportCode = toString(fields.transport_code)
+  if (transportCode) push({ text: transportCode, type: 'default' })
+
+  const hint = toString(fields.hint)
+  if (hint) push({ text: hint, type: 'warning' })
+
   return out
+}
+
+function detailHint(e: RunEvent | null): string | null {
+  if (!e) return null
+  const fields = normalizeFields(e.fields)
+  if (!fields) return null
+  return toString(fields.hint)
 }
 
 async function open(id: string): Promise<void> {
@@ -597,6 +636,9 @@ defineExpose<RunEventsModalExpose>({ open })
             <span class="app-text-muted">{{ detailEvent.kind }}</span>
           </div>
           <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
+          <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
+            Hint: {{ detailHint(detailEvent) }}
+          </div>
           <n-code
             v-if="detailEvent.fields"
             :code="formatJson(detailEvent.fields)"
@@ -617,6 +659,9 @@ defineExpose<RunEventsModalExpose>({ open })
               <span class="app-text-muted">{{ detailEvent.kind }}</span>
             </div>
             <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
+            <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
+              Hint: {{ detailHint(detailEvent) }}
+            </div>
             <n-code
               v-if="detailEvent.fields"
               :code="formatJson(detailEvent.fields)"

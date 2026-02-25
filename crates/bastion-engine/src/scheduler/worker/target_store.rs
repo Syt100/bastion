@@ -21,6 +21,9 @@ fn to_driver_limits(limits: targets::WebdavRequestLimits) -> TargetRequestLimits
         head_qps: limits.head_qps,
         mkcol_qps: limits.mkcol_qps,
         burst: limits.burst,
+        request_timeout_secs: limits.request_timeout_secs,
+        connect_timeout_secs: limits.connect_timeout_secs,
+        max_put_attempts: limits.max_put_attempts,
     }
 }
 

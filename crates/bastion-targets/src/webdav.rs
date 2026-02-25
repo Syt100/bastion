@@ -141,7 +141,7 @@ pub async fn store_run_parts_rolling(
                 "uploading webdav part (rolling upload)"
             );
             client
-                .put_file_with_retries(&url, &part.path, part.size, 3)
+                .put_file_with_retries(&url, &part.path, part.size, 0)
                 .await?;
         }
 
@@ -254,7 +254,7 @@ async fn upload_artifacts(
         }
         debug!(url = %redact_url(&url), size = part.size, "uploading webdav part");
         client
-            .put_file_with_retries(&url, &part.path, part.size, 3)
+            .put_file_with_retries(&url, &part.path, part.size, 0)
             .await?;
         *bytes_done = bytes_done.saturating_add(part.size);
         if let Some(cb) = on_progress {
@@ -423,7 +423,7 @@ async fn upload_raw_tree_data_dir(
                     }
 
                     debug!(url = %redact_url(&url), size, "uploading webdav file");
-                    client.put_file_with_retries(&url, &path, size, 3).await?;
+                    client.put_file_with_retries(&url, &path, size, 0).await?;
                     *bytes_done = bytes_done.saturating_add(size);
                     if let Some(cb) = on_progress.as_ref() {
                         cb(StoreRunProgress {
@@ -538,7 +538,7 @@ async fn upload_raw_tree_data_dir(
                         "uploading webdav file"
                     );
                     client
-                        .put_file_with_retries(&url_for_task, &path_for_task, size, 3)
+                        .put_file_with_retries(&url_for_task, &path_for_task, size, 0)
                         .await?;
                 }
 
@@ -603,7 +603,7 @@ async fn upload_named_file(
     }
 
     debug!(url = %redact_url(&url), size, "uploading webdav file");
-    client.put_file_with_retries(&url, path, size, 3).await?;
+    client.put_file_with_retries(&url, path, size, 0).await?;
     *bytes_done = bytes_done.saturating_add(size);
     if let Some(cb) = on_progress {
         cb(StoreRunProgress {
@@ -968,6 +968,9 @@ mod tests {
                 head_qps: None,
                 mkcol_qps: None,
                 burst: None,
+                request_timeout_secs: None,
+                connect_timeout_secs: None,
+                max_put_attempts: None,
             }),
             None,
         )

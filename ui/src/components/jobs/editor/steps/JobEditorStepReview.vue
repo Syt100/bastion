@@ -137,6 +137,9 @@ async function copyPreviewJson(): Promise<void> {
                   head: formatOptionalLimit(form.webdavRawTreeDirectHeadQps),
                   mkcol: formatOptionalLimit(form.webdavRawTreeDirectMkcolQps),
                   burst: formatOptionalLimit(form.webdavRawTreeDirectBurst),
+                  timeout: formatOptionalLimit(form.webdavRawTreeDirectRequestTimeoutSecs),
+                  connect: formatOptionalLimit(form.webdavRawTreeDirectConnectTimeoutSecs),
+                  attempts: formatOptionalLimit(form.webdavRawTreeDirectMaxPutAttempts),
                 })
               }}
             </div>

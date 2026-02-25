@@ -225,6 +225,57 @@ const webdavRawTreeDirectModeOptions = computed(() => [
                 />
               </n-form-item>
             </div>
+
+            <div data-field="webdavRawTreeDirectRequestTimeoutSecs">
+              <n-form-item
+                :label="t('jobs.webdav.rawTreeDirect.requestTimeoutSecs')"
+                :validation-status="fieldErrors.webdavRawTreeDirectRequestTimeoutSecs ? 'error' : undefined"
+                :feedback="fieldErrors.webdavRawTreeDirectRequestTimeoutSecs || undefined"
+              >
+                <n-input-number
+                  v-model:value="form.webdavRawTreeDirectRequestTimeoutSecs"
+                  class="w-full"
+                  clearable
+                  :min="1"
+                  :max="3600"
+                  @update:value="clearFieldError('webdavRawTreeDirectRequestTimeoutSecs')"
+                />
+              </n-form-item>
+            </div>
+
+            <div data-field="webdavRawTreeDirectConnectTimeoutSecs">
+              <n-form-item
+                :label="t('jobs.webdav.rawTreeDirect.connectTimeoutSecs')"
+                :validation-status="fieldErrors.webdavRawTreeDirectConnectTimeoutSecs ? 'error' : undefined"
+                :feedback="fieldErrors.webdavRawTreeDirectConnectTimeoutSecs || undefined"
+              >
+                <n-input-number
+                  v-model:value="form.webdavRawTreeDirectConnectTimeoutSecs"
+                  class="w-full"
+                  clearable
+                  :min="1"
+                  :max="3600"
+                  @update:value="clearFieldError('webdavRawTreeDirectConnectTimeoutSecs')"
+                />
+              </n-form-item>
+            </div>
+
+            <div data-field="webdavRawTreeDirectMaxPutAttempts">
+              <n-form-item
+                :label="t('jobs.webdav.rawTreeDirect.maxPutAttempts')"
+                :validation-status="fieldErrors.webdavRawTreeDirectMaxPutAttempts ? 'error' : undefined"
+                :feedback="fieldErrors.webdavRawTreeDirectMaxPutAttempts || undefined"
+              >
+                <n-input-number
+                  v-model:value="form.webdavRawTreeDirectMaxPutAttempts"
+                  class="w-full"
+                  clearable
+                  :min="1"
+                  :max="20"
+                  @update:value="clearFieldError('webdavRawTreeDirectMaxPutAttempts')"
+                />
+              </n-form-item>
+            </div>
           </div>
         </div>
       </div>

@@ -45,6 +45,9 @@ export function stepForJobEditorField(field: JobEditorField): number {
     case 'webdavRawTreeDirectHeadQps':
     case 'webdavRawTreeDirectMkcolQps':
     case 'webdavRawTreeDirectBurst':
+    case 'webdavRawTreeDirectRequestTimeoutSecs':
+    case 'webdavRawTreeDirectConnectTimeoutSecs':
+    case 'webdavRawTreeDirectMaxPutAttempts':
     case 'localBaseDir':
     case 'partSizeMiB':
       return 3
@@ -166,6 +169,24 @@ function validateStep(step: number, form: JobEditorForm, t: TranslateFn): JobEdi
       validateOptionalPositiveInt(form.webdavRawTreeDirectHeadQps, 'webdavRawTreeDirectHeadQps', 10000, 'errors.webdavRawTreeDirectQpsInvalid')
       validateOptionalPositiveInt(form.webdavRawTreeDirectMkcolQps, 'webdavRawTreeDirectMkcolQps', 10000, 'errors.webdavRawTreeDirectQpsInvalid')
       validateOptionalPositiveInt(form.webdavRawTreeDirectBurst, 'webdavRawTreeDirectBurst', 100000, 'errors.webdavRawTreeDirectBurstInvalid')
+      validateOptionalPositiveInt(
+        form.webdavRawTreeDirectRequestTimeoutSecs,
+        'webdavRawTreeDirectRequestTimeoutSecs',
+        3600,
+        'errors.webdavRawTreeDirectTimeoutInvalid',
+      )
+      validateOptionalPositiveInt(
+        form.webdavRawTreeDirectConnectTimeoutSecs,
+        'webdavRawTreeDirectConnectTimeoutSecs',
+        3600,
+        'errors.webdavRawTreeDirectTimeoutInvalid',
+      )
+      validateOptionalPositiveInt(
+        form.webdavRawTreeDirectMaxPutAttempts,
+        'webdavRawTreeDirectMaxPutAttempts',
+        20,
+        'errors.webdavRawTreeDirectAttemptsInvalid',
+      )
     }
 
     return issues

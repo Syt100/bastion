@@ -331,6 +331,9 @@ pub(super) async fn run_filesystem_backup(
                     head_qps: Some(50),
                     mkcol_qps: Some(50),
                     burst: Some(10),
+                    request_timeout_secs: None,
+                    connect_timeout_secs: None,
+                    max_put_attempts: None,
                 })
             } else {
                 None

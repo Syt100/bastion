@@ -10,5 +10,5 @@ pub struct StoreRunProgress {
 
 pub use webdav_client::{
     WebdavClient, WebdavCredentials, WebdavHttpError, WebdavNotDirectoryError, WebdavPropfindEntry,
-    WebdavRequestLimits,
+    WebdavPutDiagnostic, WebdavPutError, WebdavPutErrorKind, WebdavRequestLimits,
 };

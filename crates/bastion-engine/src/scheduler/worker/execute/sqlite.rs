@@ -97,7 +97,7 @@ pub(super) async fn execute_sqlite_run(
         (None, None)
     };
 
-    let build = tokio::task::spawn_blocking(move || {
+    let build_res = tokio::task::spawn_blocking(move || {
         backup::sqlite::build_sqlite_run(
             &data_dir,
             &job_id,
@@ -112,12 +112,20 @@ pub(super) async fn execute_sqlite_run(
             on_part_finished,
         )
     })
-    .await??;
+    .await?;
     check_run_canceled(run_id, cancel_token)?;
-
-    if let Some(handle) = parts_uploader {
-        handle.await??;
-    }
+    let uploader_res = rolling_archive::join_parts_uploader(parts_uploader).await;
+    let build = match (build_res, uploader_res) {
+        (Ok(build), Ok(())) => build,
+        (Err(build_error), Ok(())) => return Err(build_error),
+        (Ok(_), Err(upload_error)) => return Err(upload_error),
+        (Err(build_error), Err(upload_error)) => {
+            return Err(rolling_archive::merge_packaging_and_uploader_errors(
+                build_error,
+                upload_error,
+            ));
+        }
+    };
 
     if let Some(check) = build.integrity_check.as_ref() {
         let data = serde_json::json!({

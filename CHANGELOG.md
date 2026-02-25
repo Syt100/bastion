@@ -10,10 +10,12 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ### Added
 - Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
 - Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
+- Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 
 ### Changed
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
+- Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).
 - Changed Web UI i18n startup to lazy-load only the active locale before mount and load other locales on demand, reducing initial bundle payload.
 - Changed Agent/Hub websocket relay paths to bounded queues with explicit backpressure handling to avoid unbounded memory growth under slow consumers.
 - Changed CI checks to run `clippy` for both default-feature and all-features builds.
@@ -35,6 +37,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed docs HTTP test locking to avoid holding sync mutex guards across `await` boundaries.
 - Fixed notifications queue pagination continuity when earlier rows leave the filtered set between page fetches.
 - Fixed Web UI rapid locale toggles to enforce last-write-wins behavior and avoid stale locale activation from slower async loads.
+- Fixed rolling archive upload failures to preserve the underlying uploader/network root cause instead of surfacing a generic `rolling uploader dropped`.
+- Fixed WebDAV upload retry handling to classify failure kinds (auth, timeout, rate-limit, payload-too-large, transport) and retry only when appropriate.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.

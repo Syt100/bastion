@@ -204,4 +204,34 @@ describe('RunEventsModal', () => {
 
     wrapper.unmount()
   })
+
+  it('renders failure diagnostic chips from structured fields', async () => {
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'error',
+        kind: 'failed',
+        message: 'failed: webdav put failed',
+        fields: {
+          error_kind: 'payload_too_large',
+          http_status: 413,
+          hint: 'reduce part size and check gateway upload limits',
+          part_size_bytes: 16 * 1024 * 1024,
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    const text = wrapper.text()
+    expect(text).toContain('payload_too_large')
+    expect(text).toContain('HTTP 413')
+    expect(text).toContain('16MB')
+
+    wrapper.unmount()
+  })
 })

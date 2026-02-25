@@ -55,6 +55,12 @@ pub struct WebdavRequestLimits {
     pub mkcol_qps: Option<u32>,
     /// Optional burst capacity for rate limits (best-effort).
     pub burst: Option<u32>,
+    /// Optional per-request timeout in seconds. Defaults to 60s when omitted.
+    pub request_timeout_secs: Option<u64>,
+    /// Optional connect timeout in seconds. Uses reqwest default when omitted.
+    pub connect_timeout_secs: Option<u64>,
+    /// Optional max attempts for PUT retries. Defaults to 3 when omitted.
+    pub max_put_attempts: Option<u32>,
 }
 
 impl Default for WebdavRequestLimits {
@@ -65,6 +71,9 @@ impl Default for WebdavRequestLimits {
             head_qps: None,
             mkcol_qps: None,
             burst: None,
+            request_timeout_secs: None,
+            connect_timeout_secs: None,
+            max_put_attempts: None,
         }
     }
 }
@@ -77,6 +86,9 @@ impl From<&bastion_core::job_spec::WebdavRequestLimitsV1> for WebdavRequestLimit
             head_qps: value.head_qps,
             mkcol_qps: value.mkcol_qps,
             burst: value.burst,
+            request_timeout_secs: value.request_timeout_secs,
+            connect_timeout_secs: value.connect_timeout_secs,
+            max_put_attempts: value.max_put_attempts,
         }
     }
 }
@@ -263,6 +275,155 @@ impl std::fmt::Display for WebdavHttpError {
 
 impl std::error::Error for WebdavHttpError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebdavPutErrorKind {
+    PayloadTooLarge,
+    RateLimited,
+    Auth,
+    Permission,
+    Timeout,
+    UpstreamUnavailable,
+    StorageFull,
+    Network,
+    Config,
+    Unknown,
+}
+
+impl WebdavPutErrorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PayloadTooLarge => "payload_too_large",
+            Self::RateLimited => "rate_limited",
+            Self::Auth => "auth",
+            Self::Permission => "permission",
+            Self::Timeout => "timeout",
+            Self::UpstreamUnavailable => "upstream_unavailable",
+            Self::StorageFull => "storage_full",
+            Self::Network => "network",
+            Self::Config => "config",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::PayloadTooLarge => "webdav_payload_too_large",
+            Self::RateLimited => "webdav_rate_limited",
+            Self::Auth => "webdav_auth_failed",
+            Self::Permission => "webdav_permission_denied",
+            Self::Timeout => "webdav_timeout",
+            Self::UpstreamUnavailable => "webdav_upstream_unavailable",
+            Self::StorageFull => "webdav_storage_full",
+            Self::Network => "webdav_network",
+            Self::Config => "webdav_config",
+            Self::Unknown => "webdav_put_failed",
+        }
+    }
+
+    pub fn default_hint(self) -> &'static str {
+        match self {
+            Self::PayloadTooLarge => {
+                "upload payload may exceed gateway/storage limits; reduce target.part_size_bytes or increase proxy upload limits"
+            }
+            Self::RateLimited => {
+                "remote throttled requests; lower request rate/concurrency or increase retry backoff"
+            }
+            Self::Auth => "check WebDAV credentials and token validity (401)",
+            Self::Permission => "check WebDAV account permissions for target path (403)",
+            Self::Timeout => {
+                "network timeout while uploading; consider raising request timeout/retries or reducing part size"
+            }
+            Self::UpstreamUnavailable => {
+                "upstream WebDAV service is unstable; retry later or tune retries/backoff"
+            }
+            Self::StorageFull => {
+                "target storage reports insufficient capacity/quota; free space or adjust retention"
+            }
+            Self::Network => "network transport failed; check connectivity/DNS/proxy and retry",
+            Self::Config => {
+                "target configuration appears invalid; verify base_url and path accessibility"
+            }
+            Self::Unknown => {
+                "upload failed for an unknown reason; inspect server logs and network path"
+            }
+        }
+    }
+
+    pub fn is_retriable(self) -> bool {
+        matches!(
+            self,
+            Self::RateLimited | Self::Timeout | Self::UpstreamUnavailable | Self::Network
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebdavPutDiagnostic {
+    pub kind: WebdavPutErrorKind,
+    pub code: &'static str,
+    pub hint: &'static str,
+    pub http_status: Option<u16>,
+    pub retry_after: Option<Duration>,
+    pub retriable: bool,
+}
+
+#[derive(Debug)]
+pub struct WebdavPutError {
+    pub url: String,
+    pub size: u64,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub diagnostic: WebdavPutDiagnostic,
+    source: anyhow::Error,
+}
+
+impl WebdavPutError {
+    fn new(
+        url: &Url,
+        size: u64,
+        attempt: u32,
+        max_attempts: u32,
+        source: anyhow::Error,
+        diagnostic: WebdavPutDiagnostic,
+    ) -> Self {
+        Self {
+            url: redact_url(url),
+            size,
+            attempt,
+            max_attempts,
+            diagnostic,
+            source,
+        }
+    }
+}
+
+impl std::fmt::Display for WebdavPutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "webdav put failed ({}/{}, kind={}, code={}, size={}): {}",
+            self.attempt,
+            self.max_attempts,
+            self.diagnostic.kind.as_str(),
+            self.diagnostic.code,
+            self.size,
+            self.source
+        )?;
+        if let Some(status) = self.diagnostic.http_status {
+            write!(f, " [http_status={status}]")?;
+        }
+        write!(f, " [url={}]", self.url)?;
+        write!(f, "; hint: {}", self.diagnostic.hint)?;
+        Ok(())
+    }
+}
+
+impl std::error::Error for WebdavPutError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
 impl WebdavClient {
     pub fn new(base_url: Url, credentials: WebdavCredentials) -> Result<Self, anyhow::Error> {
         Self::new_with_limits(base_url, credentials, None)
@@ -273,9 +434,22 @@ impl WebdavClient {
         credentials: WebdavCredentials,
         limits: Option<WebdavRequestLimits>,
     ) -> Result<Self, anyhow::Error> {
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()?;
+        const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 60;
+        let request_timeout_secs = limits
+            .as_ref()
+            .and_then(|v| v.request_timeout_secs)
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SECS)
+            .max(1);
+        let mut builder =
+            reqwest::Client::builder().timeout(Duration::from_secs(request_timeout_secs));
+        if let Some(connect_timeout_secs) = limits
+            .as_ref()
+            .and_then(|v| v.connect_timeout_secs)
+            .map(|v| v.max(1))
+        {
+            builder = builder.connect_timeout(Duration::from_secs(connect_timeout_secs));
+        }
+        let http = builder.build()?;
         Ok(Self {
             http,
             base_url,
@@ -301,6 +475,80 @@ impl WebdavClient {
             .as_ref()
             .map(|lim| lim.concurrency_limit())
             .unwrap_or(1)
+    }
+
+    fn default_max_put_attempts(&self) -> u32 {
+        const DEFAULT_MAX_PUT_ATTEMPTS: u32 = 3;
+        self.limiter
+            .as_ref()
+            .and_then(|lim| lim.limits.max_put_attempts)
+            .unwrap_or(DEFAULT_MAX_PUT_ATTEMPTS)
+            .max(1)
+    }
+
+    fn classify_put_error(
+        &self,
+        error: &anyhow::Error,
+        http_hint: Option<StatusCode>,
+    ) -> WebdavPutDiagnostic {
+        let (kind, status, retry_after) = if let Some(http) =
+            error.downcast_ref::<WebdavHttpError>()
+        {
+            let kind = match http.status {
+                StatusCode::UNAUTHORIZED => WebdavPutErrorKind::Auth,
+                StatusCode::FORBIDDEN => WebdavPutErrorKind::Permission,
+                StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => {
+                    WebdavPutErrorKind::Timeout
+                }
+                StatusCode::PAYLOAD_TOO_LARGE => WebdavPutErrorKind::PayloadTooLarge,
+                StatusCode::TOO_MANY_REQUESTS => WebdavPutErrorKind::RateLimited,
+                StatusCode::SERVICE_UNAVAILABLE | StatusCode::BAD_GATEWAY => {
+                    WebdavPutErrorKind::UpstreamUnavailable
+                }
+                StatusCode::INSUFFICIENT_STORAGE => WebdavPutErrorKind::StorageFull,
+                StatusCode::NOT_FOUND | StatusCode::CONFLICT | StatusCode::PRECONDITION_FAILED => {
+                    WebdavPutErrorKind::Config
+                }
+                s if s.is_server_error() => WebdavPutErrorKind::UpstreamUnavailable,
+                _ => WebdavPutErrorKind::Unknown,
+            };
+            (kind, Some(http.status), http.retry_after)
+        } else if let Some(status) = http_hint {
+            let kind = match status {
+                StatusCode::TOO_MANY_REQUESTS => WebdavPutErrorKind::RateLimited,
+                StatusCode::SERVICE_UNAVAILABLE => WebdavPutErrorKind::UpstreamUnavailable,
+                _ => WebdavPutErrorKind::Unknown,
+            };
+            (kind, Some(status), None)
+        } else {
+            let msg = error.to_string().to_lowercase();
+            let kind =
+                if msg.contains("timed out") || msg.contains("timeout") || msg.contains("deadline")
+                {
+                    WebdavPutErrorKind::Timeout
+                } else if msg.contains("connection reset")
+                    || msg.contains("broken pipe")
+                    || msg.contains("connection refused")
+                    || msg.contains("connection aborted")
+                    || msg.contains("network")
+                    || msg.contains("failed to lookup")
+                    || msg.contains("name or service not known")
+                {
+                    WebdavPutErrorKind::Network
+                } else {
+                    WebdavPutErrorKind::Unknown
+                };
+            (kind, None, None)
+        };
+
+        WebdavPutDiagnostic {
+            kind,
+            code: kind.code(),
+            hint: kind.default_hint(),
+            http_status: status.map(|s| s.as_u16()),
+            retry_after,
+            retriable: kind.is_retriable(),
+        }
     }
 
     async fn send_limited(
@@ -572,35 +820,60 @@ impl WebdavClient {
         size: u64,
         max_attempts: u32,
     ) -> Result<(String, Option<std::fs::Metadata>), anyhow::Error> {
+        let max_attempts = if max_attempts == 0 {
+            self.default_max_put_attempts()
+        } else {
+            max_attempts
+        };
         let mut attempt = 1u32;
         let mut backoff = Duration::from_secs(1);
         loop {
             match self.put_file_hash_blake3(url, path, size).await {
                 Ok(v) => return Ok(v),
                 Err(error) if attempt < max_attempts => {
-                    if let Some(http) = error.downcast_ref::<WebdavHttpError>()
-                        && (http.status == StatusCode::TOO_MANY_REQUESTS
-                            || http.status == StatusCode::SERVICE_UNAVAILABLE)
-                        && let Some(delay) = http.retry_after
-                    {
+                    let diag = self.classify_put_error(&error, None);
+                    if !diag.retriable {
+                        return Err(anyhow::Error::new(WebdavPutError::new(
+                            url,
+                            size,
+                            attempt,
+                            max_attempts,
+                            error,
+                            diag,
+                        )));
+                    }
+                    if let Some(delay) = diag.retry_after {
                         tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
-                        attempt += 1;
-                        continue;
+                    } else {
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     }
                     tracing::debug!(
                         url = %redact_url(url),
                         attempt,
                         max_attempts,
+                        kind = diag.kind.as_str(),
+                        code = diag.code,
                         backoff_seconds = backoff.as_secs(),
+                        hint = diag.hint,
+                        retriable = diag.retriable,
                         error = %error,
                         "webdav put (blake3) failed; retrying"
                     );
-                    tokio::time::sleep(backoff).await;
-                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     attempt += 1;
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    let diag = self.classify_put_error(&error, None);
+                    return Err(anyhow::Error::new(WebdavPutError::new(
+                        url,
+                        size,
+                        attempt,
+                        max_attempts,
+                        error,
+                        diag,
+                    )));
+                }
             }
         }
     }
@@ -643,35 +916,60 @@ impl WebdavClient {
         size: u64,
         max_attempts: u32,
     ) -> Result<(), anyhow::Error> {
+        let max_attempts = if max_attempts == 0 {
+            self.default_max_put_attempts()
+        } else {
+            max_attempts
+        };
         let mut attempt = 1u32;
         let mut backoff = Duration::from_secs(1);
         loop {
             match self.put_file(url, path, size).await {
                 Ok(()) => return Ok(()),
                 Err(error) if attempt < max_attempts => {
-                    if let Some(http) = error.downcast_ref::<WebdavHttpError>()
-                        && (http.status == StatusCode::TOO_MANY_REQUESTS
-                            || http.status == StatusCode::SERVICE_UNAVAILABLE)
-                        && let Some(delay) = http.retry_after
-                    {
+                    let diag = self.classify_put_error(&error, None);
+                    if !diag.retriable {
+                        return Err(anyhow::Error::new(WebdavPutError::new(
+                            url,
+                            size,
+                            attempt,
+                            max_attempts,
+                            error,
+                            diag,
+                        )));
+                    }
+                    if let Some(delay) = diag.retry_after {
                         tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
-                        attempt += 1;
-                        continue;
+                    } else {
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     }
                     tracing::debug!(
                         url = %redact_url(url),
                         attempt,
                         max_attempts,
+                        kind = diag.kind.as_str(),
+                        code = diag.code,
                         backoff_seconds = backoff.as_secs(),
+                        hint = diag.hint,
+                        retriable = diag.retriable,
                         error = %error,
                         "webdav put failed; retrying"
                     );
-                    tokio::time::sleep(backoff).await;
-                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
                     attempt += 1;
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    let diag = self.classify_put_error(&error, None);
+                    return Err(anyhow::Error::new(WebdavPutError::new(
+                        url,
+                        size,
+                        attempt,
+                        max_attempts,
+                        error,
+                        diag,
+                    )));
+                }
             }
         }
     }
@@ -1038,8 +1336,8 @@ fn filter_depth1_self(
 #[cfg(test)]
 mod tests {
     use super::{
-        WebdavClient, WebdavCredentials, WebdavRequestLimits, basename_from_href, decode_href_path,
-        filter_depth1_self, parse_propfind_multistatus,
+        WebdavClient, WebdavCredentials, WebdavPutError, WebdavPutErrorKind, WebdavRequestLimits,
+        basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus,
     };
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1243,6 +1541,9 @@ mod tests {
                 head_qps: None,
                 mkcol_qps: None,
                 burst: None,
+                request_timeout_secs: None,
+                connect_timeout_secs: None,
+                max_put_attempts: None,
             }),
         )
         .unwrap();
@@ -1306,6 +1607,9 @@ mod tests {
                 head_qps: None,
                 mkcol_qps: None,
                 burst: Some(1),
+                request_timeout_secs: None,
+                connect_timeout_secs: None,
+                max_put_attempts: None,
             }),
         )
         .unwrap();
@@ -1389,5 +1693,122 @@ mod tests {
             .unwrap();
 
         assert_eq!(state.puts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn put_file_with_retries_classifies_http_413_as_payload_too_large() {
+        async fn handler(_req: Request<Body>) -> impl IntoResponse {
+            axum::http::Response::builder()
+                .status(StatusCode::PAYLOAD_TOO_LARGE)
+                .body(Body::from("entity too large"))
+                .unwrap()
+        }
+
+        let app = Router::new().route("/{*path}", any(handler));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+        )
+        .unwrap();
+
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("payload.bin");
+        std::fs::write(&path, b"hello").unwrap();
+        let url = base.join("payload.bin").unwrap();
+
+        let err = client
+            .put_file_with_retries(&url, &path, 5, 3)
+            .await
+            .expect_err("should fail");
+        let put = err
+            .chain()
+            .find_map(|e| e.downcast_ref::<WebdavPutError>())
+            .expect("webdav put error");
+
+        assert_eq!(put.diagnostic.kind, WebdavPutErrorKind::PayloadTooLarge);
+        assert_eq!(put.diagnostic.code, "webdav_payload_too_large");
+        assert_eq!(put.diagnostic.http_status, Some(413));
+        assert!(!put.diagnostic.retriable);
+        assert!(put.diagnostic.hint.contains("part_size_bytes"));
+    }
+
+    #[tokio::test]
+    async fn put_file_with_retries_honors_limits_max_put_attempts_when_param_is_zero() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            puts: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, req: Request<Body>) -> impl IntoResponse {
+            if req.method() == Method::PUT {
+                state.puts.fetch_add(1, Ordering::SeqCst);
+            }
+            let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                .await
+                .unwrap_or_default();
+
+            axum::http::Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header("Retry-After", "0")
+                .body(Body::from("busy"))
+                .unwrap()
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new_with_limits(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+            Some(WebdavRequestLimits {
+                concurrency: 2,
+                put_qps: None,
+                head_qps: None,
+                mkcol_qps: None,
+                burst: None,
+                request_timeout_secs: None,
+                connect_timeout_secs: None,
+                max_put_attempts: Some(5),
+            }),
+        )
+        .unwrap();
+
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("payload.bin");
+        std::fs::write(&path, b"hello").unwrap();
+        let url = base.join("payload.bin").unwrap();
+
+        let err = client
+            .put_file_with_retries(&url, &path, 5, 0)
+            .await
+            .expect_err("should fail");
+        let put = err
+            .chain()
+            .find_map(|e| e.downcast_ref::<WebdavPutError>())
+            .expect("webdav put error");
+
+        assert_eq!(put.max_attempts, 5);
+        assert_eq!(state.puts.load(Ordering::SeqCst), 5);
     }
 }

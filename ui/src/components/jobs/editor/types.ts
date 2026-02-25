@@ -44,6 +44,9 @@ export type JobEditorField =
   | 'webdavRawTreeDirectHeadQps'
   | 'webdavRawTreeDirectMkcolQps'
   | 'webdavRawTreeDirectBurst'
+  | 'webdavRawTreeDirectRequestTimeoutSecs'
+  | 'webdavRawTreeDirectConnectTimeoutSecs'
+  | 'webdavRawTreeDirectMaxPutAttempts'
   | 'localBaseDir'
   | 'partSizeMiB'
   | 'encryptionKeyName'
@@ -94,6 +97,9 @@ export type JobEditorForm = {
   webdavRawTreeDirectHeadQps: number | null
   webdavRawTreeDirectMkcolQps: number | null
   webdavRawTreeDirectBurst: number | null
+  webdavRawTreeDirectRequestTimeoutSecs: number | null
+  webdavRawTreeDirectConnectTimeoutSecs: number | null
+  webdavRawTreeDirectMaxPutAttempts: number | null
   localBaseDir: string
   partSizeMiB: number
   notifyMode: NotifyMode

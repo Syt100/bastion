@@ -182,6 +182,8 @@ fn validate_webdav_raw_tree_direct_filesystem(
         const MAX_CONCURRENCY: u32 = 128;
         const MAX_QPS: u32 = 10_000;
         const MAX_BURST: u32 = 100_000;
+        const MAX_TIMEOUT_SECS: u64 = 3600;
+        const MAX_PUT_ATTEMPTS: u32 = 20;
 
         if limits.concurrency == 0 || limits.concurrency > MAX_CONCURRENCY {
             anyhow::bail!(
@@ -208,6 +210,30 @@ fn validate_webdav_raw_tree_direct_filesystem(
         {
             anyhow::bail!(
                 "pipeline.webdav.raw_tree_direct.limits.burst must be within 1..={MAX_BURST}"
+            );
+        }
+
+        if let Some(timeout) = limits.request_timeout_secs
+            && (timeout == 0 || timeout > MAX_TIMEOUT_SECS)
+        {
+            anyhow::bail!(
+                "pipeline.webdav.raw_tree_direct.limits.request_timeout_secs must be within 1..={MAX_TIMEOUT_SECS}"
+            );
+        }
+
+        if let Some(connect_timeout) = limits.connect_timeout_secs
+            && (connect_timeout == 0 || connect_timeout > MAX_TIMEOUT_SECS)
+        {
+            anyhow::bail!(
+                "pipeline.webdav.raw_tree_direct.limits.connect_timeout_secs must be within 1..={MAX_TIMEOUT_SECS}"
+            );
+        }
+
+        if let Some(attempts) = limits.max_put_attempts
+            && (attempts == 0 || attempts > MAX_PUT_ATTEMPTS)
+        {
+            anyhow::bail!(
+                "pipeline.webdav.raw_tree_direct.limits.max_put_attempts must be within 1..={MAX_PUT_ATTEMPTS}"
             );
         }
     }
@@ -384,6 +410,34 @@ mod tests {
         let err = validate_value(&spec).expect_err("invalid");
         assert!(
             err.to_string().contains("limits.concurrency"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn webdav_raw_tree_direct_validates_timeout_and_retry_limits() {
+        let spec = serde_json::json!({
+          "v": 1,
+          "type": "filesystem",
+          "pipeline": {
+            "format": "raw_tree_v1",
+            "webdav": {
+              "raw_tree_direct": {
+                "mode": "on",
+                "limits": {
+                  "request_timeout_secs": 0,
+                  "max_put_attempts": 99
+                }
+              }
+            }
+          },
+          "source": { "paths": ["/"] },
+          "target": { "type": "webdav", "base_url": "https://example.invalid/backup", "secret_name": "s" }
+        });
+        let err = validate_value(&spec).expect_err("invalid");
+        assert!(
+            err.to_string().contains("request_timeout_secs")
+                || err.to_string().contains("max_put_attempts"),
             "unexpected error: {err}"
         );
     }

@@ -131,6 +131,12 @@ pub struct TargetRequestLimits {
     pub mkcol_qps: Option<u32>,
     #[serde(default)]
     pub burst: Option<u32>,
+    #[serde(default)]
+    pub request_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub connect_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub max_put_attempts: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

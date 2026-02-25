@@ -60,6 +60,15 @@ pub struct WebdavRequestLimitsV1 {
     /// Optional burst capacity for rate limits (best-effort).
     #[serde(default)]
     pub burst: Option<u32>,
+    /// Optional per-request timeout in seconds.
+    #[serde(default)]
+    pub request_timeout_secs: Option<u64>,
+    /// Optional connect timeout in seconds.
+    #[serde(default)]
+    pub connect_timeout_secs: Option<u64>,
+    /// Optional max attempts for PUT retries.
+    #[serde(default)]
+    pub max_put_attempts: Option<u32>,
 }
 
 impl Default for WebdavRequestLimitsV1 {
@@ -70,6 +79,9 @@ impl Default for WebdavRequestLimitsV1 {
             head_qps: None,
             mkcol_qps: None,
             burst: None,
+            request_timeout_secs: None,
+            connect_timeout_secs: None,
+            max_put_attempts: None,
         }
     }
 }

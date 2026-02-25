@@ -100,7 +100,7 @@ pub(super) async fn execute_vaultwarden_run(
         (None, None)
     };
 
-    let build = tokio::task::spawn_blocking(move || {
+    let build_res = tokio::task::spawn_blocking(move || {
         backup::vaultwarden::build_vaultwarden_run(
             &data_dir,
             &job_id,
@@ -115,8 +115,20 @@ pub(super) async fn execute_vaultwarden_run(
             on_part_finished,
         )
     })
-    .await??;
+    .await?;
     check_run_canceled(run_id, cancel_token)?;
+    let uploader_res = rolling_archive::join_parts_uploader(parts_uploader).await;
+    let build = match (build_res, uploader_res) {
+        (Ok(build), Ok(())) => build,
+        (Err(build_error), Ok(())) => return Err(build_error),
+        (Ok(_), Err(upload_error)) => return Err(upload_error),
+        (Err(build_error), Err(upload_error)) => {
+            return Err(rolling_archive::merge_packaging_and_uploader_errors(
+                build_error,
+                upload_error,
+            ));
+        }
+    };
     let consistency_total = build.consistency.total();
     let consistency_failed =
         consistency_policy.should_fail(consistency_total, consistency_fail_threshold);
@@ -139,10 +151,6 @@ pub(super) async fn execute_vaultwarden_run(
             Some(fields),
         )
         .await;
-    }
-
-    if let Some(handle) = parts_uploader {
-        handle.await??;
     }
 
     let parts_bytes: u64 = artifacts.parts.iter().map(|p| p.size).sum();

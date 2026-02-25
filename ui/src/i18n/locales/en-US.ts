@@ -636,7 +636,11 @@ const messages = {
         headQps: 'HEAD QPS',
         mkcolQps: 'MKCOL QPS',
         burst: 'Burst',
-        limitsSummary: 'c={c}, put={put}/s, head={head}/s, mkcol={mkcol}/s, burst={burst}',
+        requestTimeoutSecs: 'Request timeout (s)',
+        connectTimeoutSecs: 'Connect timeout (s)',
+        maxPutAttempts: 'Max PUT attempts',
+        limitsSummary:
+          'c={c}, put={put}/s, head={head}/s, mkcol={mkcol}/s, burst={burst}, timeout={timeout}s, connect={connect}s, attempts={attempts}',
       },
     },
     columns: {
@@ -1739,6 +1743,8 @@ const messages = {
     webdavRawTreeDirectConcurrencyInvalid: 'Concurrency must be between 1 and 128',
     webdavRawTreeDirectQpsInvalid: 'QPS must be between 1 and {max} (or empty)',
     webdavRawTreeDirectBurstInvalid: 'Burst must be between 1 and {max} (or empty)',
+    webdavRawTreeDirectTimeoutInvalid: 'Timeout must be between 1 and {max} seconds (or empty)',
+    webdavRawTreeDirectAttemptsInvalid: 'Max PUT attempts must be between 1 and {max} (or empty)',
     localBaseDirRequired: 'Backup directory is required',
     partSizeInvalid: 'Part size must be a positive number',
     encryptionKeyNameRequired: 'Encryption key name is required',

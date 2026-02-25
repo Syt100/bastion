@@ -107,6 +107,18 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     typeof rawTreeDirectLimits?.burst === 'number' && rawTreeDirectLimits.burst > 0
       ? Math.floor(rawTreeDirectLimits.burst)
       : 10
+  const webdavRawTreeDirectRequestTimeoutSecs =
+    typeof rawTreeDirectLimits?.request_timeout_secs === 'number' && rawTreeDirectLimits.request_timeout_secs > 0
+      ? Math.floor(rawTreeDirectLimits.request_timeout_secs)
+      : 60
+  const webdavRawTreeDirectConnectTimeoutSecs =
+    typeof rawTreeDirectLimits?.connect_timeout_secs === 'number' && rawTreeDirectLimits.connect_timeout_secs > 0
+      ? Math.floor(rawTreeDirectLimits.connect_timeout_secs)
+      : null
+  const webdavRawTreeDirectMaxPutAttempts =
+    typeof rawTreeDirectLimits?.max_put_attempts === 'number' && rawTreeDirectLimits.max_put_attempts > 0
+      ? Math.floor(rawTreeDirectLimits.max_put_attempts)
+      : 3
 
   const target = spec.target as Record<string, unknown> | undefined
   const targetType = target?.type === 'local_dir' ? 'local_dir' : 'webdav'
@@ -205,6 +217,9 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
     webdavRawTreeDirectHeadQps,
     webdavRawTreeDirectMkcolQps,
     webdavRawTreeDirectBurst,
+    webdavRawTreeDirectRequestTimeoutSecs,
+    webdavRawTreeDirectConnectTimeoutSecs,
+    webdavRawTreeDirectMaxPutAttempts,
     localBaseDir: typeof target?.base_dir === 'string' ? target.base_dir : '',
     partSizeMiB,
     notifyMode,
@@ -222,6 +237,15 @@ export function jobDetailToEditorForm(job: JobDetail): JobEditorForm {
 export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobRequest {
   const partSizeMiB = Math.max(1, Math.floor(form.partSizeMiB || 1))
   const partSizeBytes = partSizeMiB * 1024 * 1024
+  const webdavRawTreeDirectRequestTimeoutSecs = normalizeOptionalPositiveInt(
+    form.webdavRawTreeDirectRequestTimeoutSecs,
+  )
+  const webdavRawTreeDirectConnectTimeoutSecs = normalizeOptionalPositiveInt(
+    form.webdavRawTreeDirectConnectTimeoutSecs,
+  )
+  const webdavRawTreeDirectMaxPutAttempts = normalizeOptionalPositiveInt(
+    form.webdavRawTreeDirectMaxPutAttempts,
+  )
 
   const pipeline = {
     format: form.artifactFormat,
@@ -243,6 +267,15 @@ export function editorFormToRequest(form: JobEditorForm): CreateOrUpdateJobReque
                 head_qps: normalizeOptionalPositiveInt(form.webdavRawTreeDirectHeadQps),
                 mkcol_qps: normalizeOptionalPositiveInt(form.webdavRawTreeDirectMkcolQps),
                 burst: normalizeOptionalPositiveInt(form.webdavRawTreeDirectBurst),
+                ...(webdavRawTreeDirectRequestTimeoutSecs != null
+                  ? { request_timeout_secs: webdavRawTreeDirectRequestTimeoutSecs }
+                  : {}),
+                ...(webdavRawTreeDirectConnectTimeoutSecs != null
+                  ? { connect_timeout_secs: webdavRawTreeDirectConnectTimeoutSecs }
+                  : {}),
+                ...(webdavRawTreeDirectMaxPutAttempts != null
+                  ? { max_put_attempts: webdavRawTreeDirectMaxPutAttempts }
+                  : {}),
               },
             }
           : {}),

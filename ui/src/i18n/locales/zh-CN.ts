@@ -632,7 +632,11 @@ const messages = {
         headQps: 'HEAD QPS',
         mkcolQps: 'MKCOL QPS',
         burst: '突发容量',
-        limitsSummary: '并发 {c}，PUT {put}/s，HEAD {head}/s，MKCOL {mkcol}/s，burst {burst}',
+        requestTimeoutSecs: '请求超时（秒）',
+        connectTimeoutSecs: '连接超时（秒）',
+        maxPutAttempts: 'PUT 最大重试次数',
+        limitsSummary:
+          '并发 {c}，PUT {put}/s，HEAD {head}/s，MKCOL {mkcol}/s，burst {burst}，请求超时 {timeout}s，连接超时 {connect}s，重试 {attempts}',
       },
     },
     columns: {
@@ -1734,6 +1738,8 @@ const messages = {
     webdavRawTreeDirectConcurrencyInvalid: '并发必须在 1-128 之间',
     webdavRawTreeDirectQpsInvalid: 'QPS 必须在 1-{max} 之间（或留空）',
     webdavRawTreeDirectBurstInvalid: '突发容量必须在 1-{max} 之间（或留空）',
+    webdavRawTreeDirectTimeoutInvalid: '超时时间必须在 1-{max} 秒之间（或留空）',
+    webdavRawTreeDirectAttemptsInvalid: 'PUT 最大重试次数必须在 1-{max} 之间（或留空）',
     localBaseDirRequired: '备份目录不能为空',
     partSizeInvalid: '分卷大小必须为正数',
     encryptionKeyNameRequired: '加密密钥名称不能为空',

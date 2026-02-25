@@ -50,7 +50,9 @@ pub(super) fn write_file_entry<W: Write>(
         Err(error) => {
             let msg = format!("archive error: {archive_path}: {error}");
             if source.error_policy == FsErrorPolicy::FailFast {
-                return Err(anyhow::anyhow!(msg));
+                return Err(
+                    anyhow::Error::new(error).context(format!("archive error: {archive_path}"))
+                );
             }
             issues.record_error(msg);
             return Ok(());
@@ -87,7 +89,8 @@ pub(super) fn write_file_entry<W: Write>(
         ) {
             let msg = format!("archive error (hardlink): {archive_path}: {error}");
             if source.error_policy == FsErrorPolicy::FailFast {
-                return Err(anyhow::anyhow!(msg));
+                return Err(anyhow::Error::new(error)
+                    .context(format!("archive error (hardlink): {archive_path}")));
             }
             issues.record_error(msg);
             return Ok(());
@@ -132,7 +135,7 @@ pub(super) fn write_file_entry<W: Write>(
     if let Err(error) = tar.append_data(&mut header, Path::new(archive_path), &mut reader) {
         let msg = format!("archive error: {archive_path}: {error}");
         if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
+            return Err(anyhow::Error::new(error).context(format!("archive error: {archive_path}")));
         }
         issues.record_error(msg);
         let file = reader.into_inner();
@@ -257,7 +260,7 @@ pub(super) fn write_dir_entry<W: Write>(
     if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
         let msg = format!("archive error: {archive_path}: {error}");
         if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
+            return Err(anyhow::Error::new(error).context(format!("archive error: {archive_path}")));
         }
         issues.record_error(msg);
         return Ok(());
@@ -306,7 +309,7 @@ pub(super) fn write_symlink_entry<W: Write>(
     if let Err(error) = tar.append_path_with_name(fs_path, Path::new(archive_path)) {
         let msg = format!("archive error: {archive_path}: {error}");
         if source.error_policy == FsErrorPolicy::FailFast {
-            return Err(anyhow::anyhow!(msg));
+            return Err(anyhow::Error::new(error).context(format!("archive error: {archive_path}")));
         }
         issues.record_error(msg);
         return Ok(());

@@ -183,7 +183,16 @@ describe('jobDetailToEditorForm', () => {
           raw_tree_direct: {
             mode: 'on',
             resume_by_size: false,
-            limits: { concurrency: 8, put_qps: 10, head_qps: 20, mkcol_qps: 30, burst: 100 },
+            limits: {
+              concurrency: 8,
+              put_qps: 10,
+              head_qps: 20,
+              mkcol_qps: 30,
+              burst: 100,
+              request_timeout_secs: 120,
+              connect_timeout_secs: 5,
+              max_put_attempts: 7,
+            },
           },
         },
       },
@@ -199,6 +208,9 @@ describe('jobDetailToEditorForm', () => {
     expect(form.webdavRawTreeDirectHeadQps).toBe(20)
     expect(form.webdavRawTreeDirectMkcolQps).toBe(30)
     expect(form.webdavRawTreeDirectBurst).toBe(100)
+    expect(form.webdavRawTreeDirectRequestTimeoutSecs).toBe(120)
+    expect(form.webdavRawTreeDirectConnectTimeoutSecs).toBe(5)
+    expect(form.webdavRawTreeDirectMaxPutAttempts).toBe(7)
   })
 })
 
@@ -373,6 +385,9 @@ describe('editorFormToRequest', () => {
     form.webdavRawTreeDirectHeadQps = null
     form.webdavRawTreeDirectMkcolQps = 50
     form.webdavRawTreeDirectBurst = 10
+    form.webdavRawTreeDirectRequestTimeoutSecs = 90
+    form.webdavRawTreeDirectConnectTimeoutSecs = null
+    form.webdavRawTreeDirectMaxPutAttempts = 6
 
     const req = editorFormToRequest(form)
     const spec = req.spec as Record<string, unknown>
@@ -387,6 +402,8 @@ describe('editorFormToRequest', () => {
           head_qps: null,
           mkcol_qps: 50,
           burst: 10,
+          request_timeout_secs: 90,
+          max_put_attempts: 6,
         },
       },
     })

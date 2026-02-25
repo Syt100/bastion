@@ -255,6 +255,9 @@ pub(super) async fn execute_filesystem_run(
                     head_qps: Some(50),
                     mkcol_qps: Some(50),
                     burst: Some(10),
+                    request_timeout_secs: None,
+                    connect_timeout_secs: None,
+                    max_put_attempts: None,
                 })
             } else {
                 None
@@ -441,6 +444,7 @@ pub(super) async fn execute_filesystem_run(
     })
     .await?;
     check_run_canceled(run_id, cancel_token)?;
+    let uploader_res = rolling_archive::join_parts_uploader(parts_uploader).await;
 
     if let Some(handle) = snapshot_handle.take() {
         let provider = handle.provider.clone();
@@ -492,12 +496,18 @@ pub(super) async fn execute_filesystem_run(
         }
     }
 
-    let build = build_res?;
+    let build = match (build_res, uploader_res) {
+        (Ok(build), Ok(())) => build,
+        (Err(build_error), Ok(())) => return Err(build_error),
+        (Ok(_), Err(upload_error)) => return Err(upload_error),
+        (Err(build_error), Err(upload_error)) => {
+            return Err(rolling_archive::merge_packaging_and_uploader_errors(
+                build_error,
+                upload_error,
+            ));
+        }
+    };
     check_run_canceled(run_id, cancel_token)?;
-
-    if let Some(handle) = parts_uploader {
-        handle.await??;
-    }
 
     if build.issues.warnings_total > 0 || build.issues.errors_total > 0 {
         let level = if build.issues.errors_total > 0 {
