@@ -4,7 +4,8 @@ use crate::db;
 
 use super::{
     OperationKind, OperationStatus, append_event, complete_operation, create_operation,
-    get_operation, list_events, list_operations_by_subject, set_operation_progress,
+    get_operation, list_events, list_operations_by_subject, request_operation_cancel,
+    set_operation_progress,
 };
 
 #[tokio::test]
@@ -98,4 +99,60 @@ async fn operation_progress_round_trips_and_can_be_cleared() {
         .expect("get2")
         .expect("present");
     assert!(fetched.progress.is_none());
+}
+
+#[tokio::test]
+async fn cancel_running_operation_marks_intent_and_forces_terminal_canceled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let op = create_operation(&pool, OperationKind::Restore, None)
+        .await
+        .expect("create");
+
+    let requested = request_operation_cancel(&pool, &op.id, 9, Some("operator"))
+        .await
+        .expect("request cancel")
+        .expect("present");
+    assert_eq!(requested.status, OperationStatus::Running);
+    assert!(requested.cancel_requested_at.is_some());
+    assert_eq!(requested.cancel_requested_by_user_id, Some(9));
+    assert_eq!(requested.cancel_reason.as_deref(), Some("operator"));
+
+    let completed = complete_operation(&pool, &op.id, OperationStatus::Success, None, None)
+        .await
+        .expect("complete");
+    assert!(completed);
+
+    let fetched = get_operation(&pool, &op.id)
+        .await
+        .expect("get")
+        .expect("present");
+    assert_eq!(fetched.status, OperationStatus::Canceled);
+    assert_eq!(fetched.error.as_deref(), Some("canceled"));
+}
+
+#[tokio::test]
+async fn complete_operation_is_ignored_after_terminal_status() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let op = create_operation(&pool, OperationKind::Verify, None)
+        .await
+        .expect("create");
+    let completed = complete_operation(&pool, &op.id, OperationStatus::Success, None, None)
+        .await
+        .expect("complete");
+    assert!(completed);
+
+    let second = complete_operation(&pool, &op.id, OperationStatus::Failed, None, Some("late"))
+        .await
+        .expect("complete second");
+    assert!(!second);
+
+    let fetched = get_operation(&pool, &op.id)
+        .await
+        .expect("get")
+        .expect("present");
+    assert_eq!(fetched.status, OperationStatus::Success);
 }

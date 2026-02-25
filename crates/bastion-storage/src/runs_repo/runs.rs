@@ -4,6 +4,34 @@ use uuid::Uuid;
 
 use super::{Run, RunStatus};
 
+fn parse_run_row(row: &sqlx::sqlite::SqliteRow) -> Result<Run, anyhow::Error> {
+    let status = row.get::<String, _>("status").parse::<RunStatus>()?;
+    let progress_json = row.get::<Option<String>, _>("progress_json");
+    let progress = match progress_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
+    let summary_json = row.get::<Option<String>, _>("summary_json");
+    let summary = match summary_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
+
+    Ok(Run {
+        id: row.get::<String, _>("id"),
+        job_id: row.get::<String, _>("job_id"),
+        status,
+        started_at: row.get::<i64, _>("started_at"),
+        ended_at: row.get::<Option<i64>, _>("ended_at"),
+        cancel_requested_at: row.get::<Option<i64>, _>("cancel_requested_at"),
+        cancel_requested_by_user_id: row.get::<Option<i64>, _>("cancel_requested_by_user_id"),
+        cancel_reason: row.get::<Option<String>, _>("cancel_reason"),
+        progress,
+        summary,
+        error: row.get::<Option<String>, _>("error"),
+    })
+}
+
 pub async fn create_run(
     db: &SqlitePool,
     job_id: &str,
@@ -41,6 +69,9 @@ pub async fn create_run(
         status,
         started_at,
         ended_at,
+        cancel_requested_at: None,
+        cancel_requested_by_user_id: None,
+        cancel_reason: None,
         progress: None,
         summary,
         error: error.map(|s| s.to_string()),
@@ -53,7 +84,7 @@ pub async fn list_runs_for_job(
     limit: u32,
 ) -> Result<Vec<Run>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, job_id, status, started_at, ended_at, progress_json, summary_json, error FROM runs WHERE job_id = ? ORDER BY started_at DESC LIMIT ?",
+        "SELECT id, job_id, status, started_at, ended_at, cancel_requested_at, cancel_requested_by_user_id, cancel_reason, progress_json, summary_json, error FROM runs WHERE job_id = ? ORDER BY started_at DESC LIMIT ?",
     )
     .bind(job_id)
     .bind(limit as i64)
@@ -62,28 +93,7 @@ pub async fn list_runs_for_job(
 
     let mut runs = Vec::with_capacity(rows.len());
     for row in rows {
-        let status = row.get::<String, _>("status").parse::<RunStatus>()?;
-        let progress_json = row.get::<Option<String>, _>("progress_json");
-        let progress = match progress_json {
-            Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
-            None => None,
-        };
-        let summary_json = row.get::<Option<String>, _>("summary_json");
-        let summary = match summary_json {
-            Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
-            None => None,
-        };
-
-        runs.push(Run {
-            id: row.get::<String, _>("id"),
-            job_id: row.get::<String, _>("job_id"),
-            status,
-            started_at: row.get::<i64, _>("started_at"),
-            ended_at: row.get::<Option<i64>, _>("ended_at"),
-            progress,
-            summary,
-            error: row.get::<Option<String>, _>("error"),
-        });
+        runs.push(parse_run_row(&row)?);
     }
 
     Ok(runs)
@@ -91,7 +101,7 @@ pub async fn list_runs_for_job(
 
 pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyhow::Error> {
     let row = sqlx::query(
-        "SELECT id, job_id, status, started_at, ended_at, progress_json, summary_json, error FROM runs WHERE id = ? LIMIT 1",
+        "SELECT id, job_id, status, started_at, ended_at, cancel_requested_at, cancel_requested_by_user_id, cancel_reason, progress_json, summary_json, error FROM runs WHERE id = ? LIMIT 1",
     )
     .bind(run_id)
     .fetch_optional(db)
@@ -101,28 +111,7 @@ pub async fn get_run(db: &SqlitePool, run_id: &str) -> Result<Option<Run>, anyho
         return Ok(None);
     };
 
-    let status = row.get::<String, _>("status").parse::<RunStatus>()?;
-    let progress_json = row.get::<Option<String>, _>("progress_json");
-    let progress = match progress_json {
-        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
-        None => None,
-    };
-    let summary_json = row.get::<Option<String>, _>("summary_json");
-    let summary = match summary_json {
-        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
-        None => None,
-    };
-
-    Ok(Some(Run {
-        id: row.get::<String, _>("id"),
-        job_id: row.get::<String, _>("job_id"),
-        status,
-        started_at: row.get::<i64, _>("started_at"),
-        ended_at: row.get::<Option<i64>, _>("ended_at"),
-        progress,
-        summary,
-        error: row.get::<Option<String>, _>("error"),
-    }))
+    Ok(Some(parse_run_row(&row)?))
 }
 
 pub async fn get_run_target_snapshot(
@@ -206,38 +195,49 @@ pub async fn claim_next_queued_run(db: &SqlitePool) -> Result<Option<Run>, anyho
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
     let mut tx = db.begin().await?;
-    let row = sqlx::query(
-        "SELECT id, job_id FROM runs WHERE status = 'queued' ORDER BY started_at ASC LIMIT 1",
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
+    loop {
+        let row = sqlx::query(
+            "SELECT id, job_id FROM runs WHERE status = 'queued' AND cancel_requested_at IS NULL ORDER BY started_at ASC LIMIT 1",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
 
-    let Some(row) = row else {
-        tx.commit().await?;
-        return Ok(None);
-    };
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
 
-    let run_id = row.get::<String, _>("id");
-    let job_id = row.get::<String, _>("job_id");
+        let run_id = row.get::<String, _>("id");
+        let job_id = row.get::<String, _>("job_id");
 
-    sqlx::query("UPDATE runs SET status = 'running', started_at = ? WHERE id = ?")
+        let result = sqlx::query(
+            "UPDATE runs SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued' AND cancel_requested_at IS NULL",
+        )
         .bind(now)
         .bind(&run_id)
         .execute(&mut *tx)
         .await?;
 
-    tx.commit().await?;
+        if result.rows_affected() == 0 {
+            continue;
+        }
 
-    Ok(Some(Run {
-        id: run_id,
-        job_id,
-        status: RunStatus::Running,
-        started_at: now,
-        ended_at: None,
-        progress: None,
-        summary: None,
-        error: None,
-    }))
+        tx.commit().await?;
+
+        return Ok(Some(Run {
+            id: run_id,
+            job_id,
+            status: RunStatus::Running,
+            started_at: now,
+            ended_at: None,
+            cancel_requested_at: None,
+            cancel_requested_by_user_id: None,
+            cancel_reason: None,
+            progress: None,
+            summary: None,
+            error: None,
+        }));
+    }
 }
 
 pub async fn complete_run(
@@ -246,15 +246,29 @@ pub async fn complete_run(
     status: RunStatus,
     summary: Option<serde_json::Value>,
     error: Option<&str>,
-) -> Result<(), anyhow::Error> {
+) -> Result<bool, anyhow::Error> {
     let ended_at = OffsetDateTime::now_utc().unix_timestamp();
     let summary_json = match summary {
         Some(v) => Some(serde_json::to_string(&v)?),
         None => None,
     };
 
-    sqlx::query(
-        "UPDATE runs SET status = ?, ended_at = ?, summary_json = ?, error = ? WHERE id = ?",
+    let result = sqlx::query(
+        "UPDATE runs
+         SET status = CASE
+             WHEN cancel_requested_at IS NOT NULL THEN 'canceled'
+             ELSE ?
+         END,
+             ended_at = ?,
+             summary_json = CASE
+                 WHEN cancel_requested_at IS NOT NULL THEN NULL
+                 ELSE ?
+             END,
+             error = CASE
+                 WHEN cancel_requested_at IS NOT NULL THEN COALESCE(error, 'canceled')
+                 ELSE ?
+             END
+         WHERE id = ? AND status IN ('running', 'queued')",
     )
     .bind(status.as_str())
     .bind(ended_at)
@@ -264,14 +278,64 @@ pub async fn complete_run(
     .execute(db)
     .await?;
 
-    Ok(())
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn request_run_cancel(
+    db: &SqlitePool,
+    run_id: &str,
+    requested_by_user_id: i64,
+    reason: Option<&str>,
+) -> Result<Option<Run>, anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let reason = reason.map(str::trim).filter(|v| !v.is_empty());
+
+    let _ = sqlx::query(
+        "UPDATE runs
+         SET cancel_requested_at = COALESCE(cancel_requested_at, ?),
+             cancel_requested_by_user_id = COALESCE(cancel_requested_by_user_id, ?),
+             cancel_reason = COALESCE(cancel_reason, ?),
+             status = CASE
+                 WHEN status = 'queued' THEN 'canceled'
+                 ELSE status
+             END,
+             ended_at = CASE
+                 WHEN status = 'queued' THEN COALESCE(ended_at, ?)
+                 ELSE ended_at
+             END,
+             error = CASE
+                 WHEN status = 'queued' THEN COALESCE(error, 'canceled')
+                 ELSE error
+             END
+         WHERE id = ?
+           AND status IN ('queued', 'running')",
+    )
+    .bind(now)
+    .bind(requested_by_user_id)
+    .bind(reason)
+    .bind(now)
+    .bind(run_id)
+    .execute(db)
+    .await?;
+
+    get_run(db, run_id).await
 }
 
 pub async fn requeue_run(db: &SqlitePool, run_id: &str) -> Result<(), anyhow::Error> {
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
     sqlx::query(
-        "UPDATE runs SET status = 'queued', started_at = ?, ended_at = NULL, progress_json = NULL, summary_json = NULL, error = NULL WHERE id = ?",
+        "UPDATE runs
+         SET status = 'queued',
+             started_at = ?,
+             ended_at = NULL,
+             cancel_requested_at = NULL,
+             cancel_requested_by_user_id = NULL,
+             cancel_reason = NULL,
+             progress_json = NULL,
+             summary_json = NULL,
+             error = NULL
+         WHERE id = ?",
     )
     .bind(now)
     .bind(run_id)

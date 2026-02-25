@@ -1,13 +1,16 @@
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::Query;
+use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
 use bastion_backup::restore;
+use bastion_engine::cancel_registry::global_cancel_registry;
+use bastion_engine::run_events;
 use bastion_storage::runs_repo;
 
-use super::shared::require_session;
+use super::shared::{require_csrf, require_session};
 use super::{AppError, AppState};
 
 fn invalid_kind_error(message: impl Into<String>) -> AppError {
@@ -24,9 +27,33 @@ pub(super) struct RunResponse {
     started_at: i64,
     ended_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_requested_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_requested_by_user_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     progress: Option<serde_json::Value>,
     summary: Option<serde_json::Value>,
     error: Option<String>,
+}
+
+impl From<runs_repo::Run> for RunResponse {
+    fn from(run: runs_repo::Run) -> Self {
+        Self {
+            id: run.id,
+            job_id: run.job_id,
+            status: run.status,
+            started_at: run.started_at,
+            ended_at: run.ended_at,
+            cancel_requested_at: run.cancel_requested_at,
+            cancel_requested_by_user_id: run.cancel_requested_by_user_id,
+            cancel_reason: run.cancel_reason,
+            progress: run.progress,
+            summary: run.summary,
+            error: run.error,
+        }
+    }
 }
 
 pub(super) async fn get_run(
@@ -40,16 +67,62 @@ pub(super) async fn get_run(
         .await?
         .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
 
-    Ok(Json(RunResponse {
-        id: run.id,
-        job_id: run.job_id,
-        status: run.status,
-        started_at: run.started_at,
-        ended_at: run.ended_at,
-        progress: run.progress,
-        summary: run.summary,
-        error: run.error,
-    }))
+    Ok(Json(run.into()))
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct CancelRunRequest {
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+pub(super) async fn cancel_run(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(req): Json<CancelRunRequest>,
+) -> Result<Json<RunResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let before = runs_repo::get_run(&state.db, &run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
+
+    let run =
+        runs_repo::request_run_cancel(&state.db, &run_id, session.user_id, req.reason.as_deref())
+            .await?
+            .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
+
+    if before.status == runs_repo::RunStatus::Running {
+        let _ = run_events::append_and_broadcast(
+            &state.db,
+            &state.run_events_bus,
+            &run.id,
+            "info",
+            "cancel_requested",
+            "cancel requested",
+            None,
+        )
+        .await;
+        let _ = global_cancel_registry().cancel_run(&run.id);
+    } else if before.status == runs_repo::RunStatus::Queued
+        && run.status == runs_repo::RunStatus::Canceled
+    {
+        let _ = run_events::append_and_broadcast(
+            &state.db,
+            &state.run_events_bus,
+            &run.id,
+            "info",
+            "canceled",
+            "canceled",
+            None,
+        )
+        .await;
+    }
+
+    Ok(Json(run.into()))
 }
 
 #[derive(Debug, Deserialize)]

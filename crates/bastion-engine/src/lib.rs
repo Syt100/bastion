@@ -2,6 +2,7 @@ pub mod agent_job_resolver;
 pub mod agent_manager;
 pub mod agent_snapshots;
 pub mod bulk_operations;
+pub mod cancel_registry;
 pub mod maintenance;
 pub mod notifications;
 pub mod run_events;

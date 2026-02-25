@@ -354,6 +354,7 @@ pub fn router(state: AppState) -> Router {
             post(jobs::ignore_job_snapshot_delete_task),
         )
         .route("/api/runs/{id}", get(runs::get_run))
+        .route("/api/runs/{id}/cancel", post(runs::cancel_run))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
@@ -409,6 +410,10 @@ pub fn router(state: AppState) -> Router {
             post(notifications::cancel),
         )
         .route("/api/operations/{id}", get(operations::get_operation))
+        .route(
+            "/api/operations/{id}/cancel",
+            post(operations::cancel_operation),
+        )
         .route(
             "/api/operations/{id}/events",
             get(operations::list_operation_events),

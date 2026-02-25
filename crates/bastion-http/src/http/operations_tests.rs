@@ -205,3 +205,82 @@ async fn list_run_operations_returns_404_for_missing_run() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn cancel_operation_marks_running_operation_cancel_requested() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    let user_password = uuid::Uuid::new_v4().to_string();
+    auth::create_user(&pool, "admin", &user_password)
+        .await
+        .expect("create user");
+    let user = auth::find_user_by_username(&pool, "admin")
+        .await
+        .expect("find user")
+        .expect("user exists");
+    let session = auth::create_session(&pool, user.id)
+        .await
+        .expect("create session");
+
+    let op = operations_repo::create_operation(&pool, operations_repo::OperationKind::Verify, None)
+        .await
+        .expect("create operation");
+
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+    let app = super::router(super::AppState {
+        config,
+        db: pool.clone(),
+        secrets,
+        agent_manager: AgentManager::default(),
+        run_queue_notify: Arc::new(tokio::sync::Notify::new()),
+        incomplete_cleanup_notify: Arc::new(tokio::sync::Notify::new()),
+        artifact_delete_notify: Arc::new(tokio::sync::Notify::new()),
+        jobs_notify: Arc::new(tokio::sync::Notify::new()),
+        notifications_notify: Arc::new(tokio::sync::Notify::new()),
+        bulk_ops_notify: Arc::new(tokio::sync::Notify::new()),
+        run_events_bus: Arc::new(bastion_engine::run_events_bus::RunEventsBus::new()),
+        hub_runtime_config: Default::default(),
+    });
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/operations/{}/cancel",
+            base_url(addr),
+            op.id
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .header("x-csrf-token", session.csrf_token.clone())
+        .json(&serde_json::json!({ "reason": "manual" }))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["status"].as_str().unwrap_or_default(), "running");
+    assert_eq!(body["cancel_reason"].as_str().unwrap_or_default(), "manual");
+    assert!(body["cancel_requested_at"].as_i64().is_some());
+
+    let fetched = operations_repo::get_operation(&pool, &op.id)
+        .await
+        .expect("get operation")
+        .expect("present");
+    assert_eq!(fetched.status, operations_repo::OperationStatus::Running);
+    assert!(fetched.cancel_requested_at.is_some());
+    assert_eq!(fetched.cancel_requested_by_user_id, Some(user.id));
+
+    server.abort();
+}

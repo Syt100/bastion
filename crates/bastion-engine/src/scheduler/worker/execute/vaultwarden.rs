@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
+use tokio_util::sync::CancellationToken;
 
 use bastion_core::job_spec;
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
@@ -15,6 +16,7 @@ use crate::run_events_bus::RunEventsBus;
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
+use super::check_run_canceled;
 use super::planner::plan_vaultwarden_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
@@ -28,10 +30,12 @@ pub(super) async fn execute_vaultwarden_run(
     job: &jobs_repo::Job,
     run_id: &str,
     started_at: OffsetDateTime,
+    cancel_token: &CancellationToken,
     pipeline: job_spec::PipelineV1,
     source: job_spec::VaultwardenSource,
     target: job_spec::TargetV1,
 ) -> Result<serde_json::Value, anyhow::Error> {
+    check_run_canceled(run_id, cancel_token)?;
     let progress_tx =
         spawn_run_progress_writer(db.clone(), run_id.to_string(), ProgressKindV1::Backup);
     let _ = progress_tx.send(Some(RunProgressUpdate {
@@ -112,6 +116,7 @@ pub(super) async fn execute_vaultwarden_run(
         )
     })
     .await??;
+    check_run_canceled(run_id, cancel_token)?;
     let consistency_total = build.consistency.total();
     let consistency_failed =
         consistency_policy.should_fail(consistency_total, consistency_fail_threshold);
@@ -254,6 +259,7 @@ pub(super) async fn execute_vaultwarden_run(
         Some(upload_cb),
     )
     .await?;
+    check_run_canceled(run_id, cancel_token)?;
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 

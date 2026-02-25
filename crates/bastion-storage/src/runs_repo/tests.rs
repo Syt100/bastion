@@ -5,8 +5,8 @@ use crate::incomplete_cleanup_repo;
 
 use super::{
     IncompleteCleanupRun, RunStatus, append_run_event, claim_next_queued_run, complete_run,
-    create_run, get_run_progress, list_incomplete_cleanup_candidates, list_run_events,
-    list_runs_for_job, prune_runs_ended_before, requeue_run, set_run_progress,
+    create_run, get_run, get_run_progress, list_incomplete_cleanup_candidates, list_run_events,
+    list_runs_for_job, prune_runs_ended_before, request_run_cancel, requeue_run, set_run_progress,
 };
 
 #[tokio::test]
@@ -309,4 +309,118 @@ async fn run_progress_round_trips_and_can_be_cleared() {
         .await
         .expect("get progress 2");
     assert!(got.is_none());
+}
+
+#[tokio::test]
+async fn cancel_queued_run_transitions_to_canceled_and_is_not_claimed() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    sqlx::query(
+        "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+    )
+    .bind("job1")
+    .bind("job1")
+    .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+    .bind(1000)
+    .bind(1000)
+    .execute(&pool)
+    .await
+    .expect("insert job");
+
+    let run = create_run(&pool, "job1", RunStatus::Queued, 1000, None, None, None)
+        .await
+        .expect("create run");
+
+    let canceled = request_run_cancel(&pool, &run.id, 42, Some("stop"))
+        .await
+        .expect("cancel")
+        .expect("run exists");
+    assert_eq!(canceled.status, RunStatus::Canceled);
+    assert!(canceled.ended_at.is_some());
+    assert!(canceled.cancel_requested_at.is_some());
+    assert_eq!(canceled.cancel_requested_by_user_id, Some(42));
+    assert_eq!(canceled.cancel_reason.as_deref(), Some("stop"));
+
+    let claimed = claim_next_queued_run(&pool).await.expect("claim");
+    assert!(claimed.is_none());
+}
+
+#[tokio::test]
+async fn cancel_running_run_marks_intent_and_forces_terminal_canceled() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    sqlx::query(
+        "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+    )
+    .bind("job1")
+    .bind("job1")
+    .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+    .bind(1000)
+    .bind(1000)
+    .execute(&pool)
+    .await
+    .expect("insert job");
+
+    let run = create_run(&pool, "job1", RunStatus::Running, 1000, None, None, None)
+        .await
+        .expect("create run");
+
+    let requested = request_run_cancel(&pool, &run.id, 7, Some("operator"))
+        .await
+        .expect("request cancel")
+        .expect("run exists");
+    assert_eq!(requested.status, RunStatus::Running);
+    assert!(requested.cancel_requested_at.is_some());
+    assert_eq!(requested.cancel_requested_by_user_id, Some(7));
+    assert_eq!(requested.cancel_reason.as_deref(), Some("operator"));
+
+    let completed = complete_run(&pool, &run.id, RunStatus::Success, None, None)
+        .await
+        .expect("complete");
+    assert!(completed);
+
+    let final_run = get_run(&pool, &run.id)
+        .await
+        .expect("get run")
+        .expect("run exists");
+    assert_eq!(final_run.status, RunStatus::Canceled);
+    assert_eq!(final_run.error.as_deref(), Some("canceled"));
+}
+
+#[tokio::test]
+async fn complete_run_is_ignored_after_terminal_cancel() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+
+    sqlx::query(
+        "INSERT INTO jobs (id, name, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, NULL, 'queue', ?, ?, ?)",
+    )
+    .bind("job1")
+    .bind("job1")
+    .bind(r#"{"v":1,"type":"filesystem","source":{"root":"/"},"target":{"type":"local_dir","base_dir":"/tmp"}}"#)
+    .bind(1000)
+    .bind(1000)
+    .execute(&pool)
+    .await
+    .expect("insert job");
+
+    let run = create_run(&pool, "job1", RunStatus::Queued, 1000, None, None, None)
+        .await
+        .expect("create run");
+    let _ = request_run_cancel(&pool, &run.id, 1, None)
+        .await
+        .expect("cancel");
+
+    let completed = complete_run(&pool, &run.id, RunStatus::Failed, None, Some("late"))
+        .await
+        .expect("complete");
+    assert!(!completed);
+
+    let final_run = get_run(&pool, &run.id)
+        .await
+        .expect("get run")
+        .expect("run exists");
+    assert_eq!(final_run.status, RunStatus::Canceled);
 }

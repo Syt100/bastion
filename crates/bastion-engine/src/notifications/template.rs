@@ -83,6 +83,10 @@ pub(super) async fn build_context(
             "Bastion backup rejected".to_string(),
             "Rejected".to_string(),
         ),
+        "canceled" => (
+            "Bastion backup canceled".to_string(),
+            "Canceled".to_string(),
+        ),
         other => (
             format!("Bastion backup completed ({other})"),
             other.to_string(),

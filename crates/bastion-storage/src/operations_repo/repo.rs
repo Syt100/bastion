@@ -25,6 +25,9 @@ fn parse_operation_row(row: &sqlx::sqlite::SqliteRow) -> Result<Operation, anyho
         created_at: row.get::<i64, _>("created_at"),
         started_at: row.get::<i64, _>("started_at"),
         ended_at: row.get::<Option<i64>, _>("ended_at"),
+        cancel_requested_at: row.get::<Option<i64>, _>("cancel_requested_at"),
+        cancel_requested_by_user_id: row.get::<Option<i64>, _>("cancel_requested_by_user_id"),
+        cancel_reason: row.get::<Option<String>, _>("cancel_reason"),
         progress,
         summary,
         error: row.get::<Option<String>, _>("error"),
@@ -72,6 +75,9 @@ pub async fn create_operation(
         created_at: now,
         started_at: now,
         ended_at: None,
+        cancel_requested_at: None,
+        cancel_requested_by_user_id: None,
+        cancel_reason: None,
         progress: None,
         summary: None,
         error: None,
@@ -83,7 +89,7 @@ pub async fn get_operation(
     op_id: &str,
 ) -> Result<Option<Operation>, anyhow::Error> {
     let row = sqlx::query(
-        "SELECT id, kind, status, created_at, started_at, ended_at, progress_json, summary_json, error FROM operations WHERE id = ? LIMIT 1",
+        "SELECT id, kind, status, created_at, started_at, ended_at, cancel_requested_at, cancel_requested_by_user_id, cancel_reason, progress_json, summary_json, error FROM operations WHERE id = ? LIMIT 1",
     )
     .bind(op_id)
     .fetch_optional(db)
@@ -103,7 +109,7 @@ pub async fn list_operations_by_subject(
     limit: u32,
 ) -> Result<Vec<Operation>, anyhow::Error> {
     let rows = sqlx::query(
-        "SELECT id, kind, status, created_at, started_at, ended_at, progress_json, summary_json, error FROM operations WHERE subject_kind = ? AND subject_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
+        "SELECT id, kind, status, created_at, started_at, ended_at, cancel_requested_at, cancel_requested_by_user_id, cancel_reason, progress_json, summary_json, error FROM operations WHERE subject_kind = ? AND subject_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
     )
     .bind(subject_kind)
     .bind(subject_id)
@@ -220,15 +226,29 @@ pub async fn complete_operation(
     status: OperationStatus,
     summary: Option<serde_json::Value>,
     error: Option<&str>,
-) -> Result<(), anyhow::Error> {
+) -> Result<bool, anyhow::Error> {
     let ended_at = OffsetDateTime::now_utc().unix_timestamp();
     let summary_json = match summary {
         Some(v) => Some(serde_json::to_string(&v)?),
         None => None,
     };
 
-    sqlx::query(
-        "UPDATE operations SET status = ?, ended_at = ?, summary_json = ?, error = ? WHERE id = ?",
+    let result = sqlx::query(
+        "UPDATE operations
+         SET status = CASE
+             WHEN cancel_requested_at IS NOT NULL THEN 'canceled'
+             ELSE ?
+         END,
+             ended_at = ?,
+             summary_json = CASE
+                 WHEN cancel_requested_at IS NOT NULL THEN NULL
+                 ELSE ?
+             END,
+             error = CASE
+                 WHEN cancel_requested_at IS NOT NULL THEN COALESCE(error, 'canceled')
+                 ELSE ?
+             END
+         WHERE id = ? AND status = 'running'",
     )
     .bind(status.as_str())
     .bind(ended_at)
@@ -238,5 +258,32 @@ pub async fn complete_operation(
     .execute(db)
     .await?;
 
-    Ok(())
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn request_operation_cancel(
+    db: &SqlitePool,
+    op_id: &str,
+    requested_by_user_id: i64,
+    reason: Option<&str>,
+) -> Result<Option<Operation>, anyhow::Error> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let reason = reason.map(str::trim).filter(|v| !v.is_empty());
+
+    let _ = sqlx::query(
+        "UPDATE operations
+         SET cancel_requested_at = COALESCE(cancel_requested_at, ?),
+             cancel_requested_by_user_id = COALESCE(cancel_requested_by_user_id, ?),
+             cancel_reason = COALESCE(cancel_reason, ?)
+         WHERE id = ?
+           AND status = 'running'",
+    )
+    .bind(now)
+    .bind(requested_by_user_id)
+    .bind(reason)
+    .bind(op_id)
+    .execute(db)
+    .await?;
+
+    get_operation(db, op_id).await
 }

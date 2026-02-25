@@ -8,6 +8,7 @@ pub enum RunStatus {
     Success,
     Failed,
     Rejected,
+    Canceled,
 }
 
 impl RunStatus {
@@ -18,7 +19,16 @@ impl RunStatus {
             Self::Success => "success",
             Self::Failed => "failed",
             Self::Rejected => "rejected",
+            Self::Canceled => "canceled",
         }
+    }
+
+    pub fn is_terminal(self) -> bool {
+        !matches!(self, Self::Queued | Self::Running)
+    }
+
+    pub fn is_cancelable(self) -> bool {
+        matches!(self, Self::Queued | Self::Running)
     }
 }
 
@@ -32,6 +42,7 @@ impl std::str::FromStr for RunStatus {
             "success" => Ok(Self::Success),
             "failed" => Ok(Self::Failed),
             "rejected" => Ok(Self::Rejected),
+            "canceled" => Ok(Self::Canceled),
             _ => Err(anyhow::anyhow!("invalid run status")),
         }
     }
@@ -44,6 +55,9 @@ pub struct Run {
     pub status: RunStatus,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    pub cancel_requested_at: Option<i64>,
+    pub cancel_requested_by_user_id: Option<i64>,
+    pub cancel_reason: Option<String>,
     pub progress: Option<serde_json::Value>,
     pub summary: Option<serde_json::Value>,
     pub error: Option<String>,

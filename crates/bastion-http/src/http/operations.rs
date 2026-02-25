@@ -555,9 +555,34 @@ pub(super) struct OperationResponse {
     started_at: i64,
     ended_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_requested_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_requested_by_user_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     progress: Option<serde_json::Value>,
     summary: Option<serde_json::Value>,
     error: Option<String>,
+}
+
+impl From<operations_repo::Operation> for OperationResponse {
+    fn from(op: operations_repo::Operation) -> Self {
+        Self {
+            id: op.id,
+            kind: op.kind,
+            status: op.status,
+            created_at: op.created_at,
+            started_at: op.started_at,
+            ended_at: op.ended_at,
+            cancel_requested_at: op.cancel_requested_at,
+            cancel_requested_by_user_id: op.cancel_requested_by_user_id,
+            cancel_reason: op.cancel_reason,
+            progress: op.progress,
+            summary: op.summary,
+            error: op.error,
+        }
+    }
 }
 
 pub(super) async fn get_operation(
@@ -569,17 +594,7 @@ pub(super) async fn get_operation(
     let op = operations_repo::get_operation(&state.db, &op_id)
         .await?
         .ok_or_else(|| AppError::not_found("operation_not_found", "Operation not found"))?;
-    Ok(Json(OperationResponse {
-        id: op.id,
-        kind: op.kind,
-        status: op.status,
-        created_at: op.created_at,
-        started_at: op.started_at,
-        ended_at: op.ended_at,
-        progress: op.progress,
-        summary: op.summary,
-        error: op.error,
-    }))
+    Ok(Json(op.into()))
 }
 
 pub(super) async fn list_operation_events(
@@ -605,21 +620,51 @@ pub(super) async fn list_run_operations(
 
     // Run exists; list operations linked to it.
     let ops = operations_repo::list_operations_by_subject(&state.db, "run", &run.id, 200).await?;
-    Ok(Json(
-        ops.into_iter()
-            .map(|op| OperationResponse {
-                id: op.id,
-                kind: op.kind,
-                status: op.status,
-                created_at: op.created_at,
-                started_at: op.started_at,
-                ended_at: op.ended_at,
-                progress: op.progress,
-                summary: op.summary,
-                error: op.error,
-            })
-            .collect(),
-    ))
+    Ok(Json(ops.into_iter().map(OperationResponse::from).collect()))
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct CancelOperationRequest {
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+pub(super) async fn cancel_operation(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    headers: HeaderMap,
+    Path(op_id): Path<String>,
+    Json(req): Json<CancelOperationRequest>,
+) -> Result<Json<OperationResponse>, AppError> {
+    let session = require_session(&state, &cookies).await?;
+    require_csrf(&headers, &session)?;
+
+    let before = operations_repo::get_operation(&state.db, &op_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("operation_not_found", "Operation not found"))?;
+
+    let op = operations_repo::request_operation_cancel(
+        &state.db,
+        &op_id,
+        session.user_id,
+        req.reason.as_deref(),
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("operation_not_found", "Operation not found"))?;
+
+    if before.status == operations_repo::OperationStatus::Running {
+        let _ = operations_repo::append_event(
+            &state.db,
+            &op.id,
+            "info",
+            "cancel_requested",
+            "cancel requested",
+            None,
+        )
+        .await;
+    }
+
+    Ok(Json(op.into()))
 }
 
 #[cfg(test)]

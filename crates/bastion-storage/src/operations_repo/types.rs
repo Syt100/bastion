@@ -34,6 +34,7 @@ pub enum OperationStatus {
     Running,
     Success,
     Failed,
+    Canceled,
 }
 
 impl OperationStatus {
@@ -42,7 +43,16 @@ impl OperationStatus {
             Self::Running => "running",
             Self::Success => "success",
             Self::Failed => "failed",
+            Self::Canceled => "canceled",
         }
+    }
+
+    pub fn is_terminal(self) -> bool {
+        !matches!(self, Self::Running)
+    }
+
+    pub fn is_cancelable(self) -> bool {
+        matches!(self, Self::Running)
     }
 }
 
@@ -54,6 +64,7 @@ impl std::str::FromStr for OperationStatus {
             "running" => Ok(Self::Running),
             "success" => Ok(Self::Success),
             "failed" => Ok(Self::Failed),
+            "canceled" => Ok(Self::Canceled),
             _ => Err(anyhow::anyhow!("invalid operation status")),
         }
     }
@@ -67,6 +78,9 @@ pub struct Operation {
     pub created_at: i64,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    pub cancel_requested_at: Option<i64>,
+    pub cancel_requested_by_user_id: Option<i64>,
+    pub cancel_reason: Option<String>,
     pub progress: Option<serde_json::Value>,
     pub summary: Option<serde_json::Value>,
     pub error: Option<String>,

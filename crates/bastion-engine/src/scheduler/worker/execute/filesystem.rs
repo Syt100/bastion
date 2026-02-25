@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
+use tokio_util::sync::CancellationToken;
 
 use bastion_core::job_spec;
 use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
@@ -15,6 +16,7 @@ use crate::run_events_bus::RunEventsBus;
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
+use super::check_run_canceled;
 use super::planner::plan_filesystem_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
@@ -38,10 +40,12 @@ pub(super) async fn execute_filesystem_run(
     job: &jobs_repo::Job,
     run_id: &str,
     started_at: OffsetDateTime,
+    cancel_token: &CancellationToken,
     pipeline: job_spec::PipelineV1,
     source: job_spec::FilesystemSource,
     target: job_spec::TargetV1,
 ) -> Result<serde_json::Value, anyhow::Error> {
+    check_run_canceled(run_id, cancel_token)?;
     let progress_tx =
         spawn_run_progress_writer(db.clone(), run_id.to_string(), ProgressKindV1::Backup);
 
@@ -69,6 +73,7 @@ pub(super) async fn execute_filesystem_run(
     let mut read_mapping: Option<backup::filesystem::FilesystemReadMapping> = None;
 
     if snapshot_mode != job_spec::SnapshotModeV1::Off {
+        check_run_canceled(run_id, cancel_token)?;
         let using_paths = source.paths.iter().any(|p| !p.trim().is_empty());
         let snapshot_root = if using_paths {
             let paths = source
@@ -277,6 +282,7 @@ pub(super) async fn execute_filesystem_run(
     .await?;
 
     let allow_rolling_upload = planned.plan.allow_rolling_upload;
+    check_run_canceled(run_id, cancel_token)?;
 
     let (on_part_finished, parts_uploader) = if allow_rolling_upload {
         rolling_archive::prepare_archive_part_uploader(
@@ -434,6 +440,7 @@ pub(super) async fn execute_filesystem_run(
         )
     })
     .await?;
+    check_run_canceled(run_id, cancel_token)?;
 
     if let Some(handle) = snapshot_handle.take() {
         let provider = handle.provider.clone();
@@ -486,6 +493,7 @@ pub(super) async fn execute_filesystem_run(
     }
 
     let build = build_res?;
+    check_run_canceled(run_id, cancel_token)?;
 
     if let Some(handle) = parts_uploader {
         handle.await??;
@@ -719,6 +727,7 @@ pub(super) async fn execute_filesystem_run(
             return Err(error);
         }
     };
+    check_run_canceled(run_id, cancel_token)?;
 
     let _ = tokio::fs::remove_dir_all(&artifacts.run_dir).await;
 

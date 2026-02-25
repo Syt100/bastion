@@ -301,7 +301,13 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                 err_code,
                             )
                             .await;
-                            if run_status == runs_repo::RunStatus::Success {
+                            let final_status = runs_repo::get_run(&db, &run_id)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map(|r| r.status)
+                                .unwrap_or(run_status);
+                            if final_status == runs_repo::RunStatus::Success {
                                 let _ =
                                     run_artifacts_repo::upsert_run_artifact_from_successful_run(
                                         &db, &run_id,
@@ -312,18 +318,24 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                 &db,
                                 &run_events_bus,
                                 &run_id,
-                                if run_status == runs_repo::RunStatus::Success {
+                                if final_status == runs_repo::RunStatus::Success {
+                                    "info"
+                                } else if final_status == runs_repo::RunStatus::Canceled {
                                     "info"
                                 } else {
                                     "error"
                                 },
-                                if run_status == runs_repo::RunStatus::Success {
+                                if final_status == runs_repo::RunStatus::Success {
                                     "complete"
+                                } else if final_status == runs_repo::RunStatus::Canceled {
+                                    "canceled"
                                 } else {
                                     "failed"
                                 },
-                                if run_status == runs_repo::RunStatus::Success {
+                                if final_status == runs_repo::RunStatus::Success {
                                     "complete"
+                                } else if final_status == runs_repo::RunStatus::Canceled {
+                                    "canceled"
                                 } else {
                                     "failed"
                                 },
