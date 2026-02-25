@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve release version metadata
         shell: bash
@@ -283,7 +283,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout (for release notes)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
