@@ -17,6 +17,10 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed CI checks to run `clippy` for both default-feature and all-features builds.
 - Changed offline scheduler/writer internals to bounded queues with explicit full/closed handling for more predictable memory behavior under prolonged disconnects.
 - Changed Dashboard desktop recent-runs idle prefetch to skip non-desktop viewports.
+- Changed CI workflow action versions to current major lines (`actions/upload-pages-artifact` v4, `actions/upload-artifact` v6, `actions/cache` v5, `actions/checkout` v6, `actions/download-artifact` v7).
+- Changed Web UI dependency baseline via grouped non-major upgrades (including Vue 3.5.29, Vite 7.3.1, Tailwind CSS 4.2.1, and Vitest 4.0.18).
+- Changed Rust dependency baseline via grouped non-major upgrades (including Tokio 1.49, UUID 1.21, Chrono 0.4.44, Clap 4.5.60, and Tempfile 3.26).
+- Changed XML/runtime dependency baselines by upgrading `roxmltree` to 0.21.1 and `windows-service` to 0.8.0.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -32,6 +36,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.
+- Refreshed CI/UI/Rust dependency sets through Dependabot merges to reduce known-vulnerability exposure and keep patch-level security fixes current.
 
 ## [v0.2.2] - 2026-02-24
 
