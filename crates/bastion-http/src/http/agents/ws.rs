@@ -127,10 +127,50 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
     match agent_tasks_repo::list_open_tasks_for_agent(&db, &agent_id, 100).await {
         Ok(tasks) => {
             for task in tasks {
-                if let Ok(text) = serde_json::to_string(&task.payload) {
+                let payload = task.payload.clone();
+                if let Ok(text) = serde_json::to_string(&payload) {
                     let _ = agent_manager
                         .send(&agent_id, Message::Text(text.into()))
                         .await;
+                }
+
+                if let Ok(msg) = serde_json::from_value::<HubToAgentMessageV1>(payload) {
+                    match msg {
+                        HubToAgentMessageV1::Task { task, .. } => {
+                            if let Ok(Some(run)) = runs_repo::get_run(&db, &task.run_id).await
+                                && run.cancel_requested_at.is_some()
+                                && run.status == runs_repo::RunStatus::Running
+                            {
+                                let _ = agent_manager
+                                    .send_json(
+                                        &agent_id,
+                                        &HubToAgentMessageV1::CancelRunTask {
+                                            v: PROTOCOL_VERSION,
+                                            run_id: task.run_id,
+                                        },
+                                    )
+                                    .await;
+                            }
+                        }
+                        HubToAgentMessageV1::RestoreTask { task, .. } => {
+                            if let Ok(Some(op)) =
+                                operations_repo::get_operation(&db, &task.op_id).await
+                                && op.cancel_requested_at.is_some()
+                                && op.status == operations_repo::OperationStatus::Running
+                            {
+                                let _ = agent_manager
+                                    .send_json(
+                                        &agent_id,
+                                        &HubToAgentMessageV1::CancelOperationTask {
+                                            v: PROTOCOL_VERSION,
+                                            op_id: task.op_id,
+                                        },
+                                    )
+                                    .await;
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -281,16 +321,18 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                         if let Some(run) = run
                             && run.status == runs_repo::RunStatus::Running
                         {
-                            let (run_status, err_code) = if status == "success" {
-                                (runs_repo::RunStatus::Success, None)
-                            } else {
-                                let code = summary
-                                    .as_ref()
-                                    .and_then(|v| v.get("error_code"))
-                                    .and_then(|v| v.as_str())
-                                    .filter(|v| !v.trim().is_empty())
-                                    .unwrap_or("agent_failed");
-                                (runs_repo::RunStatus::Failed, Some(code))
+                            let (run_status, err_code) = match status.trim() {
+                                "success" => (runs_repo::RunStatus::Success, None),
+                                "canceled" => (runs_repo::RunStatus::Canceled, Some("canceled")),
+                                _ => {
+                                    let code = summary
+                                        .as_ref()
+                                        .and_then(|v| v.get("error_code"))
+                                        .and_then(|v| v.as_str())
+                                        .filter(|v| !v.trim().is_empty())
+                                        .unwrap_or("agent_failed");
+                                    (runs_repo::RunStatus::Failed, Some(code))
+                                }
                             };
 
                             let _ = runs_repo::complete_run(
@@ -601,20 +643,40 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                     Ok(AgentToHubMessageV1::OperationResult { v, result })
                         if v == PROTOCOL_VERSION =>
                     {
-                        let status = if result.status.trim() == "success" {
-                            operations_repo::OperationStatus::Success
-                        } else {
-                            operations_repo::OperationStatus::Failed
+                        let requested_status = match result.status.trim() {
+                            "success" => operations_repo::OperationStatus::Success,
+                            "canceled" => operations_repo::OperationStatus::Canceled,
+                            _ => operations_repo::OperationStatus::Failed,
                         };
 
-                        let _ = operations_repo::complete_operation(
+                        let completed = operations_repo::complete_operation(
                             &db,
                             &result.op_id,
-                            status,
+                            requested_status,
                             result.summary.clone(),
                             result.error.as_deref(),
                         )
-                        .await;
+                        .await
+                        .unwrap_or(false);
+
+                        let final_status = operations_repo::get_operation(&db, &result.op_id)
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|op| op.status)
+                            .unwrap_or(requested_status);
+
+                        if completed && final_status == operations_repo::OperationStatus::Canceled {
+                            let _ = operations_repo::append_event(
+                                &db,
+                                &result.op_id,
+                                "info",
+                                "canceled",
+                                "canceled",
+                                Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                            )
+                            .await;
+                        }
 
                         let _ = agent_tasks_repo::complete_task(
                             &db,

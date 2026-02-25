@@ -124,8 +124,15 @@ async fn execute_offline_run_task(
         target_capabilities: None,
     };
 
-    let outcome =
-        super::super::super::handle_backup_task(data_dir, &mut sink, &task.run_id, run_task).await;
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let outcome = super::super::super::handle_backup_task(
+        data_dir,
+        &mut sink,
+        &task.run_id,
+        run_task,
+        &cancel_token,
+    )
+    .await;
 
     let (writer, task_summary) = sink.into_parts();
     match outcome {

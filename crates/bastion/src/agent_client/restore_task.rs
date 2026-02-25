@@ -4,6 +4,7 @@ use std::time::Duration;
 use futures_util::{Sink, SinkExt};
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -24,6 +25,31 @@ use super::managed::save_task_result;
 const HUB_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 const HUB_STREAM_PULL_TIMEOUT: Duration = Duration::from_secs(30);
 const HUB_STREAM_MAX_BYTES: u32 = 1024 * 1024;
+
+#[derive(Debug)]
+pub(super) struct AgentOperationCanceled {
+    op_id: String,
+}
+
+impl std::fmt::Display for AgentOperationCanceled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "operation canceled: {}", self.op_id)
+    }
+}
+
+impl std::error::Error for AgentOperationCanceled {}
+
+fn check_operation_canceled(
+    op_id: &str,
+    cancel_token: &CancellationToken,
+) -> Result<(), anyhow::Error> {
+    if cancel_token.is_cancelled() {
+        return Err(anyhow::Error::new(AgentOperationCanceled {
+            op_id: op_id.to_string(),
+        }));
+    }
+    Ok(())
+}
 
 struct OpProgressBuilder {
     last_ts: Option<i64>,
@@ -79,6 +105,7 @@ pub(super) async fn handle_restore_task(
     hub_streams: &HubStreamManager,
     task_id: &str,
     task: RestoreTaskV1,
+    cancel_token: &CancellationToken,
 ) -> Result<(), anyhow::Error> {
     let op_id = task.op_id.trim().to_string();
     let run_id = task.run_id.trim().to_string();
@@ -97,6 +124,7 @@ pub(super) async fn handle_restore_task(
         });
 
     send_op_event(tx, &op_id, "info", "start", "start", None).await?;
+    check_operation_canceled(&op_id, cancel_token)?;
 
     let manifest_bytes = hub_streams
         .read_bytes(
@@ -108,6 +136,7 @@ pub(super) async fn handle_restore_task(
             HUB_STREAM_MAX_BYTES,
         )
         .await?;
+    check_operation_canceled(&op_id, cancel_token)?;
     let manifest = serde_json::from_slice::<ManifestV1>(&manifest_bytes)?;
 
     send_op_event(
@@ -152,6 +181,7 @@ pub(super) async fn handle_restore_task(
         }
         other => anyhow::bail!("unsupported manifest.pipeline.encryption: {other}"),
     };
+    check_operation_canceled(&op_id, cancel_token)?;
 
     let conflict = task
         .conflict_policy
@@ -176,6 +206,7 @@ pub(super) async fn handle_restore_task(
             HUB_STREAM_OPEN_TIMEOUT,
         )
         .await?;
+    check_operation_canceled(&op_id, cancel_token)?;
     if let Some(error) = res.error.as_deref()
         && !error.trim().is_empty()
     {
@@ -269,9 +300,13 @@ pub(super) async fn handle_restore_task(
         }
     });
 
+    let mut cancel_seen = cancel_token.is_cancelled();
     let summary = loop {
         tokio::select! {
             res = &mut restore_handle => break res??,
+            _ = cancel_token.cancelled(), if !cancel_seen => {
+                cancel_seen = true;
+            }
             maybe_done = progress_rx.recv() => {
                 if let Some(done) = maybe_done {
                     send_op_progress_snapshot(tx, &op_id, progress.snapshot(done)).await?;
@@ -282,6 +317,10 @@ pub(super) async fn handle_restore_task(
 
     // Best-effort cleanup for any staging created by the restore.
     let _ = tokio::fs::remove_dir_all(restore_staging_root_cleanup).await;
+
+    if cancel_seen || cancel_token.is_cancelled() {
+        return Err(anyhow::Error::new(AgentOperationCanceled { op_id }));
+    }
 
     send_op_event(tx, &op_id, "info", "complete", "complete", None).await?;
 

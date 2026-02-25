@@ -244,10 +244,18 @@ pub enum HubToAgentMessageV1 {
         task_id: String,
         task: Box<BackupRunTaskV1>,
     },
+    CancelRunTask {
+        v: u32,
+        run_id: String,
+    },
     RestoreTask {
         v: u32,
         task_id: String,
         task: Box<RestoreTaskV1>,
+    },
+    CancelOperationTask {
+        v: u32,
+        op_id: String,
     },
     SnapshotDeleteTask {
         v: u32,
@@ -617,5 +625,41 @@ mod tests {
                 supports_restore_reader: true,
             })
         );
+    }
+
+    #[test]
+    fn cancel_run_task_round_trip() {
+        let msg = HubToAgentMessageV1::CancelRunTask {
+            v: PROTOCOL_VERSION,
+            run_id: "run-1".to_string(),
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let decoded = serde_json::from_str::<HubToAgentMessageV1>(&json).expect("deserialize");
+        match decoded {
+            HubToAgentMessageV1::CancelRunTask { v, run_id } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(run_id, "run-1");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cancel_operation_task_round_trip() {
+        let msg = HubToAgentMessageV1::CancelOperationTask {
+            v: PROTOCOL_VERSION,
+            op_id: "op-1".to_string(),
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let decoded = serde_json::from_str::<HubToAgentMessageV1>(&json).expect("deserialize");
+        match decoded {
+            HubToAgentMessageV1::CancelOperationTask { v, op_id } => {
+                assert_eq!(v, PROTOCOL_VERSION);
+                assert_eq!(op_id, "op-1");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
     }
 }

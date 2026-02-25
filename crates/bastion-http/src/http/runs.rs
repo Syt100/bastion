@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
 use bastion_backup::restore;
+use bastion_core::agent_protocol::{HubToAgentMessageV1, PROTOCOL_VERSION};
 use bastion_engine::cancel_registry::global_cancel_registry;
 use bastion_engine::run_events;
+use bastion_storage::agent_tasks_repo;
 use bastion_storage::runs_repo;
 
 use super::shared::{require_csrf, require_session};
@@ -107,6 +109,20 @@ pub(super) async fn cancel_run(
         )
         .await;
         let _ = global_cancel_registry().cancel_run(&run.id);
+        if let Ok(Some(task)) = agent_tasks_repo::get_task(&state.db, &run.id).await
+            && task.completed_at.is_none()
+        {
+            let _ = state
+                .agent_manager
+                .send_json(
+                    &task.agent_id,
+                    &HubToAgentMessageV1::CancelRunTask {
+                        v: PROTOCOL_VERSION,
+                        run_id: run.id.clone(),
+                    },
+                )
+                .await;
+        }
     } else if before.status == runs_repo::RunStatus::Queued
         && run.status == runs_repo::RunStatus::Canceled
     {

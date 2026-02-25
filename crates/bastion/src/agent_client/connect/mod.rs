@@ -1,3 +1,4 @@
+mod cancel_registry;
 mod handlers;
 mod handshake;
 mod heartbeat;
@@ -29,6 +30,7 @@ use super::hub_stream::{HubStreamChunk, HubStreamManager};
 use super::identity::AgentIdentityV1;
 use super::offline;
 use super::util::normalize_base_url;
+use cancel_registry::TaskCancelRegistry;
 
 const AGENT_CONNECT_OUTBOX_CAPACITY: usize = 512;
 const FORCE_RECONNECT_SIGNAL_CAPACITY: usize = 8;
@@ -112,6 +114,7 @@ pub(super) async fn connect_and_run(
     let mut tx = OutboxSink { tx: out_tx.clone() };
     let data_dir = data_dir.to_path_buf();
     let hub_streams = HubStreamManager::new(out_tx.clone());
+    let cancel_registry = TaskCancelRegistry::default();
     let (force_reconnect_tx, mut force_reconnect_rx) =
         mpsc::channel::<()>(FORCE_RECONNECT_SIGNAL_CAPACITY);
 
@@ -208,6 +211,7 @@ pub(super) async fn connect_and_run(
                                 let out_tx = out_tx.clone();
                                 let data_dir = data_dir.clone();
                                 let run_lock = run_lock.clone();
+                                let cancel_registry = cancel_registry.clone();
                                 let force_reconnect_tx = force_reconnect_tx.clone();
                                 tokio::spawn(async move {
                                     let mut tx = OutboxSink { tx: out_tx };
@@ -215,6 +219,7 @@ pub(super) async fn connect_and_run(
                                         &mut tx,
                                         &data_dir,
                                         run_lock,
+                                        &cancel_registry,
                                         task_id,
                                         task,
                                     )
@@ -231,11 +236,15 @@ pub(super) async fn connect_and_run(
                                     }
                                 });
                             }
+                            Ok(HubToAgentMessageV1::CancelRunTask { v, run_id }) if v == PROTOCOL_VERSION => {
+                                handlers::handle_cancel_run_task(&cancel_registry, run_id);
+                            }
                             Ok(HubToAgentMessageV1::RestoreTask { v, task_id, task }) if v == PROTOCOL_VERSION => {
                                 let out_tx = out_tx.clone();
                                 let data_dir = data_dir.clone();
                                 let run_lock = run_lock.clone();
                                 let hub_streams = hub_streams.clone();
+                                let cancel_registry = cancel_registry.clone();
                                 let force_reconnect_tx = force_reconnect_tx.clone();
                                 tokio::spawn(async move {
                                     let mut tx = OutboxSink { tx: out_tx };
@@ -243,6 +252,7 @@ pub(super) async fn connect_and_run(
                                         &mut tx,
                                         &data_dir,
                                         run_lock,
+                                        &cancel_registry,
                                         &hub_streams,
                                         task_id,
                                         task,
@@ -259,6 +269,9 @@ pub(super) async fn connect_and_run(
                                         }
                                     }
                                 });
+                            }
+                            Ok(HubToAgentMessageV1::CancelOperationTask { v, op_id }) if v == PROTOCOL_VERSION => {
+                                handlers::handle_cancel_operation_task(&cancel_registry, op_id);
                             }
                             Ok(HubToAgentMessageV1::SnapshotDeleteTask { v, task }) if v == PROTOCOL_VERSION => {
                                 let out_tx = out_tx.clone();

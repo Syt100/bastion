@@ -99,6 +99,45 @@ pub async fn complete_task(
     Ok(result.rows_affected() > 0)
 }
 
+pub async fn get_task(db: &SqlitePool, id: &str) -> Result<Option<AgentTask>, anyhow::Error> {
+    let row = sqlx::query(
+        "SELECT id, agent_id, run_id, status, payload_json, created_at, updated_at, acked_at, completed_at, result_json, error
+         FROM agent_tasks
+         WHERE id = ?
+         LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let payload_json = row.get::<String, _>("payload_json");
+    let payload = serde_json::from_str::<serde_json::Value>(&payload_json)?;
+
+    let result_json = row.get::<Option<String>, _>("result_json");
+    let result = match result_json {
+        Some(s) => Some(serde_json::from_str::<serde_json::Value>(&s)?),
+        None => None,
+    };
+
+    Ok(Some(AgentTask {
+        id: row.get::<String, _>("id"),
+        agent_id: row.get::<String, _>("agent_id"),
+        run_id: row.get::<String, _>("run_id"),
+        status: row.get::<String, _>("status"),
+        payload,
+        created_at: row.get::<i64, _>("created_at"),
+        updated_at: row.get::<i64, _>("updated_at"),
+        acked_at: row.get::<Option<i64>, _>("acked_at"),
+        completed_at: row.get::<Option<i64>, _>("completed_at"),
+        result,
+        error: row.get::<Option<String>, _>("error"),
+    }))
+}
+
 pub async fn list_open_tasks_for_agent(
     db: &SqlitePool,
     agent_id: &str,
@@ -108,8 +147,14 @@ pub async fn list_open_tasks_for_agent(
         r#"
         SELECT t.id, t.agent_id, t.run_id, t.status, t.payload_json, t.created_at, t.updated_at, t.acked_at, t.completed_at, t.result_json, t.error
         FROM agent_tasks t
-        JOIN runs r ON r.id = t.run_id
-        WHERE t.agent_id = ? AND t.completed_at IS NULL AND r.status = 'running'
+        LEFT JOIN runs r ON r.id = t.run_id
+        LEFT JOIN operations o ON o.id = t.id
+        WHERE t.agent_id = ?
+          AND t.completed_at IS NULL
+          AND (
+            r.status = 'running'
+            OR o.status = 'running'
+          )
         ORDER BY t.created_at ASC
         LIMIT ?
         "#,
@@ -154,7 +199,7 @@ mod tests {
 
     use crate::db;
 
-    use super::{ack_task, complete_task, list_open_tasks_for_agent, upsert_task};
+    use super::{ack_task, complete_task, get_task, list_open_tasks_for_agent, upsert_task};
 
     #[tokio::test]
     async fn tasks_round_trip() {
@@ -196,6 +241,7 @@ mod tests {
             .unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "t1");
+        assert_eq!(get_task(&pool, "t1").await.unwrap().unwrap().id, "t1");
 
         assert!(ack_task(&pool, "t1").await.unwrap());
         assert!(
@@ -208,5 +254,56 @@ mod tests {
             .await
             .unwrap();
         assert!(tasks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_open_tasks_includes_running_restore_operation_tasks() {
+        let tmp = TempDir::new().unwrap();
+        let pool = db::init(tmp.path()).await.unwrap();
+
+        sqlx::query("INSERT INTO jobs (id, name, agent_id, schedule, overlap_policy, spec_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+            .bind("job1")
+            .bind("job")
+            .bind("agent1")
+            .bind(Option::<String>::None)
+            .bind("queue")
+            .bind(r#"{"v":1,"type":"filesystem"}"#)
+            .bind(1i64)
+            .bind(1i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO runs (id, job_id, status, started_at, ended_at) VALUES (?, ?, 'success', ?, ?)")
+            .bind("run-success")
+            .bind("job1")
+            .bind(1i64)
+            .bind(2i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "INSERT INTO operations (id, kind, status, created_at, started_at, subject_kind, subject_id)
+             VALUES (?, 'restore', 'running', ?, ?, 'run', ?)",
+        )
+        .bind("op1")
+        .bind(10i64)
+        .bind(10i64)
+        .bind("run-success")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let payload = serde_json::json!({"v":1,"type":"restore_task","task_id":"op1","task":{"op_id":"op1","run_id":"run-success","destination_dir":"/tmp","conflict_policy":"overwrite"}});
+        upsert_task(&pool, "op1", "agent1", "run-success", "sent", &payload)
+            .await
+            .unwrap();
+
+        let tasks = list_open_tasks_for_agent(&pool, "agent1", 10)
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "op1");
     }
 }

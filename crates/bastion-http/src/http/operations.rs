@@ -14,6 +14,7 @@ use bastion_core::agent_protocol::{
 };
 use bastion_core::job_spec;
 use bastion_engine::agent_snapshots;
+use bastion_engine::cancel_registry::global_cancel_registry;
 use bastion_storage::agent_tasks_repo;
 use bastion_storage::jobs_repo;
 use bastion_storage::operations_repo;
@@ -662,6 +663,21 @@ pub(super) async fn cancel_operation(
             None,
         )
         .await;
+        let _ = global_cancel_registry().cancel_operation(&op.id);
+        if let Ok(Some(task)) = agent_tasks_repo::get_task(&state.db, &op.id).await
+            && task.completed_at.is_none()
+        {
+            let _ = state
+                .agent_manager
+                .send_json(
+                    &task.agent_id,
+                    &HubToAgentMessageV1::CancelOperationTask {
+                        v: PROTOCOL_VERSION,
+                        op_id: op.id.clone(),
+                    },
+                )
+                .await;
+        }
     }
 
     Ok(Json(op.into()))

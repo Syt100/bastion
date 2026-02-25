@@ -7,6 +7,7 @@ use std::path::Path;
 
 use futures_util::{Sink, SinkExt};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use bastion_backup as backup;
@@ -26,6 +27,31 @@ struct TaskContext<'a> {
     run_id: &'a str,
     job_id: &'a str,
     started_at: time::OffsetDateTime,
+}
+
+#[derive(Debug)]
+pub(super) struct AgentRunCanceled {
+    run_id: String,
+}
+
+impl std::fmt::Display for AgentRunCanceled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "run canceled: {}", self.run_id)
+    }
+}
+
+impl std::error::Error for AgentRunCanceled {}
+
+pub(super) fn check_run_canceled(
+    run_id: &str,
+    cancel_token: &CancellationToken,
+) -> Result<(), anyhow::Error> {
+    if cancel_token.is_cancelled() {
+        return Err(anyhow::Error::new(AgentRunCanceled {
+            run_id: run_id.to_string(),
+        }));
+    }
+    Ok(())
 }
 
 type ArchivePartFinishedHook = Box<dyn Fn(backup::LocalArtifact) -> std::io::Result<()> + Send>;
@@ -201,6 +227,7 @@ pub(super) async fn handle_backup_task(
     tx: &mut (impl Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
     task_id: &str,
     task: BackupRunTaskV1,
+    cancel_token: &CancellationToken,
 ) -> Result<(), anyhow::Error> {
     let run_id = task.run_id.clone();
     let job_id = task.job_id.clone();
@@ -210,6 +237,7 @@ pub(super) async fn handle_backup_task(
     validate_task_driver_metadata(&task)?;
 
     send_run_event(tx, &run_id, "info", "start", "start", None).await?;
+    check_run_canceled(&run_id, cancel_token)?;
 
     let ctx = TaskContext {
         data_dir,
@@ -238,6 +266,8 @@ pub(super) async fn handle_backup_task(
             ..
         } => vaultwarden::run_vaultwarden_backup(tx, &ctx, pipeline, source, target).await?,
     };
+
+    check_run_canceled(&run_id, cancel_token)?;
 
     send_run_event(tx, &run_id, "info", "complete", "complete", None).await?;
 

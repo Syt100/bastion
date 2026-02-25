@@ -18,6 +18,7 @@ use super::super::managed::{
     save_managed_config_snapshot, save_managed_secrets_snapshot, save_task_result,
 };
 use super::super::util::is_ws_error;
+use super::cancel_registry::TaskCancelRegistry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HandlerFlow {
@@ -127,12 +128,24 @@ pub(super) async fn handle_task<S>(
     tx: &mut S,
     data_dir: &Path,
     run_lock: Arc<tokio::sync::Mutex<()>>,
+    cancel_registry: &TaskCancelRegistry,
     task_id: String,
     task: Box<BackupRunTaskV1>,
 ) -> Result<HandlerFlow, anyhow::Error>
 where
     S: Sink<Message, Error = tungstenite::Error> + Unpin,
 {
+    struct RunTokenGuard {
+        registry: TaskCancelRegistry,
+        run_id: String,
+    }
+
+    impl Drop for RunTokenGuard {
+        fn drop(&mut self) {
+            self.registry.unregister_run(&self.run_id);
+        }
+    }
+
     let run_id = task.run_id.clone();
     debug!(task_id = %task_id, run_id = %run_id, "received task");
 
@@ -165,7 +178,13 @@ where
     }
 
     let _guard = run_lock.lock().await;
-    match super::super::handle_backup_task(data_dir, tx, &task_id, *task).await {
+    let cancel_token = cancel_registry.register_run(&run_id);
+    let _token_guard = RunTokenGuard {
+        registry: cancel_registry.clone(),
+        run_id: run_id.clone(),
+    };
+
+    match super::super::handle_backup_task(data_dir, tx, &task_id, *task, &cancel_token).await {
         Ok(()) => {}
         Err(error) => {
             if is_ws_error(&error) {
@@ -176,6 +195,29 @@ where
                     "task aborted due to websocket error; reconnecting"
                 );
                 return Ok(HandlerFlow::Reconnect);
+            }
+
+            if error
+                .downcast_ref::<super::super::tasks::AgentRunCanceled>()
+                .is_some()
+            {
+                let result = AgentToHubMessageV1::TaskResult {
+                    v: PROTOCOL_VERSION,
+                    task_id: task_id.clone(),
+                    run_id,
+                    status: "canceled".to_string(),
+                    summary: None,
+                    error: Some("canceled".to_string()),
+                };
+
+                if let Err(error) = save_task_result(data_dir, &result) {
+                    warn!(task_id = %task_id, error = %error, "failed to persist task result");
+                }
+
+                if send_json(tx, &result).await? == HandlerFlow::Reconnect {
+                    return Ok(HandlerFlow::Reconnect);
+                }
+                return Ok(HandlerFlow::Continue);
             }
 
             warn!(task_id = %task_id, run_id = %run_id, error = %error, "task failed");
@@ -208,6 +250,7 @@ pub(super) async fn handle_restore_task<S>(
     tx: &mut S,
     data_dir: &Path,
     run_lock: Arc<tokio::sync::Mutex<()>>,
+    cancel_registry: &TaskCancelRegistry,
     hub_streams: &super::super::hub_stream::HubStreamManager,
     task_id: String,
     task: Box<RestoreTaskV1>,
@@ -215,6 +258,17 @@ pub(super) async fn handle_restore_task<S>(
 where
     S: Sink<Message, Error = tungstenite::Error> + Unpin,
 {
+    struct OperationTokenGuard {
+        registry: TaskCancelRegistry,
+        op_id: String,
+    }
+
+    impl Drop for OperationTokenGuard {
+        fn drop(&mut self) {
+            self.registry.unregister_operation(&self.op_id);
+        }
+    }
+
     let op_id = task.op_id.clone();
     let run_id = task.run_id.clone();
     debug!(task_id = %task_id, op_id = %op_id, run_id = %run_id, "received restore task");
@@ -243,7 +297,22 @@ where
     }
 
     let _guard = run_lock.lock().await;
-    match super::super::handle_restore_task(data_dir, tx, hub_streams, &task_id, *task).await {
+    let cancel_token = cancel_registry.register_operation(&op_id);
+    let _token_guard = OperationTokenGuard {
+        registry: cancel_registry.clone(),
+        op_id: op_id.clone(),
+    };
+
+    match super::super::handle_restore_task(
+        data_dir,
+        tx,
+        hub_streams,
+        &task_id,
+        *task,
+        &cancel_token,
+    )
+    .await
+    {
         Ok(()) => {}
         Err(error) => {
             if is_ws_error(&error) {
@@ -255,6 +324,30 @@ where
                     "restore task aborted due to websocket error; reconnecting"
                 );
                 return Ok(HandlerFlow::Reconnect);
+            }
+
+            if error
+                .downcast_ref::<super::super::restore_task::AgentOperationCanceled>()
+                .is_some()
+            {
+                let result = AgentToHubMessageV1::OperationResult {
+                    v: PROTOCOL_VERSION,
+                    result: OperationResultV1 {
+                        op_id: op_id.clone(),
+                        status: "canceled".to_string(),
+                        summary: None,
+                        error: Some("canceled".to_string()),
+                    },
+                };
+
+                if let Err(error) = save_task_result(data_dir, &result) {
+                    warn!(task_id = %task_id, error = %error, "failed to persist restore result");
+                }
+
+                if send_json(tx, &result).await? == HandlerFlow::Reconnect {
+                    return Ok(HandlerFlow::Reconnect);
+                }
+                return Ok(HandlerFlow::Continue);
             }
 
             warn!(
@@ -286,6 +379,22 @@ where
     }
 
     Ok(HandlerFlow::Continue)
+}
+
+pub(super) fn handle_cancel_run_task(cancel_registry: &TaskCancelRegistry, run_id: String) {
+    let run_id = run_id.trim();
+    if run_id.is_empty() {
+        return;
+    }
+    let _ = cancel_registry.cancel_run(run_id);
+}
+
+pub(super) fn handle_cancel_operation_task(cancel_registry: &TaskCancelRegistry, op_id: String) {
+    let op_id = op_id.trim();
+    if op_id.is_empty() {
+        return;
+    }
+    let _ = cancel_registry.cancel_operation(op_id);
 }
 
 pub(super) async fn handle_snapshot_delete_task<S>(
