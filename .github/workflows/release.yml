@@ -145,7 +145,7 @@ jobs:
 
       - name: Cache cargo packagers (Linux)
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/bastion-tools/cargo
           key: ${{ runner.os }}-bastion-cargo-packagers-cargo-deb-3.6.2-cargo-generate-rpm-0.20.0
