@@ -13,8 +13,8 @@
 - [x] 2.5 Ensure queued tasks canceled before dispatch never start execution
 
 ## 3. Phase 2: Cooperative interruption and agent support
-- [ ] 3.1 Add cancellation checkpoints in filesystem backup path (scan/package/upload boundaries)
-- [ ] 3.2 Add cancellation checkpoints in restore/verify operation loops with cleanup-safe exits
+- [x] 3.1 Add cancellation checkpoints in filesystem backup path (scan/package/upload boundaries)
+- [x] 3.2 Add cancellation checkpoints in restore/verify operation loops with cleanup-safe exits
 - [x] 3.3 Extend Hub↔Agent protocol with cancel-task messages for run/operation execution
 - [x] 3.4 Implement agent-side cancellation token handling and graceful terminal reporting
 - [x] 3.5 Ensure late agent/local result writes cannot overwrite `canceled`
