@@ -13,9 +13,25 @@ In the Web UI:
 
 - **queued**: accepted and waiting for execution
 - **running**: currently executing on the job’s node
+- **canceling**: cancel was requested while still running; Bastion is waiting for a safe checkpoint
+- **canceled**: finished by user cancellation (terminal)
 - **success**: finished successfully (may produce a snapshot)
 - **failed**: finished with an error
 - **rejected**: rejected due to the job’s overlap policy (e.g., overlap policy is `reject` and a run was already running)
+
+## Cancel a run
+
+In run detail, click **Cancel** when a run is `queued` or `running`.
+
+- If the run is `queued`, it transitions directly to terminal `canceled` and will not start.
+- If the run is `running`, Bastion records cancel intent first (`canceling`), then stops at cooperative checkpoints and transitions to terminal `canceled`.
+- Cancel requests are idempotent: repeated clicks do not create conflicting state.
+- During cancellation, late success/failure writes are ignored once the run is terminal `canceled`.
+
+Notes:
+
+- Cancel is graceful, not process-kill. Some in-flight work may finish before the next checkpoint.
+- Existing artifacts already uploaded before cancellation are not automatically deleted.
 
 ## Run detail (what you can do)
 

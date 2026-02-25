@@ -30,6 +30,7 @@ const jobs = useJobsStore()
 const operationsStore = useOperationsStore()
 
 const loading = ref<boolean>(false)
+const cancelRunBusy = ref<boolean>(false)
 const run = ref<RunDetail | null>(null)
 const ops = ref<Operation[]>([])
 const events = ref<RunEvent[]>([])
@@ -190,6 +191,30 @@ function openVerify(): void {
   verifyModal.value?.open(props.runId)
 }
 
+async function requestCancelRun(): Promise<void> {
+  const current = run.value
+  if (!current) return
+  if ((current.status !== 'queued' && current.status !== 'running') || current.cancel_requested_at != null || cancelRunBusy.value) {
+    return
+  }
+  if (!window.confirm(t('runs.actions.cancelConfirm'))) return
+
+  cancelRunBusy.value = true
+  try {
+    const next = await jobs.cancelRun(current.id)
+    run.value = next
+    if (next.status === 'canceled') {
+      message.success(t('messages.runCanceled'))
+    } else {
+      message.success(t('messages.runCancelRequested'))
+    }
+  } catch (error) {
+    message.error(formatToastError(t('errors.cancelRunFailed'), error, t))
+  } finally {
+    cancelRunBusy.value = false
+  }
+}
+
 function reconnectEventsWs(): void {
   reconnectAttempts = 0
   allowReconnect = true
@@ -225,6 +250,21 @@ onBeforeUnmount(() => {
 
 const canRestore = computed(() => run.value?.status === 'success')
 const canVerify = computed(() => run.value?.status === 'success')
+const runCancelRequested = computed(() => run.value?.cancel_requested_at != null)
+const runCancelInProgress = computed(
+  () => run.value?.status === 'running' && (runCancelRequested.value || cancelRunBusy.value),
+)
+const canCancelRun = computed(() => {
+  const status = run.value?.status
+  if ((status !== 'queued' && status !== 'running') || cancelRunBusy.value) return false
+  return !runCancelRequested.value
+})
+const runStatusText = computed(() => {
+  const status = run.value?.status
+  if (!status) return ''
+  if (runCancelInProgress.value) return t('runs.statuses.canceling')
+  return runStatusLabel(t, status)
+})
 
 function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'success') return 'success'
@@ -241,8 +281,8 @@ function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warn
       <div class="min-w-0">
         <div class="flex items-center gap-2">
           <NodeContextTag :node-id="props.nodeId" />
-          <n-tag v-if="run?.status" size="small" :bordered="false" :type="statusTagType(run.status)">
-            {{ runStatusLabel(t, run.status) }}
+          <n-tag v-if="run?.status" data-testid="run-status-tag" size="small" :bordered="false" :type="statusTagType(run.status)">
+            {{ runStatusText }}
           </n-tag>
         </div>
 
@@ -254,6 +294,17 @@ function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warn
 
       <div class="flex items-center gap-2 flex-wrap justify-end">
         <n-button size="small" :loading="loading" @click="loadAll">{{ t('common.refresh') }}</n-button>
+        <n-button
+          v-if="run && (run.status === 'queued' || run.status === 'running')"
+          data-testid="run-cancel-button"
+          size="small"
+          type="warning"
+          :loading="cancelRunBusy"
+          :disabled="!canCancelRun"
+          @click="requestCancelRun"
+        >
+          {{ runCancelInProgress ? t('runs.actions.canceling') : t('runs.actions.cancel') }}
+        </n-button>
         <n-button size="small" type="primary" :disabled="!canRestore" @click="openRestore">
           {{ t('runs.actions.restore') }}
         </n-button>

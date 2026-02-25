@@ -206,6 +206,80 @@ describe('useJobsStore', () => {
     )
   })
 
+  it('cancels run with CSRF header and JSON body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'r1',
+          job_id: 'j1',
+          status: 'running',
+          started_at: 1,
+          ended_at: null,
+          cancel_requested_at: 2,
+          summary: null,
+          error: null,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-123'
+
+    const jobs = useJobsStore()
+    const run = await jobs.cancelRun('r 1', '  stop now  ')
+
+    expect(run.cancel_requested_at).toBe(2)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/runs/r%201/cancel',
+      expect.objectContaining({ credentials: 'include', method: 'POST' }),
+    )
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('csrf-123')
+    expect(headers['Content-Type']).toBe('application/json')
+    expect(init.body).toBe(JSON.stringify({ reason: 'stop now' }))
+  })
+
+  it('dedupes concurrent cancelRun requests for the same run', async () => {
+    const deferred = deferredResponse()
+    const fetchMock = vi.fn().mockImplementation(() => deferred.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    auth.status = 'authenticated'
+    auth.csrfToken = 'csrf-xyz'
+
+    const jobs = useJobsStore()
+    const first = jobs.cancelRun('r1')
+    const second = jobs.cancelRun('r1')
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    deferred.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'r1',
+          job_id: 'j1',
+          status: 'running',
+          started_at: 1,
+          ended_at: null,
+          cancel_requested_at: 3,
+          summary: null,
+          error: null,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a.cancel_requested_at).toBe(3)
+    expect(b.cancel_requested_at).toBe(3)
+  })
+
   it('previews retention without CSRF', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

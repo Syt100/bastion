@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NAlert, NButton, NCode, NModal, NSpin, NSpace, NTag } from 'naive-ui'
+import { NAlert, NButton, NCode, NModal, NSpin, NSpace, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useOperationsStore, type Operation, type OperationEvent } from '@/stores/operations'
 import { useUiStore } from '@/stores/ui'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
+import { formatToastError } from '@/lib/errors'
 import { formatBytes } from '@/lib/format'
 import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
 
@@ -15,12 +16,14 @@ export type OperationModalExpose = {
 }
 
 const { t } = useI18n()
+const message = useMessage()
 
 const operations = useOperationsStore()
 const ui = useUiStore()
 
 const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
+const cancelBusy = ref<boolean>(false)
 const opId = ref<string | null>(null)
 const op = ref<Operation | null>(null)
 const events = ref<OperationEvent[]>([])
@@ -52,6 +55,20 @@ function opStatusTagType(status: Operation['status']): 'success' | 'error' | 'wa
   if (status === 'running') return 'warning'
   return 'default'
 }
+
+const cancelRequested = computed(() => op.value?.cancel_requested_at != null)
+const cancelInProgress = computed(
+  () => op.value?.status === 'running' && (cancelRequested.value || cancelBusy.value),
+)
+const canCancelOperation = computed(
+  () => op.value?.status === 'running' && !cancelRequested.value && !cancelBusy.value,
+)
+const operationStatusText = computed(() => {
+  const current = op.value
+  if (!current) return ''
+  if (cancelInProgress.value) return t('operations.statuses.canceling')
+  return operationStatusLabel(t, current.status)
+})
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -168,6 +185,30 @@ async function open(id: string): Promise<void> {
   }, 1000)
 }
 
+async function cancelOperation(): Promise<void> {
+  const current = op.value
+  if (!current || current.status !== 'running' || current.cancel_requested_at != null || cancelBusy.value) return
+  if (!window.confirm(t('operations.actions.cancelConfirm'))) return
+
+  cancelBusy.value = true
+  try {
+    const next = await operations.cancelOperation(current.id)
+    op.value = next
+    if (next.status === 'canceled') {
+      message.success(t('messages.operationCanceled'))
+    } else {
+      message.success(t('messages.operationCancelRequested'))
+    }
+    if (next.status !== 'running') {
+      stopPolling()
+    }
+  } catch (error) {
+    message.error(formatToastError(t('errors.cancelOperationFailed'), error, t))
+  } finally {
+    cancelBusy.value = false
+  }
+}
+
 watch(show, (value) => {
   if (!value) stopPolling()
 })
@@ -185,7 +226,7 @@ defineExpose<OperationModalExpose>({ open })
       <div class="text-sm app-text-muted">{{ opId }}</div>
 
       <div v-if="op" class="flex items-center gap-2">
-        <n-tag :type="opStatusTagType(op.status)">{{ operationStatusLabel(t, op.status) }}</n-tag>
+        <n-tag data-testid="operation-status-tag" :type="opStatusTagType(op.status)">{{ operationStatusText }}</n-tag>
         <span class="text-sm app-text-muted">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
         <span class="text-sm app-text-muted">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
         <span v-if="op.ended_at" class="text-sm app-text-muted">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
@@ -229,6 +270,16 @@ defineExpose<OperationModalExpose>({ open })
       </div>
 
       <n-space justify="end">
+        <n-button
+          v-if="op?.status === 'running'"
+          data-testid="operation-cancel-button"
+          type="warning"
+          :loading="cancelBusy"
+          :disabled="!canCancelOperation"
+          @click="cancelOperation"
+        >
+          {{ cancelInProgress ? t('operations.actions.canceling') : t('operations.actions.cancel') }}
+        </n-button>
         <n-button @click="show = false">{{ t('common.close') }}</n-button>
       </n-space>
     </div>

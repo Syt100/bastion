@@ -11,7 +11,7 @@ This page defines the core concepts used throughout Bastion and the Web UI.
 ## Jobs, runs, and snapshots
 
 - **Job**: the configuration of a backup (source + target + schedule + retention + notifications).
-- **Run**: one execution of a job (queued → running → success/failed/rejected). Runs have logs/events and may produce backup output.
+- **Run**: one execution of a job (queued → running → success/failed/rejected/canceled, with an optional `canceling` interim state). Runs have logs/events and may produce backup output.
 - **Snapshot**: the stored backup output produced by a successful run (plus an index record in the Hub).
   - Snapshots are what you pin/delete/retain.
   - Snapshots are separate from runs so you can keep backup data even if old run history is pruned.

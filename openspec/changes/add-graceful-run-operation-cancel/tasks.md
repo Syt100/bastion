@@ -20,17 +20,17 @@
 - [x] 3.5 Ensure late agent/local result writes cannot overwrite `canceled`
 
 ## 4. Web UI and docs
-- [ ] 4.1 Update run/operation store status unions and cancel mutation APIs
-- [ ] 4.2 Add UI states: cancel action availability, "canceling" interim display, and terminal canceled badges
-- [ ] 4.3 Update user docs for cancel behavior, guarantees, and caveats (run + restore/verify)
-- [ ] 4.4 If user-visible behavior changes, run `maintain-changelog-release` to update `CHANGELOG.md`
+- [x] 4.1 Update run/operation store status unions and cancel mutation APIs
+- [x] 4.2 Add UI states: cancel action availability, "canceling" interim display, and terminal canceled badges
+- [x] 4.3 Update user docs for cancel behavior, guarantees, and caveats (run + restore/verify)
+- [x] 4.4 If user-visible behavior changes, run `maintain-changelog-release` to update `CHANGELOG.md`
 
 ## 5. Tests and validation
 - [x] 5.1 Add backend regression tests for queued-cancel, running-cancel, idempotency, and late-result race safety
 - [x] 5.2 Add protocol/agent integration coverage for cancel delivery and completion behavior
-- [ ] 5.3 Add UI tests for cancel button state transitions and canceled rendering
+- [x] 5.3 Add UI tests for cancel button state transitions and canceled rendering
 - [x] 5.4 Run `bash scripts/ci.sh`
 
 ## 6. Commits
 - [x] 6.1 Commit implementation milestones with clear summaries and change points
-- [ ] 6.2 Mark OpenSpec tasks complete and commit
+- [x] 6.2 Mark OpenSpec tasks complete and commit

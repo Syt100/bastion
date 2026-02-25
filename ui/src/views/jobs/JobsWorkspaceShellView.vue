@@ -561,6 +561,7 @@ const latestStatusFilterOptions = computed(() => [
   { label: runStatusLabel(t, 'running'), value: 'running' },
   { label: runStatusLabel(t, 'queued'), value: 'queued' },
   { label: runStatusLabel(t, 'rejected'), value: 'rejected' },
+  { label: runStatusLabel(t, 'canceled'), value: 'canceled' },
 ])
 
 const scheduleFilterOptions = computed(() => [

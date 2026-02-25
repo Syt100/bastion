@@ -115,6 +115,7 @@ const statusChips = computed(() => [
   { value: 'running' as const, label: runStatusLabel(t, 'running') },
   { value: 'queued' as const, label: runStatusLabel(t, 'queued') },
   { value: 'rejected' as const, label: runStatusLabel(t, 'rejected') },
+  { value: 'canceled' as const, label: runStatusLabel(t, 'canceled') },
 ])
 
 const columns = computed<DataTableColumns<RunListItem>>(() => [

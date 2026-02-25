@@ -7,7 +7,7 @@ import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OverlapPolicy = 'reject' | 'queue'
 export type JobType = 'filesystem' | 'sqlite' | 'vaultwarden'
-export type RunStatus = 'queued' | 'running' | 'success' | 'failed' | 'rejected'
+export type RunStatus = 'queued' | 'running' | 'success' | 'failed' | 'rejected' | 'canceled'
 
 export type JobListItem = {
   id: string
@@ -59,6 +59,9 @@ export type RunListItem = {
   status: RunStatus
   started_at: number
   ended_at: number | null
+  cancel_requested_at?: number | null
+  cancel_requested_by_user_id?: number | null
+  cancel_reason?: string | null
   error: string | null
   executed_offline?: boolean
   issues_warnings_total?: number
@@ -83,6 +86,9 @@ export type RunDetail = {
   status: RunStatus
   started_at: number
   ended_at: number | null
+  cancel_requested_at?: number | null
+  cancel_requested_by_user_id?: number | null
+  cancel_reason?: string | null
   progress?: unknown | null
   summary: unknown | null
   error: string | null
@@ -196,6 +202,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const page = ref<number>(1)
   const pageSize = ref<number>(20)
   const latestRefresh = createLatestRequest()
+  const cancelRunInFlight = new Map<string, Promise<RunDetail>>()
 
   async function refresh(params?: {
     includeArchived?: boolean
@@ -315,6 +322,35 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function getRun(runId: string): Promise<RunDetail> {
     return await apiFetch<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async function cancelRun(runId: string, reason?: string): Promise<RunDetail> {
+    const key = runId
+    const existing = cancelRunInFlight.get(key)
+    if (existing) {
+      return await existing
+    }
+
+    const request = (async () => {
+      const csrf = await ensureCsrfToken()
+      const normalizedReason = reason?.trim()
+      return await apiFetch<RunDetail>(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
+        body: JSON.stringify(normalizedReason ? { reason: normalizedReason } : {}),
+      })
+    })()
+    cancelRunInFlight.set(key, request)
+    try {
+      return await request
+    } finally {
+      if (cancelRunInFlight.get(key) === request) {
+        cancelRunInFlight.delete(key)
+      }
+    }
   }
 
   async function listJobSnapshots(
@@ -458,6 +494,7 @@ export const useJobsStore = defineStore('jobs', () => {
     listRuns,
     listRunEvents,
     getRun,
+    cancelRun,
     listJobSnapshots,
     getJobRetention,
     putJobRetention,

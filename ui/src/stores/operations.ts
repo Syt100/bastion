@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OperationKind = 'restore' | 'verify'
-export type OperationStatus = 'running' | 'success' | 'failed'
+export type OperationStatus = 'running' | 'success' | 'failed' | 'canceled'
 
 export type Operation = {
   id: string
@@ -13,6 +13,9 @@ export type Operation = {
   created_at: number
   started_at: number
   ended_at: number | null
+  cancel_requested_at?: number | null
+  cancel_requested_by_user_id?: number | null
+  cancel_reason?: string | null
   progress?: unknown | null
   summary: unknown | null
   error: string | null
@@ -37,6 +40,8 @@ export type RestoreDestination =
 export type RestoreExecutor = { node_id: string }
 
 export const useOperationsStore = defineStore('operations', () => {
+  const cancelOperationInFlight = new Map<string, Promise<Operation>>()
+
   async function startRestore(
     runId: string,
     destination: RestoreDestination,
@@ -95,5 +100,35 @@ export const useOperationsStore = defineStore('operations', () => {
     return await apiFetch<OperationEvent[]>(`/api/operations/${encodeURIComponent(opId)}/events`)
   }
 
-  return { startRestore, startVerify, getOperation, listRunOperations, listEvents }
+  async function cancelOperation(opId: string, reason?: string): Promise<Operation> {
+    const key = opId
+    const existing = cancelOperationInFlight.get(key)
+    if (existing) {
+      return await existing
+    }
+
+    const request = (async () => {
+      const csrf = await ensureCsrfToken()
+      const normalizedReason = reason?.trim()
+      return await apiFetch<Operation>(`/api/operations/${encodeURIComponent(opId)}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
+        body: JSON.stringify(normalizedReason ? { reason: normalizedReason } : {}),
+      })
+    })()
+
+    cancelOperationInFlight.set(key, request)
+    try {
+      return await request
+    } finally {
+      if (cancelOperationInFlight.get(key) === request) {
+        cancelOperationInFlight.delete(key)
+      }
+    }
+  }
+
+  return { startRestore, startVerify, getOperation, listRunOperations, listEvents, cancelOperation }
 })

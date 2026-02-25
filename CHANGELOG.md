@@ -9,9 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 
 ### Added
 - Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
+- Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
 
 ### Changed
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
+- Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed Web UI i18n startup to lazy-load only the active locale before mount and load other locales on demand, reducing initial bundle payload.
 - Changed Agent/Hub websocket relay paths to bounded queues with explicit backpressure handling to avoid unbounded memory growth under slow consumers.
 - Changed CI checks to run `clippy` for both default-feature and all-features builds.

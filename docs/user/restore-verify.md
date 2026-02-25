@@ -11,6 +11,20 @@ In the Web UI:
 
 Operations are tracked in the run detail view (status + progress + event log).
 
+## Cancel an operation
+
+In operation detail, click **Cancel** while status is `running`.
+
+- Bastion records cancel intent first (`canceling`), then stops at cooperative checkpoints.
+- Terminal status becomes `canceled` after cleanup-safe exit points.
+- Cancel requests are idempotent: repeated clicks do not create conflicting state.
+
+Notes:
+
+- Cancel is graceful, so some in-flight transfer or verification work may finish before stop is observed.
+- Already written destination data is not automatically rolled back.
+- A canceled operation remains linked to the source run for auditing.
+
 ## Restore
 
 Restore reads a snapshot and writes the restored files to a destination.
