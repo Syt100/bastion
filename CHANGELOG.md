@@ -39,6 +39,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed Web UI rapid locale toggles to enforce last-write-wins behavior and avoid stale locale activation from slower async loads.
 - Fixed rolling archive upload failures to preserve the underlying uploader/network root cause instead of surfacing a generic `rolling uploader dropped`.
 - Fixed WebDAV upload retry handling to classify failure kinds (auth, timeout, rate-limit, payload-too-large, transport) and retry only when appropriate.
+- Fixed fallback failure classification to mark connect/DNS/routing transport errors (for example `connection refused`) as `network` with actionable hints.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.

@@ -23,7 +23,11 @@ fn part_name_from_url(url: &str) -> Option<String> {
 }
 
 fn fallback_error_hint(error: &anyhow::Error) -> (String, String) {
-    let text = error.to_string().to_lowercase();
+    let text = error
+        .chain()
+        .map(|cause| cause.to_string().to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" | ");
     if text.contains("http 413") || text.contains("payload too large") {
         return (
             "payload_too_large".to_string(),
@@ -51,12 +55,22 @@ fn fallback_error_hint(error: &anyhow::Error) -> (String, String) {
     }
     if text.contains("timed out")
         || text.contains("timeout")
+        || text.contains("client error (connect)")
+        || text.contains("tcp connect error")
+        || text.contains("connection refused")
+        || text.contains("network is unreachable")
+        || text.contains("no route to host")
+        || text.contains("host is unreachable")
+        || text.contains("name or service not known")
+        || text.contains("temporary failure in name resolution")
+        || text.contains("failed to lookup address information")
         || text.contains("connection reset")
+        || text.contains("connection aborted")
         || text.contains("broken pipe")
     {
         return (
             "network".to_string(),
-            "network timeout/transport failure detected; consider raising timeout/retries or reducing part size".to_string(),
+            "network transport/connectivity failure detected; check DNS/routing/firewall and consider raising timeout/retries or reducing part size".to_string(),
         );
     }
     if text.contains("rolling uploader dropped") {
@@ -370,6 +384,26 @@ mod tests {
             obj.get("hint")
                 .and_then(|v| v.as_str())
                 .is_some_and(|s| s.contains("part_size_bytes"))
+        );
+    }
+
+    #[test]
+    fn failed_event_fields_map_connect_refused_hint() {
+        let error = anyhow::anyhow!("Connection refused (os error 111)")
+            .context("tcp connect error")
+            .context("client error (Connect)")
+            .context("error sending request for url (http://127.0.0.1:9/webdav/test/)")
+            .context("rolling uploader also failed");
+        let fields = build_failed_event_fields(&error, None);
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_kind").and_then(|v| v.as_str()),
+            Some("network")
+        );
+        assert!(
+            obj.get("hint")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| s.contains("DNS/routing/firewall"))
         );
     }
 }
