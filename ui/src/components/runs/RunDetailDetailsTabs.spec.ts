@@ -197,4 +197,49 @@ describe('RunDetailDetailsTabs consistency section', () => {
     expect(wrapper.text()).toContain('source consistency warnings')
     expect(wrapper.text()).not.toContain('upload')
   })
+
+  it('keeps event detail raw fields inside bounded containers', async () => {
+    stubMatchMedia(true)
+
+    const wrapper = mount(RunDetailDetailsTabs, {
+      props: {
+        runId: 'run1',
+        wsStatus: 'live',
+        ops: [],
+        summary: null,
+        events: [
+          {
+            run_id: 'run1',
+            seq: 1,
+            ts: 1,
+            level: 'error',
+            kind: 'failed',
+            message: 'failed',
+            fields: {
+              error_chain: ['x'.repeat(2048)],
+            },
+          },
+        ],
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.find('[data-event-seq="1"]').trigger('click')
+    await flushPromises()
+
+    const modalBody = wrapper.find('.run-detail-event-modal-body')
+    expect(modalBody.exists()).toBe(true)
+    expect(modalBody.classes()).toContain('h-full')
+    expect(modalBody.classes()).toContain('min-h-0')
+
+    const detailScroll = wrapper.find('.run-detail-event-scroll')
+    expect(detailScroll.exists()).toBe(true)
+    expect(detailScroll.classes()).toContain('flex-1')
+
+    const rawJson = wrapper.find('.run-event-detail-json')
+    expect(rawJson.exists()).toBe(true)
+    expect(rawJson.classes()).toContain('max-h-[45vh]')
+    expect(rawJson.classes()).toContain('overflow-auto')
+  })
 })

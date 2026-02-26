@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
 import {
   NButton,
-  NCode,
   NDrawer,
   NDrawerContent,
   NModal,
@@ -16,11 +15,12 @@ import { useI18n } from 'vue-i18n'
 
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunEvent } from '@/stores/jobs'
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
+import RunEventDetailContent from '@/components/runs/RunEventDetailContent.vue'
 
 export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
@@ -28,13 +28,6 @@ export type RunEventsModalExpose = {
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 type SummaryChip = { text: string; type: 'default' | 'warning' | 'error' | 'success' }
-type DetailRow = { label: string; value: string }
-type PartialFailureRow = {
-  resource: string
-  code: string | null
-  kind: string | null
-  protocol: string | null
-}
 type JsonRecord = Record<string, unknown>
 
 type EnvelopeTextRef = {
@@ -128,14 +121,6 @@ const reconnectInSeconds = ref<number | null>(null)
 
 const detailShow = ref<boolean>(false)
 const detailEvent = ref<RunEvent | null>(null)
-
-function formatJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
 
 function wsUrl(path: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -553,124 +538,13 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   return out
 }
 
-function detailHint(e: RunEvent | null): string | null {
-  return eventHint(e, true)
+const detailDesktopScrollMaxHeight = `calc(${MODAL_HEIGHT.desktopLoose} - 120px)`
+const detailDesktopContentStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  minHeight: '0',
 }
-
-function detailDiagnosticsRows(e: RunEvent | null): DetailRow[] {
-  if (!e) return []
-  const fields = normalizeFields(e.fields)
-  const envelope = normalizeErrorEnvelope(fields)
-  if (!envelope) return []
-
-  const rows: DetailRow[] = [
-    { label: t('runEvents.details.labels.code'), value: envelope.code },
-    { label: t('runEvents.details.labels.kind'), value: envelope.kind },
-    { label: t('runEvents.details.labels.protocol'), value: envelope.transport.protocol },
-    {
-      label: t('runEvents.details.labels.retriable'),
-      value: envelope.retriable.value ? t('common.yes') : t('common.no'),
-    },
-  ]
-
-  if (envelope.retriable.reason) {
-    rows.push({ label: t('runEvents.details.labels.retryReason'), value: envelope.retriable.reason })
-  }
-
-  const retryAfter = envelope.retriable.retryAfterSec ?? toNumber(fields?.retry_after_secs)
-  if (retryAfter != null) {
-    rows.push({
-      label: t('runEvents.details.labels.retryAfter'),
-      value: `${Math.max(0, Math.floor(retryAfter))}${t('common.timeUnits.s')}`,
-    })
-  }
-
-  if (envelope.transport.statusCode != null) {
-    rows.push({ label: t('runEvents.details.labels.statusCode'), value: String(Math.floor(envelope.transport.statusCode)) })
-  }
-  if (envelope.transport.statusText) {
-    rows.push({ label: t('runEvents.details.labels.statusText'), value: envelope.transport.statusText })
-  }
-  if (envelope.transport.provider) {
-    rows.push({ label: t('runEvents.details.labels.provider'), value: envelope.transport.provider })
-  }
-  if (envelope.transport.providerCode) {
-    rows.push({ label: t('runEvents.details.labels.providerCode'), value: envelope.transport.providerCode })
-  }
-  if (envelope.transport.providerRequestId) {
-    rows.push({ label: t('runEvents.details.labels.providerRequestId'), value: envelope.transport.providerRequestId })
-  }
-  if (envelope.transport.disconnectCode != null) {
-    rows.push({
-      label: t('runEvents.details.labels.disconnectCode'),
-      value: String(Math.floor(envelope.transport.disconnectCode)),
-    })
-  }
-  if (envelope.transport.ioKind) {
-    rows.push({ label: t('runEvents.details.labels.ioKind'), value: envelope.transport.ioKind })
-  }
-  if (envelope.transport.osErrorCode != null) {
-    rows.push({ label: t('runEvents.details.labels.osErrorCode'), value: String(Math.floor(envelope.transport.osErrorCode)) })
-  }
-
-  return rows
-}
-
-function detailOperationRows(e: RunEvent | null): DetailRow[] {
-  if (!e) return []
-  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
-  const operation = normalizeFields(envelope?.context?.operation)
-  if (!operation) return []
-
-  const rows: DetailRow[] = []
-  const operationId = toString(operation.operation_id)
-  if (operationId) rows.push({ label: t('runEvents.details.labels.operationId'), value: operationId })
-
-  const status = toString(operation.status)
-  if (status) rows.push({ label: t('runEvents.details.labels.operationStatus'), value: status })
-
-  const pollAfterSec = toNumber(operation.poll_after_sec)
-  if (pollAfterSec != null) {
-    rows.push({
-      label: t('runEvents.details.labels.pollAfter'),
-      value: `${Math.max(0, Math.floor(pollAfterSec))}${t('common.timeUnits.s')}`,
-    })
-  }
-
-  return rows
-}
-
-function detailPartialFailureRows(e: RunEvent | null): PartialFailureRow[] {
-  if (!e) return []
-  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
-  const partialFailures = envelope?.context?.partial_failures
-  if (!Array.isArray(partialFailures)) return []
-
-  return partialFailures
-    .map((item) => {
-      const row = normalizeFields(item)
-      if (!row) return null
-      const transport = normalizeFields(row.transport)
-      const resource =
-        toString(row.resource_id) ??
-        toString(row.path) ??
-        toString(row.resource) ??
-        t('runEvents.details.unknownResource')
-      return {
-        resource,
-        code: toString(row.code),
-        kind: toString(row.kind),
-        protocol: toString(transport?.protocol),
-      }
-    })
-    .filter((item): item is PartialFailureRow => item != null)
-}
-
-const detailMessageText = computed(() => (detailEvent.value ? eventDisplayMessage(detailEvent.value) : ''))
-const detailHintText = computed(() => detailHint(detailEvent.value))
-const detailEnvelopeRows = computed(() => detailDiagnosticsRows(detailEvent.value))
-const detailOperationInfoRows = computed(() => detailOperationRows(detailEvent.value))
-const detailPartialFailures = computed(() => detailPartialFailureRows(detailEvent.value))
 
 async function open(id: string): Promise<void> {
   show.value = true
@@ -863,60 +737,22 @@ defineExpose<RunEventsModalExpose>({ open })
         v-if="isDesktop"
         v-model:show="detailShow"
         preset="card"
-        :style="{ width: MODAL_WIDTH.md }"
+        :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
+        :content-style="detailDesktopContentStyle"
         :title="t('runEvents.details.title')"
       >
-        <div v-if="detailEvent" class="space-y-3">
-          <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
+        <div v-if="detailEvent" class="run-events-detail-modal-body flex h-full min-h-0 flex-col gap-3">
+          <div class="text-sm app-text-muted flex shrink-0 flex-wrap items-center gap-2">
             <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
             <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
             <span class="app-text-muted">{{ detailEvent.kind }}</span>
           </div>
-          <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailMessageText }}</div>
-          <div v-if="detailHintText" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-            {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
-          </div>
-          <div v-if="detailEnvelopeRows.length > 0" class="space-y-1">
-            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
-            <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
-              <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-${idx}`">
-                <div class="app-text-muted">{{ row.label }}</div>
-                <div class="font-mono break-all">{{ row.value }}</div>
-              </template>
-            </div>
-          </div>
-          <div v-if="detailOperationInfoRows.length > 0" class="space-y-1">
-            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.operation') }}</div>
-            <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
-              <template v-for="(row, idx) in detailOperationInfoRows" :key="`op-${idx}`">
-                <div class="app-text-muted">{{ row.label }}</div>
-                <div class="font-mono break-all">{{ row.value }}</div>
-              </template>
-            </div>
-          </div>
-          <div v-if="detailPartialFailures.length > 0" class="space-y-1">
-            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.partialFailures') }}</div>
-            <div class="space-y-1">
-              <div
-                v-for="(item, idx) in detailPartialFailures"
-                :key="`partial-${idx}`"
-                class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs"
-              >
-                <div class="font-mono break-all">{{ item.resource }}</div>
-                <div class="app-text-muted flex flex-wrap items-center gap-2 mt-0.5">
-                  <span v-if="item.code">{{ t('runEvents.details.labels.partialCode') }}: {{ item.code }}</span>
-                  <span v-if="item.kind">{{ t('runEvents.details.labels.partialKind') }}: {{ item.kind }}</span>
-                  <span v-if="item.protocol">{{ t('runEvents.details.labels.partialProtocol') }}: {{ item.protocol }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <n-code
-            v-if="detailEvent.fields"
-            :code="formatJson(detailEvent.fields)"
-            language="json"
+          <RunEventDetailContent
+            class="run-events-detail-scroll min-h-0 flex-1"
+            :event="detailEvent"
+            :max-body-height="detailDesktopScrollMaxHeight"
           />
-          <n-space justify="end">
+          <n-space justify="end" class="shrink-0">
             <n-button @click="detailShow = false">{{ t('common.close') }}</n-button>
           </n-space>
         </div>
@@ -930,50 +766,7 @@ defineExpose<RunEventsModalExpose>({ open })
               <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
               <span class="app-text-muted">{{ detailEvent.kind }}</span>
             </div>
-            <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailMessageText }}</div>
-            <div v-if="detailHintText" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-              {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
-            </div>
-            <div v-if="detailEnvelopeRows.length > 0" class="space-y-1">
-              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
-              <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
-                <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-mobile-${idx}`">
-                  <div class="app-text-muted">{{ row.label }}</div>
-                  <div class="font-mono break-all">{{ row.value }}</div>
-                </template>
-              </div>
-            </div>
-            <div v-if="detailOperationInfoRows.length > 0" class="space-y-1">
-              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.operation') }}</div>
-              <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
-                <template v-for="(row, idx) in detailOperationInfoRows" :key="`op-mobile-${idx}`">
-                  <div class="app-text-muted">{{ row.label }}</div>
-                  <div class="font-mono break-all">{{ row.value }}</div>
-                </template>
-              </div>
-            </div>
-            <div v-if="detailPartialFailures.length > 0" class="space-y-1">
-              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.partialFailures') }}</div>
-              <div class="space-y-1">
-                <div
-                  v-for="(item, idx) in detailPartialFailures"
-                  :key="`partial-mobile-${idx}`"
-                  class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs"
-                >
-                  <div class="font-mono break-all">{{ item.resource }}</div>
-                  <div class="app-text-muted flex flex-wrap items-center gap-2 mt-0.5">
-                    <span v-if="item.code">{{ t('runEvents.details.labels.partialCode') }}: {{ item.code }}</span>
-                    <span v-if="item.kind">{{ t('runEvents.details.labels.partialKind') }}: {{ item.kind }}</span>
-                    <span v-if="item.protocol">{{ t('runEvents.details.labels.partialProtocol') }}: {{ item.protocol }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <n-code
-              v-if="detailEvent.fields"
-              :code="formatJson(detailEvent.fields)"
-              language="json"
-            />
+            <RunEventDetailContent class="run-events-detail-scroll" :event="detailEvent" />
           </div>
         </n-drawer-content>
       </n-drawer>

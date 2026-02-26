@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref } from 'vue'
+import { computed, h, nextTick, ref, type CSSProperties } from 'vue'
 import {
   NButton,
   NCard,
@@ -22,12 +22,13 @@ import { useI18n } from 'vue-i18n'
 import { MQ } from '@/lib/breakpoints'
 import { copyText } from '@/lib/clipboard'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { filterRunEvents, findFirstEventSeq, uniqueRunEventKinds } from '@/lib/run_events'
 import { runTargetTypeLabel } from '@/lib/runs'
 import { parseRunSummary } from '@/lib/run_summary'
 import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
+import RunEventDetailContent from '@/components/runs/RunEventDetailContent.vue'
 import { useUiStore } from '@/stores/ui'
 import type { RunEvent } from '@/stores/jobs'
 import type { Operation } from '@/stores/operations'
@@ -236,6 +237,13 @@ function exportFilteredEvents(): void {
 
 const eventDetailShow = ref<boolean>(false)
 const eventDetail = ref<RunEvent | null>(null)
+const eventDetailDesktopScrollMaxHeight = `calc(${MODAL_HEIGHT.desktopLoose} - 120px)`
+const eventDetailDesktopContentStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  minHeight: '0',
+}
 
 function openEventDetails(e: RunEvent): void {
   eventDetail.value = e
@@ -507,17 +515,27 @@ async function viewConsistencyEvents(): Promise<void> {
     </n-tabs>
   </n-card>
 
-  <n-modal v-if="isDesktop" v-model:show="eventDetailShow" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('runEvents.details.title')">
-    <div v-if="eventDetail" class="space-y-3">
-      <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
+  <n-modal
+    v-if="isDesktop"
+    v-model:show="eventDetailShow"
+    preset="card"
+    :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
+    :content-style="eventDetailDesktopContentStyle"
+    :title="t('runEvents.details.title')"
+  >
+    <div v-if="eventDetail" class="run-detail-event-modal-body flex h-full min-h-0 flex-col gap-3">
+      <div class="text-sm app-text-muted flex shrink-0 flex-wrap items-center gap-2">
         <span class="tabular-nums">{{ formatUnixSeconds(eventDetail.ts) }}</span>
         <n-tag size="small" :type="runEventLevelTagType(eventDetail.level)">{{ eventDetail.level }}</n-tag>
         <span class="app-text-muted">{{ eventDetail.kind }}</span>
         <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
       </div>
-      <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
-      <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
-      <n-space justify="end">
+      <RunEventDetailContent
+        class="run-detail-event-scroll min-h-0 flex-1"
+        :event="eventDetail"
+        :max-body-height="eventDetailDesktopScrollMaxHeight"
+      />
+      <n-space justify="end" class="shrink-0">
         <n-button @click="eventDetailShow = false">{{ t('common.close') }}</n-button>
       </n-space>
     </div>
@@ -532,8 +550,7 @@ async function viewConsistencyEvents(): Promise<void> {
           <span class="app-text-muted">{{ eventDetail.kind }}</span>
           <n-button size="tiny" quaternary @click="copyEventJson(eventDetail)">{{ t('common.copy') }}</n-button>
         </div>
-        <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ eventDetail.message }}</div>
-        <n-code v-if="eventDetail.fields" :code="formatJson(eventDetail.fields)" language="json" />
+        <RunEventDetailContent class="run-detail-event-scroll" :event="eventDetail" />
       </div>
     </n-drawer-content>
   </n-drawer>

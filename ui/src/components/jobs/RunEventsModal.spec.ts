@@ -99,12 +99,27 @@ class MockWebSocket {
   }
 }
 
+function stubMatchMedia(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(min-width: 768px)',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as unknown as MediaQueryList
+  vi.stubGlobal('matchMedia', vi.fn(() => mql))
+}
+
 describe('RunEventsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     for (const key of Object.keys(i18nDict)) delete i18nDict[key]
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
+    stubMatchMedia(false)
   })
 
   it('auto-resumes follow when returning to bottom after auto-unfollow', async () => {
@@ -409,6 +424,57 @@ describe('RunEventsModal', () => {
     expect(text).toContain('SSH_FX_PERMISSION_DENIED')
     expect(text).toContain('op-123')
     expect(text).toContain('/docs/a.txt')
+
+    wrapper.unmount()
+  })
+
+  it('wraps raw fields in bounded scroll containers in event details', async () => {
+    stubMatchMedia(true)
+
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'error',
+        kind: 'failed',
+        message: 'failed: transport timeout',
+        fields: {
+          error_chain: [
+            'x'.repeat(2048),
+          ],
+          error_envelope: {
+            schema_version: '1.0',
+            code: 'target.webdav.timeout',
+            kind: 'timeout',
+            retriable: { value: true, reason: 'timeout' },
+            hint: { key: 'diagnostics.hint.run_failed.timeout', params: {} },
+            message: { key: 'diagnostics.message.target.webdav.put_failed', params: {} },
+            transport: { protocol: 'http' },
+          },
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    await wrapper.find('[data-testid="run-event-row"]').trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const modalBody = wrapper.find('.run-events-detail-modal-body')
+    expect(modalBody.exists()).toBe(true)
+    expect(modalBody.classes()).toContain('h-full')
+    expect(modalBody.classes()).toContain('min-h-0')
+
+    expect(wrapper.find('.run-events-detail-scroll').exists()).toBe(true)
+    expect(wrapper.find('.run-events-detail-scroll').classes()).toContain('flex-1')
+    const rawJson = wrapper.find('.run-event-detail-json')
+    expect(rawJson.exists()).toBe(true)
+    expect(rawJson.classes()).toContain('max-h-[45vh]')
+    expect(rawJson.classes()).toContain('overflow-auto')
 
     wrapper.unmount()
   })

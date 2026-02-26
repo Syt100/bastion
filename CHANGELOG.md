@@ -44,6 +44,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed fallback failure classification to mark connect/DNS/routing transport errors (for example `connection refused`) as `network` with actionable hints.
 - Fixed WebDAV read/delete/download failure mapping to preserve HTTP diagnostics and avoid retrying non-retriable auth/config failures.
 - Fixed cleanup/artifact-delete run events to include actionable `hint` fields, and localized the Run Events detail hint label for zh/en UI.
+- Fixed run event detail dialogs (both the run-detail page and run-events modal) to use a shared envelope-first renderer, cap content height, and wrap long JSON/error payload lines so diagnostics no longer overflow modal bounds.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.
