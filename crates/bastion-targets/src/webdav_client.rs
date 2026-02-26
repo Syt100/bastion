@@ -510,54 +510,53 @@ impl WebdavClient {
             _ => WebdavPutErrorKind::Unknown,
         };
 
-        let (kind, status, retry_after) = if let Some(http) =
-            error.downcast_ref::<WebdavHttpError>()
-        {
-            let kind = classify_http_status(http.status);
-            (kind, Some(http.status), http.retry_after)
-        } else if let Some(status) = http_hint {
-            let kind = classify_http_status(status);
-            (kind, Some(status), None)
-        } else {
-            let msg = error.to_string().to_lowercase();
-            let kind = if msg.contains("http 413")
-                || msg.contains("status code 413")
-                || msg.contains("payload too large")
-                || msg.contains("request entity too large")
-            {
-                WebdavPutErrorKind::PayloadTooLarge
-            } else if msg.contains("http 401") || msg.contains("unauthorized") {
-                WebdavPutErrorKind::Auth
-            } else if msg.contains("http 403") || msg.contains("forbidden") {
-                WebdavPutErrorKind::Permission
-            } else if msg.contains("http 429") || msg.contains("too many requests") {
-                WebdavPutErrorKind::RateLimited
-            } else if msg.contains("http 503")
-                || msg.contains("service unavailable")
-                || msg.contains("bad gateway")
-            {
-                WebdavPutErrorKind::UpstreamUnavailable
-            } else if msg.contains("insufficient storage") {
-                WebdavPutErrorKind::StorageFull
-            } else if msg.contains("timed out")
-                || msg.contains("timeout")
-                || msg.contains("deadline")
-            {
-                WebdavPutErrorKind::Timeout
-            } else if msg.contains("connection reset")
-                || msg.contains("broken pipe")
-                || msg.contains("connection refused")
-                || msg.contains("connection aborted")
-                || msg.contains("network")
-                || msg.contains("failed to lookup")
-                || msg.contains("name or service not known")
-            {
-                WebdavPutErrorKind::Network
+        let (kind, status, retry_after) =
+            if let Some(http) = error.downcast_ref::<WebdavHttpError>() {
+                let kind = classify_http_status(http.status);
+                (kind, Some(http.status), http.retry_after)
+            } else if let Some(status) = http_hint {
+                let kind = classify_http_status(status);
+                (kind, Some(status), None)
             } else {
-                WebdavPutErrorKind::Unknown
+                let msg = error.to_string().to_lowercase();
+                let kind = if msg.contains("http 413")
+                    || msg.contains("status code 413")
+                    || msg.contains("payload too large")
+                    || msg.contains("request entity too large")
+                {
+                    WebdavPutErrorKind::PayloadTooLarge
+                } else if msg.contains("http 401") || msg.contains("unauthorized") {
+                    WebdavPutErrorKind::Auth
+                } else if msg.contains("http 403") || msg.contains("forbidden") {
+                    WebdavPutErrorKind::Permission
+                } else if msg.contains("http 429") || msg.contains("too many requests") {
+                    WebdavPutErrorKind::RateLimited
+                } else if msg.contains("http 503")
+                    || msg.contains("service unavailable")
+                    || msg.contains("bad gateway")
+                {
+                    WebdavPutErrorKind::UpstreamUnavailable
+                } else if msg.contains("insufficient storage") {
+                    WebdavPutErrorKind::StorageFull
+                } else if msg.contains("timed out")
+                    || msg.contains("timeout")
+                    || msg.contains("deadline")
+                {
+                    WebdavPutErrorKind::Timeout
+                } else if msg.contains("connection reset")
+                    || msg.contains("broken pipe")
+                    || msg.contains("connection refused")
+                    || msg.contains("connection aborted")
+                    || msg.contains("network")
+                    || msg.contains("failed to lookup")
+                    || msg.contains("name or service not known")
+                {
+                    WebdavPutErrorKind::Network
+                } else {
+                    WebdavPutErrorKind::Unknown
+                };
+                (kind, None, None)
             };
-            (kind, None, None)
-        };
 
         WebdavPutDiagnostic {
             kind,
