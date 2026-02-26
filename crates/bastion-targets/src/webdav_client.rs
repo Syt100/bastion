@@ -1738,7 +1738,11 @@ mod tests {
 
     #[tokio::test]
     async fn put_file_with_retries_classifies_http_413_as_payload_too_large() {
-        async fn handler(_req: Request<Body>) -> impl IntoResponse {
+        async fn handler(req: Request<Body>) -> impl IntoResponse {
+            // Read request body first so all platforms observe a stable HTTP 413 response path.
+            let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                .await
+                .unwrap_or_default();
             axum::http::Response::builder()
                 .status(StatusCode::PAYLOAD_TOO_LARGE)
                 .body(Body::from("entity too large"))
