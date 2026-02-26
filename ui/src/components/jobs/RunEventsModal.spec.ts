@@ -8,6 +8,18 @@ const messageApi = {
   warning: vi.fn(),
 }
 
+const i18nDict: Record<string, string> = {}
+
+const tMock = (key: string, params?: Record<string, unknown>): string => {
+  const template = i18nDict[key]
+  if (!template) return key
+  if (!params) return template
+  return template.replace(/\{(\w+)\}/g, (_, token: string) => {
+    const value = params[token]
+    return value == null ? '' : String(value)
+  })
+}
+
 vi.mock('naive-ui', async () => {
   const vue = await import('vue')
   const stub = (name: string) =>
@@ -45,7 +57,7 @@ vi.mock('naive-ui', async () => {
 })
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: tMock }),
 }))
 
 const jobsApi = {
@@ -90,6 +102,7 @@ class MockWebSocket {
 describe('RunEventsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const key of Object.keys(i18nDict)) delete i18nDict[key]
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket)
   })
@@ -261,6 +274,141 @@ describe('RunEventsModal', () => {
 
     expect(wrapper.text()).toContain('runEvents.details.hintLabel')
     expect(wrapper.text()).toContain('free space or adjust retention before retrying')
+
+    wrapper.unmount()
+  })
+
+  it('renders envelope message/hint localization with legacy fallback', async () => {
+    i18nDict['diagnostics.message.notification.network'] = '通知发送网络异常'
+    i18nDict['diagnostics.hint.notification.network'] = '请检查通知通道网络连通性'
+
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'warn',
+        kind: 'notify_failed',
+        message: 'notify_failed',
+        fields: {
+          hint: 'legacy hint fallback',
+          error_envelope: {
+            schema_version: '1.0',
+            code: 'notification.send.network',
+            kind: 'network',
+            retriable: { value: true, reason: 'network' },
+            hint: { key: 'diagnostics.hint.notification.network', params: {} },
+            message: { key: 'diagnostics.message.notification.network', params: {} },
+            transport: { protocol: 'http' },
+          },
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    expect(wrapper.text()).toContain('通知发送网络异常')
+
+    await wrapper.find('[data-testid="run-event-row"]').trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wrapper.text()).toContain('请检查通知通道网络连通性')
+
+    wrapper.unmount()
+  })
+
+  it('falls back to generic hint when envelope key is missing and no legacy hint exists', async () => {
+    i18nDict['runEvents.details.genericHint'] = '请查看诊断上下文和日志'
+
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'error',
+        kind: 'failed',
+        message: 'failed',
+        fields: {
+          error_envelope: {
+            schema_version: '1.0',
+            code: 'run.failed.unknown',
+            kind: 'unknown',
+            retriable: { value: false },
+            hint: { key: 'diagnostics.hint.missing', params: {} },
+            message: { key: 'diagnostics.message.missing', params: {} },
+            transport: { protocol: 'unknown' },
+          },
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    await wrapper.find('[data-testid="run-event-row"]').trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wrapper.text()).toContain('请查看诊断上下文和日志')
+
+    wrapper.unmount()
+  })
+
+  it('shows protocol, async operation and partial failure details from envelope context', async () => {
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'error',
+        kind: 'failed',
+        message: 'failed',
+        fields: {
+          error_envelope: {
+            schema_version: '1.0',
+            code: 'target.sftp.permission_denied',
+            kind: 'auth',
+            retriable: { value: false },
+            hint: { key: 'diagnostics.hint.artifact_delete.auth', params: {} },
+            message: { key: 'diagnostics.message.artifact_delete.auth', params: {} },
+            transport: {
+              protocol: 'sftp',
+              provider_code: 'SSH_FX_PERMISSION_DENIED',
+            },
+            context: {
+              operation: {
+                operation_id: 'op-123',
+                status: 'failed',
+                poll_after_sec: 20,
+              },
+              partial_failures: [
+                {
+                  path: '/docs/a.txt',
+                  code: 'target.permission_denied',
+                  kind: 'auth',
+                  transport: { protocol: 'sftp' },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    await wrapper.find('[data-testid="run-event-row"]').trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const text = wrapper.text()
+    expect(text).toContain('SSH_FX_PERMISSION_DENIED')
+    expect(text).toContain('op-123')
+    expect(text).toContain('/docs/a.txt')
 
     wrapper.unmount()
   })

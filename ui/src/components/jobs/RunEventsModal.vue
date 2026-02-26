@@ -28,6 +28,44 @@ export type RunEventsModalExpose = {
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 type SummaryChip = { text: string; type: 'default' | 'warning' | 'error' | 'success' }
+type DetailRow = { label: string; value: string }
+type PartialFailureRow = {
+  resource: string
+  code: string | null
+  kind: string | null
+  protocol: string | null
+}
+type JsonRecord = Record<string, unknown>
+
+type EnvelopeTextRef = {
+  key: string
+  params: JsonRecord
+}
+
+type ErrorEnvelope = {
+  schemaVersion: string | null
+  code: string
+  kind: string
+  retriable: {
+    value: boolean
+    reason: string | null
+    retryAfterSec: number | null
+  }
+  hint: EnvelopeTextRef | null
+  message: EnvelopeTextRef | null
+  transport: {
+    protocol: string
+    statusCode: number | null
+    statusText: string | null
+    provider: string | null
+    providerCode: string | null
+    providerRequestId: string | null
+    disconnectCode: number | null
+    ioKind: string | null
+    osErrorCode: number | null
+  }
+  context: JsonRecord | null
+}
 
 const { t } = useI18n()
 const message = useMessage()
@@ -291,10 +329,10 @@ function manualReconnect(): void {
   connectWs(runId.value, lastSeq, false)
 }
 
-function normalizeFields(fields: unknown | null): Record<string, unknown> | null {
+function normalizeFields(fields: unknown | null): JsonRecord | null {
   if (!fields || typeof fields !== 'object') return null
   if (Array.isArray(fields)) return null
-  return fields as Record<string, unknown>
+  return fields as JsonRecord
 }
 
 function toNumber(value: unknown): number | null {
@@ -302,10 +340,96 @@ function toNumber(value: unknown): number | null {
   return value
 }
 
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value !== 'boolean') return null
+  return value
+}
+
 function toString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const v = value.trim()
   return v ? v : null
+}
+
+function normalizeTextRef(value: unknown): EnvelopeTextRef | null {
+  const obj = normalizeFields(value)
+  if (!obj) return null
+  const key = toString(obj.key)
+  if (!key) return null
+  const params = normalizeFields(obj.params) ?? {}
+  return { key, params }
+}
+
+function normalizeErrorEnvelope(fields: JsonRecord | null): ErrorEnvelope | null {
+  if (!fields) return null
+  const envelope = normalizeFields(fields.error_envelope)
+  if (!envelope) return null
+
+  const code = toString(envelope.code)
+  const kind = toString(envelope.kind)
+  const retriable = normalizeFields(envelope.retriable)
+  const transport = normalizeFields(envelope.transport)
+  if (!code || !kind || !retriable || !transport) return null
+
+  const retriableValue = toBoolean(retriable.value)
+  const protocol = toString(transport.protocol)
+  if (retriableValue == null || !protocol) return null
+
+  return {
+    schemaVersion: toString(envelope.schema_version),
+    code,
+    kind,
+    retriable: {
+      value: retriableValue,
+      reason: toString(retriable.reason),
+      retryAfterSec: toNumber(retriable.retry_after_sec),
+    },
+    hint: normalizeTextRef(envelope.hint),
+    message: normalizeTextRef(envelope.message),
+    transport: {
+      protocol,
+      statusCode: toNumber(transport.status_code),
+      statusText: toString(transport.status_text),
+      provider: toString(transport.provider),
+      providerCode: toString(transport.provider_code),
+      providerRequestId: toString(transport.provider_request_id),
+      disconnectCode: toNumber(transport.disconnect_code),
+      ioKind: toString(transport.io_kind),
+      osErrorCode: toNumber(transport.os_error_code),
+    },
+    context: normalizeFields(envelope.context),
+  }
+}
+
+function resolveTextRef(textRef: EnvelopeTextRef | null): string | null {
+  if (!textRef) return null
+  const translated = t(textRef.key, textRef.params)
+  return translated === textRef.key ? null : translated
+}
+
+function eventDisplayMessage(e: RunEvent): string {
+  const fields = normalizeFields(e.fields)
+  const envelope = normalizeErrorEnvelope(fields)
+  if (!envelope) return e.message
+
+  const localized = resolveTextRef(envelope.message)
+  if (localized) return localized
+  if (toString(e.message)) return e.message
+  return t('runEvents.details.genericMessage')
+}
+
+function eventHint(e: RunEvent | null, allowGenericFallback = false): string | null {
+  if (!e) return null
+  const fields = normalizeFields(e.fields)
+  const legacyHint = toString(fields?.hint)
+  const envelope = normalizeErrorEnvelope(fields)
+  if (!envelope) return legacyHint
+
+  const localized = resolveTextRef(envelope.hint)
+  if (localized) return localized
+  if (legacyHint) return legacyHint
+  if (allowGenericFallback) return t('runEvents.details.genericHint')
+  return null
 }
 
 function shortId(value: string): string {
@@ -350,6 +474,7 @@ function formatRelativeSeconds(seconds: number): string {
 function pickSummaryChips(e: RunEvent): SummaryChip[] {
   const fields = normalizeFields(e.fields)
   if (!fields) return []
+  const envelope = normalizeErrorEnvelope(fields)
 
   const out: SummaryChip[] = []
   const push = (chip: SummaryChip): void => {
@@ -357,13 +482,13 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
     out.push(chip)
   }
 
-  const errorKind = toString(fields.error_kind) ?? toString(fields.last_error_kind)
+  const errorKind = envelope?.kind ?? toString(fields.error_kind) ?? toString(fields.last_error_kind)
   if (errorKind) {
     const type: SummaryChip['type'] = errorKind === 'auth' || errorKind === 'config' ? 'error' : 'warning'
     push({ text: errorKind, type })
   }
 
-  const httpStatus = toNumber(fields.http_status)
+  const httpStatus = envelope?.transport.statusCode ?? toNumber(fields.http_status)
   if (httpStatus != null) {
     const rounded = Math.max(0, Math.floor(httpStatus))
     const type: SummaryChip['type'] = rounded >= 500 ? 'warning' : rounded >= 400 ? 'error' : 'default'
@@ -419,21 +544,133 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   const partSize = toNumber(fields.part_size_bytes)
   if (partSize != null) push({ text: formatBytesCompact(partSize), type: 'default' })
 
-  const transportCode = toString(fields.transport_code)
+  const transportCode = envelope?.transport.providerCode ?? toString(fields.transport_code)
   if (transportCode) push({ text: transportCode, type: 'default' })
 
-  const hint = toString(fields.hint)
+  const hint = eventHint(e, false)
   if (hint) push({ text: hint, type: 'warning' })
 
   return out
 }
 
 function detailHint(e: RunEvent | null): string | null {
-  if (!e) return null
-  const fields = normalizeFields(e.fields)
-  if (!fields) return null
-  return toString(fields.hint)
+  return eventHint(e, true)
 }
+
+function detailDiagnosticsRows(e: RunEvent | null): DetailRow[] {
+  if (!e) return []
+  const fields = normalizeFields(e.fields)
+  const envelope = normalizeErrorEnvelope(fields)
+  if (!envelope) return []
+
+  const rows: DetailRow[] = [
+    { label: t('runEvents.details.labels.code'), value: envelope.code },
+    { label: t('runEvents.details.labels.kind'), value: envelope.kind },
+    { label: t('runEvents.details.labels.protocol'), value: envelope.transport.protocol },
+    {
+      label: t('runEvents.details.labels.retriable'),
+      value: envelope.retriable.value ? t('common.yes') : t('common.no'),
+    },
+  ]
+
+  if (envelope.retriable.reason) {
+    rows.push({ label: t('runEvents.details.labels.retryReason'), value: envelope.retriable.reason })
+  }
+
+  const retryAfter = envelope.retriable.retryAfterSec ?? toNumber(fields?.retry_after_secs)
+  if (retryAfter != null) {
+    rows.push({
+      label: t('runEvents.details.labels.retryAfter'),
+      value: `${Math.max(0, Math.floor(retryAfter))}${t('common.timeUnits.s')}`,
+    })
+  }
+
+  if (envelope.transport.statusCode != null) {
+    rows.push({ label: t('runEvents.details.labels.statusCode'), value: String(Math.floor(envelope.transport.statusCode)) })
+  }
+  if (envelope.transport.statusText) {
+    rows.push({ label: t('runEvents.details.labels.statusText'), value: envelope.transport.statusText })
+  }
+  if (envelope.transport.provider) {
+    rows.push({ label: t('runEvents.details.labels.provider'), value: envelope.transport.provider })
+  }
+  if (envelope.transport.providerCode) {
+    rows.push({ label: t('runEvents.details.labels.providerCode'), value: envelope.transport.providerCode })
+  }
+  if (envelope.transport.providerRequestId) {
+    rows.push({ label: t('runEvents.details.labels.providerRequestId'), value: envelope.transport.providerRequestId })
+  }
+  if (envelope.transport.disconnectCode != null) {
+    rows.push({
+      label: t('runEvents.details.labels.disconnectCode'),
+      value: String(Math.floor(envelope.transport.disconnectCode)),
+    })
+  }
+  if (envelope.transport.ioKind) {
+    rows.push({ label: t('runEvents.details.labels.ioKind'), value: envelope.transport.ioKind })
+  }
+  if (envelope.transport.osErrorCode != null) {
+    rows.push({ label: t('runEvents.details.labels.osErrorCode'), value: String(Math.floor(envelope.transport.osErrorCode)) })
+  }
+
+  return rows
+}
+
+function detailOperationRows(e: RunEvent | null): DetailRow[] {
+  if (!e) return []
+  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const operation = normalizeFields(envelope?.context?.operation)
+  if (!operation) return []
+
+  const rows: DetailRow[] = []
+  const operationId = toString(operation.operation_id)
+  if (operationId) rows.push({ label: t('runEvents.details.labels.operationId'), value: operationId })
+
+  const status = toString(operation.status)
+  if (status) rows.push({ label: t('runEvents.details.labels.operationStatus'), value: status })
+
+  const pollAfterSec = toNumber(operation.poll_after_sec)
+  if (pollAfterSec != null) {
+    rows.push({
+      label: t('runEvents.details.labels.pollAfter'),
+      value: `${Math.max(0, Math.floor(pollAfterSec))}${t('common.timeUnits.s')}`,
+    })
+  }
+
+  return rows
+}
+
+function detailPartialFailureRows(e: RunEvent | null): PartialFailureRow[] {
+  if (!e) return []
+  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const partialFailures = envelope?.context?.partial_failures
+  if (!Array.isArray(partialFailures)) return []
+
+  return partialFailures
+    .map((item) => {
+      const row = normalizeFields(item)
+      if (!row) return null
+      const transport = normalizeFields(row.transport)
+      const resource =
+        toString(row.resource_id) ??
+        toString(row.path) ??
+        toString(row.resource) ??
+        t('runEvents.details.unknownResource')
+      return {
+        resource,
+        code: toString(row.code),
+        kind: toString(row.kind),
+        protocol: toString(transport?.protocol),
+      }
+    })
+    .filter((item): item is PartialFailureRow => item != null)
+}
+
+const detailMessageText = computed(() => (detailEvent.value ? eventDisplayMessage(detailEvent.value) : ''))
+const detailHintText = computed(() => detailHint(detailEvent.value))
+const detailEnvelopeRows = computed(() => detailDiagnosticsRows(detailEvent.value))
+const detailOperationInfoRows = computed(() => detailOperationRows(detailEvent.value))
+const detailPartialFailures = computed(() => detailPartialFailureRows(detailEvent.value))
 
 async function open(id: string): Promise<void> {
   show.value = true
@@ -571,7 +808,7 @@ defineExpose<RunEventsModalExpose>({ open })
                   <span class="inline-block max-w-28 truncate align-bottom">{{ chip.text }}</span>
                 </n-tag>
               </div>
-              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
               <n-button
                 v-if="item.fields"
                 size="tiny"
@@ -593,7 +830,7 @@ defineExpose<RunEventsModalExpose>({ open })
               <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
                 <span class="block w-full truncate text-center">{{ item.level }}</span>
               </n-tag>
-              <span class="min-w-0 flex-1 truncate">{{ item.message }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
               <n-button
                 v-if="item.fields"
                 size="tiny"
@@ -635,9 +872,44 @@ defineExpose<RunEventsModalExpose>({ open })
             <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
             <span class="app-text-muted">{{ detailEvent.kind }}</span>
           </div>
-          <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
-          <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-            {{ t('runEvents.details.hintLabel') }}: {{ detailHint(detailEvent) }}
+          <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailMessageText }}</div>
+          <div v-if="detailHintText" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
+            {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
+          </div>
+          <div v-if="detailEnvelopeRows.length > 0" class="space-y-1">
+            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
+            <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+              <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-${idx}`">
+                <div class="app-text-muted">{{ row.label }}</div>
+                <div class="font-mono break-all">{{ row.value }}</div>
+              </template>
+            </div>
+          </div>
+          <div v-if="detailOperationInfoRows.length > 0" class="space-y-1">
+            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.operation') }}</div>
+            <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+              <template v-for="(row, idx) in detailOperationInfoRows" :key="`op-${idx}`">
+                <div class="app-text-muted">{{ row.label }}</div>
+                <div class="font-mono break-all">{{ row.value }}</div>
+              </template>
+            </div>
+          </div>
+          <div v-if="detailPartialFailures.length > 0" class="space-y-1">
+            <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.partialFailures') }}</div>
+            <div class="space-y-1">
+              <div
+                v-for="(item, idx) in detailPartialFailures"
+                :key="`partial-${idx}`"
+                class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs"
+              >
+                <div class="font-mono break-all">{{ item.resource }}</div>
+                <div class="app-text-muted flex flex-wrap items-center gap-2 mt-0.5">
+                  <span v-if="item.code">{{ t('runEvents.details.labels.partialCode') }}: {{ item.code }}</span>
+                  <span v-if="item.kind">{{ t('runEvents.details.labels.partialKind') }}: {{ item.kind }}</span>
+                  <span v-if="item.protocol">{{ t('runEvents.details.labels.partialProtocol') }}: {{ item.protocol }}</span>
+                </div>
+              </div>
+            </div>
           </div>
           <n-code
             v-if="detailEvent.fields"
@@ -658,9 +930,44 @@ defineExpose<RunEventsModalExpose>({ open })
               <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
               <span class="app-text-muted">{{ detailEvent.kind }}</span>
             </div>
-            <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
-            <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-              {{ t('runEvents.details.hintLabel') }}: {{ detailHint(detailEvent) }}
+            <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailMessageText }}</div>
+            <div v-if="detailHintText" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
+              {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
+            </div>
+            <div v-if="detailEnvelopeRows.length > 0" class="space-y-1">
+              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
+              <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+                <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-mobile-${idx}`">
+                  <div class="app-text-muted">{{ row.label }}</div>
+                  <div class="font-mono break-all">{{ row.value }}</div>
+                </template>
+              </div>
+            </div>
+            <div v-if="detailOperationInfoRows.length > 0" class="space-y-1">
+              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.operation') }}</div>
+              <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+                <template v-for="(row, idx) in detailOperationInfoRows" :key="`op-mobile-${idx}`">
+                  <div class="app-text-muted">{{ row.label }}</div>
+                  <div class="font-mono break-all">{{ row.value }}</div>
+                </template>
+              </div>
+            </div>
+            <div v-if="detailPartialFailures.length > 0" class="space-y-1">
+              <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.partialFailures') }}</div>
+              <div class="space-y-1">
+                <div
+                  v-for="(item, idx) in detailPartialFailures"
+                  :key="`partial-mobile-${idx}`"
+                  class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs"
+                >
+                  <div class="font-mono break-all">{{ item.resource }}</div>
+                  <div class="app-text-muted flex flex-wrap items-center gap-2 mt-0.5">
+                    <span v-if="item.code">{{ t('runEvents.details.labels.partialCode') }}: {{ item.code }}</span>
+                    <span v-if="item.kind">{{ t('runEvents.details.labels.partialKind') }}: {{ item.kind }}</span>
+                    <span v-if="item.protocol">{{ t('runEvents.details.labels.partialProtocol') }}: {{ item.protocol }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <n-code
               v-if="detailEvent.fields"
