@@ -1308,6 +1308,7 @@ const messages = {
     },
     details: {
       title: '事件详情',
+      hintLabel: '建议',
     },
     ws: {
       disconnected: '已断开',

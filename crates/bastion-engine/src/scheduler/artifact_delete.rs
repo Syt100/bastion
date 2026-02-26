@@ -13,8 +13,7 @@ use bastion_storage::artifact_delete_repo;
 use bastion_storage::run_artifacts_repo;
 use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
-use bastion_targets::WebdavClient;
-use bastion_targets::WebdavCredentials;
+use bastion_targets::{WebdavClient, WebdavCredentials, WebdavHttpError};
 
 use crate::agent_manager::AgentManager;
 
@@ -362,6 +361,7 @@ async fn process_task(
         DeleteResult::Failed { kind, error } => {
             let last_error = sanitize_error_string(&error.to_string());
             let last_error_kind = kind.as_str();
+            let hint = hint_for_error_kind(kind);
 
             if should_abandon(task, now) {
                 artifact_delete_repo::mark_abandoned(
@@ -381,6 +381,7 @@ async fn process_task(
                     Some(serde_json::json!({
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -420,6 +421,7 @@ async fn process_task(
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
                         "next_attempt_at": next_attempt_at,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -454,6 +456,7 @@ async fn process_task(
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
                         "next_attempt_at": next_attempt_at,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -543,6 +546,20 @@ impl ErrorKind {
             Self::Http => "http",
             Self::Unknown => "unknown",
         }
+    }
+}
+
+fn hint_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Config => "target snapshot configuration is invalid; verify target settings",
+        ErrorKind::Auth => {
+            "target authentication/permission failure; verify credentials and access"
+        }
+        ErrorKind::Network => "temporary network failure; verify connectivity and retry",
+        ErrorKind::Http => {
+            "remote service returned an unexpected HTTP response; inspect status and response body"
+        }
+        ErrorKind::Unknown => "unknown delete failure; inspect task error details and service logs",
     }
 }
 
@@ -653,21 +670,48 @@ async fn delete_webdav_snapshot_inner(
 }
 
 fn classify_error(error: &anyhow::Error) -> ErrorKind {
-    let msg = error.to_string();
+    if let Some(http) = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<WebdavHttpError>())
+    {
+        return match http.status.as_u16() {
+            401 | 403 => ErrorKind::Auth,
+            408 | 429 | 502 | 503 | 504 => ErrorKind::Network,
+            500..=599 => ErrorKind::Network,
+            400..=499 => ErrorKind::Http,
+            _ => ErrorKind::Unknown,
+        };
+    }
+
+    let msg = error
+        .chain()
+        .map(|cause| cause.to_string().to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" | ");
 
     if msg.contains("missing webdav secret") || msg.contains("invalid target snapshot") {
         return ErrorKind::Config;
     }
 
-    if msg.contains("HTTP 401")
-        || msg.contains("HTTP 403")
-        || msg.contains(" Unauthorized")
-        || msg.contains(" Forbidden")
+    if msg.contains("http 401")
+        || msg.contains("http 403")
+        || msg.contains("unauthorized")
+        || msg.contains("forbidden")
     {
         return ErrorKind::Auth;
     }
 
-    if msg.contains("HTTP ") {
+    if msg.contains("http 408")
+        || msg.contains("http 429")
+        || msg.contains("http 500")
+        || msg.contains("http 502")
+        || msg.contains("http 503")
+        || msg.contains("http 504")
+    {
+        return ErrorKind::Network;
+    }
+
+    if msg.contains("http ") {
         return ErrorKind::Http;
     }
 
@@ -686,7 +730,10 @@ fn classify_error(error: &anyhow::Error) -> ErrorKind {
 mod tests {
     use tempfile::TempDir;
 
-    use super::{ErrorKind, backoff_seconds, delete_local_dir_snapshot, sanitize_error_string};
+    use super::{
+        ErrorKind, backoff_seconds, classify_error, delete_local_dir_snapshot, hint_for_error_kind,
+        sanitize_error_string,
+    };
 
     #[test]
     fn sanitize_error_string_trims_and_single_lines() {
@@ -724,5 +771,22 @@ mod tests {
             other => panic!("unexpected result: {other:?}"),
         }
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn classify_error_uses_http_message_hints() {
+        let auth = anyhow::anyhow!("webdav request failed: HTTP 401: unauthorized");
+        assert!(matches!(classify_error(&auth), ErrorKind::Auth));
+
+        let net = anyhow::anyhow!("webdav request failed: HTTP 503: busy");
+        assert!(matches!(classify_error(&net), ErrorKind::Network));
+    }
+
+    #[test]
+    fn hint_for_error_kind_is_actionable() {
+        assert!(hint_for_error_kind(ErrorKind::Auth).contains("credentials"));
+        assert!(hint_for_error_kind(ErrorKind::Config).contains("configuration"));
+        assert!(hint_for_error_kind(ErrorKind::Network).contains("connectivity"));
+        assert!(hint_for_error_kind(ErrorKind::Http).contains("HTTP"));
     }
 }

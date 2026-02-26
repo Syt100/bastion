@@ -40,6 +40,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed rolling archive upload failures to preserve the underlying uploader/network root cause instead of surfacing a generic `rolling uploader dropped`.
 - Fixed WebDAV upload retry handling to classify failure kinds (auth, timeout, rate-limit, payload-too-large, transport) and retry only when appropriate.
 - Fixed fallback failure classification to mark connect/DNS/routing transport errors (for example `connection refused`) as `network` with actionable hints.
+- Fixed WebDAV read/delete/download failure mapping to preserve HTTP diagnostics and avoid retrying non-retriable auth/config failures.
+- Fixed cleanup/artifact-delete run events to include actionable `hint` fields, and localized the Run Events detail hint label for zh/en UI.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.

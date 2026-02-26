@@ -1312,6 +1312,7 @@ const messages = {
     },
     details: {
       title: 'Event details',
+      hintLabel: 'Hint',
     },
     ws: {
       disconnected: 'Disconnected',

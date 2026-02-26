@@ -234,4 +234,34 @@ describe('RunEventsModal', () => {
 
     wrapper.unmount()
   })
+
+  it('renders localized hint label in event details', async () => {
+    jobsApi.listRunEvents.mockResolvedValue([
+      {
+        run_id: 'run1',
+        seq: 1,
+        ts: 1,
+        level: 'error',
+        kind: 'failed',
+        message: 'failed: storage capacity exhausted',
+        fields: {
+          error_kind: 'storage_full',
+          hint: 'free space or adjust retention before retrying',
+        },
+      },
+    ])
+
+    const wrapper = mount(RunEventsModal)
+    const vm = wrapper.vm as unknown as { open: (runId: string) => Promise<void> }
+    await vm.open('run1')
+
+    await wrapper.find('[data-testid="run-event-row"]').trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(wrapper.text()).toContain('runEvents.details.hintLabel')
+    expect(wrapper.text()).toContain('free space or adjust retention before retrying')
+
+    wrapper.unmount()
+  })
 })

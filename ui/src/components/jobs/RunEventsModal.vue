@@ -637,7 +637,7 @@ defineExpose<RunEventsModalExpose>({ open })
           </div>
           <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
           <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-            Hint: {{ detailHint(detailEvent) }}
+            {{ t('runEvents.details.hintLabel') }}: {{ detailHint(detailEvent) }}
           </div>
           <n-code
             v-if="detailEvent.fields"
@@ -660,7 +660,7 @@ defineExpose<RunEventsModalExpose>({ open })
             </div>
             <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailEvent.message }}</div>
             <div v-if="detailHint(detailEvent)" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-              Hint: {{ detailHint(detailEvent) }}
+              {{ t('runEvents.details.hintLabel') }}: {{ detailHint(detailEvent) }}
             </div>
             <n-code
               v-if="detailEvent.fields"

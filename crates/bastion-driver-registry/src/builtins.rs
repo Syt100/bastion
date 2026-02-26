@@ -6,8 +6,8 @@ use url::Url;
 
 use bastion_core::backup_format::{COMPLETE_NAME, ENTRIES_INDEX_NAME, MANIFEST_NAME};
 use bastion_driver_api::{
-    DriverError, DriverFuture, DriverId, OpenReaderRequest, StoreRunProgress, StoreRunRequest,
-    TargetDriver, TargetDriverCapabilities, TargetRequestLimits, TargetRunReader,
+    DriverError, DriverErrorKind, DriverFuture, DriverId, OpenReaderRequest, StoreRunProgress,
+    StoreRunRequest, TargetDriver, TargetDriverCapabilities, TargetRequestLimits, TargetRunReader,
 };
 
 use crate::DriverRegistry;
@@ -348,7 +348,7 @@ impl TargetRunReader for WebdavRunReader {
             let size = client
                 .head_size(&url)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))?;
+                .map_err(map_webdav_anyhow_to_driver_error)?;
             Ok(size.is_some())
         })
     }
@@ -361,7 +361,7 @@ impl TargetRunReader for WebdavRunReader {
             client
                 .get_bytes(&url)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))
+                .map_err(map_webdav_anyhow_to_driver_error)
         })
     }
 
@@ -373,7 +373,7 @@ impl TargetRunReader for WebdavRunReader {
             client
                 .head_size(&url)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))
+                .map_err(map_webdav_anyhow_to_driver_error)
         })
     }
 
@@ -397,7 +397,7 @@ impl TargetRunReader for WebdavRunReader {
             client
                 .get_to_file(&url, &dest, expected_size, retries)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))
+                .map_err(map_webdav_anyhow_to_driver_error)
         })
     }
 }
@@ -471,7 +471,7 @@ impl TargetDriver for WebdavTargetDriver {
                 progress,
             )
             .await
-            .map_err(|error| DriverError::network(error.to_string()))?;
+            .map_err(map_webdav_anyhow_to_driver_error)?;
 
             Ok(serde_json::json!({
                 "type": TARGET_KIND_WEBDAV,
@@ -515,7 +515,7 @@ impl TargetDriver for WebdavTargetDriver {
                 password: password.to_string(),
             },
         )
-        .map_err(|error| DriverError::network(error.to_string()))?;
+        .map_err(map_webdav_anyhow_to_driver_error)?;
 
         let job_url = parsed_base
             .join(&format!("{}/", request.job_id))
@@ -560,7 +560,7 @@ impl TargetDriver for WebdavTargetDriver {
                     password: cfg.password,
                 },
             )
-            .map_err(|error| DriverError::network(error.to_string()))?;
+            .map_err(map_webdav_anyhow_to_driver_error)?;
 
             let job_url = base_url
                 .join(&format!("{}/", request.job_id))
@@ -575,7 +575,7 @@ impl TargetDriver for WebdavTargetDriver {
             if client
                 .head_size(&complete_url)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))?
+                .map_err(map_webdav_anyhow_to_driver_error)?
                 .is_some()
             {
                 return Ok(bastion_driver_api::CleanupRunStatus::SkipComplete);
@@ -584,7 +584,7 @@ impl TargetDriver for WebdavTargetDriver {
             match client
                 .delete(&run_url)
                 .await
-                .map_err(|error| DriverError::network(error.to_string()))?
+                .map_err(map_webdav_anyhow_to_driver_error)?
             {
                 true => Ok(bastion_driver_api::CleanupRunStatus::Deleted),
                 false => Ok(bastion_driver_api::CleanupRunStatus::SkipNotFound),
@@ -614,6 +614,101 @@ impl TargetDriver for WebdavTargetDriver {
         }
         Ok(out)
     }
+}
+
+fn map_webdav_anyhow_to_driver_error<E>(error: E) -> DriverError
+where
+    E: std::fmt::Display,
+{
+    fn classify_webdav_message_kind(message: &str) -> DriverErrorKind {
+        let text = message.to_lowercase();
+
+        if text.contains("kind=auth")
+            || text.contains("kind=permission")
+            || text.contains("http 401")
+            || text.contains("http 403")
+            || text.contains("[http_status=401]")
+            || text.contains("[http_status=403]")
+            || text.contains("unauthorized")
+            || text.contains("forbidden")
+        {
+            return DriverErrorKind::Auth;
+        }
+
+        if text.contains("kind=config")
+            || text.contains("kind=payload_too_large")
+            || text.contains("kind=storage_full")
+            || text.contains("http 400")
+            || text.contains("http 404")
+            || text.contains("http 409")
+            || text.contains("http 412")
+            || text.contains("http 422")
+            || text.contains("[http_status=400]")
+            || text.contains("[http_status=404]")
+            || text.contains("[http_status=409]")
+            || text.contains("[http_status=412]")
+            || text.contains("[http_status=422]")
+            || text.contains("invalid webdav")
+            || text.contains("missing webdav secret")
+            || text.contains("invalid target snapshot")
+            || text.contains("webdav.base_url")
+            || text.contains("payload too large")
+            || text.contains("insufficient storage")
+            || text.contains("no space left")
+            || text.contains("quota exceeded")
+            || text.contains("not found")
+            || text.contains("no such file")
+        {
+            return DriverErrorKind::Config;
+        }
+
+        if text.contains("kind=rate_limited")
+            || text.contains("kind=timeout")
+            || text.contains("kind=upstream_unavailable")
+            || text.contains("kind=network")
+            || text.contains("http 408")
+            || text.contains("http 429")
+            || text.contains("http 500")
+            || text.contains("http 502")
+            || text.contains("http 503")
+            || text.contains("http 504")
+            || text.contains("[http_status=408]")
+            || text.contains("[http_status=429]")
+            || text.contains("[http_status=500]")
+            || text.contains("[http_status=502]")
+            || text.contains("[http_status=503]")
+            || text.contains("[http_status=504]")
+            || text.contains("status code 408")
+            || text.contains("status code 429")
+            || text.contains("status code 500")
+            || text.contains("status code 502")
+            || text.contains("status code 503")
+            || text.contains("status code 504")
+            || text.contains("error sending request")
+            || text.contains("timed out")
+            || text.contains("timeout")
+            || text.contains("connection refused")
+            || text.contains("connection reset")
+            || text.contains("connection aborted")
+            || text.contains("broken pipe")
+            || text.contains("dns")
+            || text.contains("failed to lookup")
+            || text.contains("network")
+            || text.contains("temporary failure in name resolution")
+            || text.contains("name or service not known")
+        {
+            return DriverErrorKind::Network;
+        }
+
+        if text.contains("http ") || text.contains("[http_status=") {
+            return DriverErrorKind::Config;
+        }
+
+        DriverErrorKind::Unknown
+    }
+
+    let message = error.to_string();
+    DriverError::new(classify_webdav_message_kind(&message), message)
 }
 
 fn to_webdav_limits(limits: TargetRequestLimits) -> bastion_targets::WebdavRequestLimits {
@@ -772,5 +867,59 @@ mod tests {
         assert!(parsed.query().is_none());
         assert!(parsed.fragment().is_none());
         assert!(parsed.path().ends_with('/'));
+    }
+
+    #[test]
+    fn map_webdav_anyhow_to_driver_error_maps_http_status_texts() {
+        #[derive(Debug)]
+        struct MsgError(&'static str);
+
+        impl std::fmt::Display for MsgError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+
+        impl std::error::Error for MsgError {}
+
+        let auth = map_webdav_anyhow_to_driver_error(MsgError(
+            "webdav request failed: HTTP 401: unauthorized",
+        ));
+        assert_eq!(auth.kind, DriverErrorKind::Auth);
+
+        let config =
+            map_webdav_anyhow_to_driver_error(MsgError("webdav request failed: HTTP 404: missing"));
+        assert_eq!(config.kind, DriverErrorKind::Config);
+
+        let network =
+            map_webdav_anyhow_to_driver_error(MsgError("webdav request failed: HTTP 503: busy"));
+        assert_eq!(network.kind, DriverErrorKind::Network);
+    }
+
+    #[test]
+    fn map_webdav_anyhow_to_driver_error_uses_network_message_fallback() {
+        #[derive(Debug)]
+        struct MsgError(&'static str);
+
+        impl std::fmt::Display for MsgError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+
+        impl std::error::Error for MsgError {}
+
+        let error = MsgError("error sending request: connection refused");
+        assert_eq!(
+            map_webdav_anyhow_to_driver_error(error).kind,
+            DriverErrorKind::Network
+        );
+    }
+
+    #[test]
+    fn map_webdav_anyhow_to_driver_error_maps_not_found_io_to_config() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "No such file");
+        let mapped = map_webdav_anyhow_to_driver_error(io_error);
+        assert_eq!(mapped.kind, DriverErrorKind::Config);
     }
 }

@@ -146,6 +146,18 @@ impl ErrorKind {
     }
 }
 
+fn hint_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Network => "temporary network/upstream failure; verify connectivity and retry",
+        ErrorKind::Io => "local I/O failure; check path permissions and disk health",
+        ErrorKind::Auth => "authentication/permission failure; verify target credentials",
+        ErrorKind::Config => "target configuration failure; verify snapshot target settings",
+        ErrorKind::Unknown => {
+            "unknown cleanup failure; inspect task error details and service logs"
+        }
+    }
+}
+
 async fn tick_incomplete_cleanup(
     db: &SqlitePool,
     secrets: &SecretsCrypto,
@@ -439,6 +451,7 @@ async fn process_task(
         CleanupResult::Failed { kind, error } => {
             let last_error = sanitize_error_string(&error.to_string());
             let last_error_kind = kind.as_str();
+            let hint = hint_for_error_kind(kind);
 
             if should_abandon(task, now) {
                 incomplete_cleanup_repo::mark_abandoned(
@@ -458,6 +471,7 @@ async fn process_task(
                     Some(serde_json::json!({
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -488,6 +502,7 @@ async fn process_task(
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
                         "next_attempt_at": next_attempt_at,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -513,6 +528,7 @@ async fn process_task(
                         "duration_ms": duration_ms,
                         "error_kind": last_error_kind,
                         "next_attempt_at": next_attempt_at,
+                        "hint": hint,
                     })),
                     now,
                 )
@@ -780,6 +796,14 @@ mod tests {
             map_driver_error_kind(DriverErrorKind::Unknown),
             ErrorKind::Unknown
         );
+    }
+
+    #[test]
+    fn hint_for_error_kind_returns_actionable_messages() {
+        assert!(hint_for_error_kind(ErrorKind::Auth).contains("credentials"));
+        assert!(hint_for_error_kind(ErrorKind::Config).contains("configuration"));
+        assert!(hint_for_error_kind(ErrorKind::Network).contains("connectivity"));
+        assert!(hint_for_error_kind(ErrorKind::Unknown).contains("unknown cleanup"));
     }
 
     fn local_task(job_id: &str, run_id: &str) -> incomplete_cleanup_repo::CleanupTaskRow {

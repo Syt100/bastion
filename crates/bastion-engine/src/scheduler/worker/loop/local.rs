@@ -53,6 +53,18 @@ fn fallback_error_hint(error: &anyhow::Error) -> (String, String) {
             "check WebDAV account permissions for target path (403)".to_string(),
         );
     }
+    if text.contains("insufficient storage")
+        || text.contains("no space left")
+        || text.contains("disk full")
+        || text.contains("quota exceeded")
+        || text.contains("quota has been exceeded")
+    {
+        return (
+            "storage_full".to_string(),
+            "storage capacity or quota is exhausted; free space or adjust retention before retrying"
+                .to_string(),
+        );
+    }
     if text.contains("timed out")
         || text.contains("timeout")
         || text.contains("client error (connect)")
@@ -82,7 +94,7 @@ fn fallback_error_hint(error: &anyhow::Error) -> (String, String) {
     }
     (
         "unknown".to_string(),
-        "inspect error chain details and upstream WebDAV/proxy logs".to_string(),
+        "operation failed with an unclassified error; inspect error chain details and related service logs".to_string(),
     )
 }
 
@@ -405,5 +417,35 @@ mod tests {
                 .and_then(|v| v.as_str())
                 .is_some_and(|s| s.contains("DNS/routing/firewall"))
         );
+    }
+
+    #[test]
+    fn failed_event_fields_map_storage_capacity_hint() {
+        let error = anyhow::anyhow!("No space left on device");
+        let fields = build_failed_event_fields(&error, None);
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_kind").and_then(|v| v.as_str()),
+            Some("storage_full")
+        );
+        assert!(
+            obj.get("hint")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| s.contains("quota"))
+        );
+    }
+
+    #[test]
+    fn failed_event_fields_unknown_hint_is_transport_agnostic() {
+        let error = anyhow::anyhow!("unexpected panic while building summary");
+        let fields = build_failed_event_fields(&error, None);
+        let obj = fields.as_object().expect("object");
+        let hint = obj.get("hint").and_then(|v| v.as_str()).unwrap_or_default();
+        assert_eq!(
+            obj.get("error_kind").and_then(|v| v.as_str()),
+            Some("unknown")
+        );
+        assert!(!hint.to_lowercase().contains("webdav"));
+        assert!(hint.contains("unclassified"));
     }
 }

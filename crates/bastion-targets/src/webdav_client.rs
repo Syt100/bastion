@@ -592,6 +592,105 @@ impl WebdavClient {
         }
     }
 
+    fn read_status_is_retriable(status: StatusCode) -> bool {
+        matches!(
+            status,
+            StatusCode::TOO_MANY_REQUESTS
+                | StatusCode::REQUEST_TIMEOUT
+                | StatusCode::BAD_GATEWAY
+                | StatusCode::SERVICE_UNAVAILABLE
+                | StatusCode::GATEWAY_TIMEOUT
+        ) || status.is_server_error()
+    }
+
+    fn read_message_looks_network_issue(message: &str) -> bool {
+        message.contains("timed out")
+            || message.contains("timeout")
+            || message.contains("deadline")
+            || message.contains("connection reset")
+            || message.contains("broken pipe")
+            || message.contains("connection refused")
+            || message.contains("connection aborted")
+            || message.contains("network")
+            || message.contains("failed to lookup")
+            || message.contains("name or service not known")
+            || message.contains("temporary failure in name resolution")
+            || message.contains("no route to host")
+            || message.contains("host is unreachable")
+    }
+
+    fn classify_read_error_retry(error: &anyhow::Error) -> (bool, Option<Duration>) {
+        if let Some(http) = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<WebdavHttpError>())
+        {
+            return (
+                Self::read_status_is_retriable(http.status),
+                if Self::read_status_is_retriable(http.status) {
+                    http.retry_after
+                } else {
+                    None
+                },
+            );
+        }
+
+        if let Some(reqwest_error) = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<reqwest::Error>())
+        {
+            if let Some(status) = reqwest_error.status() {
+                return (Self::read_status_is_retriable(status), None);
+            }
+            if reqwest_error.is_timeout()
+                || reqwest_error.is_connect()
+                || reqwest_error.is_request()
+            {
+                return (true, None);
+            }
+        }
+
+        let message_chain = error
+            .chain()
+            .map(|cause| cause.to_string().to_lowercase())
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        (Self::read_message_looks_network_issue(&message_chain), None)
+    }
+
+    fn truncate_message(message: &str, max_chars: usize) -> String {
+        let count = message.chars().count();
+        if count <= max_chars {
+            return message.to_string();
+        }
+
+        let mut out = message.chars().take(max_chars).collect::<String>();
+        out.push('…');
+        out
+    }
+
+    async fn response_http_error(
+        res: reqwest::Response,
+        fallback_message: &'static str,
+    ) -> anyhow::Error {
+        let status = res.status();
+        let retry_after = parse_retry_after(&res);
+        let body = res.text().await.unwrap_or_default();
+        let message = if body.trim().is_empty() {
+            fallback_message.to_string()
+        } else {
+            format!("{fallback_message}; response: {}", body.trim())
+        };
+        let message = Self::truncate_message(&message, 512);
+
+        WebdavHttpError {
+            status,
+            message,
+            retry_after,
+        }
+        .into()
+    }
+
     async fn send_limited(
         &self,
         class: WebdavRequestClass,
@@ -1023,8 +1122,7 @@ impl WebdavClient {
 
         match res.status() {
             StatusCode::OK => Ok(res.bytes().await?.to_vec()),
-            StatusCode::NOT_FOUND => Err(anyhow::anyhow!("GET failed: HTTP 404")),
-            s => Err(anyhow::anyhow!("GET failed: HTTP {s}")),
+            _ => Err(Self::response_http_error(res, "GET failed").await),
         }
     }
 
@@ -1104,7 +1202,7 @@ impl WebdavClient {
         match res.status() {
             StatusCode::NOT_FOUND => Ok(false),
             s if s.is_success() => Ok(true),
-            s => Err(anyhow::anyhow!("DELETE failed: HTTP {s}")),
+            _ => Err(Self::response_http_error(res, "DELETE failed").await),
         }
     }
 
@@ -1121,17 +1219,26 @@ impl WebdavClient {
             match self.get_to_file_once(url, dest, expected_size).await {
                 Ok(n) => return Ok(n),
                 Err(error) if attempt < max_attempts => {
+                    let (retriable, retry_after) = Self::classify_read_error_retry(&error);
+                    if !retriable {
+                        return Err(error);
+                    }
                     tracing::debug!(
                         url = %redact_url(url),
                         dest = %dest.display(),
                         attempt,
                         max_attempts,
                         backoff_seconds = backoff.as_secs(),
+                        retriable,
                         error = %error,
                         "webdav get failed; retrying"
                     );
-                    tokio::time::sleep(backoff).await;
-                    backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                    if let Some(delay) = retry_after {
+                        tokio::time::sleep(std::cmp::min(delay, Duration::from_secs(60))).await;
+                    } else {
+                        tokio::time::sleep(backoff).await;
+                        backoff = std::cmp::min(backoff * 2, Duration::from_secs(30));
+                    }
                     attempt += 1;
                     continue;
                 }
@@ -1152,7 +1259,7 @@ impl WebdavClient {
             .await?;
 
         if res.status() != StatusCode::OK {
-            anyhow::bail!("GET failed: HTTP {}", res.status());
+            return Err(Self::response_http_error(res, "GET failed").await);
         }
 
         if let Some(expected) = expected_size
@@ -1377,8 +1484,9 @@ fn filter_depth1_self(
 #[cfg(test)]
 mod tests {
     use super::{
-        WebdavClient, WebdavCredentials, WebdavPutError, WebdavPutErrorKind, WebdavRequestLimits,
-        basename_from_href, decode_href_path, filter_depth1_self, parse_propfind_multistatus,
+        WebdavClient, WebdavCredentials, WebdavHttpError, WebdavPutError, WebdavPutErrorKind,
+        WebdavRequestLimits, basename_from_href, decode_href_path, filter_depth1_self,
+        parse_propfind_multistatus,
     };
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1855,5 +1963,150 @@ mod tests {
 
         assert_eq!(put.max_attempts, 5);
         assert_eq!(state.puts.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn get_bytes_returns_structured_http_error() {
+        async fn handler(_req: Request<Body>) -> impl IntoResponse {
+            axum::http::Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("manifest missing"))
+                .unwrap()
+        }
+
+        let app = Router::new().route("/{*path}", any(handler));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+        )
+        .unwrap();
+
+        let err = client
+            .get_bytes(&base.join("manifest.json").unwrap())
+            .await
+            .expect_err("should fail");
+        let http = err
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<WebdavHttpError>())
+            .expect("webdav http error");
+
+        assert_eq!(http.status, StatusCode::NOT_FOUND);
+        assert!(http.message.contains("manifest missing"));
+    }
+
+    #[tokio::test]
+    async fn get_to_file_with_retries_stops_on_non_retriable_auth_error() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            gets: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, _req: Request<Body>) -> impl IntoResponse {
+            state.gets.fetch_add(1, Ordering::SeqCst);
+            axum::http::Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from("bad credentials"))
+                .unwrap()
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+        )
+        .unwrap();
+
+        let temp = TempDir::new().expect("tempdir");
+        let dest = temp.path().join("artifact.bin");
+        let err = client
+            .get_to_file(&base.join("artifact.bin").unwrap(), &dest, None, 3)
+            .await
+            .expect_err("should fail");
+        let http = err
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<WebdavHttpError>())
+            .expect("webdav http error");
+
+        assert_eq!(http.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(state.gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn get_to_file_with_retries_retries_on_service_unavailable() {
+        #[derive(Clone, Default)]
+        struct TestState {
+            gets: Arc<AtomicUsize>,
+        }
+
+        async fn handler(State(state): State<TestState>, _req: Request<Body>) -> impl IntoResponse {
+            let attempt = state.gets.fetch_add(1, Ordering::SeqCst) + 1;
+            if attempt == 1 {
+                return axum::http::Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Retry-After", "0")
+                    .body(Body::from("busy"))
+                    .unwrap();
+            }
+
+            axum::http::Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Length", "5")
+                .body(Body::from("hello"))
+                .unwrap()
+        }
+
+        let state = TestState::default();
+        let app = Router::new()
+            .route("/{*path}", any(handler))
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let base = Url::parse(&format!("http://{addr}/")).unwrap();
+        let client = WebdavClient::new(
+            base.clone(),
+            WebdavCredentials {
+                username: "u".to_string(),
+                password: "p".to_string(),
+            },
+        )
+        .unwrap();
+
+        let temp = TempDir::new().expect("tempdir");
+        let dest = temp.path().join("artifact.bin");
+        let written = client
+            .get_to_file(&base.join("artifact.bin").unwrap(), &dest, Some(5), 3)
+            .await
+            .expect("download succeeds on retry");
+
+        assert_eq!(written, 5);
+        assert_eq!(state.gets.load(Ordering::SeqCst), 2);
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello");
     }
 }
