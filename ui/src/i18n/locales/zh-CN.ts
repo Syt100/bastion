@@ -1313,6 +1313,7 @@ const messages = {
       genericHint: '请结合诊断上下文和相关日志进一步排查。',
       unknownResource: '未知资源',
       sections: {
+        summary: '摘要',
         diagnostics: '诊断信息',
         context: '上下文',
         operation: '异步操作',

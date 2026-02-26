@@ -380,50 +380,59 @@ watch(
 
 <template>
   <div
-    class="run-event-detail-scroll space-y-3 min-h-0 overflow-y-auto overflow-x-hidden pr-1"
+    class="run-event-detail-scroll space-y-2.5 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-1"
     :style="maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined"
   >
-    <div class="font-mono text-sm whitespace-pre-wrap break-words">{{ detailMessageText }}</div>
-    <div v-if="detailHintText" class="text-xs rounded-md px-2 py-1 bg-[var(--app-warning-bg,#fff7e6)] text-[var(--app-warning,#d46b08)]">
-      {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
+    <div class="run-event-section">
+      <div class="run-event-section-title">{{ t('runEvents.details.sections.summary') }}</div>
+      <div class="run-event-message">{{ detailMessageText }}</div>
+      <div v-if="detailHintText" class="run-event-hint">
+        {{ t('runEvents.details.hintLabel') }}: {{ detailHintText }}
+      </div>
     </div>
-    <div v-if="detailEnvelopeRows.length > 0" class="space-y-1">
-      <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
-      <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+    <div v-if="detailEnvelopeRows.length > 0" class="run-event-section">
+      <div class="run-event-section-title">{{ t('runEvents.details.sections.diagnostics') }}</div>
+      <div class="run-event-kv-list text-xs">
         <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-${idx}`">
-          <div class="app-text-muted">{{ row.label }}</div>
-          <div class="font-mono break-all">{{ row.value }}</div>
+          <div class="run-event-kv-row">
+            <div class="run-event-kv-label">{{ row.label }}</div>
+            <div class="run-event-kv-value">{{ row.value }}</div>
+          </div>
         </template>
       </div>
     </div>
-    <div v-if="detailContextRows.length > 0" class="space-y-1">
-      <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.context') }}</div>
-      <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+    <div v-if="detailContextRows.length > 0" class="run-event-section">
+      <div class="run-event-section-title">{{ t('runEvents.details.sections.context') }}</div>
+      <div class="run-event-kv-list text-xs">
         <template v-for="(row, idx) in detailContextRows" :key="`ctx-${idx}`">
-          <div class="app-text-muted">{{ row.label }}</div>
-          <div class="font-mono break-all">{{ row.value }}</div>
+          <div class="run-event-kv-row">
+            <div class="run-event-kv-label">{{ row.label }}</div>
+            <div class="run-event-kv-value">{{ row.value }}</div>
+          </div>
         </template>
       </div>
     </div>
-    <div v-if="detailOperationRows.length > 0" class="space-y-1">
-      <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.operation') }}</div>
-      <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+    <div v-if="detailOperationRows.length > 0" class="run-event-section">
+      <div class="run-event-section-title">{{ t('runEvents.details.sections.operation') }}</div>
+      <div class="run-event-kv-list text-xs">
         <template v-for="(row, idx) in detailOperationRows" :key="`op-${idx}`">
-          <div class="app-text-muted">{{ row.label }}</div>
-          <div class="font-mono break-all">{{ row.value }}</div>
+          <div class="run-event-kv-row">
+            <div class="run-event-kv-label">{{ row.label }}</div>
+            <div class="run-event-kv-value">{{ row.value }}</div>
+          </div>
         </template>
       </div>
     </div>
-    <div v-if="detailPartialFailures.length > 0" class="space-y-1">
-      <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.partialFailures') }}</div>
-      <div class="space-y-1">
+    <div v-if="detailPartialFailures.length > 0" class="run-event-section">
+      <div class="run-event-section-title">{{ t('runEvents.details.sections.partialFailures') }}</div>
+      <div class="space-y-2">
         <div
           v-for="(item, idx) in detailPartialFailures"
           :key="`partial-${idx}`"
-          class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs"
+          class="run-event-item-card"
         >
-          <div class="font-mono break-all">{{ item.resource }}</div>
-          <div class="app-text-muted flex flex-wrap items-center gap-2 mt-0.5">
+          <div class="font-mono break-words">{{ item.resource }}</div>
+          <div class="app-text-muted flex flex-wrap items-center gap-2 mt-1">
             <span v-if="item.code">{{ t('runEvents.details.labels.partialCode') }}: {{ item.code }}</span>
             <span v-if="item.kind">{{ t('runEvents.details.labels.partialKind') }}: {{ item.kind }}</span>
             <span v-if="item.protocol">{{ t('runEvents.details.labels.partialProtocol') }}: {{ item.protocol }}</span>
@@ -431,9 +440,9 @@ watch(
         </div>
       </div>
     </div>
-    <div v-if="detailErrorChainRows.length > 0" class="space-y-1">
+    <div v-if="detailErrorChainRows.length > 0" class="run-event-section">
       <div class="flex items-center justify-between gap-2">
-        <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.errorChain') }}</div>
+        <div class="run-event-section-title">{{ t('runEvents.details.sections.errorChain') }}</div>
         <n-button
           v-if="detailErrorChainRows.length > ERROR_CHAIN_PREVIEW_MAX || errorChainExpanded"
           size="tiny"
@@ -453,15 +462,15 @@ watch(
           v-for="(entry, idx) in detailVisibleErrorChainRows"
           :key="`chain-${idx}`"
           data-testid="run-event-error-chain-entry"
-          class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs font-mono whitespace-pre-wrap break-words"
+          class="run-event-item-card font-mono whitespace-pre-wrap break-words"
         >
           {{ entry }}
         </div>
       </div>
     </div>
-    <div v-if="hasRawFields" class="space-y-1">
+    <div v-if="hasRawFields" class="run-event-section">
       <div class="flex items-center justify-between gap-2">
-        <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.rawEvent') }}</div>
+        <div class="run-event-section-title">{{ t('runEvents.details.sections.rawEvent') }}</div>
         <n-button size="tiny" quaternary data-testid="run-event-raw-toggle" @click="rawExpanded = !rawExpanded">
           {{ rawExpanded ? t('runEvents.details.actions.hideRaw') : t('runEvents.details.actions.showRaw') }}
         </n-button>
@@ -469,7 +478,7 @@ watch(
       <div
         v-show="rawExpanded"
         data-testid="run-event-raw-json"
-        class="run-event-detail-json max-h-[45vh] overflow-auto rounded-md app-border-subtle p-2"
+        class="run-event-detail-json max-h-[45vh] overflow-auto rounded-md app-border-subtle app-panel-inset p-2"
       >
         <n-code
           :code="formatJson(event.fields)"
@@ -481,6 +490,75 @@ watch(
 </template>
 
 <style scoped>
+.run-event-section {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  border-radius: var(--app-radius-sm);
+  padding: 0.625rem;
+}
+
+.run-event-section-title {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+}
+
+.run-event-message {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.run-event-hint {
+  border-radius: 0.375rem;
+  border-left: 2px solid var(--app-warning, #d46b08);
+  background: var(--app-warning-bg, #fff7e6);
+  color: var(--app-warning, #d46b08);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.run-event-kv-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.run-event-kv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.run-event-kv-row + .run-event-kv-row {
+  border-top: 1px dashed var(--app-border);
+}
+
+.run-event-kv-label {
+  width: 6rem;
+  flex-shrink: 0;
+  color: var(--app-text-muted);
+}
+
+.run-event-kv-value {
+  min-width: 0;
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  overflow-wrap: anywhere;
+}
+
+.run-event-item-card {
+  border-radius: 0.375rem;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
 .run-event-detail-json :deep(pre),
 .run-event-detail-json :deep(code) {
   white-space: pre-wrap;

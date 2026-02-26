@@ -1317,6 +1317,7 @@ const messages = {
       genericHint: 'Check diagnostics context and related logs for more details.',
       unknownResource: 'Unknown resource',
       sections: {
+        summary: 'Summary',
         diagnostics: 'Diagnostics',
         context: 'Context',
         operation: 'Async operation',
