@@ -17,6 +17,11 @@ use bastion_storage::secrets::SecretsCrypto;
 use bastion_storage::secrets_repo;
 use bastion_targets::WebdavCredentials;
 
+use crate::error_envelope::{
+    envelope, insert_error_envelope, origin, retriable, retriable_with_reason, transport,
+    with_context_param,
+};
+
 use super::target_snapshot;
 
 const RECONCILE_BATCH_LIMIT: u32 = 200;
@@ -156,6 +161,33 @@ fn hint_for_error_kind(kind: ErrorKind) -> &'static str {
             "unknown cleanup failure; inspect task error details and service logs"
         }
     }
+}
+
+fn hint_key_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Network => "diagnostics.hint.cleanup.network",
+        ErrorKind::Io => "diagnostics.hint.cleanup.io",
+        ErrorKind::Auth => "diagnostics.hint.cleanup.auth",
+        ErrorKind::Config => "diagnostics.hint.cleanup.config",
+        ErrorKind::Unknown => "diagnostics.hint.cleanup.unknown",
+    }
+}
+
+fn message_key_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Network => "diagnostics.message.cleanup.network",
+        ErrorKind::Io => "diagnostics.message.cleanup.io",
+        ErrorKind::Auth => "diagnostics.message.cleanup.auth",
+        ErrorKind::Config => "diagnostics.message.cleanup.config",
+        ErrorKind::Unknown => "diagnostics.message.cleanup.unknown",
+    }
+}
+
+fn retriable_for_error_kind(kind: ErrorKind) -> bool {
+    matches!(
+        kind,
+        ErrorKind::Network | ErrorKind::Io | ErrorKind::Unknown
+    )
 }
 
 async fn tick_incomplete_cleanup(
@@ -453,6 +485,53 @@ async fn process_task(
             let last_error_kind = kind.as_str();
             let hint = hint_for_error_kind(kind);
 
+            let build_event_fields = |event_kind: &'static str,
+                                      next_attempt_at: Option<i64>,
+                                      duration_ms: i64,
+                                      last_error_kind: &str,
+                                      hint: &str,
+                                      run_id: &str,
+                                      error: &str| {
+                let mut fields = serde_json::Map::new();
+                fields.insert("duration_ms".to_string(), serde_json::json!(duration_ms));
+                fields.insert(
+                    "error_kind".to_string(),
+                    serde_json::Value::String(last_error_kind.to_string()),
+                );
+                fields.insert(
+                    "hint".to_string(),
+                    serde_json::Value::String(hint.to_string()),
+                );
+                if let Some(next_attempt_at) = next_attempt_at {
+                    fields.insert(
+                        "next_attempt_at".to_string(),
+                        serde_json::json!(next_attempt_at),
+                    );
+                }
+                let mut env = envelope(
+                    format!("maintenance.incomplete_cleanup.{event_kind}.{last_error_kind}"),
+                    last_error_kind,
+                    if retriable_for_error_kind(kind) {
+                        retriable_with_reason(true, last_error_kind)
+                    } else {
+                        retriable(false)
+                    },
+                    hint_key_for_error_kind(kind),
+                    message_key_for_error_kind(kind),
+                    transport("internal"),
+                )
+                .with_origin(origin("maintenance", "incomplete_cleanup", event_kind))
+                .with_stage("cleanup");
+                env = with_context_param(env, "run_id", run_id);
+                env = with_context_param(env, "event_kind", event_kind);
+                env = with_context_param(env, "error", error.to_string());
+                if let Some(next_attempt_at) = next_attempt_at {
+                    env = with_context_param(env, "next_attempt_at", next_attempt_at);
+                }
+                insert_error_envelope(&mut fields, env);
+                serde_json::Value::Object(fields)
+            };
+
             if should_abandon(task, now) {
                 incomplete_cleanup_repo::mark_abandoned(
                     db,
@@ -468,11 +547,15 @@ async fn process_task(
                     "error",
                     "abandoned",
                     &format!("abandoned: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "hint": hint,
-                    })),
+                    Some(build_event_fields(
+                        "abandoned",
+                        None,
+                        duration_ms,
+                        last_error_kind,
+                        hint,
+                        &task.run_id,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;
@@ -498,12 +581,15 @@ async fn process_task(
                     "warn",
                     "blocked",
                     &format!("blocked: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "next_attempt_at": next_attempt_at,
-                        "hint": hint,
-                    })),
+                    Some(build_event_fields(
+                        "blocked",
+                        Some(next_attempt_at),
+                        duration_ms,
+                        last_error_kind,
+                        hint,
+                        &task.run_id,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;
@@ -524,12 +610,15 @@ async fn process_task(
                     "warn",
                     "failed",
                     &format!("failed: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "next_attempt_at": next_attempt_at,
-                        "hint": hint,
-                    })),
+                    Some(build_event_fields(
+                        "failed",
+                        Some(next_attempt_at),
+                        duration_ms,
+                        last_error_kind,
+                        hint,
+                        &task.run_id,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;

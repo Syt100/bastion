@@ -16,6 +16,10 @@ use bastion_storage::secrets_repo;
 use bastion_targets::{WebdavClient, WebdavCredentials, WebdavHttpError};
 
 use crate::agent_manager::AgentManager;
+use crate::error_envelope::{
+    envelope, insert_error_envelope, origin, retriable, retriable_with_reason, transport,
+    with_context_param,
+};
 
 const PROCESS_BATCH_LIMIT: u32 = 20;
 
@@ -361,7 +365,6 @@ async fn process_task(
         DeleteResult::Failed { kind, error } => {
             let last_error = sanitize_error_string(&error.to_string());
             let last_error_kind = kind.as_str();
-            let hint = hint_for_error_kind(kind);
 
             if should_abandon(task, now) {
                 artifact_delete_repo::mark_abandoned(
@@ -378,11 +381,15 @@ async fn process_task(
                     "error",
                     "abandoned",
                     &format!("abandoned: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "hint": hint,
-                    })),
+                    Some(build_failed_event_fields(
+                        task,
+                        kind,
+                        "abandoned",
+                        duration_ms,
+                        None,
+                        &error,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;
@@ -417,12 +424,15 @@ async fn process_task(
                     "warn",
                     "blocked",
                     &format!("blocked: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "next_attempt_at": next_attempt_at,
-                        "hint": hint,
-                    })),
+                    Some(build_failed_event_fields(
+                        task,
+                        kind,
+                        "blocked",
+                        duration_ms,
+                        Some(next_attempt_at),
+                        &error,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;
@@ -452,12 +462,15 @@ async fn process_task(
                     "warn",
                     "failed",
                     &format!("failed: {last_error}"),
-                    Some(serde_json::json!({
-                        "duration_ms": duration_ms,
-                        "error_kind": last_error_kind,
-                        "next_attempt_at": next_attempt_at,
-                        "hint": hint,
-                    })),
+                    Some(build_failed_event_fields(
+                        task,
+                        kind,
+                        "failed",
+                        duration_ms,
+                        Some(next_attempt_at),
+                        &error,
+                        &last_error,
+                    )),
                     now,
                 )
                 .await;
@@ -561,6 +574,137 @@ fn hint_for_error_kind(kind: ErrorKind) -> &'static str {
         }
         ErrorKind::Unknown => "unknown delete failure; inspect task error details and service logs",
     }
+}
+
+fn hint_key_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Config => "diagnostics.hint.artifact_delete.config",
+        ErrorKind::Auth => "diagnostics.hint.artifact_delete.auth",
+        ErrorKind::Network => "diagnostics.hint.artifact_delete.network",
+        ErrorKind::Http => "diagnostics.hint.artifact_delete.http",
+        ErrorKind::Unknown => "diagnostics.hint.artifact_delete.unknown",
+    }
+}
+
+fn message_key_for_error_kind(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::Config => "diagnostics.message.artifact_delete.config",
+        ErrorKind::Auth => "diagnostics.message.artifact_delete.auth",
+        ErrorKind::Network => "diagnostics.message.artifact_delete.network",
+        ErrorKind::Http => "diagnostics.message.artifact_delete.http",
+        ErrorKind::Unknown => "diagnostics.message.artifact_delete.unknown",
+    }
+}
+
+fn retriable_for_error_kind(kind: ErrorKind) -> bool {
+    matches!(
+        kind,
+        ErrorKind::Network | ErrorKind::Http | ErrorKind::Unknown
+    )
+}
+
+fn webdav_http_meta(error: &anyhow::Error) -> Option<(u16, String, Option<u64>)> {
+    error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<WebdavHttpError>())
+        .map(|http| {
+            (
+                http.status.as_u16(),
+                http.message.clone(),
+                http.retry_after.map(|value| value.as_secs()),
+            )
+        })
+}
+
+fn transport_for_delete_error(
+    task: &artifact_delete_repo::ArtifactDeleteTaskRow,
+    error: &anyhow::Error,
+) -> bastion_core::error_envelope::ErrorTransportV1 {
+    match task.target_type {
+        artifact_delete_repo::DeleteTargetType::Webdav => {
+            let mut out = transport("http").with_provider("webdav");
+            if let Some((status_code, status_text, _)) = webdav_http_meta(error) {
+                out = out.with_status_code(status_code);
+                if !status_text.is_empty() {
+                    out = out.with_status_text(status_text);
+                }
+            }
+            out
+        }
+        artifact_delete_repo::DeleteTargetType::LocalDir => {
+            if task.node_id == HUB_NODE_ID {
+                transport("file")
+            } else {
+                transport("internal").with_provider("agent")
+            }
+        }
+    }
+}
+
+fn build_failed_event_fields(
+    task: &artifact_delete_repo::ArtifactDeleteTaskRow,
+    kind: ErrorKind,
+    event_kind: &'static str,
+    duration_ms: i64,
+    next_attempt_at: Option<i64>,
+    error: &anyhow::Error,
+    last_error: &str,
+) -> serde_json::Value {
+    let last_error_kind = kind.as_str();
+    let hint = hint_for_error_kind(kind);
+
+    let mut fields = serde_json::Map::new();
+    fields.insert("duration_ms".to_string(), serde_json::json!(duration_ms));
+    fields.insert(
+        "error_kind".to_string(),
+        serde_json::Value::String(last_error_kind.to_string()),
+    );
+    fields.insert(
+        "hint".to_string(),
+        serde_json::Value::String(hint.to_string()),
+    );
+    if let Some(next_attempt_at) = next_attempt_at {
+        fields.insert(
+            "next_attempt_at".to_string(),
+            serde_json::json!(next_attempt_at),
+        );
+    }
+
+    let mut retry = if retriable_for_error_kind(kind) {
+        retriable_with_reason(true, last_error_kind)
+    } else {
+        retriable(false)
+    };
+    if let Some((_, _, Some(retry_after_sec))) = webdav_http_meta(error) {
+        retry = retry.with_retry_after_sec(retry_after_sec);
+    }
+
+    let mut env = envelope(
+        format!("maintenance.artifact_delete.{event_kind}.{last_error_kind}"),
+        last_error_kind,
+        retry,
+        hint_key_for_error_kind(kind),
+        message_key_for_error_kind(kind),
+        transport_for_delete_error(task, error),
+    )
+    .with_origin(origin("maintenance", "artifact_delete", event_kind))
+    .with_stage("cleanup");
+    env = with_context_param(env, "run_id", task.run_id.clone());
+    env = with_context_param(env, "job_id", task.job_id.clone());
+    env = with_context_param(env, "target_type", task.target_type.as_str());
+    env = with_context_param(env, "error", last_error.to_string());
+    if let Some(next_attempt_at) = next_attempt_at {
+        env = with_context_param(env, "next_attempt_at", next_attempt_at);
+    }
+    if let Some((status_code, _, retry_after_sec)) = webdav_http_meta(error) {
+        env = with_context_param(env, "http_status", status_code);
+        if let Some(retry_after_sec) = retry_after_sec {
+            env = with_context_param(env, "retry_after_secs", retry_after_sec);
+        }
+    }
+    insert_error_envelope(&mut fields, env);
+
+    serde_json::Value::Object(fields)
 }
 
 #[derive(Debug)]
@@ -728,12 +872,28 @@ fn classify_error(error: &anyhow::Error) -> ErrorKind {
 
 #[cfg(test)]
 mod tests {
+    use bastion_storage::artifact_delete_repo;
     use tempfile::TempDir;
 
     use super::{
-        ErrorKind, backoff_seconds, classify_error, delete_local_dir_snapshot, hint_for_error_kind,
-        sanitize_error_string,
+        ErrorKind, backoff_seconds, build_failed_event_fields, classify_error,
+        delete_local_dir_snapshot, hint_for_error_kind, sanitize_error_string,
     };
+
+    fn dummy_task(
+        target_type: artifact_delete_repo::DeleteTargetType,
+        node_id: &str,
+    ) -> artifact_delete_repo::ArtifactDeleteTaskRow {
+        artifact_delete_repo::ArtifactDeleteTaskRow {
+            run_id: "run".to_string(),
+            job_id: "job".to_string(),
+            node_id: node_id.to_string(),
+            target_type,
+            target_snapshot: serde_json::json!({}),
+            attempts: 1,
+            created_at: 0,
+        }
+    }
 
     #[test]
     fn sanitize_error_string_trims_and_single_lines() {
@@ -788,5 +948,78 @@ mod tests {
         assert!(hint_for_error_kind(ErrorKind::Config).contains("configuration"));
         assert!(hint_for_error_kind(ErrorKind::Network).contains("connectivity"));
         assert!(hint_for_error_kind(ErrorKind::Http).contains("HTTP"));
+    }
+
+    #[test]
+    fn failed_event_fields_include_canonical_envelope_for_webdav_target() {
+        let task = dummy_task(artifact_delete_repo::DeleteTargetType::Webdav, "hub");
+        let error = anyhow::anyhow!("webdav request failed: HTTP 503: busy");
+        let fields = build_failed_event_fields(
+            &task,
+            ErrorKind::Network,
+            "failed",
+            123,
+            Some(456),
+            &error,
+            "webdav request failed: HTTP 503: busy",
+        );
+
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_kind").and_then(|v| v.as_str()),
+            Some("network")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("transport"))
+                .and_then(|v| v.get("protocol"))
+                .and_then(|v| v.as_str()),
+            Some("http")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("transport"))
+                .and_then(|v| v.get("provider"))
+                .and_then(|v| v.as_str()),
+            Some("webdav")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("retriable"))
+                .and_then(|v| v.get("value"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn failed_event_fields_use_internal_transport_for_agent_delete() {
+        let task = dummy_task(artifact_delete_repo::DeleteTargetType::LocalDir, "agent-1");
+        let error = anyhow::anyhow!("agent not connected");
+        let fields = build_failed_event_fields(
+            &task,
+            ErrorKind::Network,
+            "failed",
+            12,
+            Some(34),
+            &error,
+            "agent not connected",
+        );
+
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("transport"))
+                .and_then(|v| v.get("protocol"))
+                .and_then(|v| v.as_str()),
+            Some("internal")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("transport"))
+                .and_then(|v| v.get("provider"))
+                .and_then(|v| v.as_str()),
+            Some("agent")
+        );
     }
 }

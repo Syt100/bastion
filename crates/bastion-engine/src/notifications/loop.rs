@@ -9,6 +9,10 @@ use tracing::{debug, warn};
 use bastion_storage::notifications_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
+use crate::error_envelope::{
+    envelope, insert_error_envelope, origin, retriable, retriable_with_reason, transport,
+    with_context_param,
+};
 use crate::run_events;
 use crate::run_events_bus::RunEventsBus;
 use crate::supervision::spawn_supervised;
@@ -18,6 +22,60 @@ use super::send::{SendOutcome, send_one};
 const MAX_ATTEMPTS: i64 = 10;
 const BACKOFF_BASE_SECONDS: i64 = 30;
 const BACKOFF_MAX_SECONDS: i64 = 60 * 60;
+
+fn classify_notification_error(error: &str) -> (&'static str, &'static str, &'static str) {
+    let lower = error.to_lowercase();
+    if lower.contains("http 401")
+        || lower.contains("http 403")
+        || lower.contains("unauthorized")
+        || lower.contains("forbidden")
+        || lower.contains("auth")
+    {
+        return (
+            "auth",
+            "diagnostics.hint.notification.auth",
+            "diagnostics.message.notification.auth",
+        );
+    }
+
+    if lower.contains("http 429")
+        || lower.contains("too many requests")
+        || lower.contains("rate limit")
+    {
+        return (
+            "rate_limited",
+            "diagnostics.hint.notification.rate_limited",
+            "diagnostics.message.notification.rate_limited",
+        );
+    }
+
+    if lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("connection")
+        || lower.contains("dns")
+        || lower.contains("network")
+    {
+        return (
+            "network",
+            "diagnostics.hint.notification.network",
+            "diagnostics.message.notification.network",
+        );
+    }
+
+    (
+        "unknown",
+        "diagnostics.hint.notification.unknown",
+        "diagnostics.message.notification.unknown",
+    )
+}
+
+fn notification_transport(channel: &str) -> bastion_core::error_envelope::ErrorTransportV1 {
+    match channel {
+        notifications_repo::CHANNEL_WECOM_BOT => transport("http").with_provider("wecom_bot"),
+        notifications_repo::CHANNEL_EMAIL => transport("smtp").with_provider("email"),
+        _ => transport("internal").with_provider(channel.to_string()),
+    }
+}
 
 pub fn spawn(
     db: SqlitePool,
@@ -140,12 +198,49 @@ async fn run_loop(
                     "warn",
                     "notify_failed",
                     "notify_failed",
-                    Some(serde_json::json!({
-                        "channel": notification.channel,
-                        "secret_name": notification.secret_name,
-                        "attempts": attempts,
-                        "error": error_str,
-                    })),
+                    Some({
+                        let mut fields = serde_json::Map::new();
+                        fields.insert(
+                            "channel".to_string(),
+                            serde_json::Value::String(notification.channel.clone()),
+                        );
+                        fields.insert(
+                            "secret_name".to_string(),
+                            serde_json::Value::String(notification.secret_name.clone()),
+                        );
+                        fields.insert("attempts".to_string(), serde_json::json!(attempts));
+                        fields.insert("error".to_string(), serde_json::json!(error_str.clone()));
+                        let (error_kind, hint_key, message_key) =
+                            classify_notification_error(&error_str);
+                        fields.insert(
+                            "error_kind".to_string(),
+                            serde_json::Value::String(error_kind.to_string()),
+                        );
+                        let mut env = envelope(
+                            format!("notification.send.{error_kind}"),
+                            error_kind,
+                            if attempts < MAX_ATTEMPTS {
+                                retriable_with_reason(true, error_kind)
+                            } else {
+                                retriable(false)
+                            },
+                            hint_key,
+                            message_key,
+                            notification_transport(&notification.channel),
+                        )
+                        .with_origin(origin("notification", "sender", "deliver"))
+                        .with_stage("notify");
+                        env = with_context_param(env, "attempts", attempts);
+                        env = with_context_param(env, "channel", notification.channel.clone());
+                        env = with_context_param(
+                            env,
+                            "secret_name",
+                            notification.secret_name.clone(),
+                        );
+                        env = with_context_param(env, "error", error_str.clone());
+                        insert_error_envelope(&mut fields, env);
+                        serde_json::Value::Object(fields)
+                    }),
                 )
                 .await;
             }
@@ -158,4 +253,39 @@ fn backoff_seconds(attempts: i64) -> i64 {
     let exp = 1_i64.checked_shl(shift).unwrap_or(i64::MAX);
     let delay = BACKOFF_BASE_SECONDS.saturating_mul(exp);
     delay.clamp(BACKOFF_BASE_SECONDS, BACKOFF_MAX_SECONDS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_notification_error, notification_transport};
+    use bastion_storage::notifications_repo;
+
+    #[test]
+    fn classify_notification_error_uses_stable_kind_mapping() {
+        assert_eq!(
+            classify_notification_error("HTTP 401 unauthorized").0,
+            "auth"
+        );
+        assert_eq!(
+            classify_notification_error("too many requests").0,
+            "rate_limited"
+        );
+        assert_eq!(classify_notification_error("dns timeout").0, "network");
+        assert_eq!(classify_notification_error("unexpected panic").0, "unknown");
+    }
+
+    #[test]
+    fn notification_transport_maps_channel_protocol() {
+        let wecom = notification_transport(notifications_repo::CHANNEL_WECOM_BOT);
+        assert_eq!(wecom.protocol, "http");
+        assert_eq!(wecom.provider.as_deref(), Some("wecom_bot"));
+
+        let email = notification_transport(notifications_repo::CHANNEL_EMAIL);
+        assert_eq!(email.protocol, "smtp");
+        assert_eq!(email.provider.as_deref(), Some("email"));
+
+        let custom = notification_transport("custom");
+        assert_eq!(custom.protocol, "internal");
+        assert_eq!(custom.provider.as_deref(), Some("custom"));
+    }
 }

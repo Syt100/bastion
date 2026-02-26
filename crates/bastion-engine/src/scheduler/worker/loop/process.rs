@@ -6,6 +6,9 @@ use bastion_core::job_spec;
 use bastion_storage::jobs_repo;
 use bastion_storage::runs_repo::{self, RunStatus};
 
+use crate::error_envelope::{
+    envelope, insert_error_envelope, origin, retriable, transport, with_context_param,
+};
 use crate::run_events;
 use crate::scheduler::target_snapshot;
 
@@ -103,6 +106,30 @@ pub(super) async fn process_run(ctx: &WorkerLoopCtx<'_>, run: runs_repo::Run) {
 }
 
 async fn fail_invalid_spec(ctx: &WorkerLoopCtx<'_>, run_id: &str, message: &str) {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "error_kind".to_string(),
+        serde_json::Value::String("config".to_string()),
+    );
+    fields.insert(
+        "hint".to_string(),
+        serde_json::Value::String(
+            "job spec is invalid; verify source/target settings and run config".to_string(),
+        ),
+    );
+    let mut env = envelope(
+        "scheduler.spec.invalid",
+        "config",
+        retriable(false),
+        "diagnostics.hint.spec.invalid",
+        "diagnostics.message.spec.invalid",
+        transport("internal"),
+    )
+    .with_origin(origin("scheduler", "worker", "validate_spec"))
+    .with_stage("planning");
+    env = with_context_param(env, "run_id", run_id);
+    env = with_context_param(env, "error", message);
+    insert_error_envelope(&mut fields, env);
     let _ = run_events::append_and_broadcast(
         ctx.db,
         ctx.run_events_bus,
@@ -110,7 +137,7 @@ async fn fail_invalid_spec(ctx: &WorkerLoopCtx<'_>, run_id: &str, message: &str)
         "error",
         "invalid_spec",
         message,
-        None,
+        Some(serde_json::Value::Object(fields)),
     )
     .await;
 

@@ -9,6 +9,10 @@ use bastion_storage::runs_repo::{self, RunStatus};
 use bastion_targets::WebdavPutError;
 
 use crate::cancel_registry::global_cancel_registry;
+use crate::error_envelope::{
+    envelope, insert_error_envelope, origin, retriable, retriable_with_reason,
+    retriable_with_reason_retry_after, text_ref_with_params, transport, with_context_param,
+};
 use crate::run_events;
 
 use super::super::execute::{ExecuteRunArgs, RunCanceled, execute_run};
@@ -98,6 +102,45 @@ fn fallback_error_hint(error: &anyhow::Error) -> (String, String) {
     )
 }
 
+fn fallback_error_hint_key(error_kind: &str) -> &'static str {
+    match error_kind {
+        "payload_too_large" => "diagnostics.hint.run_failed.payload_too_large",
+        "rate_limited" => "diagnostics.hint.run_failed.rate_limited",
+        "auth" => "diagnostics.hint.run_failed.auth",
+        "permission" => "diagnostics.hint.run_failed.permission",
+        "timeout" => "diagnostics.hint.run_failed.timeout",
+        "upstream_unavailable" => "diagnostics.hint.run_failed.upstream_unavailable",
+        "storage_full" => "diagnostics.hint.run_failed.storage_full",
+        "network" => "diagnostics.hint.run_failed.network",
+        "config" => "diagnostics.hint.run_failed.config",
+        "upload_pipeline" => "diagnostics.hint.run_failed.upload_pipeline",
+        _ => "diagnostics.hint.run_failed.unknown",
+    }
+}
+
+fn fallback_message_key(error_kind: &str) -> &'static str {
+    match error_kind {
+        "payload_too_large" => "diagnostics.message.run_failed.payload_too_large",
+        "rate_limited" => "diagnostics.message.run_failed.rate_limited",
+        "auth" => "diagnostics.message.run_failed.auth",
+        "permission" => "diagnostics.message.run_failed.permission",
+        "timeout" => "diagnostics.message.run_failed.timeout",
+        "upstream_unavailable" => "diagnostics.message.run_failed.upstream_unavailable",
+        "storage_full" => "diagnostics.message.run_failed.storage_full",
+        "network" => "diagnostics.message.run_failed.network",
+        "config" => "diagnostics.message.run_failed.config",
+        "upload_pipeline" => "diagnostics.message.run_failed.upload_pipeline",
+        _ => "diagnostics.message.run_failed.unknown",
+    }
+}
+
+fn fallback_retriable(error_kind: &str) -> bool {
+    matches!(
+        error_kind,
+        "rate_limited" | "network" | "timeout" | "upstream_unavailable"
+    )
+}
+
 fn build_failed_event_fields(
     error: &anyhow::Error,
     soft: Option<&RunFailedWithSummary>,
@@ -156,6 +199,53 @@ fn build_failed_event_fields(
                     serde_json::Value::String(part_name),
                 );
             }
+
+            let mut env = envelope(
+                format!("target.webdav.{}", put.diagnostic.code),
+                put.diagnostic.kind.as_str(),
+                retriable_with_reason_retry_after(
+                    put.diagnostic.retriable,
+                    put.diagnostic.kind.as_str(),
+                    put.diagnostic.retry_after.map(|value| value.as_secs()),
+                ),
+                fallback_error_hint_key(put.diagnostic.kind.as_str()),
+                "diagnostics.message.target.webdav.put_failed",
+                if let Some(status) = put.diagnostic.http_status {
+                    transport("http").with_status_code(status)
+                } else {
+                    transport("http")
+                },
+            )
+            .with_origin(origin("target", "webdav", "put_part"))
+            .with_stage("upload");
+            env.hint = text_ref_with_params(
+                fallback_error_hint_key(put.diagnostic.kind.as_str()),
+                [
+                    (
+                        "http_status",
+                        serde_json::to_value(put.diagnostic.http_status).unwrap_or_default(),
+                    ),
+                    ("part_size_bytes", serde_json::json!(put.size)),
+                ],
+            );
+            env.message = text_ref_with_params(
+                "diagnostics.message.target.webdav.put_failed",
+                [
+                    ("attempt", serde_json::json!(put.attempt)),
+                    ("max_attempts", serde_json::json!(put.max_attempts)),
+                ],
+            );
+            env = with_context_param(env, "attempt", put.attempt);
+            env = with_context_param(env, "max_attempts", put.max_attempts);
+            env = with_context_param(env, "part_size_bytes", put.size);
+            env = with_context_param(env, "target_url", put.url.clone());
+            if let Some(status) = put.diagnostic.http_status {
+                env = with_context_param(env, "http_status", status);
+            }
+            if let Some(retry_after) = put.diagnostic.retry_after {
+                env = with_context_param(env, "retry_after_secs", retry_after.as_secs());
+            }
+            insert_error_envelope(&mut fields, env);
             break;
         }
     }
@@ -164,9 +254,31 @@ fn build_failed_event_fields(
         let (error_kind, hint) = fallback_error_hint(error);
         fields.insert(
             "error_kind".to_string(),
-            serde_json::Value::String(error_kind),
+            serde_json::Value::String(error_kind.clone()),
         );
         fields.insert("hint".to_string(), serde_json::Value::String(hint));
+        let error_kind_str = error_kind.as_str();
+        let mut env = envelope(
+            format!("run.failed.{error_kind_str}"),
+            error_kind_str,
+            if fallback_retriable(error_kind_str) {
+                retriable_with_reason(true, error_kind_str)
+            } else {
+                retriable(false)
+            },
+            fallback_error_hint_key(error_kind_str),
+            fallback_message_key(error_kind_str),
+            transport("unknown"),
+        )
+        .with_origin(origin("scheduler", "worker", "run_failed"))
+        .with_stage("finalize");
+        env.message = text_ref_with_params(
+            fallback_message_key(error_kind_str),
+            [("error_kind", serde_json::json!(error_kind_str))],
+        );
+        let error_chain = fields.get("error_chain").cloned().unwrap_or_default();
+        env = with_context_param(env, "error_chain", error_chain);
+        insert_error_envelope(&mut fields, env);
     }
 
     serde_json::Value::Object(fields)
@@ -417,6 +529,19 @@ mod tests {
                 .and_then(|v| v.as_str())
                 .is_some_and(|s| s.contains("DNS/routing/firewall"))
         );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("kind"))
+                .and_then(|v| v.as_str()),
+            Some("network")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("retriable"))
+                .and_then(|v| v.get("value"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 
     #[test]
@@ -447,5 +572,19 @@ mod tests {
         );
         assert!(!hint.to_lowercase().contains("webdav"));
         assert!(hint.contains("unclassified"));
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("transport"))
+                .and_then(|v| v.get("protocol"))
+                .and_then(|v| v.as_str()),
+            Some("unknown")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|v| v.get("retriable"))
+                .and_then(|v| v.get("value"))
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
     }
 }
