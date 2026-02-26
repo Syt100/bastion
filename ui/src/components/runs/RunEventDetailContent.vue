@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { NCode } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
+import { NButton, NCode } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import type { RunEvent } from '@/stores/jobs'
@@ -43,6 +43,7 @@ type PartialFailureRow = {
   kind: string | null
   protocol: string | null
 }
+const ERROR_CHAIN_PREVIEW_MAX = 2
 
 const props = withDefaults(
   defineProps<{
@@ -55,6 +56,8 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+const rawExpanded = ref<boolean>(false)
+const errorChainExpanded = ref<boolean>(false)
 
 function formatJson(value: unknown): string {
   try {
@@ -270,11 +273,109 @@ function partialFailureRows(e: RunEvent): PartialFailureRow[] {
     .filter((item): item is PartialFailureRow => item != null)
 }
 
+function contextLabel(key: string): string {
+  const keyMap: Record<string, string> = {
+    stage: t('runEvents.details.labels.stage'),
+    source: t('runEvents.details.labels.source'),
+    channel: t('runEvents.details.labels.channel'),
+    attempt: t('runEvents.details.labels.attempt'),
+    max_attempts: t('runEvents.details.labels.maxAttempts'),
+    next_attempt_at: t('runEvents.details.labels.nextAttemptAt'),
+    part_name: t('runEvents.details.labels.partName'),
+    part_size_bytes: t('runEvents.details.labels.partSizeBytes'),
+    target_url: t('runEvents.details.labels.targetUrl'),
+  }
+  return keyMap[key] ?? key
+}
+
+function contextValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const v = value.trim()
+    return v ? v : null
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return value ? t('common.yes') : t('common.no')
+  return null
+}
+
+function contextRows(e: RunEvent): DetailRow[] {
+  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const context = normalizeFields(envelope?.context)
+  if (!context) return []
+
+  const priority = [
+    'stage',
+    'source',
+    'channel',
+    'attempt',
+    'max_attempts',
+    'next_attempt_at',
+    'part_name',
+    'part_size_bytes',
+    'target_url',
+  ]
+
+  const rows = Object.entries(context)
+    .filter(([key]) => key !== 'operation' && key !== 'partial_failures')
+    .map(([key, value]) => {
+      const rowValue = contextValue(value)
+      if (!rowValue) return null
+      return {
+        key,
+        row: { label: contextLabel(key), value: rowValue },
+      }
+    })
+    .filter((item): item is { key: string; row: DetailRow } => item != null)
+
+  rows.sort((a, b) => {
+    const aPriority = priority.indexOf(a.key)
+    const bPriority = priority.indexOf(b.key)
+    if (aPriority === -1 && bPriority === -1) return a.key.localeCompare(b.key)
+    if (aPriority === -1) return 1
+    if (bPriority === -1) return -1
+    return aPriority - bPriority
+  })
+
+  return rows.map((item) => item.row)
+}
+
+function errorChainRows(e: RunEvent): string[] {
+  const fields = normalizeFields(e.fields)
+  const raw = fields?.error_chain
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') return item.trim()
+      if (item == null) return ''
+      return String(item).trim()
+    })
+    .filter((item) => item.length > 0)
+}
+
 const detailMessageText = computed(() => eventDisplayMessage(props.event))
 const detailHintText = computed(() => eventHint(props.event))
 const detailEnvelopeRows = computed(() => diagnosticsRows(props.event))
+const detailContextRows = computed(() => contextRows(props.event))
 const detailOperationRows = computed(() => operationRows(props.event))
 const detailPartialFailures = computed(() => partialFailureRows(props.event))
+const detailErrorChainRows = computed(() => errorChainRows(props.event))
+const detailErrorChainHiddenCount = computed(() =>
+  Math.max(0, detailErrorChainRows.value.length - ERROR_CHAIN_PREVIEW_MAX),
+)
+const detailVisibleErrorChainRows = computed(() =>
+  errorChainExpanded.value
+    ? detailErrorChainRows.value
+    : detailErrorChainRows.value.slice(0, ERROR_CHAIN_PREVIEW_MAX),
+)
+const hasRawFields = computed(() => props.event.fields != null)
+
+watch(
+  () => props.event.seq,
+  () => {
+    rawExpanded.value = false
+    errorChainExpanded.value = false
+  },
+)
 </script>
 
 <template>
@@ -290,6 +391,15 @@ const detailPartialFailures = computed(() => partialFailureRows(props.event))
       <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.diagnostics') }}</div>
       <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
         <template v-for="(row, idx) in detailEnvelopeRows" :key="`diag-${idx}`">
+          <div class="app-text-muted">{{ row.label }}</div>
+          <div class="font-mono break-all">{{ row.value }}</div>
+        </template>
+      </div>
+    </div>
+    <div v-if="detailContextRows.length > 0" class="space-y-1">
+      <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.context') }}</div>
+      <div class="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1 text-xs">
+        <template v-for="(row, idx) in detailContextRows" :key="`ctx-${idx}`">
           <div class="app-text-muted">{{ row.label }}</div>
           <div class="font-mono break-all">{{ row.value }}</div>
         </template>
@@ -321,11 +431,51 @@ const detailPartialFailures = computed(() => partialFailureRows(props.event))
         </div>
       </div>
     </div>
-    <div v-if="event.fields" class="run-event-detail-json max-h-[45vh] overflow-auto rounded-md app-border-subtle p-2">
-      <n-code
-        :code="formatJson(event.fields)"
-        language="json"
-      />
+    <div v-if="detailErrorChainRows.length > 0" class="space-y-1">
+      <div class="flex items-center justify-between gap-2">
+        <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.errorChain') }}</div>
+        <n-button
+          v-if="detailErrorChainRows.length > ERROR_CHAIN_PREVIEW_MAX || errorChainExpanded"
+          size="tiny"
+          quaternary
+          data-testid="run-event-error-chain-toggle"
+          @click="errorChainExpanded = !errorChainExpanded"
+        >
+          {{
+            errorChainExpanded
+              ? t('runEvents.details.actions.collapseErrorChain')
+              : t('runEvents.details.actions.expandErrorChain', { count: detailErrorChainHiddenCount })
+          }}
+        </n-button>
+      </div>
+      <div class="space-y-1">
+        <div
+          v-for="(entry, idx) in detailVisibleErrorChainRows"
+          :key="`chain-${idx}`"
+          data-testid="run-event-error-chain-entry"
+          class="rounded border border-[color:var(--app-border)] px-2 py-1 text-xs font-mono whitespace-pre-wrap break-words"
+        >
+          {{ entry }}
+        </div>
+      </div>
+    </div>
+    <div v-if="hasRawFields" class="space-y-1">
+      <div class="flex items-center justify-between gap-2">
+        <div class="text-xs app-text-muted">{{ t('runEvents.details.sections.rawEvent') }}</div>
+        <n-button size="tiny" quaternary data-testid="run-event-raw-toggle" @click="rawExpanded = !rawExpanded">
+          {{ rawExpanded ? t('runEvents.details.actions.hideRaw') : t('runEvents.details.actions.showRaw') }}
+        </n-button>
+      </div>
+      <div
+        v-show="rawExpanded"
+        data-testid="run-event-raw-json"
+        class="run-event-detail-json max-h-[45vh] overflow-auto rounded-md app-border-subtle p-2"
+      >
+        <n-code
+          :code="formatJson(event.fields)"
+          language="json"
+        />
+      </div>
     </div>
   </div>
 </template>
