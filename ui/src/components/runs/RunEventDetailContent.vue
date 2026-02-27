@@ -4,10 +4,17 @@ import { NButton, NCode, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { copyText } from '@/lib/clipboard'
-import { runEventDisplayMessage, runEventErrorEnvelope, runEventFieldsRecord, runEventHint } from '@/lib/run_events'
+import {
+  runEventContextEntries,
+  runEventDisplayMessage,
+  runEventErrorChain,
+  runEventErrorEnvelope,
+  runEventFieldsRecord,
+  runEventHint,
+  runEventOperationMetadata,
+  runEventPartialFailures,
+} from '@/lib/run_events'
 import type { RunEvent } from '@/stores/jobs'
-
-type JsonRecord = Record<string, unknown>
 
 type DetailRow = { key: string; label: string; value: string }
 type PartialFailureRow = {
@@ -57,21 +64,9 @@ function formatJson(value: unknown): string {
   }
 }
 
-function normalizeFields(fields: unknown | null): JsonRecord | null {
-  if (!fields || typeof fields !== 'object') return null
-  if (Array.isArray(fields)) return null
-  return fields as JsonRecord
-}
-
 function toNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return value
-}
-
-function toString(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const v = value.trim()
-  return v ? v : null
 }
 
 function diagnosticsRows(e: RunEvent): DetailRow[] {
@@ -136,23 +131,19 @@ function diagnosticsRows(e: RunEvent): DetailRow[] {
 }
 
 function operationRows(e: RunEvent): DetailRow[] {
-  const envelope = runEventErrorEnvelope(e)
-  const operation = normalizeFields(envelope?.context?.operation)
+  const operation = runEventOperationMetadata(e)
   if (!operation) return []
 
   const rows: DetailRow[] = []
-  const operationId = toString(operation.operation_id)
-  if (operationId) rows.push({ key: 'operationId', label: t('runEvents.details.labels.operationId'), value: operationId })
+  if (operation.operationId) rows.push({ key: 'operationId', label: t('runEvents.details.labels.operationId'), value: operation.operationId })
 
-  const status = toString(operation.status)
-  if (status) rows.push({ key: 'operationStatus', label: t('runEvents.details.labels.operationStatus'), value: status })
+  if (operation.status) rows.push({ key: 'operationStatus', label: t('runEvents.details.labels.operationStatus'), value: operation.status })
 
-  const pollAfterSec = toNumber(operation.poll_after_sec)
-  if (pollAfterSec != null) {
+  if (operation.pollAfterSec != null) {
     rows.push({
       key: 'pollAfter',
       label: t('runEvents.details.labels.pollAfter'),
-      value: `${Math.max(0, Math.floor(pollAfterSec))}${t('common.timeUnits.s')}`,
+      value: `${Math.max(0, Math.floor(operation.pollAfterSec))}${t('common.timeUnits.s')}`,
     })
   }
 
@@ -160,28 +151,15 @@ function operationRows(e: RunEvent): DetailRow[] {
 }
 
 function partialFailureRows(e: RunEvent): PartialFailureRow[] {
-  const envelope = runEventErrorEnvelope(e)
-  const partialFailures = envelope?.context?.partial_failures
-  if (!Array.isArray(partialFailures)) return []
-
-  return partialFailures
+  return runEventPartialFailures(e)
     .map((item) => {
-      const row = normalizeFields(item)
-      if (!row) return null
-      const transport = normalizeFields(row.transport)
-      const resource =
-        toString(row.resource_id) ??
-        toString(row.path) ??
-        toString(row.resource) ??
-        t('runEvents.details.unknownResource')
       return {
-        resource,
-        code: toString(row.code),
-        kind: toString(row.kind),
-        protocol: toString(transport?.protocol),
+        resource: item.resource ?? t('runEvents.details.unknownResource'),
+        code: item.code,
+        kind: item.kind,
+        protocol: item.protocol,
       }
     })
-    .filter((item): item is PartialFailureRow => item != null)
 }
 
 function contextLabel(key: string): string {
@@ -210,11 +188,7 @@ function contextValue(value: unknown): string | null {
 }
 
 function contextRows(e: RunEvent): DetailRow[] {
-  const envelope = runEventErrorEnvelope(e)
-  const context = normalizeFields(envelope?.context)
-  if (!context) return []
-
-  const priority = [
+  const priorityKeys = [
     'stage',
     'source',
     'channel',
@@ -226,41 +200,17 @@ function contextRows(e: RunEvent): DetailRow[] {
     'target_url',
   ]
 
-  const rows = Object.entries(context)
-    .filter(([key]) => key !== 'operation' && key !== 'partial_failures')
-    .map(([key, value]) => {
-      const rowValue = contextValue(value)
+  return runEventContextEntries(e, { priorityKeys })
+    .map((item) => {
+      const rowValue = contextValue(item.value)
       if (!rowValue) return null
-      return {
-        key,
-        row: { key, label: contextLabel(key), value: rowValue },
-      }
+      return { key: item.key, label: contextLabel(item.key), value: rowValue }
     })
-    .filter((item): item is { key: string; row: DetailRow } => item != null)
-
-  rows.sort((a, b) => {
-    const aPriority = priority.indexOf(a.key)
-    const bPriority = priority.indexOf(b.key)
-    if (aPriority === -1 && bPriority === -1) return a.key.localeCompare(b.key)
-    if (aPriority === -1) return 1
-    if (bPriority === -1) return -1
-    return aPriority - bPriority
-  })
-
-  return rows.map((item) => item.row)
+    .filter((row): row is DetailRow => row != null)
 }
 
 function errorChainRows(e: RunEvent): string[] {
-  const fields = runEventFieldsRecord(e)
-  const raw = fields?.error_chain
-  if (!Array.isArray(raw)) return []
-  return raw
-    .map((item) => {
-      if (typeof item === 'string') return item.trim()
-      if (item == null) return ''
-      return String(item).trim()
-    })
-    .filter((item) => item.length > 0)
+  return runEventErrorChain(e)
 }
 
 function isMonoValueRow(row: DetailRow): boolean {

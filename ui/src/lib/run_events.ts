@@ -45,6 +45,24 @@ export type RunEventSummaryChip = {
   type: 'default' | 'warning' | 'error' | 'success'
 }
 
+export type RunEventOperationMetadata = {
+  operationId: string | null
+  status: string | null
+  pollAfterSec: number | null
+}
+
+export type RunEventPartialFailure = {
+  resource: string | null
+  code: string | null
+  kind: string | null
+  protocol: string | null
+}
+
+export type RunEventContextEntry = {
+  key: string
+  value: string | number | boolean
+}
+
 export type RunEventDetailHeaderMetaField = 'timestamp' | 'level' | 'kind' | 'seq' | 'traceId' | 'requestId'
 
 export const RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT: readonly RunEventDetailHeaderMetaField[] = ['timestamp', 'level', 'kind']
@@ -379,6 +397,97 @@ export function runEventSummaryChips(
   if (hint) push({ text: hint, type: 'warning' })
 
   return out
+}
+
+function toContextValue(value: unknown): string | number | boolean | null {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return text.length > 0 ? text : null
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'boolean') return value
+  return null
+}
+
+export function runEventOperationMetadata(event: RunEvent | null | undefined): RunEventOperationMetadata | null {
+  const envelope = runEventErrorEnvelope(event)
+  const operation = toRecord(envelope?.context?.operation)
+  if (!operation) return null
+
+  const operationId = toNonEmptyString(operation.operation_id)
+  const status = toNonEmptyString(operation.status)
+  const pollAfterSec = toFiniteNumber(operation.poll_after_sec)
+  if (!operationId && !status && pollAfterSec == null) return null
+
+  return {
+    operationId,
+    status,
+    pollAfterSec,
+  }
+}
+
+export function runEventPartialFailures(event: RunEvent | null | undefined): RunEventPartialFailure[] {
+  const envelope = runEventErrorEnvelope(event)
+  const rows = envelope?.context?.partial_failures
+  if (!Array.isArray(rows)) return []
+
+  return rows
+    .map((item) => {
+      const record = toRecord(item)
+      if (!record) return null
+      const transport = toRecord(record.transport)
+      return {
+        resource: toNonEmptyString(record.resource_id) ?? toNonEmptyString(record.path) ?? toNonEmptyString(record.resource),
+        code: toNonEmptyString(record.code),
+        kind: toNonEmptyString(record.kind),
+        protocol: toNonEmptyString(transport?.protocol),
+      }
+    })
+    .filter((item): item is RunEventPartialFailure => item != null)
+}
+
+export function runEventContextEntries(
+  event: RunEvent | null | undefined,
+  options: { priorityKeys?: string[] } = {},
+): RunEventContextEntry[] {
+  const envelope = runEventErrorEnvelope(event)
+  const context = toRecord(envelope?.context)
+  if (!context) return []
+
+  const rows = Object.entries(context)
+    .filter(([key]) => key !== 'operation' && key !== 'partial_failures')
+    .map(([key, value]) => {
+      const normalized = toContextValue(value)
+      if (normalized == null) return null
+      return { key, value: normalized }
+    })
+    .filter((item): item is RunEventContextEntry => item != null)
+
+  const priorityKeys = options.priorityKeys ?? []
+  rows.sort((a, b) => {
+    const aPriority = priorityKeys.indexOf(a.key)
+    const bPriority = priorityKeys.indexOf(b.key)
+    if (aPriority === -1 && bPriority === -1) return a.key.localeCompare(b.key)
+    if (aPriority === -1) return 1
+    if (bPriority === -1) return -1
+    return aPriority - bPriority
+  })
+
+  return rows
+}
+
+export function runEventErrorChain(event: RunEvent | null | undefined): string[] {
+  const fields = runEventFieldsRecord(event)
+  const raw = fields?.error_chain
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') return item.trim()
+      if (item == null) return ''
+      return String(item).trim()
+    })
+    .filter((item) => item.length > 0)
 }
 
 export function runEventTransportMetadata(event: RunEvent): RunEventTransportMetadata {

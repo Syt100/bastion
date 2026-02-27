@@ -3,9 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   filterRunEvents,
   findFirstEventSeq,
+  runEventContextEntries,
   runEventDisplayMessage,
+  runEventErrorChain,
   runEventErrorEnvelope,
   runEventHint,
+  runEventOperationMetadata,
+  runEventPartialFailures,
   runEventSummaryChips,
   runEventTransportMetadata,
   uniqueRunEventKinds,
@@ -253,5 +257,61 @@ describe('run_events helpers', () => {
       text: 'localized hint',
       type: 'warning',
     })
+  })
+
+  it('extracts operation/context/partial-failure/error-chain from envelope fields', () => {
+    const event = {
+      run_id: 'r1',
+      seq: 13,
+      ts: 13,
+      level: 'error',
+      kind: 'artifact_delete_failed',
+      message: 'failed',
+      fields: {
+        error_chain: [' first ', null, 123],
+        error_envelope: {
+          code: 'target.sftp.permission_denied',
+          kind: 'auth',
+          retriable: { value: false },
+          transport: { protocol: 'sftp' },
+          context: {
+            source: 'artifact_delete',
+            attempt: 2,
+            operation: {
+              operation_id: 'op-1',
+              status: 'failed',
+              poll_after_sec: 15,
+            },
+            partial_failures: [
+              {
+                path: '/docs/a.txt',
+                code: 'target.permission_denied',
+                kind: 'auth',
+                transport: { protocol: 'sftp' },
+              },
+            ],
+          },
+        },
+      },
+    }
+
+    expect(runEventOperationMetadata(event)).toEqual({
+      operationId: 'op-1',
+      status: 'failed',
+      pollAfterSec: 15,
+    })
+    expect(runEventPartialFailures(event)).toEqual([
+      {
+        resource: '/docs/a.txt',
+        code: 'target.permission_denied',
+        kind: 'auth',
+        protocol: 'sftp',
+      },
+    ])
+    expect(runEventContextEntries(event, { priorityKeys: ['source', 'attempt'] })).toEqual([
+      { key: 'source', value: 'artifact_delete' },
+      { key: 'attempt', value: 2 },
+    ])
+    expect(runEventErrorChain(event)).toEqual(['first', '123'])
   })
 })
