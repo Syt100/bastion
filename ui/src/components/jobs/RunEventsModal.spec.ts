@@ -289,6 +289,7 @@ describe('RunEventsModal', () => {
 
     expect(wrapper.text()).toContain('runEvents.details.hintLabel')
     expect(wrapper.text()).toContain('free space or adjust retention before retrying')
+    expect(wrapper.text()).toContain('#1')
 
     wrapper.unmount()
   })

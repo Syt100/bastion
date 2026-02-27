@@ -120,6 +120,7 @@ const reconnectInSeconds = ref<number | null>(null)
 
 const detailShow = ref<boolean>(false)
 const detailEvent = ref<RunEvent | null>(null)
+const detailHeaderMetaFields = ['timestamp', 'level', 'kind', 'seq', 'requestId'] as const
 
 function wsUrl(path: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -723,6 +724,7 @@ defineExpose<RunEventsModalExpose>({ open })
         :is-desktop="isDesktop"
         :title="t('runEvents.details.title')"
         :close-label="t('common.close')"
+        :header-meta-fields="detailHeaderMetaFields"
       />
 
       <n-space justify="end">
