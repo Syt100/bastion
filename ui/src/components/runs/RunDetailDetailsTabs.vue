@@ -20,7 +20,13 @@ import { MQ } from '@/lib/breakpoints'
 import { copyText } from '@/lib/clipboard'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { useMediaQuery } from '@/lib/media'
-import { filterRunEvents, findFirstEventSeq, runEventLevelTagType, uniqueRunEventKinds } from '@/lib/run_events'
+import {
+  filterRunEvents,
+  findFirstEventSeq,
+  runEventLevelTagType,
+  uniqueRunEventKinds,
+  RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
+} from '@/lib/run_events'
 import { runTargetTypeLabel } from '@/lib/runs'
 import { parseRunSummary } from '@/lib/run_summary'
 import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
@@ -226,7 +232,7 @@ function exportFilteredEvents(): void {
 
 const eventDetailShow = ref<boolean>(false)
 const eventDetail = ref<RunEvent | null>(null)
-const eventDetailHeaderMetaFields = ['timestamp', 'level', 'kind', 'seq', 'requestId'] as const
+const eventDetailHeaderMetaFields = RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS
 
 function openEventDetails(e: RunEvent): void {
   eventDetail.value = e

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NButton, NCode } from 'naive-ui'
+import { NButton, NCode, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import { copyText } from '@/lib/clipboard'
 import type { RunEvent } from '@/stores/jobs'
 
 type JsonRecord = Record<string, unknown>
@@ -46,6 +47,7 @@ type PartialFailureRow = {
 const ERROR_CHAIN_PREVIEW_MAX = 2
 const LONG_VALUE_PREVIEW_MAX = 120
 const KEY_FACT_KEYS = ['code', 'kind', 'protocol', 'retriable', 'statusCode', 'providerCode', 'providerRequestId']
+const COPYABLE_DETAIL_KEYS = new Set(['code', 'providerRequestId', 'target_url'])
 const MONO_VALUE_KEYS = new Set([
   'code',
   'statusCode',
@@ -70,6 +72,7 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+const message = useMessage()
 const rawExpanded = ref<boolean>(false)
 const errorChainExpanded = ref<boolean>(false)
 const expandedContextRows = ref<Record<string, boolean>>({})
@@ -402,6 +405,16 @@ function toggleContextRow(row: DetailRow, index: number): void {
   }
 }
 
+function isCopyableRow(row: DetailRow): boolean {
+  return COPYABLE_DETAIL_KEYS.has(row.key)
+}
+
+async function copyRowValue(value: string): Promise<void> {
+  const ok = await copyText(value)
+  if (ok) message.success(t('messages.copied'))
+  else message.error(t('errors.copyFailed'))
+}
+
 const detailMessageText = computed(() => eventDisplayMessage(props.event))
 const detailHintText = computed(() => eventHint(props.event))
 const detailEnvelopeRows = computed(() => diagnosticsRows(props.event))
@@ -457,7 +470,18 @@ watch(
           :key="`fact-${idx}`"
           class="run-event-key-fact"
         >
-          <div class="run-event-key-fact-label">{{ row.label }}</div>
+          <div class="run-event-key-fact-header">
+            <div class="run-event-key-fact-label">{{ row.label }}</div>
+            <n-button
+              v-if="isCopyableRow(row)"
+              size="tiny"
+              text
+              :data-testid="`run-event-copy-${row.key}`"
+              @click="copyRowValue(row.value)"
+            >
+              {{ t('common.copy') }}
+            </n-button>
+          </div>
           <div class="run-event-key-fact-value" :class="{ 'run-event-value-mono': isMonoValueRow(row) }">{{ row.value }}</div>
         </div>
       </div>
@@ -483,14 +507,25 @@ watch(
               <div class="run-event-kv-value" :class="{ 'run-event-value-mono': isMonoValueRow(row) }">
                 {{ contextRowDisplayValue(row, idx) }}
               </div>
-              <n-button
-                v-if="contextRowIsExpandable(row)"
-                size="tiny"
-                text
-                @click="toggleContextRow(row, idx)"
-              >
-                {{ contextRowExpanded(row, idx) ? t('runEvents.details.actions.collapseValue') : t('runEvents.details.actions.expandValue') }}
-              </n-button>
+              <div v-if="contextRowIsExpandable(row) || isCopyableRow(row)" class="run-event-inline-actions">
+                <n-button
+                  v-if="contextRowIsExpandable(row)"
+                  size="tiny"
+                  text
+                  @click="toggleContextRow(row, idx)"
+                >
+                  {{ contextRowExpanded(row, idx) ? t('runEvents.details.actions.collapseValue') : t('runEvents.details.actions.expandValue') }}
+                </n-button>
+                <n-button
+                  v-if="isCopyableRow(row)"
+                  size="tiny"
+                  text
+                  :data-testid="`run-event-copy-${row.key}`"
+                  @click="copyRowValue(row.value)"
+                >
+                  {{ t('common.copy') }}
+                </n-button>
+              </div>
             </div>
           </div>
         </template>
@@ -634,6 +669,13 @@ watch(
 .run-event-key-fact-label {
   font-size: 0.75rem;
   color: var(--app-text-muted);
+}
+
+.run-event-key-fact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
   margin-bottom: 0.2rem;
 }
 
@@ -678,6 +720,12 @@ watch(
 
 .run-event-value-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.run-event-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .run-event-item-card {

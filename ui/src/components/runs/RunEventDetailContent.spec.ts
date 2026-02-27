@@ -2,6 +2,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
+const messageApi = {
+  success: vi.fn(),
+  error: vi.fn(),
+}
+
 vi.mock('naive-ui', async () => {
   const vue = await import('vue')
 
@@ -32,6 +37,7 @@ vi.mock('naive-ui', async () => {
   return {
     NButton: button,
     NCode: code,
+    useMessage: () => messageApi,
   }
 })
 
@@ -42,6 +48,11 @@ vi.mock('vue-i18n', () => ({
       return key.replace(/\{(\w+)\}/g, (_, token: string) => String(params[token] ?? ''))
     },
   }),
+}))
+
+const copyTextMock = vi.fn(async (_value: string) => true)
+vi.mock('@/lib/clipboard', () => ({
+  copyText: (value: string) => copyTextMock(value),
 }))
 
 import RunEventDetailContent from './RunEventDetailContent.vue'
@@ -62,7 +73,7 @@ const sampleEvent = {
       retriable: { value: true, reason: 'timeout', retry_after_sec: 10 },
       message: { key: 'diagnostics.message.target.webdav.put_failed', params: { attempt: 3, max_attempts: 3 } },
       hint: { key: 'diagnostics.hint.run_failed.timeout', params: {} },
-      transport: { protocol: 'http' },
+      transport: { protocol: 'http', provider_request_id: 'req-copy-1' },
       context: {
         source: 'webdav_put',
         attempt: 3,
@@ -74,6 +85,25 @@ const sampleEvent = {
 }
 
 describe('RunEventDetailContent', () => {
+  it('renders copy actions for code/request id/target url and triggers copy', async () => {
+    const wrapper = mount(RunEventDetailContent, {
+      props: {
+        event: sampleEvent,
+      },
+    })
+
+    const codeCopy = wrapper.find('[data-testid="run-event-copy-code"]')
+    const reqCopy = wrapper.find('[data-testid="run-event-copy-providerRequestId"]')
+    const urlCopy = wrapper.find('[data-testid="run-event-copy-target_url"]')
+    expect(codeCopy.exists()).toBe(true)
+    expect(reqCopy.exists()).toBe(true)
+    expect(urlCopy.exists()).toBe(true)
+
+    await codeCopy.trigger('click')
+    expect(copyTextMock).toHaveBeenCalledWith('target.webdav.timeout')
+    expect(messageApi.success).toHaveBeenCalled()
+  })
+
   it('shows compact error-chain preview and keeps raw JSON collapsed by default', () => {
     const wrapper = mount(RunEventDetailContent, {
       props: {

@@ -18,7 +18,7 @@ import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
-import { runEventLevelTagType } from '@/lib/run_events'
+import { runEventLevelTagType, RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS } from '@/lib/run_events'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 
 export type RunEventsModalExpose = {
@@ -120,7 +120,7 @@ const reconnectInSeconds = ref<number | null>(null)
 
 const detailShow = ref<boolean>(false)
 const detailEvent = ref<RunEvent | null>(null)
-const detailHeaderMetaFields = ['timestamp', 'level', 'kind', 'seq', 'requestId'] as const
+const detailHeaderMetaFields = RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS
 
 function wsUrl(path: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'

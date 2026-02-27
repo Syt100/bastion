@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterRunEvents, findFirstEventSeq, uniqueRunEventKinds } from './run_events'
+import {
+  filterRunEvents,
+  findFirstEventSeq,
+  runEventTransportMetadata,
+  uniqueRunEventKinds,
+  RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT,
+  RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
+} from './run_events'
 
 describe('run_events helpers', () => {
   const base = [
@@ -25,5 +32,80 @@ describe('run_events helpers', () => {
     expect(findFirstEventSeq(base, (e) => e.level === 'error')).toBe(3)
     expect(findFirstEventSeq(base, (e) => e.kind === 'missing')).toBeNull()
   })
-})
 
+  it('provides shared header meta schemas', () => {
+    expect(RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT).toEqual(['timestamp', 'level', 'kind'])
+    expect(RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS).toEqual([
+      'timestamp',
+      'level',
+      'kind',
+      'seq',
+      'requestId',
+    ])
+  })
+
+  it('extracts protocol-aware request and trace metadata', () => {
+    const httpEvent = {
+      run_id: 'r1',
+      seq: 1,
+      ts: 1,
+      level: 'error',
+      kind: 'failed',
+      message: 'failed',
+      fields: {
+        error_envelope: {
+          transport: { protocol: 'http' },
+        },
+        response: {
+          headers: {
+            'x-request-id': 'http-req-1',
+            'x-trace-id': 'http-trace-1',
+          },
+        },
+      },
+    }
+    const sftpEvent = {
+      run_id: 'r1',
+      seq: 2,
+      ts: 2,
+      level: 'error',
+      kind: 'failed',
+      message: 'failed',
+      fields: {
+        error_envelope: {
+          transport: { protocol: 'sftp', provider_request_id: 'fallback-provider-id' },
+        },
+        sftp_request_id: 'sftp-req-1',
+        session_id: 'sftp-session-1',
+      },
+    }
+    const unknownEvent = {
+      run_id: 'r1',
+      seq: 3,
+      ts: 3,
+      level: 'error',
+      kind: 'failed',
+      message: 'failed',
+      fields: {
+        request_id: 'generic-req',
+        trace_id: 'generic-trace',
+      },
+    }
+
+    expect(runEventTransportMetadata(httpEvent)).toEqual({
+      protocol: 'http',
+      requestId: 'http-req-1',
+      traceId: 'http-trace-1',
+    })
+    expect(runEventTransportMetadata(sftpEvent)).toEqual({
+      protocol: 'sftp',
+      requestId: 'sftp-req-1',
+      traceId: 'sftp-session-1',
+    })
+    expect(runEventTransportMetadata(unknownEvent)).toEqual({
+      protocol: null,
+      requestId: 'generic-req',
+      traceId: 'generic-trace',
+    })
+  })
+})

@@ -5,14 +5,18 @@ import { useI18n } from 'vue-i18n'
 
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
-import { runEventLevelTagType } from '@/lib/run_events'
+import {
+  runEventLevelTagType,
+  runEventTransportMetadata,
+  RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT,
+  type RunEventDetailHeaderMetaField,
+} from '@/lib/run_events'
 import { useUiStore } from '@/stores/ui'
 import type { RunEvent } from '@/stores/jobs'
 import RunEventDetailContent from '@/components/runs/RunEventDetailContent.vue'
 
-type HeaderMetaField = 'timestamp' | 'level' | 'kind' | 'seq' | 'traceId' | 'requestId'
 type HeaderMetaToken = {
-  key: HeaderMetaField
+  key: RunEventDetailHeaderMetaField
   type: 'text' | 'level'
   value: string
   className?: string
@@ -25,11 +29,11 @@ const props = withDefaults(
     isDesktop: boolean
     title: string
     closeLabel: string
-    headerMetaFields?: readonly HeaderMetaField[]
+    headerMetaFields?: readonly RunEventDetailHeaderMetaField[]
     maxBodyHeightDesktop?: string
   }>(),
   {
-    headerMetaFields: () => ['timestamp', 'level', 'kind'] as HeaderMetaField[],
+    headerMetaFields: () => RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT,
     maxBodyHeightDesktop: `calc(${MODAL_HEIGHT.desktopLoose} - 120px)`,
   },
 )
@@ -53,44 +57,11 @@ const desktopContentStyle: CSSProperties = {
   minHeight: '0',
 }
 
-function normalizeRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value as Record<string, unknown>
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const normalized = value.trim()
-  return normalized.length > 0 ? normalized : null
-}
-
-function pickNestedString(root: unknown, path: string[]): string | null {
-  let current: unknown = root
-  for (const key of path) {
-    const record = normalizeRecord(current)
-    if (!record) return null
-    current = record[key]
-  }
-  return asNonEmptyString(current)
-}
-
-function traceIdFor(event: RunEvent): string | null {
-  return (
-    pickNestedString(event.fields, ['error_envelope', 'context', 'trace_id']) ??
-    pickNestedString(event.fields, ['trace_id']) ??
-    pickNestedString(event.fields, ['traceId'])
-  )
-}
-
-function requestIdFor(event: RunEvent): string | null {
-  return (
-    pickNestedString(event.fields, ['error_envelope', 'transport', 'provider_request_id']) ??
-    pickNestedString(event.fields, ['provider_request_id']) ??
-    pickNestedString(event.fields, ['request_id'])
-  )
-}
-
-function tokenForField(field: HeaderMetaField, event: RunEvent): HeaderMetaToken | null {
+function tokenForField(
+  field: RunEventDetailHeaderMetaField,
+  event: RunEvent,
+  metadata: ReturnType<typeof runEventTransportMetadata>,
+): HeaderMetaToken | null {
   if (field === 'timestamp') {
     return {
       key: field,
@@ -117,7 +88,7 @@ function tokenForField(field: HeaderMetaField, event: RunEvent): HeaderMetaToken
     }
   }
   if (field === 'traceId') {
-    const value = traceIdFor(event)
+    const value = metadata.traceId
     if (!value) return null
     return {
       key: field,
@@ -127,7 +98,7 @@ function tokenForField(field: HeaderMetaField, event: RunEvent): HeaderMetaToken
     }
   }
 
-  const requestId = requestIdFor(event)
+  const requestId = metadata.requestId
   if (!requestId) return null
   return {
     key: field,
@@ -139,8 +110,9 @@ function tokenForField(field: HeaderMetaField, event: RunEvent): HeaderMetaToken
 
 const headerMetaTokens = computed(() => {
   if (!props.event) return []
+  const metadata = runEventTransportMetadata(props.event)
   return props.headerMetaFields
-    .map((field) => tokenForField(field, props.event!))
+    .map((field) => tokenForField(field, props.event!, metadata))
     .filter((token): token is HeaderMetaToken => token != null)
 })
 </script>
