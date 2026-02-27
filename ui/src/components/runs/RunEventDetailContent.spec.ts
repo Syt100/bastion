@@ -50,7 +50,10 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-const copyTextMock = vi.fn(async (_value: string) => true)
+const copyTextMock = vi.fn(async (value: string) => {
+  void value
+  return true
+})
 vi.mock('@/lib/clipboard', () => ({
   copyText: (value: string) => copyTextMock(value),
 }))

@@ -14,6 +14,8 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import ListToolbar from '@/components/list/ListToolbar.vue'
+import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
+import AppPagination from '@/components/list/AppPagination.vue'
 import { useNotificationsStore, type NotificationChannel, type NotificationQueueItem } from '@/stores/notifications'
 import { useUiStore } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
@@ -43,6 +45,7 @@ const statusFilter = ref<QueueStatus[] | null>([])
 const channelFilter = ref<NotificationChannel[] | null>([])
 const page = ref(1)
 const pageSize = ref(20)
+const pageSizeOptions = [20, 50, 100]
 const total = ref(0)
 const items = ref<NotificationQueueItem[]>([])
 
@@ -177,6 +180,19 @@ watch([statusFilter, channelFilter], () => {
   page.value = 1
   void refresh()
 })
+
+function onUpdatePage(next: number): void {
+  if (next === page.value) return
+  page.value = next
+  void refresh()
+}
+
+function onUpdatePageSize(next: number): void {
+  if (next === pageSize.value) return
+  pageSize.value = next
+  page.value = 1
+  void refresh()
+}
 
 onMounted(refresh)
 
@@ -320,105 +336,107 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 
 <template>
   <n-card class="app-card" :bordered="false" :title="t('settings.notifications.queueTitle')">
-    <div class="space-y-4">
-      <ListToolbar embedded compact>
-        <template #filters>
-          <div class="w-full md:w-56 md:flex-none">
-            <n-select
-              v-model:value="statusFilter"
-              size="small"
-              multiple
-              clearable
-              max-tag-count="responsive"
-              :placeholder="t('settings.notifications.status.all')"
-              :options="statusOptions"
-              class="w-full"
-            />
-          </div>
-          <div class="w-full md:w-56 md:flex-none">
-            <n-select
-              v-model:value="channelFilter"
-              size="small"
-              multiple
-              clearable
-              max-tag-count="responsive"
-              :placeholder="t('settings.notifications.channel.all')"
-              :options="channelOptions"
-              class="w-full"
-            />
-          </div>
-        </template>
-
-        <template #actions>
-          <n-button size="small" class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-        </template>
-      </ListToolbar>
-
-      <div v-if="!isDesktop" class="space-y-3">
-        <n-card
-          v-for="row in items"
-          :key="row.id"
-          size="small"
-          class="app-card"
-          :bordered="false"
-        >
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div class="font-medium truncate">{{ row.job_name }}</div>
-              <n-tag size="small" :bordered="false">
-                {{ formatStatus(row.status) }}
-              </n-tag>
+    <ListPageScaffold>
+      <template #toolbar>
+        <ListToolbar embedded compact>
+          <template #filters>
+            <div class="w-full md:w-56 md:flex-none">
+              <n-select
+                v-model:value="statusFilter"
+                size="small"
+                multiple
+                clearable
+                max-tag-count="responsive"
+                :placeholder="t('settings.notifications.status.all')"
+                :options="statusOptions"
+                class="w-full"
+              />
+            </div>
+            <div class="w-full md:w-56 md:flex-none">
+              <n-select
+                v-model:value="channelFilter"
+                size="small"
+                multiple
+                clearable
+                max-tag-count="responsive"
+                :placeholder="t('settings.notifications.channel.all')"
+                :options="channelOptions"
+                class="w-full"
+              />
             </div>
           </template>
 
-          <div class="text-xs app-text-muted space-y-1">
-            <div>{{ t('settings.notifications.queue.columns.channel') }}: {{ formatChannel(row.channel) }}</div>
-            <div>{{ t('settings.notifications.queue.columns.destination') }}: {{ row.destination }}</div>
-            <div v-if="row.status === 'queued'">
-              {{ t('settings.notifications.queue.columns.nextAttempt') }}: {{ formatUnixSeconds(row.next_attempt_at) }}
-            </div>
-            <div>{{ t('settings.notifications.queue.columns.attempts') }}: {{ row.attempts }}</div>
-            <div>{{ t('settings.notifications.queue.columns.updatedAt') }}: {{ formatUnixSeconds(row.updated_at) }}</div>
-            <div v-if="row.last_error">{{ t('settings.notifications.queue.columns.lastError') }}: {{ row.last_error }}</div>
-            <div v-if="row.destination_deleted">{{ t('settings.notifications.destinationDeleted') }}</div>
-            <div v-else-if="!row.destination_enabled">{{ t('settings.notifications.destinationDisabled') }}</div>
-          </div>
+          <template #actions>
+            <n-button size="small" class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
+          </template>
+        </ListToolbar>
+      </template>
 
-          <div class="mt-3 flex items-center justify-end gap-2">
-            <n-button size="small" :disabled="!(row.status === 'failed' || row.status === 'canceled')" @click="retryNow(row.id)">
-              {{ t('settings.notifications.queue.actions.retryNow') }}
-            </n-button>
-            <n-button size="small" type="warning" tertiary :disabled="row.status !== 'queued'" @click="cancel(row.id)">
-              {{ t('settings.notifications.queue.actions.cancel') }}
-            </n-button>
-          </div>
-        </n-card>
-      </div>
-
-      <div v-else class="overflow-x-auto">
-        <n-data-table
-          table-layout="fixed"
-          :loading="loading"
-          :columns="columns"
-          :data="items"
-          :on-unstable-column-resize="handleColumnResize"
-        />
-      </div>
-
-      <div class="flex items-center justify-between text-sm">
-        <div class="app-text-muted">{{ t('settings.notifications.queue.total', { total }) }}</div>
-        <div class="flex items-center gap-2">
-          <n-button size="small" :disabled="page <= 1" @click="page -= 1; refresh()">{{ t('common.back') }}</n-button>
-          <div class="text-xs app-text-muted">{{ page }}</div>
-          <n-button
+      <template #content>
+        <div v-if="!isDesktop" class="space-y-3">
+          <n-card
+            v-for="row in items"
+            :key="row.id"
             size="small"
-            :disabled="page * pageSize >= total"
-            @click="page += 1; refresh()"
+            class="app-card"
+            :bordered="false"
           >
-            {{ t('common.next') }}
-          </n-button>
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <div class="font-medium truncate">{{ row.job_name }}</div>
+                <n-tag size="small" :bordered="false">
+                  {{ formatStatus(row.status) }}
+                </n-tag>
+              </div>
+            </template>
+
+            <div class="text-xs app-text-muted space-y-1">
+              <div>{{ t('settings.notifications.queue.columns.channel') }}: {{ formatChannel(row.channel) }}</div>
+              <div>{{ t('settings.notifications.queue.columns.destination') }}: {{ row.destination }}</div>
+              <div v-if="row.status === 'queued'">
+                {{ t('settings.notifications.queue.columns.nextAttempt') }}: {{ formatUnixSeconds(row.next_attempt_at) }}
+              </div>
+              <div>{{ t('settings.notifications.queue.columns.attempts') }}: {{ row.attempts }}</div>
+              <div>{{ t('settings.notifications.queue.columns.updatedAt') }}: {{ formatUnixSeconds(row.updated_at) }}</div>
+              <div v-if="row.last_error">{{ t('settings.notifications.queue.columns.lastError') }}: {{ row.last_error }}</div>
+              <div v-if="row.destination_deleted">{{ t('settings.notifications.destinationDeleted') }}</div>
+              <div v-else-if="!row.destination_enabled">{{ t('settings.notifications.destinationDisabled') }}</div>
+            </div>
+
+            <div class="mt-3 flex items-center justify-end gap-2">
+              <n-button size="small" :disabled="!(row.status === 'failed' || row.status === 'canceled')" @click="retryNow(row.id)">
+                {{ t('settings.notifications.queue.actions.retryNow') }}
+              </n-button>
+              <n-button size="small" type="warning" tertiary :disabled="row.status !== 'queued'" @click="cancel(row.id)">
+                {{ t('settings.notifications.queue.actions.cancel') }}
+              </n-button>
+            </div>
+          </n-card>
         </div>
-      </div>
-    </div>
+
+        <div v-else class="overflow-x-auto">
+          <n-data-table
+            table-layout="fixed"
+            :loading="loading"
+            :columns="columns"
+            :data="items"
+            :on-unstable-column-resize="handleColumnResize"
+          />
+        </div>
+      </template>
+
+      <template #footer>
+        <AppPagination
+          :page="page"
+          :page-size="pageSize"
+          :item-count="total"
+          :page-sizes="pageSizeOptions"
+          :loading="loading"
+          :total-label="t('settings.notifications.queue.total', { total })"
+          @update:page="onUpdatePage"
+          @update:page-size="onUpdatePageSize"
+        />
+      </template>
+    </ListPageScaffold>
   </n-card>
 </template>

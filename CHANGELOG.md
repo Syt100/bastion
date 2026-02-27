@@ -13,6 +13,11 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 
 ### Changed
+- Changed list-oriented Web UI pages (Jobs/Agents/Notifications Queue) to use a shared scaffold pattern with consistent toolbar/content/footer regions.
+- Changed list pagination UX by introducing a unified pagination component and migrating Notifications Queue from back/next-only controls to page + page-size controls.
+- Changed Jobs workspace filtering to a single shared filter state model and shared filter panel rendering across split/list/mobile containers.
+- Changed Jobs list row actions to keep primary actions (Run now + More) visible without hover and to enforce explicit action-vs-row click boundaries.
+- Changed list empty-state rendering to support `plain`/`inset` variants and reduce card-within-card visual noise in embedded list sections.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).

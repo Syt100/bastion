@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NIcon, NInput, NModal, NPagination, NRadioButton, NRadioGroup, NSelect, NSwitch, NTag, useMessage, type DataTableColumns, type DropdownOption } from 'naive-ui'
-import { CreateOutline, PlayOutline } from '@vicons/ionicons5'
+import { NButton, NCard, NCheckbox, NDataTable, NIcon, NInput, NModal, NRadioButton, NRadioGroup, NTag, useMessage, type DataTableColumns, type DropdownOption } from 'naive-ui'
+import { PlayOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import AppPagination from '@/components/list/AppPagination.vue'
+import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
-import PickerActiveChipsRow, { type PickerActiveChip } from '@/components/pickers/PickerActiveChipsRow.vue'
+import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
@@ -23,8 +25,8 @@ import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
-
-type JobSortKey = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc'
+import JobsFiltersPanel from './JobsFiltersPanel.vue'
+import { useJobsFilters } from './useJobsFilters'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -42,11 +44,6 @@ const selectedJobId = computed(() => (typeof route.params.jobId === 'string' ? r
 
 const editorModal = ref<JobEditorModalExpose | null>(null)
 
-const showArchived = ref<boolean>(false)
-const searchText = ref<string>('')
-const sortKey = ref<JobSortKey>('updated_desc')
-const listLatestStatusFilter = ref<RunStatus | 'never' | 'all'>('all')
-const listScheduleFilter = ref<'all' | 'manual' | 'scheduled'>('all')
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 
@@ -54,12 +51,20 @@ const jobsPage = ref<number>(1)
 const jobsPageSize = ref<number>(20)
 const jobsPageSizeOptions = [20, 50, 100]
 
-const sortOptions = computed(() => [
-  { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
-  { label: t('jobs.sort.updatedAsc'), value: 'updated_asc' },
-  { label: t('jobs.sort.nameAsc'), value: 'name_asc' },
-  { label: t('jobs.sort.nameDesc'), value: 'name_desc' },
-])
+const {
+  showArchived,
+  searchText,
+  sortKey,
+  latestStatusFilter,
+  scheduleFilter,
+  sortOptions,
+  latestStatusFilterOptions,
+  scheduleFilterOptions,
+  filtersActiveCount,
+  activeFilterChips,
+  hasActiveFilters,
+  clearFilters,
+} = useJobsFilters(t)
 
 const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   if (!isDesktop.value) return 'split'
@@ -173,92 +178,8 @@ function onSplitResizePointerDown(event: PointerEvent): void {
   splitResizeCleanup = cleanup
 }
 
-const filtersActiveCount = computed(() => {
-  let n = 0
-  if (searchText.value.trim().length > 0) n += 1
-  if (showArchived.value) n += 1
-  if (listLatestStatusFilter.value !== 'all') n += 1
-  if (listScheduleFilter.value !== 'all') n += 1
-  if (sortKey.value !== 'updated_desc') n += 1
-  return n
-})
-
-const activeFilterChips = computed<PickerActiveChip[]>(() => {
-  const chips: PickerActiveChip[] = []
-
-  const q = searchText.value.trim()
-  if (q.length > 0) {
-    chips.push({
-      key: 'q',
-      label: `${t('common.search')}: ${q}`,
-      onClose: () => {
-        searchText.value = ''
-      },
-    })
-  }
-
-  if (showArchived.value) {
-    chips.push({
-      key: 'archived',
-      label: t('jobs.showArchived'),
-      onClose: () => {
-        showArchived.value = false
-      },
-    })
-  }
-
-  if (listLatestStatusFilter.value !== 'all') {
-    const label =
-      latestStatusFilterOptions.value.find((o) => o.value === listLatestStatusFilter.value)?.label ??
-      String(listLatestStatusFilter.value)
-    chips.push({
-      key: 'status',
-      label: `${t('runs.columns.status')}: ${label}`,
-      onClose: () => {
-        listLatestStatusFilter.value = 'all'
-      },
-    })
-  }
-
-  if (listScheduleFilter.value !== 'all') {
-    const label =
-      scheduleFilterOptions.value.find((o) => o.value === listScheduleFilter.value)?.label ??
-      String(listScheduleFilter.value)
-    chips.push({
-      key: 'schedule',
-      label: `${t('jobs.columns.schedule')}: ${label}`,
-      onClose: () => {
-        listScheduleFilter.value = 'all'
-      },
-    })
-  }
-
-  if (sortKey.value !== 'updated_desc') {
-    const label = sortOptions.value.find((o) => o.value === sortKey.value)?.label ?? String(sortKey.value)
-    chips.push({
-      key: 'sort',
-      label: `${t('common.sort')}: ${label}`,
-      onClose: () => {
-        sortKey.value = 'updated_desc'
-      },
-    })
-  }
-
-  return chips
-})
-
 const pagedFilteredJobs = computed<JobListItem[]>(() => jobs.items)
 const nodeScopedJobs = computed<JobListItem[]>(() => jobs.items)
-
-const hasActiveFilters = computed<boolean>(() => {
-  return (
-    showArchived.value ||
-    searchText.value.trim().length > 0 ||
-    listLatestStatusFilter.value !== 'all' ||
-    listScheduleFilter.value !== 'all' ||
-    sortKey.value !== 'updated_desc'
-  )
-})
 
 const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilters.value)
 
@@ -452,8 +373,8 @@ async function refresh(): Promise<void> {
       includeArchived: showArchived.value,
       nodeId: nodeId.value,
       q: searchText.value,
-      latestStatus: listLatestStatusFilter.value,
-      scheduleMode: listScheduleFilter.value,
+      latestStatus: latestStatusFilter.value,
+      scheduleMode: scheduleFilter.value,
       sort: sortKey.value,
       page: jobsPage.value,
       pageSize: jobsPageSize.value,
@@ -461,14 +382,6 @@ async function refresh(): Promise<void> {
   } catch (error) {
     message.error(formatToastError(t('errors.fetchJobsFailed'), error, t))
   }
-}
-
-function clearFilters(): void {
-  searchText.value = ''
-  showArchived.value = false
-  sortKey.value = 'updated_desc'
-  listLatestStatusFilter.value = 'all'
-  listScheduleFilter.value = 'all'
 }
 
 let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -519,8 +432,11 @@ function onJobRowClick(jobId: string): void {
   openJob(jobId)
 }
 
-function jobRowOverflowOptions(): DropdownOption[] {
-  return [{ label: t('jobs.workspace.actions.openDetails'), key: 'open_details' }]
+function jobRowOverflowOptions(job: JobListItem): DropdownOption[] {
+  return [
+    { label: t('jobs.workspace.actions.openDetails'), key: 'open_details' },
+    { label: t('common.edit'), key: 'edit', disabled: !!job.archived_at },
+  ]
 }
 
 function onSelectJobRowOverflow(job: JobListItem, key: string | number): void {
@@ -529,6 +445,10 @@ function onSelectJobRowOverflow(job: JobListItem, key: string | number): void {
       ui.setJobsWorkspaceLayoutMode('split')
     }
     openJob(job.id)
+    return
+  }
+  if (key === 'edit') {
+    void openEdit(job.id)
   }
 }
 
@@ -552,23 +472,6 @@ function runStatusTagType(status: RunStatus): 'success' | 'error' | 'warning' | 
 function formatScheduleLabel(job: JobListItem): string {
   return job.schedule ?? t('jobs.scheduleMode.manual')
 }
-
-const latestStatusFilterOptions = computed(() => [
-  { label: t('runs.filters.all'), value: 'all' },
-  { label: t('runs.neverRan'), value: 'never' },
-  { label: runStatusLabel(t, 'success'), value: 'success' },
-  { label: runStatusLabel(t, 'failed'), value: 'failed' },
-  { label: runStatusLabel(t, 'running'), value: 'running' },
-  { label: runStatusLabel(t, 'queued'), value: 'queued' },
-  { label: runStatusLabel(t, 'rejected'), value: 'rejected' },
-  { label: runStatusLabel(t, 'canceled'), value: 'canceled' },
-])
-
-const scheduleFilterOptions = computed(() => [
-  { label: t('runs.filters.all'), value: 'all' },
-  { label: t('jobs.scheduleMode.manual'), value: 'manual' },
-  { label: t('jobs.workspace.filters.scheduled'), value: 'scheduled' },
-])
 
 const tableNameSortOrder = computed<'ascend' | 'descend' | false>(() => {
   if (sortKey.value === 'name_asc') return 'ascend'
@@ -741,7 +644,7 @@ watch(layoutMode, () => {
   }
 })
 
-watch([searchText, sortKey, listLatestStatusFilter, listScheduleFilter, showArchived], resetToFirstPageAndRefresh)
+watch([searchText, sortKey, latestStatusFilter, scheduleFilter, showArchived], resetToFirstPageAndRefresh)
 watch(jobsPage, () => {
   void refresh()
 })
@@ -861,288 +764,234 @@ onBeforeUnmount(() => {
             </template>
           </SelectionToolbar>
 
-          <ListToolbar compact embedded :stacked="layoutMode === 'split'">
-            <template #search>
-              <div class="flex items-center gap-2">
-                <n-input
-                  v-model:value="searchText"
-                  size="small"
-                  clearable
-                  :placeholder="t('jobs.filters.searchPlaceholder')"
-                  class="flex-1 min-w-0"
-                  :input-props="{ name: 'jobs-search' }"
-                />
-
-                <PickerFiltersPopoverDrawer
-                  v-if="layoutMode === 'split'"
-                  :is-desktop="true"
-                  :title="t('common.filters')"
-                  :active-count="filtersActiveCount"
-                  width-class="w-96"
-                  :popover-open="filtersPopoverOpen"
-                  :drawer-open="filtersDrawerOpen"
-                  @update:popover-open="(v) => (filtersPopoverOpen = v)"
-                  @update:drawer-open="(v) => (filtersDrawerOpen = v)"
-                >
-                  <div class="space-y-4">
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                      <n-switch v-model:value="showArchived" :aria-label="t('jobs.showArchived')" />
-                    </div>
-
-                    <div class="space-y-2">
-                      <div class="text-sm app-text-muted">{{ t('runs.columns.status') }}</div>
-                      <n-select
-                        v-model:value="listLatestStatusFilter"
-                        size="small"
-                        :aria-label="t('runs.columns.status')"
-                        :options="latestStatusFilterOptions"
-                        :consistent-menu-width="false"
-                        class="w-full"
-                      />
-                    </div>
-
-                    <div class="space-y-2">
-                      <div class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</div>
-                      <n-select
-                        v-model:value="listScheduleFilter"
-                        size="small"
-                        :aria-label="t('jobs.columns.schedule')"
-                        :options="scheduleFilterOptions"
-                        :consistent-menu-width="false"
-                        class="w-full"
-                      />
-                    </div>
-
-                    <div class="space-y-2">
-                      <div class="text-sm app-text-muted">{{ t('common.sort') }}</div>
-                      <n-select v-model:value="sortKey" size="small" :aria-label="t('common.sort')" :options="sortOptions" class="w-full" />
-                    </div>
-                  </div>
-
-                  <template #popoverFooter>
-                    <div class="mt-4 pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
-                      <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
-                    </div>
-                  </template>
-                </PickerFiltersPopoverDrawer>
-              </div>
-            </template>
-
-            <template #filters>
-              <template v-if="layoutMode !== 'split'">
-                <div class="shrink-0 flex items-center gap-2 whitespace-nowrap h-7">
-                  <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                  <n-switch v-model:value="showArchived" :aria-label="t('jobs.showArchived')" />
-                </div>
-
-                <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-                  <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
-                  <n-select
-                    v-model:value="listLatestStatusFilter"
-                    size="small"
-                    :aria-label="t('runs.columns.status')"
-                    :options="latestStatusFilterOptions"
-                    :consistent-menu-width="false"
-                    class="min-w-[8rem]"
-                  />
-                </div>
-
-                <div v-if="layoutMode === 'list'" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-                  <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
-                  <n-select
-                    v-model:value="listScheduleFilter"
-                    size="small"
-                    :aria-label="t('jobs.columns.schedule')"
-                    :options="scheduleFilterOptions"
-                    :consistent-menu-width="false"
-                    class="min-w-[8rem]"
-                  />
-                </div>
-              </template>
-            </template>
-
-            <template #sort>
-              <div v-if="layoutMode !== 'split'" class="w-full md:w-56 md:flex-none">
-                <n-select v-model:value="sortKey" size="small" :aria-label="t('common.sort')" :options="sortOptions" />
-              </div>
-            </template>
-
-            <template #actions>
-              <n-button
-                v-if="layoutMode === 'list' && jobsListView === 'list'"
-                size="small"
-                tertiary
-                @click="listSelectMode = !listSelectMode"
-              >
-                {{ listSelectMode ? t('common.done') : t('jobs.workspace.actions.select') }}
-              </n-button>
-              <n-button v-if="layoutMode !== 'split'" size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
-            </template>
-          </ListToolbar>
-
-          <div class="mt-3 space-y-2">
-            <div class="text-xs app-text-muted">
-              {{ t('jobs.workspace.filters.resultsCount', { filtered: jobs.total, total: jobs.total }) }}
-            </div>
-            <PickerActiveChipsRow
-              :chips="activeFilterChips"
-              :clear-label="t('common.clear')"
-              :wrap="layoutMode !== 'split'"
-              @clear="clearFilters"
-            />
-          </div>
-
-          <div class="mt-2 flex-1 min-h-0">
-            <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
-            <AppEmptyState
-              v-else-if="!jobs.loading && jobs.items.length === 0"
-              :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
-              :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
-            >
-              <template #actions>
-                <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
-                  {{ t('jobs.actions.create') }}
-                </n-button>
-                <n-button v-else size="small" @click="clearFilters">
-                  {{ t('common.clear') }}
-                </n-button>
-              </template>
-            </AppEmptyState>
-
-            <div
-              v-else
-            >
-              <ScrollShadowPane
-                data-testid="jobs-list-scroll"
-                :class="jobsListView === 'list' ? 'app-divide-y' : ''"
-              >
-                <template v-if="jobsListView === 'table'">
-                  <div class="py-2">
-                    <n-data-table
-                      class="app-picker-table"
+          <ListPageScaffold>
+            <template #toolbar>
+              <ListToolbar compact embedded :stacked="layoutMode === 'split'">
+                <template #search>
+                  <div class="flex items-center gap-2">
+                    <n-input
+                      v-model:value="searchText"
                       size="small"
-                      remote
-                      v-model:checked-row-keys="selectedJobIds"
-                      :row-key="(row) => row.id"
-                      :loading="jobs.loading"
-                      :columns="tableColumns"
-                      :data="pagedFilteredJobs"
-                      :scroll-x="1200"
-                      :row-class-name="(row) => (selectedJobIds.includes(row.id) || isSelected(row.id) ? 'app-picker-row--checked' : '')"
-                      :row-props="(row) => ({ style: 'cursor: pointer;', onDblclick: () => openJob(row.id) })"
-                      @update:sorter="onTableSorterUpdate"
+                      clearable
+                      :placeholder="t('jobs.filters.searchPlaceholder')"
+                      class="flex-1 min-w-0"
+                      :input-props="{ name: 'jobs-search' }"
                     />
+
+                    <PickerFiltersPopoverDrawer
+                      v-if="layoutMode === 'split'"
+                      :is-desktop="true"
+                      :title="t('common.filters')"
+                      :active-count="filtersActiveCount"
+                      width-class="w-96"
+                      :popover-open="filtersPopoverOpen"
+                      :drawer-open="filtersDrawerOpen"
+                      @update:popover-open="(v) => (filtersPopoverOpen = v)"
+                      @update:drawer-open="(v) => (filtersDrawerOpen = v)"
+                    >
+                      <JobsFiltersPanel
+                        v-model:show-archived="showArchived"
+                        v-model:latest-status-filter="latestStatusFilter"
+                        v-model:schedule-filter="scheduleFilter"
+                        v-model:sort-key="sortKey"
+                        layout="stack"
+                        :latest-status-options="latestStatusFilterOptions"
+                        :schedule-options="scheduleFilterOptions"
+                        :sort-options="sortOptions"
+                      />
+
+                      <template #popoverFooter>
+                        <div class="mt-4 pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
+                          <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+                        </div>
+                      </template>
+                    </PickerFiltersPopoverDrawer>
                   </div>
                 </template>
 
-                <template v-else>
-                  <button
-                    v-for="job in pagedFilteredJobs"
-                    :key="job.id"
-                    type="button"
-                    class="app-list-row group"
-                    :class="isSelected(job.id) || (layoutMode === 'list' && selectedJobIds.includes(job.id)) ? 'bg-[var(--app-primary-soft)]' : ''"
-                    @click="onJobRowClick(job.id)"
-                  >
-                    <div class="min-w-0 flex items-start gap-2">
-                      <div v-if="layoutMode === 'list' && listSelectMode" class="pt-0.5" @click.stop>
-                        <n-checkbox
-                          :checked="selectedJobIds.includes(job.id)"
-                          @update:checked="(v) => setJobSelected(job.id, v)"
-                        />
-                      </div>
-
-                      <div class="min-w-0">
-                        <div class="flex items-center gap-2 min-w-0">
-                          <div class="font-medium truncate">{{ job.name }}</div>
-                          <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                            {{ t('jobs.archived') }}
-                          </n-tag>
-                        </div>
-                        <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                          <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                            {{ formatNodeLabel(job.agent_id) }}
-                          </n-tag>
-                          <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="shrink-0 relative text-right min-w-[6.5rem]">
-                      <div class="flex flex-col items-end gap-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
-                        <n-tag
-                          v-if="job.latest_run_status"
-                          size="small"
-                          :bordered="false"
-                          :type="runStatusTagType(job.latest_run_status)"
-                        >
-                          {{ runStatusLabel(t, job.latest_run_status) }}
-                        </n-tag>
-                        <n-tag v-else size="small" :bordered="false">
-                          {{ t('runs.neverRan') }}
-                        </n-tag>
-
-                        <div
-                          v-if="job.latest_run_started_at != null"
-                          class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
-                          :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
-                        >
-                          {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
-                        </div>
-                      </div>
-
-                      <div
-                        class="absolute inset-0 flex items-center justify-end gap-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
-                        @click.stop
-                      >
-                        <n-button
-                          size="small"
-                          quaternary
-                          :disabled="!!job.archived_at"
-                          :title="t('jobs.actions.runNow')"
-                          :aria-label="t('jobs.actions.runNow')"
-                          @click="() => void runNow(job.id)"
-                        >
-                          <template #icon>
-                            <n-icon><PlayOutline /></n-icon>
-                          </template>
-                        </n-button>
-                        <n-button
-                          size="small"
-                          quaternary
-                          :disabled="!!job.archived_at"
-                          :title="t('common.edit')"
-                          :aria-label="t('common.edit')"
-                          @click="() => void openEdit(job.id)"
-                        >
-                          <template #icon>
-                            <n-icon><CreateOutline /></n-icon>
-                          </template>
-                        </n-button>
-                        <OverflowActionsButton
-                          size="small"
-                          :options="jobRowOverflowOptions()"
-                          @select="(key) => onSelectJobRowOverflow(job, key)"
-                        />
-                      </div>
-                    </div>
-                  </button>
+                <template #filters>
+                  <JobsFiltersPanel
+                    v-if="layoutMode !== 'split'"
+                    v-model:show-archived="showArchived"
+                    v-model:latest-status-filter="latestStatusFilter"
+                    v-model:schedule-filter="scheduleFilter"
+                    v-model:sort-key="sortKey"
+                    layout="inline"
+                    :latest-status-options="latestStatusFilterOptions"
+                    :schedule-options="scheduleFilterOptions"
+                    :sort-options="sortOptions"
+                  />
                 </template>
-              </ScrollShadowPane>
 
-              <div v-if="jobs.total > jobsPageSize" class="mt-3 flex justify-end">
-                <n-pagination
-                  v-model:page="jobsPage"
-                  v-model:page-size="jobsPageSize"
-                  :item-count="jobs.total"
-                  :page-sizes="jobsPageSizeOptions"
-                  show-size-picker
-                  size="small"
+                <template #actions>
+                  <n-button
+                    v-if="layoutMode === 'list' && jobsListView === 'list'"
+                    size="small"
+                    tertiary
+                    @click="listSelectMode = !listSelectMode"
+                  >
+                    {{ listSelectMode ? t('common.done') : t('jobs.workspace.actions.select') }}
+                  </n-button>
+                  <n-button v-if="layoutMode !== 'split'" size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+                </template>
+              </ListToolbar>
+            </template>
+
+            <template #content>
+              <div class="space-y-2">
+                <div class="text-xs app-text-muted">
+                  {{ t('jobs.workspace.filters.resultsCount', { filtered: jobs.total, total: jobs.total }) }}
+                </div>
+                <PickerActiveChipsRow
+                  :chips="activeFilterChips"
+                  :clear-label="t('common.clear')"
+                  :wrap="layoutMode !== 'split'"
+                  @clear="clearFilters"
                 />
               </div>
-            </div>
-          </div>
+
+              <div class="mt-2 flex-1 min-h-0">
+                <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading variant="plain" />
+                <AppEmptyState
+                  v-else-if="!jobs.loading && jobs.items.length === 0"
+                  :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
+                  :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
+                  variant="plain"
+                >
+                  <template #actions>
+                    <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
+                      {{ t('jobs.actions.create') }}
+                    </n-button>
+                    <n-button v-else size="small" @click="clearFilters">
+                      {{ t('common.clear') }}
+                    </n-button>
+                  </template>
+                </AppEmptyState>
+
+                <div v-else>
+                  <ScrollShadowPane
+                    data-testid="jobs-list-scroll"
+                    :class="jobsListView === 'list' ? 'app-divide-y' : ''"
+                  >
+                    <template v-if="jobsListView === 'table'">
+                      <div class="py-2">
+                        <n-data-table
+                          class="app-picker-table"
+                          size="small"
+                          remote
+                          v-model:checked-row-keys="selectedJobIds"
+                          :row-key="(row) => row.id"
+                          :loading="jobs.loading"
+                          :columns="tableColumns"
+                          :data="pagedFilteredJobs"
+                          :scroll-x="1200"
+                          :row-class-name="(row) => (selectedJobIds.includes(row.id) || isSelected(row.id) ? 'app-picker-row--checked' : '')"
+                          :row-props="(row) => ({ style: 'cursor: pointer;', onDblclick: () => openJob(row.id) })"
+                          @update:sorter="onTableSorterUpdate"
+                        />
+                      </div>
+                    </template>
+
+                    <template v-else>
+                      <div
+                        v-for="job in pagedFilteredJobs"
+                        :key="job.id"
+                        role="button"
+                        tabindex="0"
+                        class="app-list-row"
+                        :class="isSelected(job.id) || (layoutMode === 'list' && selectedJobIds.includes(job.id)) ? 'bg-[var(--app-primary-soft)]' : ''"
+                        @click="onJobRowClick(job.id)"
+                        @keydown.enter.prevent="onJobRowClick(job.id)"
+                        @keydown.space.prevent="onJobRowClick(job.id)"
+                      >
+                        <div class="min-w-0 flex items-start gap-2">
+                          <div v-if="layoutMode === 'list' && listSelectMode" class="pt-0.5" @click.stop>
+                            <n-checkbox
+                              :checked="selectedJobIds.includes(job.id)"
+                              @update:checked="(v) => setJobSelected(job.id, v)"
+                            />
+                          </div>
+
+                          <div class="min-w-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <div class="font-medium truncate">{{ job.name }}</div>
+                              <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                                {{ t('jobs.archived') }}
+                              </n-tag>
+                            </div>
+                            <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+                              <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                                {{ formatNodeLabel(job.agent_id) }}
+                              </n-tag>
+                              <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="shrink-0 flex items-start gap-2">
+                          <div class="text-right min-w-[6.5rem]">
+                            <n-tag
+                              v-if="job.latest_run_status"
+                              size="small"
+                              :bordered="false"
+                              :type="runStatusTagType(job.latest_run_status)"
+                            >
+                              {{ runStatusLabel(t, job.latest_run_status) }}
+                            </n-tag>
+                            <n-tag v-else size="small" :bordered="false">
+                              {{ t('runs.neverRan') }}
+                            </n-tag>
+
+                            <div
+                              v-if="job.latest_run_started_at != null"
+                              class="mt-1 text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
+                              :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
+                            >
+                              {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                            </div>
+                          </div>
+
+                          <div class="flex items-center gap-1" @click.stop>
+                            <n-button
+                              data-testid="jobs-row-run-now"
+                              size="small"
+                              quaternary
+                              :disabled="!!job.archived_at"
+                              :title="t('jobs.actions.runNow')"
+                              :aria-label="t('jobs.actions.runNow')"
+                              @click="() => void runNow(job.id)"
+                            >
+                              <template #icon>
+                                <n-icon><PlayOutline /></n-icon>
+                              </template>
+                            </n-button>
+                            <OverflowActionsButton
+                              size="small"
+                              :options="jobRowOverflowOptions(job)"
+                              @select="(key) => onSelectJobRowOverflow(job, key)"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </ScrollShadowPane>
+                </div>
+              </div>
+            </template>
+
+            <template #footer>
+              <AppPagination
+                v-if="jobs.total > jobsPageSize"
+                :page="jobsPage"
+                :page-size="jobsPageSize"
+                :item-count="jobs.total"
+                :page-sizes="jobsPageSizeOptions"
+                :loading="jobs.loading"
+                @update:page="(value) => (jobsPage = value)"
+                @update:page-size="(value) => (jobsPageSize = value)"
+              />
+            </template>
+          </ListPageScaffold>
         </n-card>
 
         <div v-if="layoutMode !== 'list'" class="min-w-0 min-h-0 flex flex-col">
@@ -1159,150 +1008,159 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else>
-      <div v-if="!selectedJobId" class="space-y-4">
-        <ListToolbar>
-          <template #search>
-            <div class="flex items-center gap-2">
-              <n-input
-                v-model:value="searchText"
-                size="small"
-                clearable
-                :placeholder="t('jobs.filters.searchPlaceholder')"
-                class="flex-1 min-w-0"
-                :input-props="{ name: 'jobs-search' }"
-              />
+      <div v-if="!selectedJobId">
+        <ListPageScaffold>
+          <template #toolbar>
+            <ListToolbar>
+              <template #search>
+                <div class="flex items-center gap-2">
+                  <n-input
+                    v-model:value="searchText"
+                    size="small"
+                    clearable
+                    :placeholder="t('jobs.filters.searchPlaceholder')"
+                    class="flex-1 min-w-0"
+                    :input-props="{ name: 'jobs-search' }"
+                  />
 
-              <PickerFiltersPopoverDrawer
-                :is-desktop="false"
-                :title="t('common.filters')"
-                :active-count="filtersActiveCount"
-                width-class="w-full"
-                :popover-open="filtersPopoverOpen"
-                :drawer-open="filtersDrawerOpen"
-                @update:popover-open="(v) => (filtersPopoverOpen = v)"
-                @update:drawer-open="(v) => (filtersDrawerOpen = v)"
-              >
-                <div class="space-y-4">
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
-                    <n-switch v-model:value="showArchived" :aria-label="t('jobs.showArchived')" />
-                  </div>
-
-                  <div class="space-y-2">
-                    <div class="text-sm app-text-muted">{{ t('runs.columns.status') }}</div>
-                    <n-select
-                      v-model:value="listLatestStatusFilter"
-                      size="small"
-                      :aria-label="t('runs.columns.status')"
-                      :options="latestStatusFilterOptions"
-                      :consistent-menu-width="false"
-                      class="w-full"
+                  <PickerFiltersPopoverDrawer
+                    :is-desktop="false"
+                    :title="t('common.filters')"
+                    :active-count="filtersActiveCount"
+                    width-class="w-full"
+                    :popover-open="filtersPopoverOpen"
+                    :drawer-open="filtersDrawerOpen"
+                    @update:popover-open="(v) => (filtersPopoverOpen = v)"
+                    @update:drawer-open="(v) => (filtersDrawerOpen = v)"
+                  >
+                    <JobsFiltersPanel
+                      v-model:show-archived="showArchived"
+                      v-model:latest-status-filter="latestStatusFilter"
+                      v-model:schedule-filter="scheduleFilter"
+                      v-model:sort-key="sortKey"
+                      layout="stack"
+                      :latest-status-options="latestStatusFilterOptions"
+                      :schedule-options="scheduleFilterOptions"
+                      :sort-options="sortOptions"
                     />
-                  </div>
 
-                  <div class="space-y-2">
-                    <div class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</div>
-                    <n-select
-                      v-model:value="listScheduleFilter"
-                      size="small"
-                      :aria-label="t('jobs.columns.schedule')"
-                      :options="scheduleFilterOptions"
-                      :consistent-menu-width="false"
-                      class="w-full"
-                    />
-                  </div>
-
-                  <div class="space-y-2">
-                    <div class="text-sm app-text-muted">{{ t('common.sort') }}</div>
-                    <n-select v-model:value="sortKey" size="small" :aria-label="t('common.sort')" :options="sortOptions" class="w-full" />
-                  </div>
+                    <template #drawerFooter>
+                      <div class="pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
+                        <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
+                      </div>
+                    </template>
+                  </PickerFiltersPopoverDrawer>
                 </div>
-
-                <template #drawerFooter>
-                  <div class="pt-3 border-t border-[color:var(--app-border)] flex items-center justify-end">
-                    <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
-                  </div>
-                </template>
-              </PickerFiltersPopoverDrawer>
-            </div>
+              </template>
+            </ListToolbar>
           </template>
-        </ListToolbar>
 
-        <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
-        <AppEmptyState
-          v-else-if="!jobs.loading && jobs.items.length === 0"
-          :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
-          :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
-        >
-          <template #actions>
-            <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
-              {{ t('jobs.actions.create') }}
-            </n-button>
-            <n-button v-else size="small" @click="clearFilters">
-              {{ t('common.clear') }}
-            </n-button>
-          </template>
-        </AppEmptyState>
-
-        <n-card v-else class="app-card" :bordered="false">
-          <div class="app-divide-y">
-            <button
-              v-for="job in pagedFilteredJobs"
-              :key="job.id"
-              type="button"
-              class="app-list-row"
-              @click="openJob(job.id)"
+          <template #content>
+            <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
+            <AppEmptyState
+              v-else-if="!jobs.loading && jobs.items.length === 0"
+              :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
+              :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
             >
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="font-medium truncate">{{ job.name }}</div>
-                  <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                    {{ t('jobs.archived') }}
-                  </n-tag>
-                </div>
-                <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                  <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                    {{ formatNodeLabel(job.agent_id) }}
-                  </n-tag>
-                  <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
-                </div>
-              </div>
+              <template #actions>
+                <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
+                  {{ t('jobs.actions.create') }}
+                </n-button>
+                <n-button v-else size="small" @click="clearFilters">
+                  {{ t('common.clear') }}
+                </n-button>
+              </template>
+            </AppEmptyState>
 
-              <div class="shrink-0 flex flex-col items-end gap-1 text-right">
-                <n-tag
-                  v-if="job.latest_run_status"
-                  size="small"
-                  :bordered="false"
-                  :type="runStatusTagType(job.latest_run_status)"
-                >
-                  {{ runStatusLabel(t, job.latest_run_status) }}
-                </n-tag>
-                <n-tag v-else size="small" :bordered="false">
-                  {{ t('runs.neverRan') }}
-                </n-tag>
-
+            <n-card v-else class="app-card" :bordered="false">
+              <div class="app-divide-y">
                 <div
-                  v-if="job.latest_run_started_at != null"
-                  class="text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
-                  :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
+                  v-for="job in pagedFilteredJobs"
+                  :key="job.id"
+                  role="button"
+                  tabindex="0"
+                  class="app-list-row"
+                  @click="openJob(job.id)"
+                  @keydown.enter.prevent="openJob(job.id)"
+                  @keydown.space.prevent="openJob(job.id)"
                 >
-                  {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <div class="font-medium truncate">{{ job.name }}</div>
+                      <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                        {{ t('jobs.archived') }}
+                      </n-tag>
+                    </div>
+                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+                      <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                        {{ formatNodeLabel(job.agent_id) }}
+                      </n-tag>
+                      <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
+                    </div>
+                  </div>
+
+                  <div class="shrink-0 flex items-start gap-2 text-right">
+                    <div>
+                      <n-tag
+                        v-if="job.latest_run_status"
+                        size="small"
+                        :bordered="false"
+                        :type="runStatusTagType(job.latest_run_status)"
+                      >
+                        {{ runStatusLabel(t, job.latest_run_status) }}
+                      </n-tag>
+                      <n-tag v-else size="small" :bordered="false">
+                        {{ t('runs.neverRan') }}
+                      </n-tag>
+
+                      <div
+                        v-if="job.latest_run_started_at != null"
+                        class="mt-1 text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
+                        :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
+                      >
+                        {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-1" @click.stop>
+                      <n-button
+                        data-testid="jobs-row-run-now-mobile"
+                        size="small"
+                        quaternary
+                        :disabled="!!job.archived_at"
+                        :title="t('jobs.actions.runNow')"
+                        :aria-label="t('jobs.actions.runNow')"
+                        @click="() => void runNow(job.id)"
+                      >
+                        <template #icon>
+                          <n-icon><PlayOutline /></n-icon>
+                        </template>
+                      </n-button>
+                      <OverflowActionsButton
+                        size="small"
+                        :options="jobRowOverflowOptions(job)"
+                        @select="(key) => onSelectJobRowOverflow(job, key)"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </button>
-          </div>
+            </n-card>
+          </template>
 
-          <div v-if="jobs.total > jobsPageSize" class="mt-3 flex justify-end">
-            <n-pagination
-              v-model:page="jobsPage"
-              v-model:page-size="jobsPageSize"
+          <template #footer>
+            <AppPagination
+              v-if="jobs.total > jobsPageSize"
+              :page="jobsPage"
+              :page-size="jobsPageSize"
               :item-count="jobs.total"
               :page-sizes="jobsPageSizeOptions"
-              show-size-picker
-              size="small"
+              :loading="jobs.loading"
+              @update:page="(value) => (jobsPage = value)"
+              @update:page-size="(value) => (jobsPageSize = value)"
             />
-          </div>
-        </n-card>
+          </template>
+        </ListPageScaffold>
       </div>
 
       <router-view v-else />

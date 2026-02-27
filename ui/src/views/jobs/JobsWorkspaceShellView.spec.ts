@@ -363,6 +363,76 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(wrapper.text()).not.toContain('common.search: abc')
   })
 
+  it('keeps filter state when switching between split and list layouts', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          JobEditorModal: true,
+          ListToolbar: { template: '<div><slot name=\"search\" /><slot name=\"filters\" /><slot name=\"actions\" /></div>' },
+          'router-view': true,
+        },
+      },
+    })
+
+    wrapper.findComponent({ name: 'NInput' }).vm.$emit('update:value', 'persisted')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('common.search: persisted')
+
+    uiStore.jobsWorkspaceLayoutMode = 'list'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('common.search: persisted')
+  })
+
+  it('clicking a row action triggers only the action and not row navigation', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    const runButton = wrapper.find('[data-testid=\"jobs-row-run-now\"]')
+    expect(runButton.exists()).toBe(true)
+
+    await runButton.trigger('click')
+    await flushPromises()
+
+    expect(jobsStore.runNow).toHaveBeenCalledWith('job1')
+    expect(routerApi.push).not.toHaveBeenCalled()
+  })
+
+  it('clicking a job row still opens detail navigation', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    const row = wrapper.find('.app-list-row')
+    expect(row.exists()).toBe(true)
+
+    await row.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/job1/overview')
+  })
+
   it('bulk run now skips archived jobs', async () => {
     uiStore.jobsWorkspaceLayoutMode = 'list'
     uiStore.jobsWorkspaceListView = 'table'

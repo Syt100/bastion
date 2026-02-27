@@ -10,7 +10,6 @@ import {
   NInput,
   NInputNumber,
   NModal,
-  NPagination,
   NRadioButton,
   NRadioGroup,
   NSelect,
@@ -28,8 +27,10 @@ import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkO
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
+import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
+import AppPagination from '@/components/list/AppPagination.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -647,227 +648,226 @@ onBeforeUnmount(() => {
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
 
-    <SelectionToolbar
-      :count="selectedAgentIds.length"
-      :hint="t('common.selectionLoadedHint')"
-      @clear="selectedAgentIds = []"
-    >
-      <template #actions>
-        <n-button size="small" @click="openBulkLabelsModal">{{ t('agents.bulkLabels') }}</n-button>
-        <n-button size="small" @click="openBulkSyncModal">{{ t('agents.bulkSync') }}</n-button>
-      </template>
-    </SelectionToolbar>
-
-    <ListToolbar>
-      <template #search>
-        <n-input
-          v-model:value="searchText"
-          size="small"
-          clearable
-          :placeholder="t('agents.filters.searchPlaceholder')"
-        />
-      </template>
-
-      <template #filters>
-        <div class="min-w-[14rem] flex-1 md:flex-none md:w-72">
-          <n-select
-            v-model:value="selectedLabels"
-            size="small"
-            multiple
-            filterable
-            clearable
-            :loading="labelIndexLoading"
-            :options="labelOptions"
-            :placeholder="t('agents.filters.labelsPlaceholder')"
-          />
-        </div>
-
-        <div class="shrink-0 flex items-center gap-2">
-          <span class="text-sm app-text-muted">{{ t('agents.filters.mode') }}</span>
-          <n-radio-group v-model:value="labelsMode" size="small">
-            <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
-            <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
-          </n-radio-group>
-        </div>
-
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="statusFilter"
-            size="small"
-            :options="statusOptions"
-          />
-        </div>
-      </template>
-
-      <template #actions>
-        <n-button
-          v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
-          size="small"
-          @click="openBulkLabelsModal"
+    <ListPageScaffold>
+      <template #selection>
+        <SelectionToolbar
+          :count="selectedAgentIds.length"
+          :hint="t('common.selectionLoadedHint')"
+          @clear="selectedAgentIds = []"
         >
-          {{ t('agents.bulkLabels') }}
-        </n-button>
-        <n-button
-          v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
-          size="small"
-          @click="openBulkSyncModal"
-        >
-          {{ t('agents.bulkSync') }}
-        </n-button>
-
-        <n-button size="small" @click="clearFilters">
-          {{ t('common.clear') }}
-        </n-button>
+          <template #actions>
+            <n-button size="small" @click="openBulkLabelsModal">{{ t('agents.bulkLabels') }}</n-button>
+            <n-button size="small" @click="openBulkSyncModal">{{ t('agents.bulkSync') }}</n-button>
+          </template>
+        </SelectionToolbar>
       </template>
-    </ListToolbar>
 
-    <div v-if="!isDesktop" class="space-y-3">
-      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState
-        v-else-if="!agents.loading && agents.items.length === 0"
-        :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
-        :description="listBaseEmpty ? t('agents.empty.description') : undefined"
-      >
-        <template #actions>
-          <n-button
-            v-if="listBaseEmpty"
-            type="primary"
-            size="small"
-            @click="openTokenModal"
-          >
-            {{ t('agents.newToken') }}
-          </n-button>
-          <n-button v-else size="small" @click="clearFilters">
-            {{ t('common.clear') }}
-          </n-button>
-        </template>
-      </AppEmptyState>
-
-      <n-card
-        v-for="agent in agents.items"
-        :key="agent.id"
-        size="small"
-        class="app-card"
-        :bordered="false"
-      >
-        <template #header>
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2 min-w-0">
-              <n-checkbox
-                :checked="selectedAgentIds.includes(agent.id)"
-                @update:checked="(v) => setAgentSelected(agent.id, v)"
-              />
-              <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
-            </div>
-            <div class="flex flex-wrap justify-end gap-1">
-              <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
-              <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
-              <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
-              <n-tag
-                :type="configSyncStatusTagType(agent.config_sync_status)"
-                size="small"
-                :title="configSyncTitle(agent)"
-              >
-                {{ configSyncStatusLabel(agent.config_sync_status) }}
-              </n-tag>
-            </div>
-          </div>
-        </template>
-
-        <div class="text-sm space-y-2">
-          <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
-            <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
-          </div>
-          <div class="flex items-center justify-between gap-3">
-            <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
-            <div class="flex items-center gap-2">
-              <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
-              <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-3">
-            <div class="app-text-muted">{{ t('agents.columns.lastSeen') }}</div>
-            <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
-          </div>
-        </div>
-
-        <template #footer>
-          <div class="flex flex-wrap justify-end gap-2">
-            <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
-            <n-button
+      <template #toolbar>
+        <ListToolbar>
+          <template #search>
+            <n-input
+              v-model:value="searchText"
               size="small"
-              tertiary
-              :loading="syncNowLoading === agent.id"
-              :disabled="agent.revoked"
-              @click="syncConfigNow(agent.id)"
-            >
-              {{ t('agents.actions.syncNow') }}
-            </n-button>
-            <OverflowActionsButton
-              :options="agentOverflowOptions(agent)"
-              @select="(key) => onSelectAgentOverflow(agent, key)"
+              clearable
+              :placeholder="t('agents.filters.searchPlaceholder')"
             />
-          </div>
-        </template>
-      </n-card>
+          </template>
 
-      <div v-if="agents.total > agentsPageSize" class="mt-3 flex justify-end">
-        <n-pagination
-          v-model:page="agentsPage"
-          v-model:page-size="agentsPageSize"
+          <template #filters>
+            <div class="min-w-[14rem] flex-1 md:flex-none md:w-72">
+              <n-select
+                v-model:value="selectedLabels"
+                size="small"
+                multiple
+                filterable
+                clearable
+                :loading="labelIndexLoading"
+                :options="labelOptions"
+                :placeholder="t('agents.filters.labelsPlaceholder')"
+              />
+            </div>
+
+            <div class="shrink-0 flex items-center gap-2">
+              <span class="text-sm app-text-muted">{{ t('agents.filters.mode') }}</span>
+              <n-radio-group v-model:value="labelsMode" size="small">
+                <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
+                <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
+              </n-radio-group>
+            </div>
+
+            <div class="w-full md:w-56 md:flex-none">
+              <n-select
+                v-model:value="statusFilter"
+                size="small"
+                :options="statusOptions"
+              />
+            </div>
+          </template>
+
+          <template #actions>
+            <n-button
+              v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
+              size="small"
+              @click="openBulkLabelsModal"
+            >
+              {{ t('agents.bulkLabels') }}
+            </n-button>
+            <n-button
+              v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
+              size="small"
+              @click="openBulkSyncModal"
+            >
+              {{ t('agents.bulkSync') }}
+            </n-button>
+
+            <n-button size="small" @click="clearFilters">
+              {{ t('common.clear') }}
+            </n-button>
+          </template>
+        </ListToolbar>
+      </template>
+
+      <template #content>
+        <div v-if="!isDesktop" class="space-y-3">
+          <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
+          <AppEmptyState
+            v-else-if="!agents.loading && agents.items.length === 0"
+            :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
+            :description="listBaseEmpty ? t('agents.empty.description') : undefined"
+          >
+            <template #actions>
+              <n-button
+                v-if="listBaseEmpty"
+                type="primary"
+                size="small"
+                @click="openTokenModal"
+              >
+                {{ t('agents.newToken') }}
+              </n-button>
+              <n-button v-else size="small" @click="clearFilters">
+                {{ t('common.clear') }}
+              </n-button>
+            </template>
+          </AppEmptyState>
+
+          <n-card
+            v-for="agent in agents.items"
+            :key="agent.id"
+            size="small"
+            class="app-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2 min-w-0">
+                  <n-checkbox
+                    :checked="selectedAgentIds.includes(agent.id)"
+                    @update:checked="(v) => setAgentSelected(agent.id, v)"
+                  />
+                  <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
+                </div>
+                <div class="flex flex-wrap justify-end gap-1">
+                  <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+                  <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+                  <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+                  <n-tag
+                    :type="configSyncStatusTagType(agent.config_sync_status)"
+                    size="small"
+                    :title="configSyncTitle(agent)"
+                  >
+                    {{ configSyncStatusLabel(agent.config_sync_status) }}
+                  </n-tag>
+                </div>
+              </div>
+            </template>
+
+            <div class="text-sm space-y-2">
+              <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
+                <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
+                  <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
+                </div>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="app-text-muted">{{ t('agents.columns.lastSeen') }}</div>
+                <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
+              </div>
+            </div>
+
+            <template #footer>
+              <div class="flex flex-wrap justify-end gap-2">
+                <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
+                <n-button
+                  size="small"
+                  tertiary
+                  :loading="syncNowLoading === agent.id"
+                  :disabled="agent.revoked"
+                  @click="syncConfigNow(agent.id)"
+                >
+                  {{ t('agents.actions.syncNow') }}
+                </n-button>
+                <OverflowActionsButton
+                  :options="agentOverflowOptions(agent)"
+                  @select="(key) => onSelectAgentOverflow(agent, key)"
+                />
+              </div>
+            </template>
+          </n-card>
+        </div>
+
+        <div v-else>
+          <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
+          <AppEmptyState
+            v-else-if="!agents.loading && agents.items.length === 0"
+            :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
+            :description="listBaseEmpty ? t('agents.empty.description') : undefined"
+          >
+            <template #actions>
+              <n-button
+                v-if="listBaseEmpty"
+                type="primary"
+                size="small"
+                @click="openTokenModal"
+              >
+                {{ t('agents.newToken') }}
+              </n-button>
+              <n-button v-else size="small" @click="clearFilters">
+                {{ t('common.clear') }}
+              </n-button>
+            </template>
+          </AppEmptyState>
+
+          <n-card v-else class="app-card" :bordered="false">
+            <div class="overflow-x-auto">
+              <n-data-table
+                v-model:checked-row-keys="selectedAgentIds"
+                :row-key="(row) => row.id"
+                :loading="agents.loading"
+                :columns="columns"
+                :data="agents.items"
+              />
+            </div>
+          </n-card>
+        </div>
+      </template>
+
+      <template #footer>
+        <AppPagination
+          v-if="agents.total > agentsPageSize"
+          :page="agentsPage"
+          :page-size="agentsPageSize"
           :item-count="agents.total"
           :page-sizes="agentsPageSizeOptions"
-          show-size-picker
-          size="small"
+          :loading="agents.loading"
+          @update:page="(value) => (agentsPage = value)"
+          @update:page-size="(value) => (agentsPageSize = value)"
         />
-      </div>
-    </div>
-
-    <div v-else>
-      <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState
-        v-else-if="!agents.loading && agents.items.length === 0"
-        :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
-        :description="listBaseEmpty ? t('agents.empty.description') : undefined"
-      >
-        <template #actions>
-          <n-button
-            v-if="listBaseEmpty"
-            type="primary"
-            size="small"
-            @click="openTokenModal"
-          >
-            {{ t('agents.newToken') }}
-          </n-button>
-          <n-button v-else size="small" @click="clearFilters">
-            {{ t('common.clear') }}
-          </n-button>
-        </template>
-      </AppEmptyState>
-
-      <n-card v-else class="app-card" :bordered="false">
-        <div class="overflow-x-auto">
-          <n-data-table
-            v-model:checked-row-keys="selectedAgentIds"
-            :row-key="(row) => row.id"
-            :loading="agents.loading"
-            :columns="columns"
-            :data="agents.items"
-          />
-        </div>
-
-        <div v-if="agents.total > agentsPageSize" class="mt-3 flex justify-end">
-          <n-pagination
-            v-model:page="agentsPage"
-            v-model:page-size="agentsPageSize"
-            :item-count="agents.total"
-            :page-sizes="agentsPageSizeOptions"
-            show-size-picker
-            size="small"
-          />
-        </div>
-      </n-card>
-    </div>
+      </template>
+    </ListPageScaffold>
 
     <n-modal
       v-model:show="confirmOpen"
