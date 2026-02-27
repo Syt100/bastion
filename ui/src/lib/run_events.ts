@@ -6,6 +6,40 @@ export type RunEventFilters = {
   kind?: string | null | undefined
 }
 
+export type RunEventJsonRecord = Record<string, unknown>
+
+export type RunEventEnvelopeTextRef = {
+  key: string
+  params: RunEventJsonRecord
+}
+
+export type RunEventErrorEnvelope = {
+  schemaVersion: string | null
+  code: string
+  kind: string
+  retriable: {
+    value: boolean
+    reason: string | null
+    retryAfterSec: number | null
+  }
+  hint: RunEventEnvelopeTextRef | null
+  message: RunEventEnvelopeTextRef | null
+  transport: {
+    protocol: string
+    statusCode: number | null
+    statusText: string | null
+    provider: string | null
+    providerCode: string | null
+    providerRequestId: string | null
+    disconnectCode: number | null
+    ioKind: string | null
+    osErrorCode: number | null
+  }
+  context: RunEventJsonRecord | null
+}
+
+export type RunEventTranslate = (key: string, params?: Record<string, unknown>) => string
+
 export type RunEventDetailHeaderMetaField = 'timestamp' | 'level' | 'kind' | 'seq' | 'traceId' | 'requestId'
 
 export const RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT: readonly RunEventDetailHeaderMetaField[] = ['timestamp', 'level', 'kind']
@@ -32,15 +66,25 @@ function norm(s: string | null | undefined): string {
   return (s ?? '').trim().toLowerCase()
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
+function toRecord(value: unknown): RunEventJsonRecord | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value as Record<string, unknown>
+  return value as RunEventJsonRecord
 }
 
 function toNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value
+}
+
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value !== 'boolean') return null
+  return value
 }
 
 function pickPathString(root: unknown, path: string[]): string | null {
@@ -118,8 +162,95 @@ function firstNonEmptyPathValue(root: unknown, paths: string[][]): string | null
   return null
 }
 
+function normalizeTextRef(value: unknown): RunEventEnvelopeTextRef | null {
+  const obj = toRecord(value)
+  if (!obj) return null
+  const key = toNonEmptyString(obj.key)
+  if (!key) return null
+  return { key, params: toRecord(obj.params) ?? {} }
+}
+
+function resolveTextRef(textRef: RunEventEnvelopeTextRef | null, t: RunEventTranslate): string | null {
+  if (!textRef) return null
+  const translated = t(textRef.key, textRef.params)
+  return translated === textRef.key ? null : translated
+}
+
+export function runEventFieldsRecord(event: RunEvent | null | undefined): RunEventJsonRecord | null {
+  return toRecord(event?.fields ?? null)
+}
+
+export function runEventErrorEnvelope(event: RunEvent | null | undefined): RunEventErrorEnvelope | null {
+  const fields = runEventFieldsRecord(event)
+  if (!fields) return null
+  const envelope = toRecord(fields.error_envelope)
+  if (!envelope) return null
+
+  const code = toNonEmptyString(envelope.code)
+  const kind = toNonEmptyString(envelope.kind)
+  const retriable = toRecord(envelope.retriable)
+  const transport = toRecord(envelope.transport)
+  if (!code || !kind || !retriable || !transport) return null
+
+  const retriableValue = toBoolean(retriable.value)
+  const protocol = toNonEmptyString(transport.protocol)
+  if (retriableValue == null || !protocol) return null
+
+  return {
+    schemaVersion: toNonEmptyString(envelope.schema_version),
+    code,
+    kind,
+    retriable: {
+      value: retriableValue,
+      reason: toNonEmptyString(retriable.reason),
+      retryAfterSec: toFiniteNumber(retriable.retry_after_sec),
+    },
+    hint: normalizeTextRef(envelope.hint),
+    message: normalizeTextRef(envelope.message),
+    transport: {
+      protocol,
+      statusCode: toFiniteNumber(transport.status_code),
+      statusText: toNonEmptyString(transport.status_text),
+      provider: toNonEmptyString(transport.provider),
+      providerCode: toNonEmptyString(transport.provider_code),
+      providerRequestId: toNonEmptyString(transport.provider_request_id),
+      disconnectCode: toFiniteNumber(transport.disconnect_code),
+      ioKind: toNonEmptyString(transport.io_kind),
+      osErrorCode: toFiniteNumber(transport.os_error_code),
+    },
+    context: toRecord(envelope.context),
+  }
+}
+
+export function runEventDisplayMessage(event: RunEvent, t: RunEventTranslate): string {
+  const envelope = runEventErrorEnvelope(event)
+  if (!envelope) return event.message
+  const localized = resolveTextRef(envelope.message, t)
+  if (localized) return localized
+  const legacyMessage = toNonEmptyString(event.message)
+  if (legacyMessage) return legacyMessage
+  return t('runEvents.details.genericMessage')
+}
+
+export function runEventHint(
+  event: RunEvent | null | undefined,
+  t: RunEventTranslate,
+  options: { allowGenericFallback?: boolean } = {},
+): string | null {
+  if (!event) return null
+  const fields = runEventFieldsRecord(event)
+  const legacyHint = toNonEmptyString(fields?.hint)
+  const envelope = runEventErrorEnvelope(event)
+  if (!envelope) return legacyHint
+  const localized = resolveTextRef(envelope.hint, t)
+  if (localized) return localized
+  if (legacyHint) return legacyHint
+  if (options.allowGenericFallback) return t('runEvents.details.genericHint')
+  return null
+}
+
 export function runEventTransportMetadata(event: RunEvent): RunEventTransportMetadata {
-  const fields = toRecord(event.fields)
+  const fields = runEventFieldsRecord(event)
   const protocol = (
     pickPathString(fields, ['error_envelope', 'transport', 'protocol']) ??
     pickPathString(fields, ['transport', 'protocol']) ??

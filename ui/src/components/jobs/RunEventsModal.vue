@@ -18,7 +18,14 @@ import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
-import { runEventLevelTagType, RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS } from '@/lib/run_events'
+import {
+  runEventDisplayMessage,
+  runEventErrorEnvelope,
+  runEventFieldsRecord,
+  runEventHint,
+  runEventLevelTagType,
+  RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
+} from '@/lib/run_events'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 
 export type RunEventsModalExpose = {
@@ -27,37 +34,6 @@ export type RunEventsModalExpose = {
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 type SummaryChip = { text: string; type: 'default' | 'warning' | 'error' | 'success' }
-type JsonRecord = Record<string, unknown>
-
-type EnvelopeTextRef = {
-  key: string
-  params: JsonRecord
-}
-
-type ErrorEnvelope = {
-  schemaVersion: string | null
-  code: string
-  kind: string
-  retriable: {
-    value: boolean
-    reason: string | null
-    retryAfterSec: number | null
-  }
-  hint: EnvelopeTextRef | null
-  message: EnvelopeTextRef | null
-  transport: {
-    protocol: string
-    statusCode: number | null
-    statusText: string | null
-    provider: string | null
-    providerCode: string | null
-    providerRequestId: string | null
-    disconnectCode: number | null
-    ioKind: string | null
-    osErrorCode: number | null
-  }
-  context: JsonRecord | null
-}
 
 const { t } = useI18n()
 const message = useMessage()
@@ -307,19 +283,8 @@ function manualReconnect(): void {
   connectWs(runId.value, lastSeq, false)
 }
 
-function normalizeFields(fields: unknown | null): JsonRecord | null {
-  if (!fields || typeof fields !== 'object') return null
-  if (Array.isArray(fields)) return null
-  return fields as JsonRecord
-}
-
 function toNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  return value
-}
-
-function toBoolean(value: unknown): boolean | null {
-  if (typeof value !== 'boolean') return null
   return value
 }
 
@@ -329,85 +294,12 @@ function toString(value: unknown): string | null {
   return v ? v : null
 }
 
-function normalizeTextRef(value: unknown): EnvelopeTextRef | null {
-  const obj = normalizeFields(value)
-  if (!obj) return null
-  const key = toString(obj.key)
-  if (!key) return null
-  const params = normalizeFields(obj.params) ?? {}
-  return { key, params }
-}
-
-function normalizeErrorEnvelope(fields: JsonRecord | null): ErrorEnvelope | null {
-  if (!fields) return null
-  const envelope = normalizeFields(fields.error_envelope)
-  if (!envelope) return null
-
-  const code = toString(envelope.code)
-  const kind = toString(envelope.kind)
-  const retriable = normalizeFields(envelope.retriable)
-  const transport = normalizeFields(envelope.transport)
-  if (!code || !kind || !retriable || !transport) return null
-
-  const retriableValue = toBoolean(retriable.value)
-  const protocol = toString(transport.protocol)
-  if (retriableValue == null || !protocol) return null
-
-  return {
-    schemaVersion: toString(envelope.schema_version),
-    code,
-    kind,
-    retriable: {
-      value: retriableValue,
-      reason: toString(retriable.reason),
-      retryAfterSec: toNumber(retriable.retry_after_sec),
-    },
-    hint: normalizeTextRef(envelope.hint),
-    message: normalizeTextRef(envelope.message),
-    transport: {
-      protocol,
-      statusCode: toNumber(transport.status_code),
-      statusText: toString(transport.status_text),
-      provider: toString(transport.provider),
-      providerCode: toString(transport.provider_code),
-      providerRequestId: toString(transport.provider_request_id),
-      disconnectCode: toNumber(transport.disconnect_code),
-      ioKind: toString(transport.io_kind),
-      osErrorCode: toNumber(transport.os_error_code),
-    },
-    context: normalizeFields(envelope.context),
-  }
-}
-
-function resolveTextRef(textRef: EnvelopeTextRef | null): string | null {
-  if (!textRef) return null
-  const translated = t(textRef.key, textRef.params)
-  return translated === textRef.key ? null : translated
-}
-
 function eventDisplayMessage(e: RunEvent): string {
-  const fields = normalizeFields(e.fields)
-  const envelope = normalizeErrorEnvelope(fields)
-  if (!envelope) return e.message
-
-  const localized = resolveTextRef(envelope.message)
-  if (localized) return localized
-  if (toString(e.message)) return e.message
-  return t('runEvents.details.genericMessage')
+  return runEventDisplayMessage(e, t)
 }
 
-function eventHint(e: RunEvent | null, allowGenericFallback = false): string | null {
-  if (!e) return null
-  const fields = normalizeFields(e.fields)
-  const legacyHint = toString(fields?.hint)
-  const envelope = normalizeErrorEnvelope(fields)
-  if (!envelope) return legacyHint
-
-  const localized = resolveTextRef(envelope.hint)
-  if (localized) return localized
-  if (legacyHint) return legacyHint
-  if (allowGenericFallback) return t('runEvents.details.genericHint')
-  return null
+function eventHintText(e: RunEvent | null): string | null {
+  return runEventHint(e, t)
 }
 
 function shortId(value: string): string {
@@ -450,9 +342,9 @@ function formatRelativeSeconds(seconds: number): string {
 }
 
 function pickSummaryChips(e: RunEvent): SummaryChip[] {
-  const fields = normalizeFields(e.fields)
+  const fields = runEventFieldsRecord(e)
   if (!fields) return []
-  const envelope = normalizeErrorEnvelope(fields)
+  const envelope = runEventErrorEnvelope(e)
 
   const out: SummaryChip[] = []
   const push = (chip: SummaryChip): void => {
@@ -525,7 +417,7 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   const transportCode = envelope?.transport.providerCode ?? toString(fields.transport_code)
   if (transportCode) push({ text: transportCode, type: 'default' })
 
-  const hint = eventHint(e, false)
+  const hint = eventHintText(e)
   if (hint) push({ text: hint, type: 'warning' })
 
   return out

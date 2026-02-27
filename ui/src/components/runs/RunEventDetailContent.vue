@@ -4,38 +4,10 @@ import { NButton, NCode, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { copyText } from '@/lib/clipboard'
+import { runEventDisplayMessage, runEventErrorEnvelope, runEventFieldsRecord, runEventHint } from '@/lib/run_events'
 import type { RunEvent } from '@/stores/jobs'
 
 type JsonRecord = Record<string, unknown>
-
-type EnvelopeTextRef = {
-  key: string
-  params: JsonRecord
-}
-
-type ErrorEnvelope = {
-  code: string
-  kind: string
-  retriable: {
-    value: boolean
-    reason: string | null
-    retryAfterSec: number | null
-  }
-  hint: EnvelopeTextRef | null
-  message: EnvelopeTextRef | null
-  transport: {
-    protocol: string
-    statusCode: number | null
-    statusText: string | null
-    provider: string | null
-    providerCode: string | null
-    providerRequestId: string | null
-    disconnectCode: number | null
-    ioKind: string | null
-    osErrorCode: number | null
-  }
-  context: JsonRecord | null
-}
 
 type DetailRow = { key: string; label: string; value: string }
 type PartialFailureRow = {
@@ -96,98 +68,15 @@ function toNumber(value: unknown): number | null {
   return value
 }
 
-function toBoolean(value: unknown): boolean | null {
-  if (typeof value !== 'boolean') return null
-  return value
-}
-
 function toString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const v = value.trim()
   return v ? v : null
 }
 
-function normalizeTextRef(value: unknown): EnvelopeTextRef | null {
-  const obj = normalizeFields(value)
-  if (!obj) return null
-  const key = toString(obj.key)
-  if (!key) return null
-  const params = normalizeFields(obj.params) ?? {}
-  return { key, params }
-}
-
-function normalizeErrorEnvelope(fields: JsonRecord | null): ErrorEnvelope | null {
-  if (!fields) return null
-  const envelope = normalizeFields(fields.error_envelope)
-  if (!envelope) return null
-
-  const code = toString(envelope.code)
-  const kind = toString(envelope.kind)
-  const retriable = normalizeFields(envelope.retriable)
-  const transport = normalizeFields(envelope.transport)
-  if (!code || !kind || !retriable || !transport) return null
-
-  const retriableValue = toBoolean(retriable.value)
-  const protocol = toString(transport.protocol)
-  if (retriableValue == null || !protocol) return null
-
-  return {
-    code,
-    kind,
-    retriable: {
-      value: retriableValue,
-      reason: toString(retriable.reason),
-      retryAfterSec: toNumber(retriable.retry_after_sec),
-    },
-    hint: normalizeTextRef(envelope.hint),
-    message: normalizeTextRef(envelope.message),
-    transport: {
-      protocol,
-      statusCode: toNumber(transport.status_code),
-      statusText: toString(transport.status_text),
-      provider: toString(transport.provider),
-      providerCode: toString(transport.provider_code),
-      providerRequestId: toString(transport.provider_request_id),
-      disconnectCode: toNumber(transport.disconnect_code),
-      ioKind: toString(transport.io_kind),
-      osErrorCode: toNumber(transport.os_error_code),
-    },
-    context: normalizeFields(envelope.context),
-  }
-}
-
-function resolveTextRef(textRef: EnvelopeTextRef | null): string | null {
-  if (!textRef) return null
-  const translated = t(textRef.key, textRef.params)
-  return translated === textRef.key ? null : translated
-}
-
-function eventDisplayMessage(e: RunEvent): string {
-  const fields = normalizeFields(e.fields)
-  const envelope = normalizeErrorEnvelope(fields)
-  if (!envelope) return e.message
-
-  const localized = resolveTextRef(envelope.message)
-  if (localized) return localized
-  if (toString(e.message)) return e.message
-  return t('runEvents.details.genericMessage')
-}
-
-function eventHint(e: RunEvent): string | null {
-  const fields = normalizeFields(e.fields)
-  const legacyHint = toString(fields?.hint)
-  const envelope = normalizeErrorEnvelope(fields)
-  if (!envelope) return legacyHint
-
-  const localized = resolveTextRef(envelope.hint)
-  if (localized) return localized
-  if (legacyHint) return legacyHint
-  return t('runEvents.details.genericHint')
-}
-
 function diagnosticsRows(e: RunEvent): DetailRow[] {
-  const fields = normalizeFields(e.fields)
-  const envelope = normalizeErrorEnvelope(fields)
+  const fields = runEventFieldsRecord(e)
+  const envelope = runEventErrorEnvelope(e)
   if (!envelope) return []
 
   const rows: DetailRow[] = [
@@ -247,7 +136,7 @@ function diagnosticsRows(e: RunEvent): DetailRow[] {
 }
 
 function operationRows(e: RunEvent): DetailRow[] {
-  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const envelope = runEventErrorEnvelope(e)
   const operation = normalizeFields(envelope?.context?.operation)
   if (!operation) return []
 
@@ -271,7 +160,7 @@ function operationRows(e: RunEvent): DetailRow[] {
 }
 
 function partialFailureRows(e: RunEvent): PartialFailureRow[] {
-  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const envelope = runEventErrorEnvelope(e)
   const partialFailures = envelope?.context?.partial_failures
   if (!Array.isArray(partialFailures)) return []
 
@@ -321,7 +210,7 @@ function contextValue(value: unknown): string | null {
 }
 
 function contextRows(e: RunEvent): DetailRow[] {
-  const envelope = normalizeErrorEnvelope(normalizeFields(e.fields))
+  const envelope = runEventErrorEnvelope(e)
   const context = normalizeFields(envelope?.context)
   if (!context) return []
 
@@ -362,7 +251,7 @@ function contextRows(e: RunEvent): DetailRow[] {
 }
 
 function errorChainRows(e: RunEvent): string[] {
-  const fields = normalizeFields(e.fields)
+  const fields = runEventFieldsRecord(e)
   const raw = fields?.error_chain
   if (!Array.isArray(raw)) return []
   return raw
@@ -415,8 +304,8 @@ async function copyRowValue(value: string): Promise<void> {
   else message.error(t('errors.copyFailed'))
 }
 
-const detailMessageText = computed(() => eventDisplayMessage(props.event))
-const detailHintText = computed(() => eventHint(props.event))
+const detailMessageText = computed(() => runEventDisplayMessage(props.event, t))
+const detailHintText = computed(() => runEventHint(props.event, t, { allowGenericFallback: true }))
 const detailEnvelopeRows = computed(() => diagnosticsRows(props.event))
 const detailKeyFactRows = computed(() => {
   const rowsByKey = new Map(detailEnvelopeRows.value.map((row) => [row.key, row]))
@@ -438,7 +327,7 @@ const detailVisibleErrorChainRows = computed(() =>
     ? detailErrorChainRows.value
     : detailErrorChainRows.value.slice(0, ERROR_CHAIN_PREVIEW_MAX),
 )
-const hasRawFields = computed(() => props.event.fields != null)
+const hasRawFields = computed(() => runEventFieldsRecord(props.event) != null)
 
 watch(
   () => props.event.seq,
