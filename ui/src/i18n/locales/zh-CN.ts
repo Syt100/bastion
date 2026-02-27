@@ -1341,6 +1341,7 @@ const messages = {
         statusText: 'HTTP 消息',
         provider: '服务提供方',
         providerCode: '提供方错误码',
+        traceId: '追踪 ID',
         providerRequestId: '提供方请求 ID',
         disconnectCode: '断连码',
         ioKind: 'I/O 类型',

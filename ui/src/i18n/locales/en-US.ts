@@ -1345,6 +1345,7 @@ const messages = {
         statusText: 'HTTP message',
         provider: 'Provider',
         providerCode: 'Provider code',
+        traceId: 'Trace ID',
         providerRequestId: 'Provider request ID',
         disconnectCode: 'Disconnect code',
         ioKind: 'I/O kind',
