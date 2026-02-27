@@ -216,6 +216,7 @@ describe('RunDetailDetailsTabs consistency section', () => {
             kind: 'failed',
             message: 'failed',
             fields: {
+              request_id: 'req-header-only',
               error_chain: ['x'.repeat(2048)],
             },
           },
@@ -239,6 +240,7 @@ describe('RunDetailDetailsTabs consistency section', () => {
 
     const copyBtn = wrapper.findAll('button').find((btn) => btn.text().trim() === 'common.copy')
     expect(copyBtn).toBeTruthy()
+    expect(wrapper.text()).toContain('runEvents.details.labels.providerRequestId: req-header-only')
 
     const rawJson = wrapper.find('.run-event-detail-json')
     expect(rawJson.exists()).toBe(true)

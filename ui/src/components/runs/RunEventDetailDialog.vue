@@ -25,7 +25,7 @@ const props = withDefaults(
     isDesktop: boolean
     title: string
     closeLabel: string
-    headerMetaFields?: HeaderMetaField[]
+    headerMetaFields?: readonly HeaderMetaField[]
     maxBodyHeightDesktop?: string
   }>(),
   {

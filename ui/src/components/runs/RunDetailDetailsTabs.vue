@@ -226,6 +226,7 @@ function exportFilteredEvents(): void {
 
 const eventDetailShow = ref<boolean>(false)
 const eventDetail = ref<RunEvent | null>(null)
+const eventDetailHeaderMetaFields = ['timestamp', 'level', 'kind', 'seq', 'requestId'] as const
 
 function openEventDetails(e: RunEvent): void {
   eventDetail.value = e
@@ -503,6 +504,7 @@ async function viewConsistencyEvents(): Promise<void> {
     :is-desktop="isDesktop"
     :title="t('runEvents.details.title')"
     :close-label="t('common.close')"
+    :header-meta-fields="eventDetailHeaderMetaFields"
   >
     <template #header-actions="{ event }">
       <n-button size="tiny" quaternary @click="copyEventJson(event)">{{ t('common.copy') }}</n-button>
