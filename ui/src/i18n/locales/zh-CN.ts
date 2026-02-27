@@ -1314,6 +1314,7 @@ const messages = {
       unknownResource: '未知资源',
       sections: {
         summary: '摘要',
+        keyFacts: '关键诊断',
         diagnostics: '诊断信息',
         context: '上下文',
         operation: '异步操作',
@@ -1324,6 +1325,8 @@ const messages = {
       actions: {
         showRaw: '展开原始 JSON',
         hideRaw: '收起原始 JSON',
+        expandValue: '展开',
+        collapseValue: '收起',
         expandErrorChain: '展开错误链（+{count}）',
         collapseErrorChain: '收起错误链',
       },

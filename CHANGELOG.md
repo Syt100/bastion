@@ -45,7 +45,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed WebDAV read/delete/download failure mapping to preserve HTTP diagnostics and avoid retrying non-retriable auth/config failures.
 - Fixed cleanup/artifact-delete run events to include actionable `hint` fields, and localized the Run Events detail hint label for zh/en UI.
 - Fixed run event detail dialogs (both the run-detail page and run-events modal) to use a shared envelope-first renderer, cap content height, and wrap long JSON/error payload lines so diagnostics no longer overflow modal bounds.
-- Fixed run event detail readability by adding section cards, structured key-value rows, and progressive disclosure for long `error_chain` and raw JSON sections, while surfacing concise diagnostics/context first.
+- Fixed run event detail readability by adding a summary → key diagnostics → context evidence layout, with progressive disclosure for long values, `error_chain`, and raw JSON sections.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.

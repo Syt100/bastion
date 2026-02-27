@@ -1318,6 +1318,7 @@ const messages = {
       unknownResource: 'Unknown resource',
       sections: {
         summary: 'Summary',
+        keyFacts: 'Key diagnostics',
         diagnostics: 'Diagnostics',
         context: 'Context',
         operation: 'Async operation',
@@ -1328,6 +1329,8 @@ const messages = {
       actions: {
         showRaw: 'Show raw JSON',
         hideRaw: 'Hide raw JSON',
+        expandValue: 'Expand',
+        collapseValue: 'Collapse',
         expandErrorChain: 'Expand error chain (+{count})',
         collapseErrorChain: 'Collapse error chain',
       },
