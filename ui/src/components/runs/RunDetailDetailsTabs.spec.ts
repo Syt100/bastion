@@ -237,6 +237,9 @@ describe('RunDetailDetailsTabs consistency section', () => {
     expect(detailScroll.exists()).toBe(true)
     expect(detailScroll.classes()).toContain('flex-1')
 
+    const copyBtn = wrapper.findAll('button').find((btn) => btn.text().trim() === 'common.copy')
+    expect(copyBtn).toBeTruthy()
+
     const rawJson = wrapper.find('.run-event-detail-json')
     expect(rawJson.exists()).toBe(true)
     expect(rawJson.classes()).toContain('max-h-[45vh]')

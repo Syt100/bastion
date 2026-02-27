@@ -503,8 +503,9 @@ async function viewConsistencyEvents(): Promise<void> {
     :is-desktop="isDesktop"
     :title="t('runEvents.details.title')"
     :close-label="t('common.close')"
-    :show-copy="true"
-    :copy-label="t('common.copy')"
-    @copy-event="copyEventJson"
-  />
+  >
+    <template #header-actions="{ event }">
+      <n-button size="tiny" quaternary @click="copyEventJson(event)">{{ t('common.copy') }}</n-button>
+    </template>
+  </RunEventDetailDialog>
 </template>

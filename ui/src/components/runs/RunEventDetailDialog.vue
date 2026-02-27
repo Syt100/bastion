@@ -16,20 +16,19 @@ const props = withDefaults(
     isDesktop: boolean
     title: string
     closeLabel: string
-    copyLabel?: string
-    showCopy?: boolean
     maxBodyHeightDesktop?: string
   }>(),
   {
-    copyLabel: '',
-    showCopy: false,
     maxBodyHeightDesktop: `calc(${MODAL_HEIGHT.desktopLoose} - 120px)`,
   },
 )
 
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
-  (e: 'copy-event', event: RunEvent): void
+}>()
+
+defineSlots<{
+  'header-actions'?: (props: { event: RunEvent }) => unknown
 }>()
 
 const ui = useUiStore()
@@ -40,11 +39,6 @@ const desktopContentStyle: CSSProperties = {
   flexDirection: 'column',
   overflow: 'hidden',
   minHeight: '0',
-}
-
-function onCopy(): void {
-  if (!props.event) return
-  emit('copy-event', props.event)
 }
 </script>
 
@@ -63,7 +57,7 @@ function onCopy(): void {
         <span class="tabular-nums">{{ formatUnixSeconds(event.ts) }}</span>
         <n-tag size="small" :type="runEventLevelTagType(event.level)">{{ event.level }}</n-tag>
         <span class="app-text-muted">{{ event.kind }}</span>
-        <n-button v-if="showCopy" size="tiny" quaternary @click="onCopy">{{ copyLabel }}</n-button>
+        <slot name="header-actions" :event="event" />
       </div>
       <RunEventDetailContent
         class="run-event-detail-scroll run-detail-event-scroll run-events-detail-scroll min-h-0 flex-1"
@@ -89,7 +83,7 @@ function onCopy(): void {
           <span class="tabular-nums">{{ formatUnixSeconds(event.ts) }}</span>
           <n-tag size="small" :type="runEventLevelTagType(event.level)">{{ event.level }}</n-tag>
           <span class="app-text-muted">{{ event.kind }}</span>
-          <n-button v-if="showCopy" size="tiny" quaternary @click="onCopy">{{ copyLabel }}</n-button>
+          <slot name="header-actions" :event="event" />
         </div>
         <RunEventDetailContent class="run-event-detail-scroll run-detail-event-scroll run-events-detail-scroll" :event="event" />
       </div>
