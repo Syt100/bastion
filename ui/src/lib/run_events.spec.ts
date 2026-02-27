@@ -6,6 +6,7 @@ import {
   runEventDisplayMessage,
   runEventErrorEnvelope,
   runEventHint,
+  runEventSummaryChips,
   runEventTransportMetadata,
   uniqueRunEventKinds,
   RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT,
@@ -201,5 +202,56 @@ describe('run_events helpers', () => {
     expect(runEventHint({ ...event, fields: { error_envelope: event.fields.error_envelope } }, missingI18n, { allowGenericFallback: true })).toBe(
       'runEvents.details.genericHint',
     )
+  })
+
+  it('builds summary chips with bounded size and envelope-first diagnostics', () => {
+    const event = {
+      run_id: 'r1',
+      seq: 12,
+      ts: 12,
+      level: 'error',
+      kind: 'upload_failed',
+      message: 'legacy msg',
+      fields: {
+        attempt: 2,
+        next_attempt_at: 130,
+        part_size_bytes: 16 * 1024 * 1024,
+        hint: 'legacy hint fallback',
+        error_envelope: {
+          code: 'target.webdav.timeout',
+          kind: 'timeout',
+          retriable: { value: true, reason: null, retry_after_sec: null },
+          message: { key: 'diagnostics.message.target.webdav.put_failed', params: {} },
+          hint: { key: 'diagnostics.hint.run_failed.timeout', params: {} },
+          transport: { protocol: 'http', status_code: 504 },
+        },
+      },
+    }
+    const t = (key: string, params?: Record<string, unknown>): string => {
+      if (key === 'diagnostics.hint.run_failed.timeout') return 'localized hint'
+      if (key === 'common.timeUnits.s') return 's'
+      if (key === 'common.relativeTime.in') return `in ${String(params?.value ?? '')}`
+      if (key === 'common.relativeTime.ago') return `${String(params?.value ?? '')} ago`
+      return key
+    }
+
+    expect(runEventSummaryChips(event, t, { nowTs: 100, maxChips: 3 })).toEqual([
+      { text: 'timeout', type: 'warning' },
+      { text: 'HTTP 504', type: 'warning' },
+      { text: '#2', type: 'default' },
+    ])
+
+    expect(runEventSummaryChips(event, t, { nowTs: 100, maxChips: 10 })).toContainEqual({
+      text: 'in 30s',
+      type: 'default',
+    })
+    expect(runEventSummaryChips(event, t, { nowTs: 100, maxChips: 10 })).toContainEqual({
+      text: '16MB',
+      type: 'default',
+    })
+    expect(runEventSummaryChips(event, t, { nowTs: 100, maxChips: 10 })).toContainEqual({
+      text: 'localized hint',
+      type: 'warning',
+    })
   })
 })

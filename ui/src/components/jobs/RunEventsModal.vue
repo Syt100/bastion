@@ -20,10 +20,8 @@ import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
 import {
   runEventDisplayMessage,
-  runEventErrorEnvelope,
-  runEventFieldsRecord,
-  runEventHint,
   runEventLevelTagType,
+  runEventSummaryChips,
   RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
 } from '@/lib/run_events'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
@@ -283,48 +281,8 @@ function manualReconnect(): void {
   connectWs(runId.value, lastSeq, false)
 }
 
-function toNumber(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  return value
-}
-
-function toString(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const v = value.trim()
-  return v ? v : null
-}
-
 function eventDisplayMessage(e: RunEvent): string {
   return runEventDisplayMessage(e, t)
-}
-
-function eventHintText(e: RunEvent | null): string | null {
-  return runEventHint(e, t)
-}
-
-function shortId(value: string): string {
-  if (value.length <= 10) return value
-  return `${value.slice(0, 8)}…`
-}
-
-function formatBytesCompact(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let idx = 0
-  while (value >= 1024 && idx < units.length - 1) {
-    value /= 1024
-    idx += 1
-  }
-  const fixed = value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)
-  return `${fixed}${units[idx]}`
-}
-
-function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.floor(ms))}ms`
-  const secs = ms / 1000
-  if (secs < 10) return `${secs.toFixed(1)}s`
-  return `${Math.round(secs)}s`
 }
 
 function formatRelativeSeconds(seconds: number): string {
@@ -335,92 +293,12 @@ function formatRelativeSeconds(seconds: number): string {
       : abs >= 60
         ? { n: Math.round(abs / 60), s: 'm' }
         : { n: Math.round(abs), s: 's' }
-
-  const v = `${unit.n}${t(`common.timeUnits.${unit.s}`)}`
-  if (seconds >= 0) return t('common.relativeTime.in', { value: v })
-  return t('common.relativeTime.ago', { value: v })
+  const value = `${unit.n}${t(`common.timeUnits.${unit.s}`)}`
+  return seconds >= 0 ? t('common.relativeTime.in', { value }) : t('common.relativeTime.ago', { value })
 }
 
 function pickSummaryChips(e: RunEvent): SummaryChip[] {
-  const fields = runEventFieldsRecord(e)
-  if (!fields) return []
-  const envelope = runEventErrorEnvelope(e)
-
-  const out: SummaryChip[] = []
-  const push = (chip: SummaryChip): void => {
-    if (out.length >= 3) return
-    out.push(chip)
-  }
-
-  const errorKind = envelope?.kind ?? toString(fields.error_kind) ?? toString(fields.last_error_kind)
-  if (errorKind) {
-    const type: SummaryChip['type'] = errorKind === 'auth' || errorKind === 'config' ? 'error' : 'warning'
-    push({ text: errorKind, type })
-  }
-
-  const httpStatus = envelope?.transport.statusCode ?? toNumber(fields.http_status)
-  if (httpStatus != null) {
-    const rounded = Math.max(0, Math.floor(httpStatus))
-    const type: SummaryChip['type'] = rounded >= 500 ? 'warning' : rounded >= 400 ? 'error' : 'default'
-    push({ text: `HTTP ${rounded}`, type })
-  }
-
-  const attempt = toNumber(fields.attempt) ?? toNumber(fields.attempts)
-  if (attempt != null) {
-    push({ text: `#${Math.max(0, Math.floor(attempt))}`, type: 'default' })
-  }
-
-  const nextAttemptAt = toNumber(fields.next_attempt_at)
-  if (nextAttemptAt != null) {
-    push({ text: formatRelativeSeconds(nextAttemptAt - nowTick.value), type: 'default' })
-  }
-
-  const durationMs = toNumber(fields.duration_ms)
-  if (durationMs != null) {
-    push({ text: formatDurationMs(durationMs), type: 'default' })
-  }
-
-  const errorsTotal = toNumber(fields.errors_total)
-  const warningsTotal = toNumber(fields.warnings_total)
-  if (errorsTotal != null || warningsTotal != null) {
-    const errors = Math.max(0, Math.floor(errorsTotal ?? 0))
-    const warnings = Math.max(0, Math.floor(warningsTotal ?? 0))
-    push({ text: `E${errors}/W${warnings}`, type: errors > 0 ? 'error' : warnings > 0 ? 'warning' : 'default' })
-  }
-
-  const ok = typeof fields.ok === 'boolean' ? fields.ok : null
-  if (ok != null) {
-    push({ text: ok ? 'OK' : 'FAIL', type: ok ? 'success' : 'error' })
-  }
-
-  const channel = toString(fields.channel)
-  if (channel) push({ text: channel, type: 'default' })
-
-  const source = toString(fields.source)
-  if (source) push({ text: source, type: 'default' })
-
-  const executedOffline = typeof fields.executed_offline === 'boolean' ? fields.executed_offline : null
-  if (executedOffline === true) push({ text: t('runs.badges.offline'), type: 'default' })
-
-  const agentId = toString(fields.agent_id)
-  if (agentId) push({ text: shortId(agentId), type: 'default' })
-
-  const secretName = toString(fields.secret_name)
-  if (secretName) push({ text: secretName, type: 'default' })
-
-  const partName = toString(fields.part_name)
-  if (partName) push({ text: partName, type: 'default' })
-
-  const partSize = toNumber(fields.part_size_bytes)
-  if (partSize != null) push({ text: formatBytesCompact(partSize), type: 'default' })
-
-  const transportCode = envelope?.transport.providerCode ?? toString(fields.transport_code)
-  if (transportCode) push({ text: transportCode, type: 'default' })
-
-  const hint = eventHintText(e)
-  if (hint) push({ text: hint, type: 'warning' })
-
-  return out
+  return runEventSummaryChips(e, t, { nowTs: nowTick.value, maxChips: 3 })
 }
 
 async function open(id: string): Promise<void> {

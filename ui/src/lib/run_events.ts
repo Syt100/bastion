@@ -40,6 +40,11 @@ export type RunEventErrorEnvelope = {
 
 export type RunEventTranslate = (key: string, params?: Record<string, unknown>) => string
 
+export type RunEventSummaryChip = {
+  text: string
+  type: 'default' | 'warning' | 'error' | 'success'
+}
+
 export type RunEventDetailHeaderMetaField = 'timestamp' | 'level' | 'kind' | 'seq' | 'traceId' | 'requestId'
 
 export const RUN_EVENT_DETAIL_HEADER_META_FIELDS_DEFAULT: readonly RunEventDetailHeaderMetaField[] = ['timestamp', 'level', 'kind']
@@ -247,6 +252,133 @@ export function runEventHint(
   if (legacyHint) return legacyHint
   if (options.allowGenericFallback) return t('runEvents.details.genericHint')
   return null
+}
+
+function formatBytesCompact(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx += 1
+  }
+  const fixed = value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)
+  return `${fixed}${units[idx]}`
+}
+
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.floor(ms))}ms`
+  const secs = ms / 1000
+  if (secs < 10) return `${secs.toFixed(1)}s`
+  return `${Math.round(secs)}s`
+}
+
+function formatRelativeSeconds(seconds: number, t: RunEventTranslate): string {
+  const abs = Math.abs(seconds)
+  const unit =
+    abs >= 86400 ? { n: Math.round(abs / 86400), s: 'd' } : abs >= 3600
+      ? { n: Math.round(abs / 3600), s: 'h' }
+      : abs >= 60
+        ? { n: Math.round(abs / 60), s: 'm' }
+        : { n: Math.round(abs), s: 's' }
+  const value = `${unit.n}${t(`common.timeUnits.${unit.s}`)}`
+  return seconds >= 0 ? t('common.relativeTime.in', { value }) : t('common.relativeTime.ago', { value })
+}
+
+function shortId(value: string): string {
+  if (value.length <= 10) return value
+  return `${value.slice(0, 8)}…`
+}
+
+export function runEventSummaryChips(
+  event: RunEvent,
+  t: RunEventTranslate,
+  options: {
+    nowTs?: number
+    maxChips?: number
+  } = {},
+): RunEventSummaryChip[] {
+  const fields = runEventFieldsRecord(event)
+  if (!fields) return []
+  const envelope = runEventErrorEnvelope(event)
+  const nowTs = options.nowTs ?? Math.floor(Date.now() / 1000)
+  const maxChips = Math.max(1, options.maxChips ?? 3)
+  const out: RunEventSummaryChip[] = []
+  const push = (chip: RunEventSummaryChip): void => {
+    if (out.length >= maxChips) return
+    out.push(chip)
+  }
+
+  const errorKind = envelope?.kind ?? toNonEmptyString(fields.error_kind) ?? toNonEmptyString(fields.last_error_kind)
+  if (errorKind) {
+    const type: RunEventSummaryChip['type'] = errorKind === 'auth' || errorKind === 'config' ? 'error' : 'warning'
+    push({ text: errorKind, type })
+  }
+
+  const httpStatus = envelope?.transport.statusCode ?? toFiniteNumber(fields.http_status)
+  if (httpStatus != null) {
+    const rounded = Math.max(0, Math.floor(httpStatus))
+    const type: RunEventSummaryChip['type'] = rounded >= 500 ? 'warning' : rounded >= 400 ? 'error' : 'default'
+    push({ text: `HTTP ${rounded}`, type })
+  }
+
+  const attempt = toFiniteNumber(fields.attempt) ?? toFiniteNumber(fields.attempts)
+  if (attempt != null) {
+    push({ text: `#${Math.max(0, Math.floor(attempt))}`, type: 'default' })
+  }
+
+  const nextAttemptAt = toFiniteNumber(fields.next_attempt_at)
+  if (nextAttemptAt != null) {
+    push({ text: formatRelativeSeconds(nextAttemptAt - nowTs, t), type: 'default' })
+  }
+
+  const durationMs = toFiniteNumber(fields.duration_ms)
+  if (durationMs != null) {
+    push({ text: formatDurationMs(durationMs), type: 'default' })
+  }
+
+  const errorsTotal = toFiniteNumber(fields.errors_total)
+  const warningsTotal = toFiniteNumber(fields.warnings_total)
+  if (errorsTotal != null || warningsTotal != null) {
+    const errors = Math.max(0, Math.floor(errorsTotal ?? 0))
+    const warnings = Math.max(0, Math.floor(warningsTotal ?? 0))
+    push({ text: `E${errors}/W${warnings}`, type: errors > 0 ? 'error' : warnings > 0 ? 'warning' : 'default' })
+  }
+
+  const ok = typeof fields.ok === 'boolean' ? fields.ok : null
+  if (ok != null) {
+    push({ text: ok ? 'OK' : 'FAIL', type: ok ? 'success' : 'error' })
+  }
+
+  const channel = toNonEmptyString(fields.channel)
+  if (channel) push({ text: channel, type: 'default' })
+
+  const source = toNonEmptyString(fields.source)
+  if (source) push({ text: source, type: 'default' })
+
+  const executedOffline = typeof fields.executed_offline === 'boolean' ? fields.executed_offline : null
+  if (executedOffline === true) push({ text: t('runs.badges.offline'), type: 'default' })
+
+  const agentId = toNonEmptyString(fields.agent_id)
+  if (agentId) push({ text: shortId(agentId), type: 'default' })
+
+  const secretName = toNonEmptyString(fields.secret_name)
+  if (secretName) push({ text: secretName, type: 'default' })
+
+  const partName = toNonEmptyString(fields.part_name)
+  if (partName) push({ text: partName, type: 'default' })
+
+  const partSize = toFiniteNumber(fields.part_size_bytes)
+  if (partSize != null) push({ text: formatBytesCompact(partSize), type: 'default' })
+
+  const transportCode = envelope?.transport.providerCode ?? toNonEmptyString(fields.transport_code)
+  if (transportCode) push({ text: transportCode, type: 'default' })
+
+  const hint = runEventHint(event, t)
+  if (hint) push({ text: hint, type: 'warning' })
+
+  return out
 }
 
 export function runEventTransportMetadata(event: RunEvent): RunEventTransportMetadata {
