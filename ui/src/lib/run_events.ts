@@ -43,3 +43,9 @@ export function findFirstEventSeq(events: RunEvent[], predicate: (e: RunEvent) =
   return null
 }
 
+export function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 'default' {
+  if (level === 'error') return 'error'
+  if (level === 'warn' || level === 'warning') return 'warning'
+  if (level === 'info') return 'success'
+  return 'default'
+}

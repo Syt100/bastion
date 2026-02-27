@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NButton,
-  NDrawer,
-  NDrawerContent,
   NModal,
   NSpin,
   NSpace,
@@ -15,12 +13,13 @@ import { useI18n } from 'vue-i18n'
 
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunEvent } from '@/stores/jobs'
-import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_WIDTH } from '@/lib/modal'
 import { formatToastError } from '@/lib/errors'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
-import RunEventDetailContent from '@/components/runs/RunEventDetailContent.vue'
+import { runEventLevelTagType } from '@/lib/run_events'
+import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 
 export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
@@ -130,13 +129,6 @@ function wsUrl(path: string): string {
 function isAtBottom(el: HTMLElement): boolean {
   const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
   return remaining <= 16
-}
-
-function runEventLevelTagType(level: string): 'success' | 'error' | 'warning' | 'default' {
-  if (level === 'error') return 'error'
-  if (level === 'warn' || level === 'warning') return 'warning'
-  if (level === 'info') return 'success'
-  return 'default'
 }
 
 function runEventAccentBorderClass(level: string): string {
@@ -538,14 +530,6 @@ function pickSummaryChips(e: RunEvent): SummaryChip[] {
   return out
 }
 
-const detailDesktopScrollMaxHeight = `calc(${MODAL_HEIGHT.desktopLoose} - 120px)`
-const detailDesktopContentStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-  minHeight: '0',
-}
-
 async function open(id: string): Promise<void> {
   show.value = true
   runId.value = id
@@ -733,43 +717,13 @@ defineExpose<RunEventsModalExpose>({ open })
         </div>
       </div>
 
-      <n-modal
-        v-if="isDesktop"
+      <RunEventDetailDialog
         v-model:show="detailShow"
-        preset="card"
-        :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
-        :content-style="detailDesktopContentStyle"
+        :event="detailEvent"
+        :is-desktop="isDesktop"
         :title="t('runEvents.details.title')"
-      >
-        <div v-if="detailEvent" class="run-events-detail-modal-body flex h-full min-h-0 flex-col gap-3">
-          <div class="text-sm app-text-muted flex shrink-0 flex-wrap items-center gap-2">
-            <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
-            <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
-            <span class="app-text-muted">{{ detailEvent.kind }}</span>
-          </div>
-          <RunEventDetailContent
-            class="run-events-detail-scroll min-h-0 flex-1"
-            :event="detailEvent"
-            :max-body-height="detailDesktopScrollMaxHeight"
-          />
-          <n-space justify="end" class="shrink-0">
-            <n-button @click="detailShow = false">{{ t('common.close') }}</n-button>
-          </n-space>
-        </div>
-      </n-modal>
-
-      <n-drawer v-else v-model:show="detailShow" placement="bottom" height="70vh">
-        <n-drawer-content :title="t('runEvents.details.title')" closable>
-          <div v-if="detailEvent" class="space-y-3">
-            <div class="text-sm app-text-muted flex flex-wrap items-center gap-2">
-              <span class="tabular-nums">{{ formatUnixSeconds(detailEvent.ts) }}</span>
-              <n-tag size="small" :type="runEventLevelTagType(detailEvent.level)">{{ detailEvent.level }}</n-tag>
-              <span class="app-text-muted">{{ detailEvent.kind }}</span>
-            </div>
-            <RunEventDetailContent class="run-events-detail-scroll" :event="detailEvent" />
-          </div>
-        </n-drawer-content>
-      </n-drawer>
+        :close-label="t('common.close')"
+      />
 
       <n-space justify="end">
         <n-button @click="show = false">{{ t('common.close') }}</n-button>
