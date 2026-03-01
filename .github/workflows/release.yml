@@ -90,7 +90,7 @@ jobs:
           echo "  package=${package_version}"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20.19.0"
           cache: "npm"
