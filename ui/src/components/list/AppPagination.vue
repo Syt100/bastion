@@ -29,10 +29,10 @@ const hasTotalLabel = computed(() => typeof props.totalLabel === 'string' && pro
 
 <template>
   <div
-    class="mt-3 flex items-center gap-3"
+    class="mt-4 flex items-center gap-3.5 app-motion-soft"
     :class="hasTotalLabel ? 'justify-between' : 'justify-end'"
   >
-    <div v-if="hasTotalLabel" class="text-sm app-text-muted">{{ totalLabel }}</div>
+    <div v-if="hasTotalLabel" class="app-meta-text">{{ totalLabel }}</div>
 
     <n-pagination
       :page="page"

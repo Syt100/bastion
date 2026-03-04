@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { NCard, NIcon } from 'naive-ui'
+import { NCard } from 'naive-ui'
 import { ChevronForwardOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
+import AppIcon from '@/components/AppIcon.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -24,26 +25,22 @@ function go(to: string): void {
         v-for="item in items"
         :key="item.key"
         type="button"
-        class="app-list-row"
+        class="app-list-row app-motion-soft"
         @click="go(item.to)"
       >
         <div class="flex items-start gap-3 min-w-0">
           <div
             class="app-icon-tile"
           >
-            <n-icon size="20">
-              <component :is="item.icon" />
-            </n-icon>
+            <AppIcon :component="item.icon" size="lg" tone="primary" />
           </div>
           <div class="min-w-0">
             <div class="font-medium truncate">{{ t(item.titleKey) }}</div>
-            <div class="text-xs app-text-muted mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
+            <div class="app-meta-text mt-0.5 truncate">{{ t(item.descriptionKey) }}</div>
           </div>
         </div>
 
-        <n-icon size="18" class="app-text-muted flex-shrink-0">
-          <ChevronForwardOutline />
-        </n-icon>
+        <AppIcon :component="ChevronForwardOutline" size="md" tone="muted" class="flex-shrink-0" />
       </button>
     </div>
   </n-card>

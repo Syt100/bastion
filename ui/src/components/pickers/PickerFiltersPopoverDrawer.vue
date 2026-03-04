@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { NBadge, NButton, NDrawer, NDrawerContent, NIcon, NPopover } from 'naive-ui'
+import { NBadge, NButton, NDrawer, NDrawerContent, NPopover } from 'naive-ui'
 import { FilterOutline } from '@vicons/ionicons5'
+import AppIcon from '@/components/AppIcon.vue'
 
 withDefaults(
   defineProps<{
@@ -33,9 +34,9 @@ const emit = defineEmits<{
   >
     <template #trigger>
       <n-badge :value="activeCount" :show="activeCount > 0">
-        <n-button size="small" secondary :title="title" :aria-label="title">
+        <n-button size="small" secondary class="app-motion-soft app-pressable" :title="title" :aria-label="title">
           <template #icon>
-            <n-icon><filter-outline /></n-icon>
+            <AppIcon :component="FilterOutline" size="sm" tone="muted" />
           </template>
         </n-button>
       </n-badge>
@@ -51,12 +52,13 @@ const emit = defineEmits<{
     <n-button
       size="small"
       secondary
+      class="app-motion-soft app-pressable"
       :title="title"
       :aria-label="title"
       @click="emit('update:drawerOpen', true)"
     >
       <template #icon>
-        <n-icon><filter-outline /></n-icon>
+        <AppIcon :component="FilterOutline" size="sm" tone="muted" />
       </template>
     </n-button>
   </n-badge>

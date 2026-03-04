@@ -41,10 +41,10 @@ const hasActions = computed(() => {
 </script>
 
 <template>
-  <n-card v-if="!props.embedded" class="app-card" :bordered="false">
+  <n-card v-if="!props.embedded" class="app-card app-motion-soft" :bordered="false">
     <div
       :class="[
-        'flex flex-col gap-3',
+        'flex flex-col gap-3.5',
         props.stacked ? '' : 'md:flex-row md:items-end md:justify-between',
         !props.stacked && props.compact ? 'md:gap-2' : '',
       ]"
@@ -68,9 +68,9 @@ const hasActions = computed(() => {
   <div
     v-else
     :class="[
-      'rounded-xl app-border-subtle',
-      props.compact ? 'p-3' : 'p-4',
-      'flex flex-col gap-3',
+      'rounded-xl app-border-subtle app-motion-soft',
+      props.compact ? 'p-3' : 'p-4 md:p-5',
+      'flex flex-col gap-3.5',
       props.stacked ? '' : 'md:flex-row md:items-end md:justify-between',
       !props.stacked && props.compact ? 'md:gap-2' : '',
     ]"

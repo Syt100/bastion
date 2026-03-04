@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { NSelect, NSwitch } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import ListFilterField from '@/components/list/ListFilterField.vue'
 
 import type { JobLatestStatusFilter, JobScheduleFilter, JobSortKey } from './useJobsFilters'
 
@@ -42,9 +43,9 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div v-if="layout === 'inline'" class="flex flex-wrap items-center gap-2">
-    <div class="shrink-0 flex items-center gap-2 whitespace-nowrap h-7">
-      <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+  <div v-if="layout === 'inline'" class="flex flex-wrap items-center gap-2.5">
+    <div class="shrink-0 flex items-center gap-2 whitespace-nowrap">
+      <span class="app-filter-label">{{ t('jobs.showArchived') }}</span>
       <n-switch
         :value="showArchived"
         :aria-label="t('jobs.showArchived')"
@@ -52,46 +53,58 @@ const { t } = useI18n()
       />
     </div>
 
-    <div v-if="showStatus" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-      <span class="text-sm app-text-muted">{{ t('runs.columns.status') }}</span>
+    <ListFilterField
+      v-if="showStatus"
+      :label="t('runs.columns.status')"
+      layout="inline"
+    >
       <n-select
         :value="latestStatusFilter"
         size="small"
         :aria-label="t('runs.columns.status')"
         :options="latestStatusOptions"
         :consistent-menu-width="false"
-        class="min-w-[8rem]"
+        class="w-full"
         @update:value="(value: JobLatestStatusFilter) => emit('update:latestStatusFilter', value)"
       />
-    </div>
+    </ListFilterField>
 
-    <div v-if="showSchedule" class="shrink-0 flex items-center gap-2 whitespace-nowrap">
-      <span class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</span>
+    <ListFilterField
+      v-if="showSchedule"
+      :label="t('jobs.columns.schedule')"
+      layout="inline"
+    >
       <n-select
         :value="scheduleFilter"
         size="small"
         :aria-label="t('jobs.columns.schedule')"
         :options="scheduleOptions"
         :consistent-menu-width="false"
-        class="min-w-[8rem]"
+        class="w-full"
         @update:value="(value: JobScheduleFilter) => emit('update:scheduleFilter', value)"
       />
-    </div>
+    </ListFilterField>
 
-    <div v-if="showSort" class="w-full md:w-56 md:flex-none">
+    <ListFilterField
+      v-if="showSort"
+      :label="t('common.sort')"
+      layout="inline"
+      control-width="full"
+    >
       <n-select
         :value="sortKey"
         size="small"
         :aria-label="t('common.sort')"
         :options="sortOptions"
+        class="w-full"
         @update:value="(value: JobSortKey) => emit('update:sortKey', value)"
       />
-    </div>
+    </ListFilterField>
   </div>
 
   <div v-else class="space-y-4">
     <div class="flex items-center justify-between gap-3">
-      <span class="text-sm app-text-muted">{{ t('jobs.showArchived') }}</span>
+      <span class="app-filter-label">{{ t('jobs.showArchived') }}</span>
       <n-switch
         :value="showArchived"
         :aria-label="t('jobs.showArchived')"
@@ -99,8 +112,11 @@ const { t } = useI18n()
       />
     </div>
 
-    <div v-if="showStatus" class="space-y-2">
-      <div class="text-sm app-text-muted">{{ t('runs.columns.status') }}</div>
+    <ListFilterField
+      v-if="showStatus"
+      :label="t('runs.columns.status')"
+      layout="stack"
+    >
       <n-select
         :value="latestStatusFilter"
         size="small"
@@ -110,10 +126,13 @@ const { t } = useI18n()
         class="w-full"
         @update:value="(value: JobLatestStatusFilter) => emit('update:latestStatusFilter', value)"
       />
-    </div>
+    </ListFilterField>
 
-    <div v-if="showSchedule" class="space-y-2">
-      <div class="text-sm app-text-muted">{{ t('jobs.columns.schedule') }}</div>
+    <ListFilterField
+      v-if="showSchedule"
+      :label="t('jobs.columns.schedule')"
+      layout="stack"
+    >
       <n-select
         :value="scheduleFilter"
         size="small"
@@ -123,10 +142,13 @@ const { t } = useI18n()
         class="w-full"
         @update:value="(value: JobScheduleFilter) => emit('update:scheduleFilter', value)"
       />
-    </div>
+    </ListFilterField>
 
-    <div v-if="showSort" class="space-y-2">
-      <div class="text-sm app-text-muted">{{ t('common.sort') }}</div>
+    <ListFilterField
+      v-if="showSort"
+      :label="t('common.sort')"
+      layout="stack"
+    >
       <n-select
         :value="sortKey"
         size="small"
@@ -135,6 +157,6 @@ const { t } = useI18n()
         class="w-full"
         @update:value="(value: JobSortKey) => emit('update:sortKey', value)"
       />
-    </div>
+    </ListFilterField>
   </div>
 </template>

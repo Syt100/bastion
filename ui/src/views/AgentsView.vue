@@ -13,6 +13,8 @@ import {
   NRadioButton,
   NRadioGroup,
   NSelect,
+  NSpace,
+  NTag,
   useMessage,
   type DropdownOption,
 } from 'naive-ui'
@@ -23,13 +25,15 @@ import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentListSta
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
 import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
-import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
+import ListFilterSummaryRow from '@/components/list/ListFilterSummaryRow.vue'
+import ListStatePresenter from '@/components/list/ListStatePresenter.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -668,7 +672,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template #content>
-        <ListActiveFiltersRow
+        <ListFilterSummaryRow
           class="mb-3"
           :chips="activeFilterChips"
           :clear-label="t('common.clear')"
@@ -676,137 +680,144 @@ onBeforeUnmount(() => {
         />
 
         <div v-if="!isDesktop" class="space-y-3">
-          <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
-          <AppEmptyState
-            v-else-if="!agents.loading && agents.items.length === 0"
-            :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
-            :description="listBaseEmpty ? t('agents.empty.description') : undefined"
+          <ListStatePresenter
+            :loading="agents.loading"
+            :item-count="agents.items.length"
+            :base-empty="listBaseEmpty"
+            :loading-title="t('common.loading')"
+            :base-empty-title="t('agents.empty.title')"
+            :base-empty-description="t('agents.empty.description')"
+            :filtered-empty-title="t('common.noData')"
           >
-            <template #actions>
+            <template #baseActions>
               <n-button
-                v-if="listBaseEmpty"
                 type="primary"
                 size="small"
                 @click="openTokenModal"
               >
                 {{ t('agents.newToken') }}
               </n-button>
-              <n-button v-else size="small" @click="clearFilters">
+            </template>
+
+            <template #filteredActions>
+              <n-button size="small" @click="clearFilters">
                 {{ t('common.clear') }}
               </n-button>
             </template>
-          </AppEmptyState>
 
-          <n-card
-            v-for="agent in agents.items"
-            :key="agent.id"
-            size="small"
-            class="app-card"
-            :bordered="false"
-          >
-            <template #header>
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <n-checkbox
-                    :checked="selectedAgentIds.includes(agent.id)"
-                    @update:checked="(v) => setAgentSelected(agent.id, v)"
-                  />
-                  <div class="font-medium truncate">{{ agent.name ?? '-' }}</div>
-                </div>
-                <div class="flex flex-wrap justify-end gap-1">
-                  <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
-                  <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
-                  <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
-                  <n-tag
-                    :type="configSyncStatusTagType(agent.config_sync_status)"
-                    size="small"
-                    :title="configSyncTitle(agent)"
-                  >
-                    {{ configSyncStatusLabel(agent.config_sync_status) }}
-                  </n-tag>
-                </div>
-              </div>
-            </template>
-
-            <div class="text-sm space-y-2">
-              <div class="flex items-center justify-between gap-3">
-                <div class="app-text-muted">{{ t('agents.columns.lastSeen') }}</div>
-                <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
-              </div>
-
-              <details class="rounded app-panel-inset px-3 py-2">
-                <summary class="cursor-pointer text-xs app-text-muted select-none">
-                  {{ t('agents.mobile.moreDetails') }}
-                </summary>
-                <div class="mt-2 space-y-2">
-                  <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
-                    <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+            <n-card
+              v-for="agent in agents.items"
+              :key="agent.id"
+              size="small"
+              class="app-card app-motion-soft"
+              :bordered="false"
+            >
+              <template #header>
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <n-checkbox
+                      :checked="selectedAgentIds.includes(agent.id)"
+                      @update:checked="(v) => setAgentSelected(agent.id, v)"
+                    />
+                    <div class="font-semibold truncate">{{ agent.name ?? '-' }}</div>
                   </div>
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
-                    <div class="flex items-center gap-2">
-                      <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
-                      <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
+                  <div class="flex flex-wrap justify-end gap-1">
+                    <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+                    <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+                    <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+                    <n-tag
+                      :type="configSyncStatusTagType(agent.config_sync_status)"
+                      size="small"
+                      :title="configSyncTitle(agent)"
+                    >
+                      {{ configSyncStatusLabel(agent.config_sync_status) }}
+                    </n-tag>
+                  </div>
+                </div>
+              </template>
+
+              <div class="text-sm space-y-2">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="app-filter-label">{{ t('agents.columns.lastSeen') }}</div>
+                  <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
+                </div>
+
+                <details class="rounded app-panel-inset px-3 py-2">
+                  <summary class="cursor-pointer app-meta-text select-none">
+                    {{ t('agents.mobile.moreDetails') }}
+                  </summary>
+                  <div class="mt-2 space-y-2">
+                    <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
+                      <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="app-filter-label">{{ t('agents.columns.id') }}</div>
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono app-meta-text">{{ shortId(agent.id) }}</span>
+                        <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </details>
-            </div>
-
-            <template #footer>
-              <div class="flex flex-wrap justify-end gap-2">
-                <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
-                <n-button
-                  size="small"
-                  tertiary
-                  :loading="syncNowLoading === agent.id"
-                  :disabled="agent.revoked"
-                  @click="syncConfigNow(agent.id)"
-                >
-                  {{ t('agents.actions.syncNow') }}
-                </n-button>
-                <OverflowActionsButton
-                  :options="agentOverflowOptions(agent)"
-                  @select="(key) => onSelectAgentOverflow(agent, key)"
-                />
+                </details>
               </div>
-            </template>
-          </n-card>
+
+              <template #footer>
+                <div class="flex flex-wrap justify-end gap-2">
+                  <n-button size="small" tertiary @click="openAgentJobs(agent.id)">{{ t('agents.actions.jobs') }}</n-button>
+                  <n-button
+                    size="small"
+                    tertiary
+                    :loading="syncNowLoading === agent.id"
+                    :disabled="agent.revoked"
+                    @click="syncConfigNow(agent.id)"
+                  >
+                    {{ t('agents.actions.syncNow') }}
+                  </n-button>
+                  <OverflowActionsButton
+                    :options="agentOverflowOptions(agent)"
+                    @select="(key) => onSelectAgentOverflow(agent, key)"
+                  />
+                </div>
+              </template>
+            </n-card>
+          </ListStatePresenter>
         </div>
 
         <div v-else>
-          <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
-          <AppEmptyState
-            v-else-if="!agents.loading && agents.items.length === 0"
-            :title="listBaseEmpty ? t('agents.empty.title') : t('common.noData')"
-            :description="listBaseEmpty ? t('agents.empty.description') : undefined"
+          <ListStatePresenter
+            :loading="agents.loading"
+            :item-count="agents.items.length"
+            :base-empty="listBaseEmpty"
+            :loading-title="t('common.loading')"
+            :base-empty-title="t('agents.empty.title')"
+            :base-empty-description="t('agents.empty.description')"
+            :filtered-empty-title="t('common.noData')"
           >
-            <template #actions>
-              <n-button
-                v-if="listBaseEmpty"
-                type="primary"
-                size="small"
-                @click="openTokenModal"
-              >
+            <template #baseActions>
+              <n-button type="primary" size="small" @click="openTokenModal">
                 {{ t('agents.newToken') }}
               </n-button>
-              <n-button v-else size="small" @click="clearFilters">
+            </template>
+
+            <template #filteredActions>
+              <n-button size="small" @click="clearFilters">
                 {{ t('common.clear') }}
               </n-button>
             </template>
-          </AppEmptyState>
 
-          <n-card v-else class="app-card" :bordered="false">
-            <div class="overflow-x-auto">
-              <n-data-table
-                v-model:checked-row-keys="selectedAgentIds"
-                :row-key="(row) => row.id"
-                :loading="agents.loading"
-                :columns="columns"
-                :data="agents.items"
-              />
-            </div>
-          </n-card>
+            <n-card class="app-card" :bordered="false">
+              <div class="overflow-x-auto">
+                <n-data-table
+                  v-model:checked-row-keys="selectedAgentIds"
+                  class="app-list-table"
+                  :row-key="(row) => row.id"
+                  :loading="agents.loading"
+                  :columns="columns"
+                  :data="agents.items"
+                />
+              </div>
+            </n-card>
+          </ListStatePresenter>
         </div>
       </template>
 
@@ -825,180 +836,179 @@ onBeforeUnmount(() => {
       </template>
     </ListPageScaffold>
 
-    <n-modal
+    <AppModalShell
       v-model:show="confirmOpen"
       :mask-closable="!confirmBusy"
-      preset="card"
-      :style="{ width: MODAL_WIDTH.sm }"
+      :width="MODAL_WIDTH.sm"
       :title="confirmTitle"
     >
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ confirmBody }}</div>
+      <div class="text-sm app-text-muted">{{ confirmBody }}</div>
 
-        <div v-if="confirmAgent" class="text-sm">
-          <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
-          <span class="font-mono ml-2">{{ confirmAgent.id }}</span>
-        </div>
-
-        <n-space justify="end">
-          <n-button :disabled="confirmBusy" @click="confirmOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button
-            :type="confirmKind === 'revoke' ? 'error' : 'warning'"
-            :loading="confirmBusy"
-            @click="confirmDangerAction"
-          >
-            {{ confirmKind === 'revoke' ? t('agents.actions.revoke') : t('agents.actions.rotateKey') }}
-          </n-button>
-        </n-space>
+      <div v-if="confirmAgent" class="text-sm">
+        <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
+        <span class="font-mono ml-2">{{ confirmAgent.id }}</span>
       </div>
-    </n-modal>
 
-    <n-modal v-model:show="tokenModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.tokenModal.title')">
-      <div class="space-y-4">
+      <template #footer>
+        <n-button :disabled="confirmBusy" @click="confirmOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          :type="confirmKind === 'revoke' ? 'error' : 'warning'"
+          :loading="confirmBusy"
+          @click="confirmDangerAction"
+        >
+          {{ confirmKind === 'revoke' ? t('agents.actions.revoke') : t('agents.actions.rotateKey') }}
+        </n-button>
+      </template>
+    </AppModalShell>
+
+    <AppModalShell
+      v-model:show="tokenModalOpen"
+      :width="MODAL_WIDTH.md"
+      :title="t('agents.tokenModal.title')"
+    >
+      <n-form label-placement="top">
+        <n-form-item :label="t('agents.tokenModal.ttl')">
+          <n-input-number v-model:value="ttlSeconds" :min="60" class="w-full" />
+        </n-form-item>
+        <n-form-item :label="t('agents.tokenModal.remainingUses')">
+          <n-input-number v-model:value="remainingUses" :min="1" clearable class="w-full" />
+        </n-form-item>
+      </n-form>
+
+      <div v-if="tokenResult" class="space-y-2">
+        <div class="text-sm app-text-muted">{{ t('agents.tokenModal.help') }}</div>
+
         <n-form label-placement="top">
-          <n-form-item :label="t('agents.tokenModal.ttl')">
-            <n-input-number v-model:value="ttlSeconds" :min="60" class="w-full" />
+          <n-form-item :label="t('agents.tokenModal.token')">
+            <n-input :value="tokenResult.token" readonly />
           </n-form-item>
-          <n-form-item :label="t('agents.tokenModal.remainingUses')">
-            <n-input-number v-model:value="remainingUses" :min="1" clearable class="w-full" />
+          <n-form-item :label="t('agents.tokenModal.enrollCommand')">
+            <n-input
+              :value="enrollCommand ?? ''"
+              readonly
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </n-form-item>
+          <n-form-item :label="t('agents.tokenModal.expiresAt')">
+            <n-input :value="formatUnixSeconds(tokenResult.expires_at)" readonly />
           </n-form-item>
         </n-form>
 
-        <n-space justify="end">
-          <n-button @click="tokenModalOpen = false">{{ t('common.close') }}</n-button>
-          <n-button type="primary" :loading="tokenCreating" @click="createToken">
-            {{ t('agents.tokenModal.create') }}
-          </n-button>
+        <n-space>
+          <n-button @click="copyToClipboard(tokenResult.token)">{{ t('agents.actions.copyToken') }}</n-button>
+          <n-button v-if="enrollCommand" @click="copyToClipboard(enrollCommand)">{{ t('agents.actions.copyCommand') }}</n-button>
         </n-space>
+      </div>
 
-        <div v-if="tokenResult" class="space-y-2">
-          <div class="text-sm app-text-muted">{{ t('agents.tokenModal.help') }}</div>
+      <template #footer>
+        <n-button @click="tokenModalOpen = false">{{ t('common.close') }}</n-button>
+        <n-button type="primary" :loading="tokenCreating" @click="createToken">
+          {{ t('agents.tokenModal.create') }}
+        </n-button>
+      </template>
+    </AppModalShell>
 
+    <AppModalShell
+      v-model:show="rotateModalOpen"
+      :width="MODAL_WIDTH.md"
+      :title="t('agents.rotateModal.title')"
+    >
+      <div class="text-sm app-text-muted">{{ t('agents.rotateModal.help') }}</div>
+
+      <n-form v-if="rotateResult" label-placement="top">
+        <n-form-item :label="t('agents.rotateModal.agentKey')">
+          <n-input :value="rotateResult.agent_key" readonly />
+        </n-form-item>
+      </n-form>
+
+      <n-space v-if="rotateResult">
+        <n-button @click="copyToClipboard(rotateResult.agent_key)">{{ t('agents.actions.copyKey') }}</n-button>
+      </n-space>
+
+      <template #footer>
+        <n-button @click="rotateModalOpen = false">{{ t('common.close') }}</n-button>
+      </template>
+    </AppModalShell>
+
+    <AppModalShell
+      v-model:show="detailModalOpen"
+      :width="MODAL_WIDTH.md"
+      :title="t('agents.detailModal.title')"
+      body-class="space-y-4"
+    >
+      <AppEmptyState v-if="detailLoading" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!detail" :title="t('common.noData')" />
+
+      <div v-else class="space-y-4">
+        <div class="flex flex-wrap gap-1">
+          <n-tag v-if="detail.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+          <n-tag v-else-if="detail.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+          <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
+          <n-tag :type="configSyncStatusTagType(detail.config_sync_status)" size="small">
+            {{ configSyncStatusLabel(detail.config_sync_status) }}
+          </n-tag>
+        </div>
+
+        <n-form label-placement="top">
+          <n-form-item :label="t('agents.detailModal.id')">
+            <n-input :value="detail.id" readonly />
+          </n-form-item>
+          <n-form-item :label="t('agents.detailModal.name')">
+            <n-input :value="detail.name ?? '-'" readonly />
+          </n-form-item>
+          <n-form-item :label="t('agents.detailModal.lastSeen')">
+            <n-input :value="formatUnixSeconds(detail.last_seen_at)" readonly />
+          </n-form-item>
+        </n-form>
+
+        <n-card size="small" class="app-card" :bordered="false" :title="t('agents.detailModal.configSyncTitle')">
           <n-form label-placement="top">
-            <n-form-item :label="t('agents.tokenModal.token')">
-              <n-input :value="tokenResult.token" readonly />
+            <n-form-item :label="t('agents.detailModal.desiredSnapshot')">
+              <n-input :value="detail.desired_config_snapshot_id ?? '-'" readonly />
             </n-form-item>
-            <n-form-item :label="t('agents.tokenModal.enrollCommand')">
+            <n-form-item :label="t('agents.detailModal.desiredAt')">
+              <n-input :value="formatUnixSeconds(detail.desired_config_snapshot_at)" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.appliedSnapshot')">
+              <n-input :value="detail.applied_config_snapshot_id ?? '-'" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.appliedAt')">
+              <n-input :value="formatUnixSeconds(detail.applied_config_snapshot_at)" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.lastAttemptAt')">
+              <n-input :value="formatUnixSeconds(detail.last_config_sync_attempt_at)" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.lastErrorKind')">
+              <n-input :value="detail.last_config_sync_error_kind ?? '-'" readonly />
+            </n-form-item>
+            <n-form-item :label="t('agents.detailModal.lastError')">
               <n-input
-                :value="enrollCommand ?? ''"
+                :value="detail.last_config_sync_error ?? '-'"
                 readonly
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
+                :autosize="{ minRows: 2, maxRows: 6 }"
               />
             </n-form-item>
-            <n-form-item :label="t('agents.tokenModal.expiresAt')">
-              <n-input :value="formatUnixSeconds(tokenResult.expires_at)" readonly />
+            <n-form-item :label="t('agents.detailModal.lastErrorAt')">
+              <n-input :value="formatUnixSeconds(detail.last_config_sync_error_at)" readonly />
             </n-form-item>
           </n-form>
-
-          <n-space>
-            <n-button @click="copyToClipboard(tokenResult.token)">{{ t('agents.actions.copyToken') }}</n-button>
-            <n-button v-if="enrollCommand" @click="copyToClipboard(enrollCommand)">{{ t('agents.actions.copyCommand') }}</n-button>
-          </n-space>
-        </div>
+        </n-card>
       </div>
-    </n-modal>
 
-    <n-modal v-model:show="rotateModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.rotateModal.title')">
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ t('agents.rotateModal.help') }}</div>
-
-        <n-form v-if="rotateResult" label-placement="top">
-          <n-form-item :label="t('agents.rotateModal.agentKey')">
-            <n-input :value="rotateResult.agent_key" readonly />
-          </n-form-item>
-        </n-form>
-
-        <n-space v-if="rotateResult">
-          <n-button @click="copyToClipboard(rotateResult.agent_key)">{{ t('agents.actions.copyKey') }}</n-button>
-        </n-space>
-
-        <n-space justify="end">
-          <n-button @click="rotateModalOpen = false">{{ t('common.close') }}</n-button>
-        </n-space>
-      </div>
-    </n-modal>
-
-    <n-modal
-      v-model:show="detailModalOpen"
-      preset="card"
-      :style="{ width: MODAL_WIDTH.md }"
-      :title="t('agents.detailModal.title')"
-    >
-      <div class="space-y-4">
-        <AppEmptyState v-if="detailLoading" :title="t('common.loading')" loading />
-        <AppEmptyState v-else-if="!detail" :title="t('common.noData')" />
-
-        <div v-else class="space-y-4">
-          <div class="flex flex-wrap gap-1">
-            <n-tag v-if="detail.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
-            <n-tag v-else-if="detail.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
-            <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
-            <n-tag :type="configSyncStatusTagType(detail.config_sync_status)" size="small">
-              {{ configSyncStatusLabel(detail.config_sync_status) }}
-            </n-tag>
-          </div>
-
-          <n-form label-placement="top">
-            <n-form-item :label="t('agents.detailModal.id')">
-              <n-input :value="detail.id" readonly />
-            </n-form-item>
-            <n-form-item :label="t('agents.detailModal.name')">
-              <n-input :value="detail.name ?? '-'" readonly />
-            </n-form-item>
-            <n-form-item :label="t('agents.detailModal.lastSeen')">
-              <n-input :value="formatUnixSeconds(detail.last_seen_at)" readonly />
-            </n-form-item>
-          </n-form>
-
-          <n-card size="small" class="app-card" :bordered="false" :title="t('agents.detailModal.configSyncTitle')">
-            <n-form label-placement="top">
-              <n-form-item :label="t('agents.detailModal.desiredSnapshot')">
-                <n-input :value="detail.desired_config_snapshot_id ?? '-'" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.desiredAt')">
-                <n-input :value="formatUnixSeconds(detail.desired_config_snapshot_at)" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.appliedSnapshot')">
-                <n-input :value="detail.applied_config_snapshot_id ?? '-'" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.appliedAt')">
-                <n-input :value="formatUnixSeconds(detail.applied_config_snapshot_at)" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.lastAttemptAt')">
-                <n-input :value="formatUnixSeconds(detail.last_config_sync_attempt_at)" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.lastErrorKind')">
-                <n-input :value="detail.last_config_sync_error_kind ?? '-'" readonly />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.lastError')">
-                <n-input
-                  :value="detail.last_config_sync_error ?? '-'"
-                  readonly
-                  type="textarea"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                />
-              </n-form-item>
-              <n-form-item :label="t('agents.detailModal.lastErrorAt')">
-                <n-input :value="formatUnixSeconds(detail.last_config_sync_error_at)" readonly />
-              </n-form-item>
-            </n-form>
-          </n-card>
-        </div>
-
-        <n-space justify="end">
-          <n-button @click="closeAgentDetail">{{ t('common.close') }}</n-button>
-          <n-button
-            type="primary"
-            :loading="syncNowLoading === detail?.id"
-            :disabled="detail?.revoked ?? true"
-            @click="detail?.id && syncConfigNow(detail.id)"
-          >
-            {{ t('agents.actions.syncNow') }}
-          </n-button>
-        </n-space>
-      </div>
-    </n-modal>
+      <template #footer>
+        <n-button @click="closeAgentDetail">{{ t('common.close') }}</n-button>
+        <n-button
+          type="primary"
+          :loading="syncNowLoading === detail?.id"
+          :disabled="detail?.revoked ?? true"
+          @click="detail?.id && syncConfigNow(detail.id)"
+        >
+          {{ t('agents.actions.syncNow') }}
+        </n-button>
+      </template>
+    </AppModalShell>
 
     <n-modal v-model:show="labelsModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.labelsModal.title')">
       <div class="space-y-4">

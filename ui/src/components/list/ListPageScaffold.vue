@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4" data-testid="list-page-scaffold">
+  <div class="app-list-scaffold" data-testid="list-page-scaffold">
     <div v-if="$slots.selection" data-testid="list-page-selection">
       <slot name="selection" />
     </div>

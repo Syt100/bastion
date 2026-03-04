@@ -11,19 +11,19 @@ defineProps<{
       <div v-if="$slots.prefix" class="pt-0.5">
         <slot name="prefix" />
       </div>
-      <div class="space-y-1 min-w-0">
+      <div class="space-y-1.5 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
+          <h1 class="app-page-title">{{ title }}</h1>
           <slot name="titleSuffix" />
         </div>
         <div v-if="$slots.subtitle" class="min-w-0">
           <slot name="subtitle" />
         </div>
-        <p v-else-if="subtitle" class="text-sm app-text-muted">{{ subtitle }}</p>
+        <p v-else-if="subtitle" class="app-page-subtitle">{{ subtitle }}</p>
       </div>
     </div>
     <!-- Keep actions aligned to the right even when they wrap below the title. -->
-    <div class="flex items-center gap-2 flex-wrap justify-end ml-auto max-w-full">
+    <div class="flex items-center gap-2 flex-wrap justify-end ml-auto max-w-full app-motion-soft">
       <slot />
     </div>
   </div>

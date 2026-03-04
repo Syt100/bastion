@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NAlert, NButton, NCode, NModal, NSpin, NSpace, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCode, NSpin, NSpace, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useOperationsStore, type Operation, type OperationEvent } from '@/stores/operations'
 import { useUiStore } from '@/stores/ui'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -221,54 +222,54 @@ defineExpose<OperationModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('operations.title')">
-    <div class="space-y-4">
-      <div class="text-sm app-text-muted">{{ opId }}</div>
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.lg" :title="t('operations.title')">
+    <div class="text-sm app-text-muted">{{ opId }}</div>
 
-      <div v-if="op" class="flex items-center gap-2">
-        <n-tag data-testid="operation-status-tag" :type="opStatusTagType(op.status)">{{ operationStatusText }}</n-tag>
-        <span class="text-sm app-text-muted">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
-        <span class="text-sm app-text-muted">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
-        <span v-if="op.ended_at" class="text-sm app-text-muted">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
-      </div>
+    <div v-if="op" class="flex items-center gap-2">
+      <n-tag data-testid="operation-status-tag" :type="opStatusTagType(op.status)">{{ operationStatusText }}</n-tag>
+      <span class="text-sm app-text-muted">{{ t('operations.kind') }}: {{ operationKindLabel(t, op.kind) }}</span>
+      <span class="text-sm app-text-muted">{{ t('operations.startedAt') }}: {{ formatUnixSeconds(op.started_at) }}</span>
+      <span v-if="op.ended_at" class="text-sm app-text-muted">{{ t('operations.endedAt') }}: {{ formatUnixSeconds(op.ended_at) }}</span>
+    </div>
 
-      <div v-if="op?.kind === 'restore' && restoreBytesDone != null" class="text-sm app-text-muted flex flex-wrap gap-x-4 gap-y-1">
-        <span>{{ t('operations.restore.bytesDone') }}: {{ formatBytes(restoreBytesDone) }}</span>
-        <span>
-          {{ t('runs.progress.transfer.rate') }}:
-          {{ restoreDisplayRateBps != null ? `${formatBytes(restoreDisplayRateBps)}/s` : '-' }}
-        </span>
-      </div>
+    <div v-if="op?.kind === 'restore' && restoreBytesDone != null" class="text-sm app-text-muted flex flex-wrap gap-x-4 gap-y-1">
+      <span>{{ t('operations.restore.bytesDone') }}: {{ formatBytes(restoreBytesDone) }}</span>
+      <span>
+        {{ t('runs.progress.transfer.rate') }}:
+        {{ restoreDisplayRateBps != null ? `${formatBytes(restoreDisplayRateBps)}/s` : '-' }}
+      </span>
+    </div>
 
-      <n-spin v-if="loading" size="small" />
+    <n-spin v-if="loading" size="small" />
 
-      <n-alert v-if="op?.error" type="error" :title="t('operations.errorTitle')">
-        {{ op.error }}
-      </n-alert>
+    <n-alert v-if="op?.error" type="error" :title="t('operations.errorTitle')">
+      {{ op.error }}
+    </n-alert>
 
-      <div v-if="op?.summary" class="space-y-2">
-        <div class="text-sm font-medium">{{ t('operations.summary') }}</div>
-        <n-code :code="formatJson(op.summary)" language="json" show-line-numbers />
-      </div>
+    <div v-if="op?.summary" class="space-y-2">
+      <div class="text-sm font-medium">{{ t('operations.summary') }}</div>
+      <n-code :code="formatJson(op.summary)" language="json" show-line-numbers />
+    </div>
 
-      <div class="space-y-2">
-        <div class="text-sm font-medium">{{ t('operations.events') }}</div>
-        <div class="max-h-80 overflow-auto rounded-md app-border-subtle p-2 bg-[var(--n-color)]">
-          <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('operations.noEvents') }}</div>
-          <div v-else class="app-divide-y">
-            <div v-for="e in events" :key="e.seq" class="font-mono text-xs py-1">
-              <div class="flex flex-wrap gap-2">
-                <span class="app-text-muted">{{ formatUnixSeconds(e.ts) }}</span>
-                <span class="app-text-muted">{{ e.level }}</span>
-                <span class="app-text-muted">{{ e.kind }}</span>
-                <span>{{ e.message }}</span>
-              </div>
-              <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
+    <div class="space-y-2">
+      <div class="text-sm font-medium">{{ t('operations.events') }}</div>
+      <div class="max-h-80 overflow-auto rounded-md app-border-subtle p-2 bg-[var(--n-color)]">
+        <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('operations.noEvents') }}</div>
+        <div v-else class="app-divide-y">
+          <div v-for="e in events" :key="e.seq" class="font-mono text-xs py-1">
+            <div class="flex flex-wrap gap-2">
+              <span class="app-text-muted">{{ formatUnixSeconds(e.ts) }}</span>
+              <span class="app-text-muted">{{ e.level }}</span>
+              <span class="app-text-muted">{{ e.kind }}</span>
+              <span>{{ e.message }}</span>
             </div>
+            <n-code v-if="e.fields" class="mt-1" :code="formatJson(e.fields)" language="json" />
           </div>
         </div>
       </div>
+    </div>
 
+    <template #footer>
       <n-space justify="end">
         <n-button
           v-if="op?.status === 'running'"
@@ -282,6 +283,6 @@ defineExpose<OperationModalExpose>({ open })
         </n-button>
         <n-button @click="show = false">{{ t('common.close') }}</n-button>
       </n-space>
-    </div>
-  </n-modal>
+    </template>
+  </AppModalShell>
 </template>

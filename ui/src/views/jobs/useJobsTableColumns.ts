@@ -83,7 +83,7 @@ export function useJobsTableColumns(options: {
         return h('div', { class: 'min-w-0' }, [
           h('div', { class: 'font-mono tabular-nums truncate', title: schedule }, schedule),
           row.schedule
-            ? h('div', { class: 'text-xs app-text-muted font-mono tabular-nums truncate' }, row.schedule_timezone)
+            ? h('div', { class: 'app-meta-text font-mono tabular-nums truncate' }, row.schedule_timezone)
             : null,
         ])
       },
@@ -110,7 +110,7 @@ export function useJobsTableColumns(options: {
         h(
           'span',
           {
-            class: 'font-mono tabular-nums text-xs',
+            class: 'font-mono tabular-nums app-meta-text',
             title: row.latest_run_started_at != null ? formatUnixSecondsYmdHms(row.latest_run_started_at) : '-',
           },
           row.latest_run_started_at != null ? formatUnixSecondsYmdHm(row.latest_run_started_at) : '-',
@@ -125,7 +125,7 @@ export function useJobsTableColumns(options: {
       render: (row) =>
         h(
           'span',
-          { class: 'font-mono tabular-nums text-xs', title: formatUnixSecondsYmdHms(row.updated_at) },
+          { class: 'font-mono tabular-nums app-meta-text', title: formatUnixSecondsYmdHms(row.updated_at) },
           formatUnixSecondsYmdHm(row.updated_at),
         ),
     },

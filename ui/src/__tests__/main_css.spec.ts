@@ -95,4 +95,15 @@ describe('main.css background variables', () => {
       /:is\(\.n-layout-sider,\s*\.n-layout-header\)\.app-glass\s*\{[^}]*background-color:\s*var\(--app-glass-bg\)\s*;?[^}]*\}/s,
     )
   })
+
+  it('defines shared hierarchy, list, icon, and modal utility classes', () => {
+    expect(css).toMatch(/\.app-page-title\s*\{/)
+    expect(css).toMatch(/\.app-page-subtitle\s*\{/)
+    expect(css).toMatch(/\.app-list-scaffold\s*\{/)
+    expect(css).toMatch(/\.app-list-summary__count\s*\{/)
+    expect(css).toMatch(/\.app-list-table,\s*\.app-picker-table\s*\{/)
+    expect(css).toMatch(/\.app-icon-tone-primary\s*\{/)
+    expect(css).toMatch(/\.app-modal-shell__body\s*\{/)
+    expect(css).toMatch(/\.app-motion-soft\s*\{/)
+  })
 })

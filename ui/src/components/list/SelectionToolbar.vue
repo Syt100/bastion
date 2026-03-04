@@ -21,13 +21,13 @@ const { t } = useI18n()
 <template>
   <div
     v-if="props.count > 0"
-    class="app-selection-toolbar rounded-xl px-3 py-2 flex items-center justify-between gap-2 flex-wrap"
+    class="app-selection-toolbar app-motion-soft rounded-xl px-3 py-2.5 flex items-center justify-between gap-2.5 flex-wrap"
   >
     <div class="flex items-center gap-2 min-w-0">
       <n-tag size="small" :bordered="false" type="info">
         {{ t('common.selection') }}: {{ props.count }}
       </n-tag>
-      <div v-if="props.hint" class="text-xs app-text-muted truncate">
+      <div v-if="props.hint" class="app-meta-text truncate">
         {{ props.hint }}
       </div>
     </div>

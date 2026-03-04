@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { NButton, NCheckbox, NIcon, NTag, type DropdownOption } from 'naive-ui'
+import { NButton, NCheckbox, NTag, type DropdownOption } from 'naive-ui'
 import { PlayOutline } from '@vicons/ionicons5'
 
+import AppIcon from '@/components/AppIcon.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import type { JobListItem } from '@/stores/jobs'
 
@@ -46,7 +47,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="app-list-row"
+    class="app-list-row app-motion-soft"
     :class="selected ? 'bg-[var(--app-primary-soft)]' : ''"
   >
     <div class="min-w-0 flex items-start gap-2 flex-1">
@@ -66,12 +67,12 @@ const emit = defineEmits<{
       >
         <div class="min-w-0">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="font-medium truncate">{{ job.name }}</div>
+            <div class="font-semibold truncate">{{ job.name }}</div>
             <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
               {{ archivedLabel }}
             </n-tag>
           </div>
-          <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+          <div class="mt-1 flex items-center gap-2 min-w-0 app-meta-text">
             <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
               {{ nodeLabel }}
             </n-tag>
@@ -97,7 +98,7 @@ const emit = defineEmits<{
 
         <div
           v-if="latestRunStartedAtLabel"
-          class="mt-1 text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
+          class="mt-1 app-meta-text font-mono tabular-nums max-w-[10rem] truncate"
           :title="latestRunStartedAtTitle ?? ''"
         >
           {{ latestRunStartedAtLabel }}
@@ -113,10 +114,11 @@ const emit = defineEmits<{
           :disabled="runNowDisabled"
           :title="runNowLabel"
           :aria-label="runNowLabel"
+          class="app-motion-soft app-pressable"
           @click="emit('run-now')"
         >
           <template #icon>
-            <n-icon><PlayOutline /></n-icon>
+            <AppIcon :component="PlayOutline" size="sm" tone="primary" />
           </template>
         </n-button>
         <OverflowActionsButton

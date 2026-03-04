@@ -71,7 +71,10 @@ vi.mock('naive-ui', async () => {
     props: ['show'],
     emits: ['update:show'],
     setup(props, { slots }) {
-      return () => ((props as { show?: boolean }).show ? vue.h('div', { 'data-stub': 'NModal' }, slots.default?.()) : null)
+      return () =>
+        (props as { show?: boolean }).show
+          ? vue.h('div', { 'data-stub': 'NModal' }, [slots.default?.(), slots.footer?.()])
+          : null
     },
   })
 

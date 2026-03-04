@@ -12,7 +12,7 @@ defineProps<{
 <template>
   <n-card
     v-if="variant !== 'inset' && variant !== 'plain'"
-    class="app-card"
+    class="app-card app-motion-soft"
     :bordered="false"
   >
     <div class="py-10 text-center">
@@ -27,10 +27,10 @@ defineProps<{
 
   <div
     v-else
-    :class="[
-      'text-center',
-      variant === 'inset' ? 'rounded-xl app-panel-inset px-4 py-10' : 'py-10',
-    ]"
+      :class="[
+        'text-center',
+        variant === 'inset' ? 'rounded-xl app-panel-inset app-motion-soft px-4 py-10' : 'py-10',
+      ]"
   >
     <div>
       <n-spin v-if="loading" size="small" />

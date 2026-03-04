@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NInput, NModal, NRadioButton, NRadioGroup, useMessage, type DropdownOption } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NInput, NRadioButton, NRadioGroup, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
 import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
-import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
+import ListFilterSummaryRow from '@/components/list/ListFilterSummaryRow.vue'
+import ListStatePresenter from '@/components/list/ListStatePresenter.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import JobsListRowItem from './JobsListRowItem.vue'
@@ -766,37 +768,37 @@ onBeforeUnmount(() => {
             </template>
 
             <template #content>
-              <div class="space-y-2">
-                <div class="text-xs app-text-muted">
-                  {{ jobsResultsLabel }}
-                </div>
-                <ListActiveFiltersRow
-                  :chips="activeFilterChips"
-                  :clear-label="t('common.clear')"
-                  :wrap="layoutMode !== 'split'"
-                  @clear="clearFilters"
-                />
-              </div>
+              <ListFilterSummaryRow
+                :results-label="jobsResultsLabel"
+                :chips="activeFilterChips"
+                :clear-label="t('common.clear')"
+                :wrap="layoutMode !== 'split'"
+                @clear="clearFilters"
+              />
 
               <div class="mt-2 flex-1 min-h-0">
-                <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading variant="plain" />
-                <AppEmptyState
-                  v-else-if="!jobs.loading && jobs.items.length === 0"
-                  :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
-                  :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
+                <ListStatePresenter
+                  :loading="jobs.loading"
+                  :item-count="jobs.items.length"
+                  :base-empty="listBaseEmpty"
+                  :loading-title="t('common.loading')"
+                  :base-empty-title="t('jobs.empty.title')"
+                  :base-empty-description="t('jobs.empty.description')"
+                  :filtered-empty-title="t('common.noData')"
                   variant="plain"
                 >
-                  <template #actions>
-                    <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
+                  <template #baseActions>
+                    <n-button type="primary" size="small" @click="openCreate">
                       {{ t('jobs.actions.create') }}
                     </n-button>
-                    <n-button v-else size="small" @click="clearFilters">
+                  </template>
+
+                  <template #filteredActions>
+                    <n-button size="small" @click="clearFilters">
                       {{ t('common.clear') }}
                     </n-button>
                   </template>
-                </AppEmptyState>
 
-                <div v-else>
                   <ScrollShadowPane
                     data-testid="jobs-list-scroll"
                     :class="jobsListView === 'list' ? 'app-divide-y' : ''"
@@ -804,7 +806,7 @@ onBeforeUnmount(() => {
                     <template v-if="jobsListView === 'table'">
                       <div class="py-2">
                         <n-data-table
-                          class="app-picker-table"
+                          class="app-list-table app-picker-table"
                           size="small"
                           remote
                           v-model:checked-row-keys="selectedJobIds"
@@ -850,7 +852,7 @@ onBeforeUnmount(() => {
                       />
                     </template>
                   </ScrollShadowPane>
-                </div>
+                </ListStatePresenter>
               </div>
             </template>
 
@@ -932,60 +934,64 @@ onBeforeUnmount(() => {
           </template>
 
           <template #content>
-            <div class="mb-2 space-y-2">
-              <div class="text-xs app-text-muted">{{ jobsResultsLabel }}</div>
-              <ListActiveFiltersRow
-                :chips="activeFilterChips"
-                :clear-label="t('common.clear')"
-                wrap
-                @clear="clearFilters"
-              />
-            </div>
+            <ListFilterSummaryRow
+              :results-label="jobsResultsLabel"
+              :chips="activeFilterChips"
+              :clear-label="t('common.clear')"
+              wrap
+              @clear="clearFilters"
+            />
 
-            <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
-            <AppEmptyState
-              v-else-if="!jobs.loading && jobs.items.length === 0"
-              :title="listBaseEmpty ? t('jobs.empty.title') : t('common.noData')"
-              :description="listBaseEmpty ? t('jobs.empty.description') : undefined"
+            <ListStatePresenter
+              :loading="jobs.loading"
+              :item-count="jobs.items.length"
+              :base-empty="listBaseEmpty"
+              :loading-title="t('common.loading')"
+              :base-empty-title="t('jobs.empty.title')"
+              :base-empty-description="t('jobs.empty.description')"
+              :filtered-empty-title="t('common.noData')"
             >
-              <template #actions>
-                <n-button v-if="listBaseEmpty" type="primary" size="small" @click="openCreate">
+              <template #baseActions>
+                <n-button type="primary" size="small" @click="openCreate">
                   {{ t('jobs.actions.create') }}
                 </n-button>
-                <n-button v-else size="small" @click="clearFilters">
+              </template>
+
+              <template #filteredActions>
+                <n-button size="small" @click="clearFilters">
                   {{ t('common.clear') }}
                 </n-button>
               </template>
-            </AppEmptyState>
 
-            <n-card v-else class="app-card" :bordered="false">
-              <div class="app-divide-y">
-                <JobsListRowItem
-                  v-for="job in pagedFilteredJobs"
-                  :key="job.id"
-                  mobile
-                  main-trigger-test-id="jobs-row-main-trigger-mobile"
-                  run-now-test-id="jobs-row-run-now-mobile"
-                  :job="job"
-                  :open-details-label="t('jobs.workspace.actions.openDetails')"
-                  :archived-label="t('jobs.archived')"
-                  :never-ran-label="t('runs.neverRan')"
-                  :run-now-label="t('jobs.actions.runNow')"
-                  :node-label="formatNodeLabel(job.agent_id)"
-                  :schedule-label="formatScheduleLabel(job)"
-                  :latest-run-status-label="job.latest_run_status ? runStatusLabel(t, job.latest_run_status) : null"
-                  :latest-run-status-type="job.latest_run_status ? runStatusTagType(job.latest_run_status) : null"
-                  :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsYmdHm(job.latest_run_started_at) : null"
-                  :latest-run-started-at-title="job.latest_run_started_at != null ? formatUnixSecondsYmdHms(job.latest_run_started_at) : null"
-                  :run-now-loading="isRowRunNowBusy(job.id)"
-                  :run-now-disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
-                  :overflow-options="jobRowOverflowOptions(job)"
-                  @main-click="openJob(job.id)"
-                  @run-now="() => void runNow(job.id)"
-                  @overflow-select="(key) => onSelectJobRowOverflow(job, key)"
-                />
-              </div>
-            </n-card>
+              <n-card class="app-card" :bordered="false">
+                <div class="app-divide-y">
+                  <JobsListRowItem
+                    v-for="job in pagedFilteredJobs"
+                    :key="job.id"
+                    mobile
+                    main-trigger-test-id="jobs-row-main-trigger-mobile"
+                    run-now-test-id="jobs-row-run-now-mobile"
+                    :job="job"
+                    :open-details-label="t('jobs.workspace.actions.openDetails')"
+                    :archived-label="t('jobs.archived')"
+                    :never-ran-label="t('runs.neverRan')"
+                    :run-now-label="t('jobs.actions.runNow')"
+                    :node-label="formatNodeLabel(job.agent_id)"
+                    :schedule-label="formatScheduleLabel(job)"
+                    :latest-run-status-label="job.latest_run_status ? runStatusLabel(t, job.latest_run_status) : null"
+                    :latest-run-status-type="job.latest_run_status ? runStatusTagType(job.latest_run_status) : null"
+                    :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsYmdHm(job.latest_run_started_at) : null"
+                    :latest-run-started-at-title="job.latest_run_started_at != null ? formatUnixSecondsYmdHms(job.latest_run_started_at) : null"
+                    :run-now-loading="isRowRunNowBusy(job.id)"
+                    :run-now-disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
+                    :overflow-options="jobRowOverflowOptions(job)"
+                    @main-click="openJob(job.id)"
+                    @run-now="() => void runNow(job.id)"
+                    @overflow-select="(key) => onSelectJobRowOverflow(job, key)"
+                  />
+                </div>
+              </n-card>
+            </ListStatePresenter>
           </template>
 
           <template #footer>
@@ -1009,50 +1015,47 @@ onBeforeUnmount(() => {
 
     <JobEditorModal ref="editorModal" @saved="refresh" />
 
-    <n-modal
+    <AppModalShell
       v-model:show="bulkConfirmOpen"
       :mask-closable="bulkBusy === null"
-      preset="card"
-      :style="{ width: isDesktop ? '520px' : '92vw' }"
+      :width="isDesktop ? '520px' : '92vw'"
       :title="bulkConfirmTitle"
     >
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ bulkConfirmBody }}</div>
+      <div class="text-sm app-text-muted">{{ bulkConfirmBody }}</div>
 
-        <div
-          v-if="bulkConfirmKind === 'archive'"
-          class="rounded app-panel-inset p-3 space-y-1"
+      <div
+        v-if="bulkConfirmKind === 'archive'"
+        class="rounded app-panel-inset p-3 space-y-1"
+      >
+        <n-checkbox
+          :checked="bulkArchiveCascadeSnapshots"
+          @update:checked="(v) => (bulkArchiveCascadeSnapshots = v)"
         >
-          <n-checkbox
-            :checked="bulkArchiveCascadeSnapshots"
-            @update:checked="(v) => (bulkArchiveCascadeSnapshots = v)"
-          >
-            {{ t('jobs.archiveCascadeLabel') }}
-          </n-checkbox>
-          <div class="text-xs app-text-muted">{{ t('jobs.archiveCascadeHelp') }}</div>
-        </div>
-
-        <div class="flex items-center justify-end gap-2">
-          <n-button :disabled="bulkBusy !== null" @click="bulkConfirmOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button
-            v-if="bulkConfirmKind === 'archive'"
-            type="warning"
-            :loading="bulkBusy === 'archive'"
-            :disabled="bulkBusy !== null || selectedActiveJobs.length === 0"
-            @click="confirmBulkAction"
-          >
-            {{ t('jobs.actions.archive') }}
-          </n-button>
-          <n-button
-            v-else-if="bulkConfirmKind === 'unarchive'"
-            :loading="bulkBusy === 'unarchive'"
-            :disabled="bulkBusy !== null || selectedArchivedJobs.length === 0"
-            @click="confirmBulkAction"
-          >
-            {{ t('jobs.actions.unarchive') }}
-          </n-button>
-        </div>
+          {{ t('jobs.archiveCascadeLabel') }}
+        </n-checkbox>
+        <div class="app-meta-text">{{ t('jobs.archiveCascadeHelp') }}</div>
       </div>
-    </n-modal>
+
+      <template #footer>
+        <n-button :disabled="bulkBusy !== null" @click="bulkConfirmOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          v-if="bulkConfirmKind === 'archive'"
+          type="warning"
+          :loading="bulkBusy === 'archive'"
+          :disabled="bulkBusy !== null || selectedActiveJobs.length === 0"
+          @click="confirmBulkAction"
+        >
+          {{ t('jobs.actions.archive') }}
+        </n-button>
+        <n-button
+          v-else-if="bulkConfirmKind === 'unarchive'"
+          :loading="bulkBusy === 'unarchive'"
+          :disabled="bulkBusy !== null || selectedArchivedJobs.length === 0"
+          @click="confirmBulkAction"
+        >
+          {{ t('jobs.actions.unarchive') }}
+        </n-button>
+      </template>
+    </AppModalShell>
   </div>
 </template>

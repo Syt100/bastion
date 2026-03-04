@@ -38,7 +38,7 @@ vi.mock('naive-ui', async () => {
           if (opts?.respectShow && 'show' in props && !props.show) {
             return vue.h('div', { 'data-stub': name })
           }
-          return vue.h('div', { 'data-stub': name, ...attrs }, slots.default?.())
+          return vue.h('div', { 'data-stub': name, ...attrs }, [slots.default?.(), slots.footer?.()])
         }
       },
     })
