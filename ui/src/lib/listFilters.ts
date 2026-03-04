@@ -196,3 +196,34 @@ export function parseRouteQueryList(value: unknown): string[] {
   if (typeof value === 'string') return split(value)
   return []
 }
+
+export function parseRouteQueryFirst(value: unknown): string | null {
+  const values = parseRouteQueryList(value)
+  return values[0] ?? null
+}
+
+export function parseRouteQueryEnum<T extends string>(
+  value: unknown,
+  allowedValues: readonly T[],
+  fallback: T,
+): T {
+  const candidates = parseRouteQueryList(value)
+  for (const candidate of candidates) {
+    if (allowedValues.includes(candidate as T)) {
+      return candidate as T
+    }
+  }
+  return fallback
+}
+
+export function parseRouteQueryBoolean(
+  value: unknown,
+  fallback = false,
+): boolean {
+  const candidate = parseRouteQueryFirst(value)
+  if (!candidate) return fallback
+  const normalized = candidate.toLowerCase()
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false
+  return fallback
+}

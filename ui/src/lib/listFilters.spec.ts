@@ -5,6 +5,9 @@ import {
   createMultiSelectFilterField,
   createSingleSelectFilterField,
   createTextFilterField,
+  parseRouteQueryBoolean,
+  parseRouteQueryEnum,
+  parseRouteQueryFirst,
   parseRouteQueryList,
   useListFilters,
 } from './listFilters'
@@ -78,5 +81,30 @@ describe('parseRouteQueryList', () => {
     expect(parseRouteQueryList('failed, queued')).toEqual(['failed', 'queued'])
     expect(parseRouteQueryList(['failed,queued', ' sent '])).toEqual(['failed', 'queued', 'sent'])
     expect(parseRouteQueryList(null)).toEqual([])
+  })
+})
+
+describe('route query parsing helpers', () => {
+  it('extracts the first normalized route query value', () => {
+    expect(parseRouteQueryFirst(' offline ')).toBe('offline')
+    expect(parseRouteQueryFirst(['', 'revoked'])).toBe('revoked')
+    expect(parseRouteQueryFirst(['a,b', 'c'])).toBe('a')
+    expect(parseRouteQueryFirst(undefined)).toBeNull()
+  })
+
+  it('parses enum values with fallback for invalid query values', () => {
+    const allowed = ['all', 'online', 'offline', 'revoked'] as const
+    expect(parseRouteQueryEnum('online', allowed, 'all')).toBe('online')
+    expect(parseRouteQueryEnum(['foo,offline'], allowed, 'all')).toBe('offline')
+    expect(parseRouteQueryEnum('unknown', allowed, 'all')).toBe('all')
+    expect(parseRouteQueryEnum(null, allowed, 'all')).toBe('all')
+  })
+
+  it('parses boolean route query values', () => {
+    expect(parseRouteQueryBoolean('true')).toBe(true)
+    expect(parseRouteQueryBoolean('1')).toBe(true)
+    expect(parseRouteQueryBoolean('off', true)).toBe(false)
+    expect(parseRouteQueryBoolean('unknown', true)).toBe(true)
+    expect(parseRouteQueryBoolean(undefined)).toBe(false)
   })
 })

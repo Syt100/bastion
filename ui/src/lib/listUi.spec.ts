@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildListRangeSummary } from './listUi'
+import { buildListRangeSummary, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZE_OPTIONS } from './listUi'
+
+describe('list pagination defaults', () => {
+  it('exports shared default page size options', () => {
+    expect(LIST_PAGE_SIZE_OPTIONS).toEqual([20, 50, 100])
+    expect(DEFAULT_LIST_PAGE_SIZE).toBe(20)
+  })
+})
 
 describe('buildListRangeSummary', () => {
   it('returns zero range for empty lists', () => {

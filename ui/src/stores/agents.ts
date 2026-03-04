@@ -3,6 +3,8 @@ import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
 import { createLatestRequest } from '@/lib/latest'
+import { DEFAULT_LIST_PAGE_SIZE } from '@/lib/listUi'
+import { appendPaginationParams, appendQueryArrayParam, appendQueryTextParam, buildQuerySuffix } from '@/lib/listQuery'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type AgentListItem = {
@@ -76,7 +78,7 @@ export const useAgentsStore = defineStore('agents', () => {
   const loading = ref<boolean>(false)
   const total = ref<number>(0)
   const page = ref<number>(1)
-  const pageSize = ref<number>(20)
+  const pageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
   const latestRefresh = createLatestRequest()
 
   async function refresh(filters?: {
@@ -91,15 +93,12 @@ export const useAgentsStore = defineStore('agents', () => {
     loading.value = true
     try {
       const q = new URLSearchParams()
-      if (filters?.labels?.length) {
-        for (const label of filters.labels) q.append('labels[]', label)
-      }
-      if (filters?.labelsMode) q.set('labels_mode', filters.labelsMode)
+      appendQueryArrayParam(q, 'labels[]', filters?.labels)
+      appendQueryTextParam(q, 'labels_mode', filters?.labelsMode)
       if (filters?.status && filters.status !== 'all') q.set('status', filters.status)
-      if (filters?.q?.trim()) q.set('q', filters.q.trim())
-      if (filters?.page !== undefined) q.set('page', String(filters.page))
-      if (filters?.pageSize !== undefined) q.set('page_size', String(filters.pageSize))
-      const suffix = q.toString() ? '?' + q.toString() : ''
+      appendQueryTextParam(q, 'q', filters?.q)
+      appendPaginationParams(q, { page: filters?.page, pageSize: filters?.pageSize })
+      const suffix = buildQuerySuffix(q)
 
       const response = await apiFetch<AgentsListResponse>('/api/agents' + suffix, {
         signal: current.signal,

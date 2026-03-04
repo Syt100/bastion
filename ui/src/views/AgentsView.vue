@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -13,11 +13,8 @@ import {
   NRadioButton,
   NRadioGroup,
   NSelect,
-  NSpace,
-  NTag,
   useMessage,
   type DropdownOption,
-  type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -40,8 +37,20 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
-import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
-import { createMultiSelectFilterField, createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
+import {
+  buildListRangeSummary,
+  DEFAULT_LIST_PAGE_SIZE,
+  LIST_PAGE_SIZE_OPTIONS,
+  LIST_QUERY_DEBOUNCE_MS,
+} from '@/lib/listUi'
+import {
+  createMultiSelectFilterField,
+  createSingleSelectFilterField,
+  createTextFilterField,
+  parseRouteQueryEnum,
+  useListFilters,
+} from '@/lib/listFilters'
+import { useAgentsColumns } from '@/views/agents/useAgentsColumns'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
@@ -81,14 +90,10 @@ const selectedAgentIds = ref<string[]>([])
 
 const searchText = ref<string>('')
 const statusFilter = ref<AgentListStatusFilter>('all')
+const STATUS_QUERY_VALUES = ['all', 'online', 'offline', 'revoked'] as const
 
 function applyRouteFilters(): void {
-  const raw = route.query.status
-  if (typeof raw !== 'string') return
-  const value = raw.trim()
-  if (value === 'all' || value === 'online' || value === 'offline' || value === 'revoked') {
-    statusFilter.value = value
-  }
+  statusFilter.value = parseRouteQueryEnum(route.query.status, STATUS_QUERY_VALUES, 'all')
 }
 
 applyRouteFilters()
@@ -136,8 +141,8 @@ const statusOptions = computed(() => [
 ])
 
 const agentsPage = ref<number>(1)
-const agentsPageSize = ref<number>(20)
-const agentsPageSizeOptions = [20, 50, 100]
+const agentsPageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
+const agentsPageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
 const agentsRangeSummary = computed(() => buildListRangeSummary(agents.total, agentsPage.value, agentsPageSize.value))
 const agentsPaginationLabel = computed(() => t('common.paginationRange', agentsRangeSummary.value))
 
@@ -512,101 +517,21 @@ function onSelectAgentOverflow(row: AgentListItem, key: string | number): void {
   if (key === 'revoke') return openConfirm('revoke', row)
 }
 
-const columns = computed<DataTableColumns<AgentListItem>>(() => [
-  ...(isDesktop.value ? [{ type: 'selection' as const }] : []),
-  {
-    title: t('agents.columns.name'),
-    key: 'name',
-    render: (row) => row.name ?? '-',
-  },
-  {
-    title: t('agents.columns.id'),
-    key: 'id',
-    render: (row) =>
-      h('div', { class: 'flex items-center gap-2' }, [
-        h('span', { class: 'font-mono text-xs' }, shortId(row.id)),
-        h(
-          NButton,
-          { quaternary: true, size: 'small', onClick: () => copyToClipboard(row.id) },
-          { default: () => t('agents.actions.copy') },
-        ),
-      ]),
-  },
-  {
-    title: t('agents.columns.labels'),
-    key: 'labels',
-    render: (row) => {
-      if (!row.labels?.length) return '-'
-      return h(
-        'div',
-        { class: 'flex flex-wrap gap-1' },
-        row.labels.map((label) => h(NTag, { size: 'small' }, { default: () => label })),
-      )
-    },
-  },
-  {
-    title: t('agents.columns.status'),
-    key: 'status',
-    render: (row) => {
-      const conn = row.revoked
-        ? h(NTag, { type: 'error', size: 'small' }, { default: () => t('agents.status.revoked') })
-        : row.online
-          ? h(NTag, { type: 'success', size: 'small' }, { default: () => t('agents.status.online') })
-          : h(NTag, { size: 'small' }, { default: () => t('agents.status.offline') })
-
-      const cfg = h(
-        NTag,
-        {
-          type: configSyncStatusTagType(row.config_sync_status),
-          size: 'small',
-          title: configSyncTitle(row),
-        },
-        { default: () => configSyncStatusLabel(row.config_sync_status) },
-      )
-
-      return h('div', { class: 'flex flex-wrap gap-1' }, [conn, cfg])
-    },
-  },
-  {
-    title: t('agents.columns.lastSeen'),
-    key: 'last_seen_at',
-    render: (row) => formatUnixSeconds(row.last_seen_at),
-  },
-  {
-    title: t('agents.columns.actions'),
-    key: 'actions',
-    render: (row) =>
-      h(
-        NSpace,
-        { size: 8 },
-        {
-          default: () => [
-            h(
-              NButton,
-              { tertiary: true, size: 'small', onClick: () => openAgentJobs(row.id) },
-              { default: () => t('agents.actions.jobs') },
-            ),
-            h(
-              NButton,
-              {
-                tertiary: true,
-                size: 'small',
-                loading: syncNowLoading.value === row.id,
-                disabled: row.revoked,
-                onClick: () => syncConfigNow(row.id),
-              },
-              { default: () => t('agents.actions.syncNow') },
-            ),
-            h(OverflowActionsButton, {
-              size: 'small',
-              options: agentOverflowOptions(row),
-              onSelect: (key: string | number) => onSelectAgentOverflow(row, key),
-            }),
-          ],
-        },
-      ),
-  },
-])
+const { columns } = useAgentsColumns({
+  t,
+  isDesktop,
+  shortId,
+  copyToClipboard,
+  configSyncStatusTagType,
+  configSyncTitle,
+  configSyncStatusLabel,
+  formatUnixSeconds,
+  syncNowLoading,
+  openAgentJobs,
+  syncConfigNow,
+  agentOverflowOptions,
+  onSelectAgentOverflow,
+})
 
 const debouncedRefresh = createDebouncedTask(
   () => {

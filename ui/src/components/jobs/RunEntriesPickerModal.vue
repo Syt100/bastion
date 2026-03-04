@@ -38,6 +38,7 @@ import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/pickers/PickerShortcutsHelp.vue'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
+import { openPickerSession, usePickerPanelState } from '@/components/pickers/usePickerSessionState'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
 import { useLoadedRowSelection } from '@/components/pickers/useLoadedRowSelection'
 
@@ -99,12 +100,15 @@ const sizeMinApplied = ref<number | null>(null)
 const sizeMaxApplied = ref<number | null>(null)
 const sizeUnitApplied = ref<SizeUnit>('MB')
 
-const filtersPopoverOpen = ref<boolean>(false)
-const filtersDrawerOpen = ref<boolean>(false)
-const shortcutsPopoverOpen = ref<boolean>(false)
-const shortcutsDrawerOpen = ref<boolean>(false)
-const selectionPopoverOpen = ref<boolean>(false)
-const selectionDrawerOpen = ref<boolean>(false)
+const {
+  filtersPopoverOpen,
+  filtersDrawerOpen,
+  shortcutsPopoverOpen,
+  shortcutsDrawerOpen,
+  selectionPopoverOpen,
+  selectionDrawerOpen,
+  resetPanels: resetPanelState,
+} = usePickerPanelState()
 
 const lastRangeAnchorPath = ref<string | null>(null)
 const { shiftPressed } = useShiftKeyPressed(show)
@@ -372,7 +376,7 @@ async function loadMore(): Promise<void> {
   }
 }
 
-function open(nextRunId: string): void {
+function resetSessionState(nextRunId: string): void {
   runId.value = nextRunId
   prefix.value = ''
   entries.value = []
@@ -388,16 +392,19 @@ function open(nextRunId: string): void {
   sizeMinApplied.value = null
   sizeMaxApplied.value = null
   sizeUnitApplied.value = 'MB'
-  filtersPopoverOpen.value = false
-  filtersDrawerOpen.value = false
-  shortcutsPopoverOpen.value = false
-  shortcutsDrawerOpen.value = false
-  selectionPopoverOpen.value = false
-  selectionDrawerOpen.value = false
+  resetPanelState()
   selected.value = new Map()
   lastRangeAnchorPath.value = null
-  show.value = true
-  void refresh()
+}
+
+function open(nextRunId: string): void {
+  openPickerSession({
+    show,
+    reset: () => {
+      resetSessionState(nextRunId)
+    },
+    refresh,
+  })
 }
 
 function enterDir(p: string): void {

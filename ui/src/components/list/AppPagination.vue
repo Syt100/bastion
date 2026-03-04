@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NPagination } from 'naive-ui'
+import { LIST_PAGE_SIZE_OPTIONS } from '@/lib/listUi'
 
 const props = withDefaults(
   defineProps<{
@@ -12,7 +13,7 @@ const props = withDefaults(
     totalLabel?: string
   }>(),
   {
-    pageSizes: () => [20, 50, 100],
+    pageSizes: () => [...LIST_PAGE_SIZE_OPTIONS],
     loading: false,
     totalLabel: undefined,
   },

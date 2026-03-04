@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NIcon, NInput, NModal, NRadioButton, NRadioGroup, NTag, useMessage, type DataTableColumns, type DropdownOption } from 'naive-ui'
-import { PlayOutline } from '@vicons/ionicons5'
+import { NButton, NCard, NCheckbox, NDataTable, NInput, NModal, NRadioButton, NRadioGroup, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -11,11 +10,11 @@ import AppEmptyState from '@/components/AppEmptyState.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
 import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
-import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
+import JobsListRowItem from './JobsListRowItem.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
 import { useUiStore, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
@@ -24,11 +23,18 @@ import { MQ } from '@/lib/breakpoints'
 import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
-import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
+import { useIdBusyState } from '@/lib/idBusyState'
+import {
+  buildListRangeSummary,
+  DEFAULT_LIST_PAGE_SIZE,
+  LIST_PAGE_SIZE_OPTIONS,
+  LIST_QUERY_DEBOUNCE_MS,
+} from '@/lib/listUi'
 import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobsFiltersPanel from './JobsFiltersPanel.vue'
 import { useJobsFilters } from './useJobsFilters'
+import { useJobsTableColumns } from './useJobsTableColumns'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -50,8 +56,8 @@ const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 
 const jobsPage = ref<number>(1)
-const jobsPageSize = ref<number>(20)
-const jobsPageSizeOptions = [20, 50, 100]
+const jobsPageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
+const jobsPageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
 
 const {
   showArchived,
@@ -66,7 +72,10 @@ const {
   activeFilterChips,
   hasActiveFilters,
   clearFilters,
+  applyRouteQuery,
 } = useJobsFilters(t)
+
+applyRouteQuery(route.query as Record<string, unknown>)
 
 const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   if (!isDesktop.value) return 'split'
@@ -192,7 +201,7 @@ const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilt
 const selectedJobIds = ref<string[]>([])
 const selectedJobArchived = ref<Record<string, boolean>>({})
 const listSelectMode = ref<boolean>(false)
-const rowRunNowBusy = ref<Record<string, boolean>>({})
+const rowRunNowBusy = useIdBusyState<string>()
 
 const nodeJobsById = computed(() => new Map(nodeScopedJobs.value.map((j) => [j.id, j])))
 
@@ -419,8 +428,7 @@ async function openEdit(jobId: string): Promise<void> {
 }
 
 async function runNow(jobId: string): Promise<void> {
-  if (rowRunNowBusy.value[jobId] === true) return
-  rowRunNowBusy.value = { ...rowRunNowBusy.value, [jobId]: true }
+  if (!rowRunNowBusy.start(jobId)) return
   try {
     const res = await jobs.runNow(jobId)
     if (res.status === 'rejected') message.warning(t('messages.runRejected'))
@@ -428,14 +436,12 @@ async function runNow(jobId: string): Promise<void> {
   } catch (error) {
     message.error(formatToastError(t('errors.runNowFailed'), error, t))
   } finally {
-    const next = { ...rowRunNowBusy.value }
-    delete next[jobId]
-    rowRunNowBusy.value = next
+    rowRunNowBusy.stop(jobId)
   }
 }
 
 function isRowRunNowBusy(jobId: string): boolean {
-  return rowRunNowBusy.value[jobId] === true
+  return rowRunNowBusy.isBusy(jobId)
 }
 
 function openJob(jobId: string): void {
@@ -525,124 +531,20 @@ function onTableSorterUpdate(sorter: unknown): void {
   sortKey.value = 'updated_desc'
 }
 
-const tableColumns = computed<DataTableColumns<JobListItem>>(() => [
-  { type: 'selection' as const },
-  {
-    title: t('jobs.columns.name'),
-    key: 'name',
-    sorter: 'default',
-    sortOrder: tableNameSortOrder.value,
-    fixed: 'left',
-    width: 260,
-    render: (row) =>
-      h('div', { class: 'min-w-0' }, [
-        h('div', { class: 'flex items-center gap-2 min-w-0' }, [
-          h(
-            'button',
-            {
-              type: 'button',
-              class: 'text-left font-medium truncate hover:underline',
-              title: row.name,
-              onClick: () => openJob(row.id),
-            },
-            row.name,
-          ),
-          row.archived_at
-            ? h(NTag, { size: 'small', bordered: false, type: 'warning' }, { default: () => t('jobs.archived') })
-            : null,
-        ]),
-      ]),
-  },
-  {
-    title: t('jobs.columns.node'),
-    key: 'node',
-    width: 160,
-    render: (row) =>
-      h(
-        NTag,
-        { size: 'small', bordered: false, type: row.agent_id ? 'default' : 'info' },
-        { default: () => formatNodeLabel(row.agent_id) },
-      ),
-  },
-  {
-    title: t('jobs.columns.schedule'),
-    key: 'schedule',
-    width: 180,
-    render: (row) => {
-      const schedule = formatScheduleLabel(row)
-      return h('div', { class: 'min-w-0' }, [
-        h('div', { class: 'font-mono tabular-nums truncate', title: schedule }, schedule),
-        row.schedule
-          ? h('div', { class: 'text-xs app-text-muted font-mono tabular-nums truncate' }, row.schedule_timezone)
-          : null,
-      ])
-    },
-  },
-  {
-    title: t('runs.columns.status'),
-    key: 'latest_run_status',
-    width: 120,
-    render: (row) =>
-      row.latest_run_status
-        ? h(
-            NTag,
-            { size: 'small', bordered: false, type: runStatusTagType(row.latest_run_status) },
-            { default: () => runStatusLabel(t, row.latest_run_status!) },
-          )
-        : h(NTag, { size: 'small', bordered: false }, { default: () => t('runs.neverRan') }),
-  },
-  {
-    title: t('dashboard.recent.columns.startedAt'),
-    key: 'latest_run_started_at',
-    width: 140,
-    render: (row) =>
-      h(
-        'span',
-        {
-          class: 'font-mono tabular-nums text-xs',
-          title: row.latest_run_started_at != null ? formatUnixSecondsYmdHms(row.latest_run_started_at) : '-',
-        },
-        row.latest_run_started_at != null ? formatUnixSecondsYmdHm(row.latest_run_started_at) : '-',
-      ),
-  },
-  {
-    title: t('jobs.columns.updatedAt'),
-    key: 'updated_at',
-    sorter: 'default',
-    sortOrder: tableUpdatedSortOrder.value,
-    width: 140,
-    render: (row) =>
-      h(
-        'span',
-        { class: 'font-mono tabular-nums text-xs', title: formatUnixSecondsYmdHms(row.updated_at) },
-        formatUnixSecondsYmdHm(row.updated_at),
-      ),
-  },
-  {
-    title: t('jobs.columns.actions'),
-    key: 'actions',
-    fixed: 'right',
-    width: 200,
-    render: (row) =>
-      h('div', { class: 'flex items-center gap-2 justify-end' }, [
-        h(
-          NButton,
-          {
-            size: 'small',
-            loading: isRowRunNowBusy(row.id),
-            disabled: !!row.archived_at || isRowRunNowBusy(row.id),
-            onClick: () => void runNow(row.id),
-          },
-          { default: () => t('jobs.actions.runNow') },
-        ),
-        h(
-          NButton,
-          { size: 'small', disabled: !!row.archived_at, onClick: () => void openEdit(row.id) },
-          { default: () => t('common.edit') },
-        ),
-      ]),
-  },
-])
+const { tableColumns } = useJobsTableColumns({
+  t,
+  tableNameSortOrder,
+  tableUpdatedSortOrder,
+  formatNodeLabel,
+  formatScheduleLabel,
+  runStatusTagType,
+  isRowRunNowBusy,
+  openJob,
+  openEdit,
+  runNow,
+  formatUnixSecondsYmdHm,
+  formatUnixSecondsYmdHms,
+})
 
 onMounted(() => {
   void Promise.allSettled([
@@ -668,6 +570,12 @@ watch(layoutMode, () => {
 })
 
 watch([searchText, sortKey, latestStatusFilter, scheduleFilter, showArchived], resetToFirstPageAndRefresh)
+watch(
+  () => [route.query.q, route.query.archived, route.query.status, route.query.schedule, route.query.sort],
+  () => {
+    applyRouteQuery(route.query as Record<string, unknown>)
+  },
+)
 watch(jobsPage, () => {
   void refresh()
 })
@@ -913,90 +821,33 @@ onBeforeUnmount(() => {
                     </template>
 
                     <template v-else>
-                      <div
+                      <JobsListRowItem
                         v-for="job in pagedFilteredJobs"
                         :key="job.id"
-                        class="app-list-row"
-                        :class="isSelected(job.id) || (layoutMode === 'list' && selectedJobIds.includes(job.id)) ? 'bg-[var(--app-primary-soft)]' : ''"
-                      >
-                        <div class="min-w-0 flex items-start gap-2 flex-1">
-                          <div v-if="layoutMode === 'list' && listSelectMode" class="pt-0.5" @click.stop>
-                            <n-checkbox
-                              :checked="selectedJobIds.includes(job.id)"
-                              @update:checked="(v) => setJobSelected(job.id, v)"
-                            />
-                          </div>
-
-                          <button
-                            data-testid="jobs-row-main-trigger"
-                            type="button"
-                            class="min-w-0 flex-1 text-left rounded"
-                            :aria-label="t('jobs.workspace.actions.openDetails')"
-                            @click="onJobRowClick(job.id)"
-                          >
-                            <div class="min-w-0">
-                              <div class="flex items-center gap-2 min-w-0">
-                                <div class="font-medium truncate">{{ job.name }}</div>
-                                <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                                  {{ t('jobs.archived') }}
-                                </n-tag>
-                              </div>
-                              <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                                <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                                  {{ formatNodeLabel(job.agent_id) }}
-                                </n-tag>
-                                <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
-                              </div>
-                            </div>
-                          </button>
-                        </div>
-
-                        <div class="shrink-0 flex items-start gap-2">
-                          <div class="text-right min-w-[6.5rem]">
-                            <n-tag
-                              v-if="job.latest_run_status"
-                              size="small"
-                              :bordered="false"
-                              :type="runStatusTagType(job.latest_run_status)"
-                            >
-                              {{ runStatusLabel(t, job.latest_run_status) }}
-                            </n-tag>
-                            <n-tag v-else size="small" :bordered="false">
-                              {{ t('runs.neverRan') }}
-                            </n-tag>
-
-                            <div
-                              v-if="job.latest_run_started_at != null"
-                              class="mt-1 text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
-                              :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
-                            >
-                              {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
-                            </div>
-                          </div>
-
-                          <div class="flex items-center gap-1" @click.stop>
-                            <n-button
-                              data-testid="jobs-row-run-now"
-                              size="small"
-                              quaternary
-                              :loading="isRowRunNowBusy(job.id)"
-                              :disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
-                              :title="t('jobs.actions.runNow')"
-                              :aria-label="t('jobs.actions.runNow')"
-                              @click="() => void runNow(job.id)"
-                            >
-                              <template #icon>
-                                <n-icon><PlayOutline /></n-icon>
-                              </template>
-                            </n-button>
-                            <OverflowActionsButton
-                              size="small"
-                              :options="jobRowOverflowOptions(job)"
-                              @select="(key) => onSelectJobRowOverflow(job, key)"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                        main-trigger-test-id="jobs-row-main-trigger"
+                        run-now-test-id="jobs-row-run-now"
+                        :job="job"
+                        :selected="isSelected(job.id) || (layoutMode === 'list' && selectedJobIds.includes(job.id))"
+                        :selectable="layoutMode === 'list' && listSelectMode"
+                        :checked="selectedJobIds.includes(job.id)"
+                        :open-details-label="t('jobs.workspace.actions.openDetails')"
+                        :archived-label="t('jobs.archived')"
+                        :never-ran-label="t('runs.neverRan')"
+                        :run-now-label="t('jobs.actions.runNow')"
+                        :node-label="formatNodeLabel(job.agent_id)"
+                        :schedule-label="formatScheduleLabel(job)"
+                        :latest-run-status-label="job.latest_run_status ? runStatusLabel(t, job.latest_run_status) : null"
+                        :latest-run-status-type="job.latest_run_status ? runStatusTagType(job.latest_run_status) : null"
+                        :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsYmdHm(job.latest_run_started_at) : null"
+                        :latest-run-started-at-title="job.latest_run_started_at != null ? formatUnixSecondsYmdHms(job.latest_run_started_at) : null"
+                        :run-now-loading="isRowRunNowBusy(job.id)"
+                        :run-now-disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
+                        :overflow-options="jobRowOverflowOptions(job)"
+                        @main-click="onJobRowClick(job.id)"
+                        @update:checked="(value) => setJobSelected(job.id, value)"
+                        @run-now="() => void runNow(job.id)"
+                        @overflow-select="(key) => onSelectJobRowOverflow(job, key)"
+                      />
                     </template>
                   </ScrollShadowPane>
                 </div>
@@ -1109,80 +960,30 @@ onBeforeUnmount(() => {
 
             <n-card v-else class="app-card" :bordered="false">
               <div class="app-divide-y">
-                <div
+                <JobsListRowItem
                   v-for="job in pagedFilteredJobs"
                   :key="job.id"
-                  class="app-list-row"
-                >
-                  <button
-                    data-testid="jobs-row-main-trigger-mobile"
-                    type="button"
-                    class="min-w-0 flex-1 text-left rounded"
-                    :aria-label="t('jobs.workspace.actions.openDetails')"
-                    @click="openJob(job.id)"
-                  >
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-2 min-w-0">
-                        <div class="font-medium truncate">{{ job.name }}</div>
-                        <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                          {{ t('jobs.archived') }}
-                        </n-tag>
-                      </div>
-                      <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                        <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                          {{ formatNodeLabel(job.agent_id) }}
-                        </n-tag>
-                        <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
-                      </div>
-                    </div>
-                  </button>
-
-                  <div class="shrink-0 flex items-start gap-2 text-right">
-                    <div>
-                      <n-tag
-                        v-if="job.latest_run_status"
-                        size="small"
-                        :bordered="false"
-                        :type="runStatusTagType(job.latest_run_status)"
-                      >
-                        {{ runStatusLabel(t, job.latest_run_status) }}
-                      </n-tag>
-                      <n-tag v-else size="small" :bordered="false">
-                        {{ t('runs.neverRan') }}
-                      </n-tag>
-
-                      <div
-                        v-if="job.latest_run_started_at != null"
-                        class="mt-1 text-xs font-mono tabular-nums app-text-muted max-w-[10rem] truncate"
-                        :title="formatUnixSecondsYmdHms(job.latest_run_started_at)"
-                      >
-                        {{ formatUnixSecondsYmdHm(job.latest_run_started_at) }}
-                      </div>
-                    </div>
-
-                    <div class="flex items-center gap-1" @click.stop>
-                      <n-button
-                        data-testid="jobs-row-run-now-mobile"
-                        size="small"
-                        quaternary
-                        :loading="isRowRunNowBusy(job.id)"
-                        :disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
-                        :title="t('jobs.actions.runNow')"
-                        :aria-label="t('jobs.actions.runNow')"
-                        @click="() => void runNow(job.id)"
-                      >
-                        <template #icon>
-                          <n-icon><PlayOutline /></n-icon>
-                        </template>
-                      </n-button>
-                      <OverflowActionsButton
-                        size="small"
-                        :options="jobRowOverflowOptions(job)"
-                        @select="(key) => onSelectJobRowOverflow(job, key)"
-                      />
-                    </div>
-                  </div>
-                </div>
+                  mobile
+                  main-trigger-test-id="jobs-row-main-trigger-mobile"
+                  run-now-test-id="jobs-row-run-now-mobile"
+                  :job="job"
+                  :open-details-label="t('jobs.workspace.actions.openDetails')"
+                  :archived-label="t('jobs.archived')"
+                  :never-ran-label="t('runs.neverRan')"
+                  :run-now-label="t('jobs.actions.runNow')"
+                  :node-label="formatNodeLabel(job.agent_id)"
+                  :schedule-label="formatScheduleLabel(job)"
+                  :latest-run-status-label="job.latest_run_status ? runStatusLabel(t, job.latest_run_status) : null"
+                  :latest-run-status-type="job.latest_run_status ? runStatusTagType(job.latest_run_status) : null"
+                  :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsYmdHm(job.latest_run_started_at) : null"
+                  :latest-run-started-at-title="job.latest_run_started_at != null ? formatUnixSecondsYmdHms(job.latest_run_started_at) : null"
+                  :run-now-loading="isRowRunNowBusy(job.id)"
+                  :run-now-disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
+                  :overflow-options="jobRowOverflowOptions(job)"
+                  @main-click="openJob(job.id)"
+                  @run-now="() => void runNow(job.id)"
+                  @overflow-select="(key) => onSelectJobRowOverflow(job, key)"
+                />
               </div>
             </n-card>
           </template>

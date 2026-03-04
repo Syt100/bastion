@@ -38,7 +38,11 @@ const uiStore = reactive({
   setJobsWorkspaceSplitListWidthPx: vi.fn(),
 })
 
-const routeApi = reactive<{ params: Record<string, unknown>; path: string }>({ params: {}, path: '' })
+const routeApi = reactive<{ params: Record<string, unknown>; path: string; query: Record<string, unknown> }>({
+  params: {},
+  path: '',
+  query: {},
+})
 const routerApi = { push: vi.fn() }
 
 vi.mock('naive-ui', async () => {
@@ -207,6 +211,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     stubMatchMedia(true)
     routeApi.path = '/n/hub/jobs'
     routeApi.params = { nodeId: 'hub' }
+    routeApi.query = {}
 
     uiStore.jobsWorkspaceLayoutMode = 'split'
     uiStore.jobsWorkspaceListView = 'list'
@@ -271,6 +276,29 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
 
     expect(wrapper.find('[data-stub="NPagination"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('common.paginationRange')
+  })
+
+  it('hydrates jobs filters from route query before first refresh', async () => {
+    routeApi.query = { status: 'failed', archived: 'true' }
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(jobsStore.refresh).toHaveBeenCalledWith(
+      expect.objectContaining({ latestStatus: 'failed', includeArchived: true }),
+    )
+    expect(wrapper.text()).toContain('jobs.showArchived')
   })
 
   it('renders a scrollable job list container on desktop', () => {

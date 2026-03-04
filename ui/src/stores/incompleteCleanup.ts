@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 
 import { apiFetch } from '@/lib/api'
+import {
+  appendPaginationParams,
+  appendQueryArrayParam,
+  appendQueryTextParam,
+  buildQuerySuffix,
+} from '@/lib/listQuery'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type CleanupTargetType = 'webdav' | 'local_dir'
@@ -75,19 +81,20 @@ export const useIncompleteCleanupStore = defineStore('incompleteCleanup', () => 
     signal?: AbortSignal
   }): Promise<ListCleanupTasksResponse> {
     const q = new URLSearchParams()
-    if (params.status) {
-      const values = Array.isArray(params.status) ? params.status : [params.status]
-      for (const value of values) q.append('status[]', value)
-    }
-    if (params.targetType) {
-      const values = Array.isArray(params.targetType) ? params.targetType : [params.targetType]
-      for (const value of values) q.append('target_type[]', value)
-    }
-    if (params.nodeId) q.set('node_id', params.nodeId)
-    if (params.jobId) q.set('job_id', params.jobId)
-    if (params.page) q.set('page', String(params.page))
-    if (params.pageSize) q.set('page_size', String(params.pageSize))
-    const suffix = q.toString() ? `?${q.toString()}` : ''
+    appendQueryArrayParam(
+      q,
+      'status[]',
+      Array.isArray(params.status) ? params.status : params.status ? [params.status] : undefined,
+    )
+    appendQueryArrayParam(
+      q,
+      'target_type[]',
+      Array.isArray(params.targetType) ? params.targetType : params.targetType ? [params.targetType] : undefined,
+    )
+    appendQueryTextParam(q, 'node_id', params.nodeId)
+    appendQueryTextParam(q, 'job_id', params.jobId)
+    appendPaginationParams(q, { page: params.page, pageSize: params.pageSize })
+    const suffix = buildQuerySuffix(q)
     return await apiFetch<ListCleanupTasksResponse>(`/api/maintenance/incomplete-cleanup${suffix}`, {
       signal: params.signal,
     })

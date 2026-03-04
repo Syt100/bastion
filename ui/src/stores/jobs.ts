@@ -3,6 +3,13 @@ import { ref } from 'vue'
 
 import { apiFetch } from '@/lib/api'
 import { createLatestRequest } from '@/lib/latest'
+import { DEFAULT_LIST_PAGE_SIZE } from '@/lib/listUi'
+import {
+  appendPaginationParams,
+  appendQueryBooleanParam,
+  appendQueryTextParam,
+  buildQuerySuffix,
+} from '@/lib/listQuery'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OverlapPolicy = 'reject' | 'queue'
@@ -200,7 +207,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const loading = ref<boolean>(false)
   const total = ref<number>(0)
   const page = ref<number>(1)
-  const pageSize = ref<number>(20)
+  const pageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
   const latestRefresh = createLatestRequest()
   const cancelRunInFlight = new Map<string, Promise<RunDetail>>()
 
@@ -218,15 +225,14 @@ export const useJobsStore = defineStore('jobs', () => {
     loading.value = true
     try {
       const q = new URLSearchParams()
-      if (params?.includeArchived) q.set('include_archived', 'true')
-      if (params?.nodeId?.trim()) q.set('node_id', params.nodeId.trim())
-      if (params?.q?.trim()) q.set('q', params.q.trim())
+      appendQueryBooleanParam(q, 'include_archived', params?.includeArchived)
+      appendQueryTextParam(q, 'node_id', params?.nodeId)
+      appendQueryTextParam(q, 'q', params?.q)
       if (params?.latestStatus && params.latestStatus !== 'all') q.set('latest_status', params.latestStatus)
       if (params?.scheduleMode && params.scheduleMode !== 'all') q.set('schedule_mode', params.scheduleMode)
       if (params?.sort) q.set('sort', params.sort)
-      if (params?.page !== undefined) q.set('page', String(params.page))
-      if (params?.pageSize !== undefined) q.set('page_size', String(params.pageSize))
-      const suffix = q.toString() ? '?' + q.toString() : ''
+      appendPaginationParams(q, { page: params?.page, pageSize: params?.pageSize })
+      const suffix = buildQuerySuffix(q)
       const response = await apiFetch<JobsListResponse>('/api/jobs' + suffix, {
         signal: current.signal,
       })
@@ -286,8 +292,8 @@ export const useJobsStore = defineStore('jobs', () => {
   async function archiveJob(jobId: string, opts?: { cascadeSnapshots?: boolean }): Promise<void> {
     const csrf = await ensureCsrfToken()
     const q = new URLSearchParams()
-    if (opts?.cascadeSnapshots) q.set('cascade_snapshots', 'true')
-    const suffix = q.toString() ? `?${q.toString()}` : ''
+    appendQueryBooleanParam(q, 'cascade_snapshots', opts?.cascadeSnapshots)
+    const suffix = buildQuerySuffix(q)
     await apiFetch<void>(`/api/jobs/${encodeURIComponent(jobId)}/archive${suffix}`, {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf },

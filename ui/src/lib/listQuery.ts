@@ -18,6 +18,13 @@ type AppendListFilterParamsOptions = {
   sizeMaxKey?: string
 }
 
+type AppendPaginationParamsOptions = {
+  page?: number
+  pageSize?: number
+  pageKey?: string
+  pageSizeKey?: string
+}
+
 export function sizeUnitMultiplier(unit: string): number {
   if (unit === 'KB') return 1024
   if (unit === 'MB') return 1024 * 1024
@@ -31,14 +38,70 @@ function normalizeQueryText(value: string | null | undefined): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
+function normalizeQueryNumber(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null
+  return Math.trunc(value)
+}
+
 function normalizeSizeBytes(value: number | null | undefined, unit: string): number | null {
   if (value == null || !Number.isFinite(value)) return null
   return Math.max(0, Math.floor(value * sizeUnitMultiplier(unit)))
 }
 
+export function appendQueryTextParam(
+  params: URLSearchParams,
+  key: string,
+  value: string | null | undefined,
+): void {
+  const normalized = normalizeQueryText(value)
+  if (normalized) params.set(key, normalized)
+}
+
+export function appendQueryArrayParam(
+  params: URLSearchParams,
+  key: string,
+  values: Array<string> | null | undefined,
+): void {
+  if (!Array.isArray(values) || values.length === 0) return
+  for (const value of values) {
+    const normalized = normalizeQueryText(value)
+    if (normalized) params.append(key, normalized)
+  }
+}
+
+export function appendQueryBooleanParam(
+  params: URLSearchParams,
+  key: string,
+  enabled: boolean | null | undefined,
+  truthyValue = 'true',
+): void {
+  if (enabled) params.set(key, truthyValue)
+}
+
+export function appendQueryNumberParam(
+  params: URLSearchParams,
+  key: string,
+  value: number | null | undefined,
+): void {
+  const normalized = normalizeQueryNumber(value)
+  if (normalized != null) params.set(key, String(normalized))
+}
+
+export function appendPaginationParams(
+  params: URLSearchParams,
+  options: AppendPaginationParamsOptions,
+): void {
+  appendQueryNumberParam(params, options.pageKey ?? 'page', options.page)
+  appendQueryNumberParam(params, options.pageSizeKey ?? 'page_size', options.pageSize)
+}
+
+export function buildQuerySuffix(params: URLSearchParams): string {
+  const query = params.toString()
+  return query.length > 0 ? `?${query}` : ''
+}
+
 export function appendListFilterParams(params: URLSearchParams, options: AppendListFilterParamsOptions): void {
-  const q = normalizeQueryText(options.q)
-  if (q) params.set('q', q)
+  appendQueryTextParam(params, 'q', options.q)
 
   const kind = normalizeQueryText(options.kind)
   const kindAllValue = options.kindAllValue ?? 'all'

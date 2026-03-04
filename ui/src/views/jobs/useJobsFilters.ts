@@ -1,6 +1,13 @@
 import { computed, ref } from 'vue'
 
-import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
+import {
+  createSingleSelectFilterField,
+  createTextFilterField,
+  parseRouteQueryBoolean,
+  parseRouteQueryEnum,
+  parseRouteQueryFirst,
+  useListFilters,
+} from '@/lib/listFilters'
 import { runStatusLabel } from '@/lib/runs'
 import type { RunStatus } from '@/stores/jobs'
 
@@ -16,6 +23,9 @@ export function useJobsFilters(t: Translate) {
   const sortKey = ref<JobSortKey>('updated_desc')
   const latestStatusFilter = ref<JobLatestStatusFilter>('all')
   const scheduleFilter = ref<JobScheduleFilter>('all')
+  const statusValues = ['all', 'never', 'success', 'failed', 'running', 'queued', 'rejected', 'canceled'] as const
+  const scheduleValues = ['all', 'manual', 'scheduled'] as const
+  const sortValues = ['updated_desc', 'updated_asc', 'name_asc', 'name_desc'] as const
 
   const sortOptions = computed<Array<{ label: string; value: JobSortKey }>>(() => [
     { label: t('jobs.sort.updatedDesc'), value: 'updated_desc' },
@@ -93,6 +103,14 @@ export function useJobsFilters(t: Translate) {
     }),
   ])
 
+  function applyRouteQuery(query: Record<string, unknown>): void {
+    showArchived.value = parseRouteQueryBoolean(query.archived, false)
+    searchText.value = parseRouteQueryFirst(query.q) ?? ''
+    latestStatusFilter.value = parseRouteQueryEnum(query.status, statusValues, 'all')
+    scheduleFilter.value = parseRouteQueryEnum(query.schedule, scheduleValues, 'all')
+    sortKey.value = parseRouteQueryEnum(query.sort, sortValues, 'updated_desc')
+  }
+
   return {
     showArchived,
     searchText,
@@ -106,5 +124,6 @@ export function useJobsFilters(t: Translate) {
     activeFilterChips,
     hasActiveFilters,
     clearFilters,
+    applyRouteQuery,
   }
 }

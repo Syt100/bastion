@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendListFilterParams, sizeUnitMultiplier } from './listQuery'
+import {
+  appendListFilterParams,
+  appendPaginationParams,
+  appendQueryArrayParam,
+  appendQueryBooleanParam,
+  appendQueryNumberParam,
+  appendQueryTextParam,
+  buildQuerySuffix,
+  sizeUnitMultiplier,
+} from './listQuery'
 
 describe('appendListFilterParams', () => {
   it('serializes common list filter params with default size keys', () => {
@@ -54,5 +63,30 @@ describe('sizeUnitMultiplier', () => {
     expect(sizeUnitMultiplier('MB')).toBe(1024 * 1024)
     expect(sizeUnitMultiplier('GB')).toBe(1024 * 1024 * 1024)
     expect(sizeUnitMultiplier('TB')).toBe(1)
+  })
+})
+
+describe('generic list query helpers', () => {
+  it('serializes text/array/boolean/number params and pagination', () => {
+    const params = new URLSearchParams()
+    appendQueryTextParam(params, 'q', '  hello  ')
+    appendQueryTextParam(params, 'skip', '   ')
+    appendQueryArrayParam(params, 'labels[]', [' edge ', '', 'db'])
+    appendQueryBooleanParam(params, 'include_archived', true)
+    appendQueryNumberParam(params, 'cursor', 12.8)
+    appendPaginationParams(params, { page: 2, pageSize: 50 })
+
+    expect(params.get('q')).toBe('hello')
+    expect(params.has('skip')).toBe(false)
+    expect(params.getAll('labels[]')).toEqual(['edge', 'db'])
+    expect(params.get('include_archived')).toBe('true')
+    expect(params.get('cursor')).toBe('12')
+    expect(params.get('page')).toBe('2')
+    expect(params.get('page_size')).toBe('50')
+    expect(buildQuerySuffix(params)).toContain('?')
+  })
+
+  it('returns empty suffix when query has no params', () => {
+    expect(buildQuerySuffix(new URLSearchParams())).toBe('')
   })
 })

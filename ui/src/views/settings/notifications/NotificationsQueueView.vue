@@ -25,7 +25,8 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { isAbortError } from '@/lib/asyncControl'
-import { buildListRangeSummary } from '@/lib/listUi'
+import { useIdBusyState } from '@/lib/idBusyState'
+import { buildListRangeSummary, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZE_OPTIONS } from '@/lib/listUi'
 import { useLatestRequest } from '@/lib/latest'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
 import { createMultiSelectFilterField, parseRouteQueryList, useListFilters } from '@/lib/listFilters'
@@ -49,12 +50,12 @@ type QueueStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'canceled'
 const statusFilter = ref<QueueStatus[] | null>([])
 const channelFilter = ref<NotificationChannel[] | null>([])
 const page = ref(1)
-const pageSize = ref(20)
-const pageSizeOptions = [20, 50, 100]
+const pageSize = ref(DEFAULT_LIST_PAGE_SIZE)
+const pageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
 const total = ref(0)
 const items = ref<NotificationQueueItem[]>([])
-const retryBusy = ref<Record<string, boolean>>({})
-const cancelBusy = ref<Record<string, boolean>>({})
+const retryBusy = useIdBusyState<string>()
+const cancelBusy = useIdBusyState<string>()
 
 const latest = useLatestRequest()
 const queueRangeSummary = computed(() => buildListRangeSummary(total.value, page.value, pageSize.value))
@@ -162,8 +163,7 @@ async function refresh(): Promise<void> {
 }
 
 async function retryNow(id: string): Promise<void> {
-  if (retryBusy.value[id] === true) return
-  retryBusy.value = { ...retryBusy.value, [id]: true }
+  if (!retryBusy.start(id)) return
   try {
     await notifications.retryNow(id)
     message.success(t('messages.notificationRetryScheduled'))
@@ -171,15 +171,12 @@ async function retryNow(id: string): Promise<void> {
   } catch (e) {
     message.error(formatToastError(t('errors.notificationRetryFailed'), e, t))
   } finally {
-    const next = { ...retryBusy.value }
-    delete next[id]
-    retryBusy.value = next
+    retryBusy.stop(id)
   }
 }
 
 async function cancel(id: string): Promise<void> {
-  if (cancelBusy.value[id] === true) return
-  cancelBusy.value = { ...cancelBusy.value, [id]: true }
+  if (!cancelBusy.start(id)) return
   try {
     await notifications.cancel(id)
     message.success(t('messages.notificationCanceled'))
@@ -187,9 +184,7 @@ async function cancel(id: string): Promise<void> {
   } catch (e) {
     message.error(formatToastError(t('errors.notificationCancelFailed'), e, t))
   } finally {
-    const next = { ...cancelBusy.value }
-    delete next[id]
-    cancelBusy.value = next
+    cancelBusy.stop(id)
   }
 }
 
@@ -337,8 +332,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
               NButton,
               {
                 size: 'small',
-                loading: retryBusy.value[row.id] === true,
-                disabled: !(row.status === 'failed' || row.status === 'canceled') || retryBusy.value[row.id] === true,
+                loading: retryBusy.isBusy(row.id),
+                disabled: !(row.status === 'failed' || row.status === 'canceled') || retryBusy.isBusy(row.id),
                 onClick: () => void retryNow(row.id),
               },
               { default: () => t('settings.notifications.queue.actions.retryNow') },
@@ -347,8 +342,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
               NButton,
               {
                 size: 'small',
-                loading: cancelBusy.value[row.id] === true,
-                disabled: row.status !== 'queued' || cancelBusy.value[row.id] === true,
+                loading: cancelBusy.isBusy(row.id),
+                disabled: row.status !== 'queued' || cancelBusy.isBusy(row.id),
                 type: 'warning',
                 tertiary: true,
                 onClick: () => void cancel(row.id),
@@ -460,8 +455,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
             <div class="mt-3 flex items-center justify-end gap-2">
               <n-button
                 size="small"
-                :loading="retryBusy[row.id] === true"
-                :disabled="!(row.status === 'failed' || row.status === 'canceled') || retryBusy[row.id] === true"
+                :loading="retryBusy.isBusy(row.id)"
+                :disabled="!(row.status === 'failed' || row.status === 'canceled') || retryBusy.isBusy(row.id)"
                 @click="retryNow(row.id)"
               >
                 {{ t('settings.notifications.queue.actions.retryNow') }}
@@ -470,8 +465,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
                 size="small"
                 type="warning"
                 tertiary
-                :loading="cancelBusy[row.id] === true"
-                :disabled="row.status !== 'queued' || cancelBusy[row.id] === true"
+                :loading="cancelBusy.isBusy(row.id)"
+                :disabled="row.status !== 'queued' || cancelBusy.isBusy(row.id)"
                 @click="cancel(row.id)"
               >
                 {{ t('settings.notifications.queue.actions.cancel') }}

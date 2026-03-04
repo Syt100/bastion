@@ -37,6 +37,7 @@ import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
 import PickerSearchInput from '@/components/pickers/PickerSearchInput.vue'
 import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/pickers/PickerShortcutsHelp.vue'
+import { openPickerSession, usePickerPanelState } from '@/components/pickers/usePickerSessionState'
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
@@ -108,12 +109,15 @@ const sizeMinApplied = ref<number | null>(null)
 const sizeMaxApplied = ref<number | null>(null)
 const sizeUnitApplied = ref<PathPickerSizeUnit>('MB')
 
-const filtersPopoverOpen = ref<boolean>(false)
-const filtersDrawerOpen = ref<boolean>(false)
-const shortcutsPopoverOpen = ref<boolean>(false)
-const shortcutsDrawerOpen = ref<boolean>(false)
-const selectionPopoverOpen = ref<boolean>(false)
-const selectionDrawerOpen = ref<boolean>(false)
+const {
+  filtersPopoverOpen,
+  filtersDrawerOpen,
+  shortcutsPopoverOpen,
+  shortcutsDrawerOpen,
+  selectionPopoverOpen,
+  selectionDrawerOpen,
+  resetPanels: resetPanelState,
+} = usePickerPanelState()
 const pickCurrentDirConfirmOpen = ref<boolean>(false)
 const loadingMore = ref<boolean>(false)
 
@@ -150,8 +154,7 @@ const { tableContainerEl, tableBodyMaxHeightPx } = usePickerTableBodyMaxHeightPx
   },
   onClose: () => {
     pickCurrentDirConfirmOpen.value = false
-    shortcutsPopoverOpen.value = false
-    shortcutsDrawerOpen.value = false
+    resetPanelState()
   },
 })
 
@@ -868,10 +871,7 @@ function buildListRequest(path: string, cursor: string | null): PathPickerListRe
   return req
 }
 
-function open(nextCtx: unknown, initialPath?: string | PathPickerOpenOptions): void {
-  const opts =
-    typeof initialPath === 'string' ? ({ path: initialPath } satisfies PathPickerOpenOptions) : initialPath
-
+function resetSessionState(nextCtx: unknown, opts?: PathPickerOpenOptions): void {
   ctx.value = nextCtx
   pickerMode.value = opts?.mode ?? 'multi_paths'
 
@@ -900,15 +900,21 @@ function open(nextCtx: unknown, initialPath?: string | PathPickerOpenOptions): v
   listErrorMessage.value = ''
   singleDirStatus.value = 'unknown'
   singleDirMessage.value = ''
-  filtersPopoverOpen.value = false
-  filtersDrawerOpen.value = false
-  shortcutsPopoverOpen.value = false
-  shortcutsDrawerOpen.value = false
-  selectionPopoverOpen.value = false
-  selectionDrawerOpen.value = false
+  resetPanelState()
   pickCurrentDirConfirmOpen.value = false
-  show.value = true
-  void refresh()
+}
+
+function open(nextCtx: unknown, initialPath?: string | PathPickerOpenOptions): void {
+  const opts =
+    typeof initialPath === 'string' ? ({ path: initialPath } satisfies PathPickerOpenOptions) : initialPath
+
+  openPickerSession({
+    show,
+    reset: () => {
+      resetSessionState(nextCtx, opts)
+    },
+    refresh,
+  })
 }
 
 function emitPicked(paths: string[]): void {

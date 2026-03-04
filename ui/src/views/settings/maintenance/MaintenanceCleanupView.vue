@@ -21,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
 import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
+import AppPagination from '@/components/list/AppPagination.vue'
 import {
   useIncompleteCleanupStore,
   type CleanupTargetType,
@@ -35,6 +36,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { isAbortError } from '@/lib/asyncControl'
 import { useLatestRequest } from '@/lib/latest'
+import { buildListRangeSummary, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZE_OPTIONS } from '@/lib/listUi'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { copyText } from '@/lib/clipboard'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
@@ -57,11 +59,14 @@ const helpOpen = ref(false)
 const statusFilter = ref<CleanupTaskStatus[] | null>([])
 const targetFilter = ref<CleanupTargetType[] | null>([])
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(DEFAULT_LIST_PAGE_SIZE)
+const pageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
 const total = ref(0)
 const items = ref<CleanupTaskListItem[]>([])
 
 const latest = useLatestRequest()
+const cleanupRangeSummary = computed(() => buildListRangeSummary(total.value, page.value, pageSize.value))
+const cleanupPaginationLabel = computed(() => t('common.paginationRange', cleanupRangeSummary.value))
 
 const statusOptions = computed(() => [
   { label: t('settings.maintenance.cleanup.status.queued'), value: 'queued' },
@@ -265,6 +270,19 @@ watch([statusFilter, targetFilter], () => {
   page.value = 1
   void refresh()
 })
+
+function onUpdatePage(next: number): void {
+  if (next === page.value) return
+  page.value = next
+  void refresh()
+}
+
+function onUpdatePageSize(next: number): void {
+  if (next === pageSize.value) return
+  pageSize.value = next
+  page.value = 1
+  void refresh()
+}
 
 onMounted(refresh)
 
@@ -528,16 +546,17 @@ const actionHelpItems = computed(() => [
         />
       </div>
 
-      <div class="flex items-center justify-between text-sm">
-        <div class="app-text-muted">{{ t('settings.maintenance.cleanup.total', { total }) }}</div>
-        <div class="flex items-center gap-2">
-          <n-button size="small" :disabled="page <= 1" @click="page -= 1; refresh()">{{ t('common.back') }}</n-button>
-          <div class="text-xs app-text-muted">{{ page }}</div>
-          <n-button size="small" :disabled="page * pageSize >= total" @click="page += 1; refresh()">
-            {{ t('common.next') }}
-          </n-button>
-        </div>
-      </div>
+      <AppPagination
+        v-if="total > pageSize"
+        :page="page"
+        :page-size="pageSize"
+        :item-count="total"
+        :page-sizes="pageSizeOptions"
+        :loading="loading"
+        :total-label="cleanupPaginationLabel"
+        @update:page="onUpdatePage"
+        @update:page-size="onUpdatePageSize"
+      />
     </div>
   </n-card>
 

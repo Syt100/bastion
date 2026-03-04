@@ -1,4 +1,6 @@
 export const LIST_QUERY_DEBOUNCE_MS = 260
+export const LIST_PAGE_SIZE_OPTIONS = [20, 50, 100] as const
+export const DEFAULT_LIST_PAGE_SIZE: number = LIST_PAGE_SIZE_OPTIONS[0]
 
 export type ListRangeSummary = {
   start: number
