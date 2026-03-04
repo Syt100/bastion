@@ -8,7 +8,6 @@ import {
   NDrawer,
   NDrawerContent,
   NInput,
-  NModal,
   NPopover,
   NSpace,
   NSpin,
@@ -21,6 +20,7 @@ import { useI18n } from 'vue-i18n'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
 import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
 import {
   useIncompleteCleanupStore,
@@ -560,22 +560,24 @@ const actionHelpItems = computed(() => [
     </div>
   </n-card>
 
-  <n-modal v-model:show="ignoreOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.ignoreTitle')">
-    <div class="space-y-3">
-      <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.ignoreHelp') }}</div>
-      <n-input v-model:value="ignoreReason" type="textarea" :placeholder="t('settings.maintenance.cleanup.ignorePlaceholder')" />
-      <div class="flex items-center justify-end gap-2">
-        <n-button :disabled="ignoreSaving" @click="ignoreOpen = false">{{ t('common.cancel') }}</n-button>
-        <n-button type="warning" :loading="ignoreSaving" @click="confirmIgnore">{{ t('settings.maintenance.cleanup.actions.ignore') }}</n-button>
-      </div>
-    </div>
-  </n-modal>
+  <AppModalShell
+    v-model:show="ignoreOpen"
+    :width="MODAL_WIDTH.sm"
+    :title="t('settings.maintenance.cleanup.ignoreTitle')"
+  >
+    <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.ignoreHelp') }}</div>
+    <n-input v-model:value="ignoreReason" type="textarea" :placeholder="t('settings.maintenance.cleanup.ignorePlaceholder')" />
 
-  <n-modal
+    <template #footer>
+      <n-button :disabled="ignoreSaving" @click="ignoreOpen = false">{{ t('common.cancel') }}</n-button>
+      <n-button type="warning" :loading="ignoreSaving" @click="confirmIgnore">{{ t('settings.maintenance.cleanup.actions.ignore') }}</n-button>
+    </template>
+  </AppModalShell>
+
+  <AppModalShell
     v-if="isDesktop"
     v-model:show="detailOpen"
-    preset="card"
-    :style="{ width: MODAL_WIDTH.lg }"
+    :width="MODAL_WIDTH.lg"
     :title="t('settings.maintenance.cleanup.detailTitle')"
   >
     <div v-if="detailLoading" class="py-10 flex justify-center">
@@ -667,7 +669,7 @@ const actionHelpItems = computed(() => [
         </div>
       </div>
     </div>
-  </n-modal>
+  </AppModalShell>
 
   <n-drawer v-else v-model:show="detailOpen" placement="bottom" height="80vh">
     <n-drawer-content :title="t('settings.maintenance.cleanup.detailTitle')" closable>
@@ -763,27 +765,29 @@ const actionHelpItems = computed(() => [
     </n-drawer-content>
   </n-drawer>
 
-  <n-modal v-model:show="helpOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.maintenance.cleanup.statusHelpTitle')">
-    <div class="space-y-3">
-      <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.statusHelpIntro') }}</div>
+  <AppModalShell
+    v-model:show="helpOpen"
+    :width="MODAL_WIDTH.sm"
+    :title="t('settings.maintenance.cleanup.statusHelpTitle')"
+  >
+    <div class="text-sm app-text-muted">{{ t('settings.maintenance.cleanup.statusHelpIntro') }}</div>
+    <div class="space-y-2">
+      <div v-for="row in statusHelpItems" :key="row.status" class="flex items-start gap-2">
+        <n-tag size="small" :type="statusTagType(row.status)" :bordered="false">
+          {{ formatStatus(row.status) }}
+        </n-tag>
+        <div class="text-sm app-text-muted">{{ row.body }}</div>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="text-sm font-medium">{{ t('settings.maintenance.cleanup.actionHelpTitle') }}</div>
       <div class="space-y-2">
-        <div v-for="row in statusHelpItems" :key="row.status" class="flex items-start gap-2">
-          <n-tag size="small" :type="statusTagType(row.status)" :bordered="false">
-            {{ formatStatus(row.status) }}
-          </n-tag>
+        <div v-for="row in actionHelpItems" :key="row.key" class="flex items-start gap-2">
+          <n-tag size="small" :bordered="false">{{ row.label }}</n-tag>
           <div class="text-sm app-text-muted">{{ row.body }}</div>
         </div>
       </div>
-
-      <div class="space-y-2">
-        <div class="text-sm font-medium">{{ t('settings.maintenance.cleanup.actionHelpTitle') }}</div>
-        <div class="space-y-2">
-          <div v-for="row in actionHelpItems" :key="row.key" class="flex items-start gap-2">
-            <n-tag size="small" :bordered="false">{{ row.label }}</n-tag>
-            <div class="text-sm app-text-muted">{{ row.body }}</div>
-          </div>
-        </div>
-      </div>
     </div>
-  </n-modal>
+  </AppModalShell>
 </template>

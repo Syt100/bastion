@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NCode, NDrawer, NDrawerContent, NDropdown, NModal, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NCode, NDrawer, NDrawerContent, NDropdown, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
 import { EllipsisHorizontal, PlayOutline, RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import MobileTopBar from '@/components/MobileTopBar.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/JobDeployModal.vue'
 import RunDetailPanel from '@/components/runs/RunDetailPanel.vue'
@@ -326,49 +327,53 @@ function onSelectMore(key: string | number): void {
       <AppEmptyState v-else :title="t('common.noData')" />
     </div>
 
-    <n-modal v-model:show="inspectOpen" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('common.json')">
-      <div class="space-y-3">
-        <div class="text-sm app-text-muted">{{ t('jobs.detail.title') }}</div>
-        <n-code :code="jobJson" language="json" class="text-xs" />
-      </div>
-    </n-modal>
+    <AppModalShell
+      v-model:show="inspectOpen"
+      :width="MODAL_WIDTH.lg"
+      :title="t('common.json')"
+    >
+      <div class="text-sm app-text-muted">{{ t('jobs.detail.title') }}</div>
+      <n-code :code="jobJson" language="json" class="text-xs" />
+    </AppModalShell>
 
     <JobEditorModal ref="editorModal" @saved="refresh" />
     <JobDeployModal ref="deployModal" />
 
-    <n-modal v-model:show="deleteOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('jobs.deleteTitle')">
-      <div class="space-y-3">
-        <div class="text-sm app-text-muted">
-          {{
-            job?.archived_at
-              ? t('jobs.deletePermanentlyHelp')
-              : t('jobs.deleteHelp')
-          }}
-        </div>
-
-        <div v-if="job && !job.archived_at" class="rounded app-panel-inset p-3 space-y-1">
-          <n-checkbox :checked="archiveCascadeSnapshots" @update:checked="(v) => (archiveCascadeSnapshots = v)">
-            {{ t('jobs.archiveCascadeLabel') }}
-          </n-checkbox>
-          <div class="text-xs app-text-muted">{{ t('jobs.archiveCascadeHelp') }}</div>
-        </div>
-
-        <div class="flex items-center justify-end gap-2">
-          <n-button :disabled="deleteBusy !== null" @click="deleteOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button
-            v-if="job && !job.archived_at"
-            type="warning"
-            :loading="deleteBusy === 'archive'"
-            @click="confirmArchive"
-          >
-            {{ t('jobs.actions.archive') }}
-          </n-button>
-          <n-button type="error" :loading="deleteBusy === 'delete'" @click="confirmDeletePermanently">
-            {{ t('jobs.actions.deletePermanently') }}
-          </n-button>
-        </div>
+    <AppModalShell
+      v-model:show="deleteOpen"
+      :width="MODAL_WIDTH.sm"
+      :title="t('jobs.deleteTitle')"
+    >
+      <div class="text-sm app-text-muted">
+        {{
+          job?.archived_at
+            ? t('jobs.deletePermanentlyHelp')
+            : t('jobs.deleteHelp')
+        }}
       </div>
-    </n-modal>
+
+      <div v-if="job && !job.archived_at" class="rounded app-panel-inset p-3 space-y-1">
+        <n-checkbox :checked="archiveCascadeSnapshots" @update:checked="(v) => (archiveCascadeSnapshots = v)">
+          {{ t('jobs.archiveCascadeLabel') }}
+        </n-checkbox>
+        <div class="text-xs app-text-muted">{{ t('jobs.archiveCascadeHelp') }}</div>
+      </div>
+
+      <template #footer>
+        <n-button :disabled="deleteBusy !== null" @click="deleteOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          v-if="job && !job.archived_at"
+          type="warning"
+          :loading="deleteBusy === 'archive'"
+          @click="confirmArchive"
+        >
+          {{ t('jobs.actions.archive') }}
+        </n-button>
+        <n-button type="error" :loading="deleteBusy === 'delete'" @click="confirmDeletePermanently">
+          {{ t('jobs.actions.deletePermanently') }}
+        </n-button>
+      </template>
+    </AppModalShell>
 
     <n-drawer v-model:show="runDrawerOpen" placement="right" :width="runDrawerWidth">
       <n-drawer-content :title="t('runs.title')" closable>

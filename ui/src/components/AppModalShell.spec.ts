@@ -14,6 +14,8 @@ vi.mock('naive-ui', async () => {
           if (!props.show) return vue.h('div', { 'data-stub': 'NModal-hidden' })
           return vue.h('section', { 'data-stub': 'NModal' }, [
             vue.h('header', props.title as string),
+            slots.header?.(),
+            slots['header-extra']?.(),
             slots.default?.(),
             slots.footer?.(),
           ])
@@ -57,5 +59,22 @@ describe('AppModalShell', () => {
 
     expect(wrapper.find('[data-stub="NModal"]').exists()).toBe(false)
     expect(wrapper.find('[data-stub="NModal-hidden"]').exists()).toBe(true)
+  })
+
+  it('renders optional header and header-extra slots', () => {
+    const wrapper = mount(AppModalShell, {
+      props: {
+        show: true,
+        title: 'Dialog title',
+      },
+      slots: {
+        header: () => 'custom-header',
+        'header-extra': () => 'header-actions',
+        default: () => 'body-content',
+      },
+    })
+
+    expect(wrapper.get('[data-stub="NModal"]').text()).toContain('custom-header')
+    expect(wrapper.get('[data-stub="NModal"]').text()).toContain('header-actions')
   })
 })

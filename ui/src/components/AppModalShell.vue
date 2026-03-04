@@ -49,6 +49,14 @@ const resolvedContentStyle = computed<CSSProperties>(() => {
     :title="title"
     @update:show="(v) => emit('update:show', v)"
   >
+    <template v-if="$slots.header" #header>
+      <slot name="header" />
+    </template>
+
+    <template v-if="$slots['header-extra']" #header-extra>
+      <slot name="header-extra" />
+    </template>
+
     <div class="app-modal-shell__body" :class="bodyClass">
       <slot />
     </div>

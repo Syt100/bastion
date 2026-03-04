@@ -10,7 +10,6 @@ import {
   NForm,
   NFormItem,
   NInput,
-  NModal,
   NPopconfirm,
   NRadioButton,
   NRadioGroup,
@@ -26,6 +25,7 @@ import { useAgentsStore, type AgentsLabelsMode } from '@/stores/agents'
 import { useBulkOperationsStore, type WebdavDistributePreviewItem, type WebdavDistributePreviewResponse } from '@/stores/bulkOperations'
 import { useSecretsStore, type SecretListItem } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
+import AppModalShell from '@/components/AppModalShell.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -411,116 +411,115 @@ watch(distributeOpen, (open) => {
       </div>
     </n-card>
 
-    <n-modal v-model:show="editorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.webdav.editorTitle')">
-      <div class="space-y-4">
-        <n-alert v-if="editorError" type="error" :bordered="false">
-          {{ editorError }}
-        </n-alert>
+    <AppModalShell
+      v-model:show="editorOpen"
+      :width="MODAL_WIDTH.sm"
+      :title="t('settings.webdav.editorTitle')"
+    >
+      <n-alert v-if="editorError" type="error" :bordered="false">
+        {{ editorError }}
+      </n-alert>
 
-        <n-form label-placement="top">
-          <n-form-item
-            :label="t('settings.webdav.fields.name')"
-            :validation-status="editorFieldErrors.name ? 'error' : undefined"
-            :feedback="editorFieldErrors.name"
-          >
-            <n-input v-model:value="form.name" :disabled="editorLoading" />
-          </n-form-item>
-          <n-form-item
-            :label="t('settings.webdav.fields.username')"
-            :validation-status="editorFieldErrors.username ? 'error' : undefined"
-            :feedback="editorFieldErrors.username"
-          >
-            <n-input v-model:value="form.username" :disabled="editorLoading" autocomplete="username" />
-          </n-form-item>
-          <n-form-item :label="t('settings.webdav.fields.password')">
-            <n-input v-model:value="form.password" :disabled="editorLoading" autocomplete="current-password" />
-          </n-form-item>
-        </n-form>
+      <n-form label-placement="top">
+        <n-form-item
+          :label="t('settings.webdav.fields.name')"
+          :validation-status="editorFieldErrors.name ? 'error' : undefined"
+          :feedback="editorFieldErrors.name"
+        >
+          <n-input v-model:value="form.name" :disabled="editorLoading" />
+        </n-form-item>
+        <n-form-item
+          :label="t('settings.webdav.fields.username')"
+          :validation-status="editorFieldErrors.username ? 'error' : undefined"
+          :feedback="editorFieldErrors.username"
+        >
+          <n-input v-model:value="form.username" :disabled="editorLoading" autocomplete="username" />
+        </n-form-item>
+        <n-form-item :label="t('settings.webdav.fields.password')">
+          <n-input v-model:value="form.password" :disabled="editorLoading" autocomplete="current-password" />
+        </n-form-item>
+      </n-form>
 
-        <n-space justify="end">
-          <n-button @click="editorOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="editorSaving" @click="save">{{ t('common.save') }}</n-button>
-        </n-space>
-      </div>
-    </n-modal>
+      <template #footer>
+        <n-button @click="editorOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="editorSaving" @click="save">{{ t('common.save') }}</n-button>
+      </template>
+    </AppModalShell>
 
-    <n-modal
+    <AppModalShell
       v-model:show="distributeOpen"
-      preset="card"
-      :style="{ width: MODAL_WIDTH.lg }"
+      :width="MODAL_WIDTH.lg"
       :title="t('settings.webdav.distribute.title', { name: distributeSecretName })"
     >
-      <div class="space-y-4">
-        <n-alert v-if="distributeError" type="error" :bordered="false">
-          {{ distributeError }}
-        </n-alert>
+      <n-alert v-if="distributeError" type="error" :bordered="false">
+        {{ distributeError }}
+      </n-alert>
 
-        <div class="text-sm app-text-muted">{{ t('settings.webdav.distribute.help') }}</div>
+      <div class="text-sm app-text-muted">{{ t('settings.webdav.distribute.help') }}</div>
 
-        <n-form label-placement="top">
-          <n-form-item :label="t('settings.webdav.distribute.target')">
-            <n-radio-group v-model:value="distributeTarget" size="small">
-              <n-radio-button value="labels">{{ t('settings.webdav.distribute.targetLabels') }}</n-radio-button>
-              <n-radio-button value="node_ids">{{ t('settings.webdav.distribute.targetNodeIds') }}</n-radio-button>
-            </n-radio-group>
-          </n-form-item>
+      <n-form label-placement="top">
+        <n-form-item :label="t('settings.webdav.distribute.target')">
+          <n-radio-group v-model:value="distributeTarget" size="small">
+            <n-radio-button value="labels">{{ t('settings.webdav.distribute.targetLabels') }}</n-radio-button>
+            <n-radio-button value="node_ids">{{ t('settings.webdav.distribute.targetNodeIds') }}</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
 
-          <n-form-item v-if="distributeTarget === 'labels'" :label="t('settings.webdav.distribute.labels')">
-            <n-select
-              v-model:value="distributeLabels"
-              multiple
-              filterable
-              clearable
-              :loading="distributeLabelsLoading"
-              :options="distributeLabelOptions"
-              :placeholder="t('settings.webdav.distribute.labelsPlaceholder')"
-            />
-          </n-form-item>
+        <n-form-item v-if="distributeTarget === 'labels'" :label="t('settings.webdav.distribute.labels')">
+          <n-select
+            v-model:value="distributeLabels"
+            multiple
+            filterable
+            clearable
+            :loading="distributeLabelsLoading"
+            :options="distributeLabelOptions"
+            :placeholder="t('settings.webdav.distribute.labelsPlaceholder')"
+          />
+        </n-form-item>
 
-          <n-form-item v-if="distributeTarget === 'labels'" :label="t('settings.webdav.distribute.labelsMode')">
-            <n-radio-group v-model:value="distributeLabelsMode" size="small">
-              <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
-              <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
-            </n-radio-group>
-          </n-form-item>
+        <n-form-item v-if="distributeTarget === 'labels'" :label="t('settings.webdav.distribute.labelsMode')">
+          <n-radio-group v-model:value="distributeLabelsMode" size="small">
+            <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
+            <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
 
-          <n-form-item v-if="distributeTarget === 'node_ids'" :label="t('settings.webdav.distribute.nodeIds')">
-            <n-input
-              v-model:value="distributeNodeIdsRaw"
-              type="textarea"
-              :autosize="{ minRows: 3, maxRows: 8 }"
-              :placeholder="t('settings.webdav.distribute.nodeIdsPlaceholder')"
-            />
-          </n-form-item>
+        <n-form-item v-if="distributeTarget === 'node_ids'" :label="t('settings.webdav.distribute.nodeIds')">
+          <n-input
+            v-model:value="distributeNodeIdsRaw"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 8 }"
+            :placeholder="t('settings.webdav.distribute.nodeIdsPlaceholder')"
+          />
+        </n-form-item>
 
-          <n-form-item :label="t('settings.webdav.distribute.overwrite')">
-            <n-checkbox v-model:checked="distributeOverwrite">
-              {{ t('settings.webdav.distribute.overwriteHelp') }}
-            </n-checkbox>
-          </n-form-item>
-        </n-form>
+        <n-form-item :label="t('settings.webdav.distribute.overwrite')">
+          <n-checkbox v-model:checked="distributeOverwrite">
+            {{ t('settings.webdav.distribute.overwriteHelp') }}
+          </n-checkbox>
+        </n-form-item>
+      </n-form>
 
-        <n-space justify="end">
-          <n-button :disabled="distributeLoading || distributeSaving" @click="previewDistribute">
-            {{ t('settings.webdav.distribute.preview') }}
-          </n-button>
-          <n-button @click="distributeOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button
-            type="primary"
-            :loading="distributeSaving"
-            :disabled="distributeLoading"
-            @click="createDistributeOperation"
-          >
-            {{ t('settings.webdav.distribute.execute') }}
-          </n-button>
-        </n-space>
+      <n-card v-if="distributePreview" size="small" class="app-card" :bordered="false" :title="t('settings.webdav.distribute.previewTitle')">
+        <div class="overflow-x-auto">
+          <n-data-table :columns="previewColumns" :data="distributePreview.items" size="small" />
+        </div>
+      </n-card>
 
-        <n-card v-if="distributePreview" size="small" class="app-card" :bordered="false" :title="t('settings.webdav.distribute.previewTitle')">
-          <div class="overflow-x-auto">
-            <n-data-table :columns="previewColumns" :data="distributePreview.items" size="small" />
-          </div>
-        </n-card>
-      </div>
-    </n-modal>
+      <template #footer>
+        <n-button :disabled="distributeLoading || distributeSaving" @click="previewDistribute">
+          {{ t('settings.webdav.distribute.preview') }}
+        </n-button>
+        <n-button @click="distributeOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          type="primary"
+          :loading="distributeSaving"
+          :disabled="distributeLoading"
+          @click="createDistributeOperation"
+        >
+          {{ t('settings.webdav.distribute.execute') }}
+        </n-button>
+      </template>
+    </AppModalShell>
   </div>
 </template>

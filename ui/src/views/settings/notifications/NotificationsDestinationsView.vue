@@ -9,7 +9,6 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
-  NModal,
   NPopconfirm,
   NSelect,
   NSpace,
@@ -22,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 import { useNotificationsStore, type NotificationDestinationListItem, type NotificationChannel } from '@/stores/notifications'
 import { useSecretsStore, type SmtpTlsMode } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
+import AppModalShell from '@/components/AppModalShell.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -567,107 +567,111 @@ onMounted(refresh)
       </div>
     </n-card>
 
-    <n-modal v-model:show="wecomEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('settings.wecom.editorTitle')">
-      <div class="space-y-4">
-        <n-alert v-if="wecomEditorError" type="error" :bordered="false">
-          {{ wecomEditorError }}
-        </n-alert>
+    <AppModalShell
+      v-model:show="wecomEditorOpen"
+      :width="MODAL_WIDTH.sm"
+      :title="t('settings.wecom.editorTitle')"
+    >
+      <n-alert v-if="wecomEditorError" type="error" :bordered="false">
+        {{ wecomEditorError }}
+      </n-alert>
 
-        <n-form label-placement="top">
+      <n-form label-placement="top">
+        <n-form-item
+          :label="t('settings.wecom.fields.name')"
+          :validation-status="wecomFieldErrors.name ? 'error' : undefined"
+          :feedback="wecomFieldErrors.name"
+        >
+          <n-input v-model:value="wecomForm.name" :disabled="wecomEditorLoading" />
+        </n-form-item>
+        <n-form-item
+          :label="t('settings.wecom.fields.webhookUrl')"
+          :validation-status="wecomFieldErrors.webhookUrl ? 'error' : undefined"
+          :feedback="wecomFieldErrors.webhookUrl"
+        >
+          <n-input v-model:value="wecomForm.webhookUrl" :disabled="wecomEditorLoading" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-button @click="wecomEditorOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="wecomEditorSaving" @click="saveWecom">{{ t('common.save') }}</n-button>
+      </template>
+    </AppModalShell>
+
+    <AppModalShell
+      v-model:show="smtpEditorOpen"
+      :width="MODAL_WIDTH.md"
+      :title="t('settings.smtp.editorTitle')"
+    >
+      <n-alert v-if="smtpEditorError" type="error" :bordered="false">
+        {{ smtpEditorError }}
+      </n-alert>
+
+      <n-form label-placement="top">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <n-form-item
-            :label="t('settings.wecom.fields.name')"
-            :validation-status="wecomFieldErrors.name ? 'error' : undefined"
-            :feedback="wecomFieldErrors.name"
+            :label="t('settings.smtp.fields.name')"
+            :validation-status="smtpFieldErrors.name ? 'error' : undefined"
+            :feedback="smtpFieldErrors.name"
           >
-            <n-input v-model:value="wecomForm.name" :disabled="wecomEditorLoading" />
+            <n-input v-model:value="smtpForm.name" :disabled="smtpEditorLoading" />
           </n-form-item>
           <n-form-item
-            :label="t('settings.wecom.fields.webhookUrl')"
-            :validation-status="wecomFieldErrors.webhookUrl ? 'error' : undefined"
-            :feedback="wecomFieldErrors.webhookUrl"
+            :label="t('settings.smtp.fields.host')"
+            :validation-status="smtpFieldErrors.host ? 'error' : undefined"
+            :feedback="smtpFieldErrors.host"
           >
-            <n-input v-model:value="wecomForm.webhookUrl" :disabled="wecomEditorLoading" />
+            <n-input v-model:value="smtpForm.host" :disabled="smtpEditorLoading" />
           </n-form-item>
-        </n-form>
+        </div>
 
-        <n-space justify="end">
-          <n-button @click="wecomEditorOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="wecomEditorSaving" @click="saveWecom">{{ t('common.save') }}</n-button>
-        </n-space>
-      </div>
-    </n-modal>
-
-    <n-modal v-model:show="smtpEditorOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('settings.smtp.editorTitle')">
-      <div class="space-y-4">
-        <n-alert v-if="smtpEditorError" type="error" :bordered="false">
-          {{ smtpEditorError }}
-        </n-alert>
-
-        <n-form label-placement="top">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item
-              :label="t('settings.smtp.fields.name')"
-              :validation-status="smtpFieldErrors.name ? 'error' : undefined"
-              :feedback="smtpFieldErrors.name"
-            >
-              <n-input v-model:value="smtpForm.name" :disabled="smtpEditorLoading" />
-            </n-form-item>
-            <n-form-item
-              :label="t('settings.smtp.fields.host')"
-              :validation-status="smtpFieldErrors.host ? 'error' : undefined"
-              :feedback="smtpFieldErrors.host"
-            >
-              <n-input v-model:value="smtpForm.host" :disabled="smtpEditorLoading" />
-            </n-form-item>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item
-              :label="t('settings.smtp.fields.port')"
-              :validation-status="smtpFieldErrors.port ? 'error' : undefined"
-              :feedback="smtpFieldErrors.port"
-            >
-              <n-input-number v-model:value="smtpForm.port" :disabled="smtpEditorLoading" :min="1" :max="65535" class="w-full" />
-            </n-form-item>
-            <n-form-item :label="t('settings.smtp.fields.tls')">
-              <n-select v-model:value="smtpForm.tls" :options="smtpTlsOptions" />
-            </n-form-item>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item :label="t('settings.smtp.fields.username')">
-              <n-input v-model:value="smtpForm.username" :disabled="smtpEditorLoading" autocomplete="username" />
-            </n-form-item>
-            <n-form-item
-              :label="t('settings.smtp.fields.password')"
-              :validation-status="smtpFieldErrors.password ? 'error' : undefined"
-              :feedback="smtpFieldErrors.password"
-            >
-              <n-input v-model:value="smtpForm.password" :disabled="smtpEditorLoading" type="password" autocomplete="current-password" />
-            </n-form-item>
-          </div>
-
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <n-form-item
-            :label="t('settings.smtp.fields.from')"
-            :validation-status="smtpFieldErrors.from ? 'error' : undefined"
-            :feedback="smtpFieldErrors.from"
+            :label="t('settings.smtp.fields.port')"
+            :validation-status="smtpFieldErrors.port ? 'error' : undefined"
+            :feedback="smtpFieldErrors.port"
           >
-            <n-input v-model:value="smtpForm.from" :disabled="smtpEditorLoading" />
+            <n-input-number v-model:value="smtpForm.port" :disabled="smtpEditorLoading" :min="1" :max="65535" class="w-full" />
+          </n-form-item>
+          <n-form-item :label="t('settings.smtp.fields.tls')">
+            <n-select v-model:value="smtpForm.tls" :options="smtpTlsOptions" />
+          </n-form-item>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+          <n-form-item :label="t('settings.smtp.fields.username')">
+            <n-input v-model:value="smtpForm.username" :disabled="smtpEditorLoading" autocomplete="username" />
           </n-form-item>
           <n-form-item
-            :label="t('settings.smtp.fields.to')"
-            :validation-status="smtpFieldErrors.toText ? 'error' : undefined"
-            :feedback="smtpFieldErrors.toText"
+            :label="t('settings.smtp.fields.password')"
+            :validation-status="smtpFieldErrors.password ? 'error' : undefined"
+            :feedback="smtpFieldErrors.password"
           >
-            <n-input v-model:value="smtpForm.toText" :disabled="smtpEditorLoading" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" />
+            <n-input v-model:value="smtpForm.password" :disabled="smtpEditorLoading" type="password" autocomplete="current-password" />
           </n-form-item>
-        </n-form>
+        </div>
 
-        <n-space justify="end">
-          <n-button @click="smtpEditorOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="smtpEditorSaving" @click="saveSmtp">{{ t('common.save') }}</n-button>
-        </n-space>
-      </div>
-    </n-modal>
+        <n-form-item
+          :label="t('settings.smtp.fields.from')"
+          :validation-status="smtpFieldErrors.from ? 'error' : undefined"
+          :feedback="smtpFieldErrors.from"
+        >
+          <n-input v-model:value="smtpForm.from" :disabled="smtpEditorLoading" />
+        </n-form-item>
+        <n-form-item
+          :label="t('settings.smtp.fields.to')"
+          :validation-status="smtpFieldErrors.toText ? 'error' : undefined"
+          :feedback="smtpFieldErrors.toText"
+        >
+          <n-input v-model:value="smtpForm.toText" :disabled="smtpEditorLoading" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-button @click="smtpEditorOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="smtpEditorSaving" @click="saveSmtp">{{ t('common.save') }}</n-button>
+      </template>
+    </AppModalShell>
   </div>
 </template>

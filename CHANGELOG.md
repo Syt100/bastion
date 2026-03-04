@@ -30,6 +30,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed front-end list/picker internals to reuse shared route-query hydration, pagination defaults, per-id busy-state helpers, picker session reset helpers, and store query builders; also split Jobs/Agents list rendering into reusable modules and migrated Maintenance Cleanup to shared pagination controls.
 - Changed Web UI visual consistency by adding shared hierarchy/density/motion utilities, unified filter summary + list-state presenter components, shared icon/modal primitives, and migrating Jobs/Agents/Settings surfaces to the new design baseline.
 - Changed Agents page remaining edit/bulk modals to reuse the shared modal shell so dialog spacing, footer alignment, and scroll behavior stay consistent with Jobs and operation dialogs.
+- Changed remaining Jobs/Settings/Snapshots page dialogs to reuse the shared modal shell, including header-extra action slots, so page-level modal spacing, footer layout, and scroll containment are consistent across core management views.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).

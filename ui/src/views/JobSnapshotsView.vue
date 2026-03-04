@@ -10,7 +10,6 @@ import {
   NDataTable,
   NIcon,
   NInput,
-  NModal,
   NPopover,
   NSpace,
   NSpin,
@@ -25,6 +24,7 @@ import { PinOutline } from '@vicons/ionicons5'
 import PageHeader from '@/components/PageHeader.vue'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
@@ -803,60 +803,64 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       </n-button>
     </div>
 
-    <n-modal v-model:show="deleteConfirmOpen" :mask-closable="!deleteConfirmBusy" preset="card" :style="{ width: isDesktop ? '720px' : '92vw' }">
-      <template #header>{{ t('snapshots.deleteConfirm.title') }}</template>
-      <div class="space-y-3">
-        <div class="text-sm app-text-muted">{{ t('snapshots.deleteConfirm.subtitle', { count: deleteConfirmRows.length }) }}</div>
-        <n-alert v-if="deleteConfirmPinnedCount > 0" type="warning" :bordered="false">
-          <div class="text-sm font-medium">{{ t('snapshots.deleteConfirm.pinnedWarningTitle') }}</div>
-          <div class="text-sm app-text-muted mt-1">
-            {{ t('snapshots.deleteConfirm.pinnedWarning', { count: deleteConfirmPinnedCount }) }}
-          </div>
-          <div class="mt-2">
-            <n-checkbox :checked="deleteConfirmForcePinned" @update:checked="(v) => (deleteConfirmForcePinned = v)">
-              {{ t('snapshots.deleteConfirm.forcePinnedLabel') }}
-            </n-checkbox>
-          </div>
-        </n-alert>
-        <div class="max-h-64 overflow-y-auto rounded app-border-subtle">
-          <div class="app-divide-y">
-            <div
-              v-for="row in deleteConfirmRows"
-              :key="row.run_id"
-              class="px-3 py-2"
-              :class="row.pinned_at != null ? 'border-l-2 border-l-[color:var(--app-warning)]' : ''"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="font-mono text-xs tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
-                  <div class="text-xs app-text-muted truncate mt-0.5">{{ formatTarget(row) }}</div>
-                </div>
-                <div class="flex items-center gap-1 text-xs font-mono app-text-muted">
-                  <n-icon v-if="row.pinned_at != null" :component="PinOutline" :size="14" class="text-[var(--app-warning)]" />
-                  <span>{{ row.run_id.slice(0, 8) }}…</span>
-                </div>
+    <AppModalShell
+      v-model:show="deleteConfirmOpen"
+      :mask-closable="!deleteConfirmBusy"
+      :width="isDesktop ? '720px' : '92vw'"
+      :title="t('snapshots.deleteConfirm.title')"
+    >
+      <div class="text-sm app-text-muted">{{ t('snapshots.deleteConfirm.subtitle', { count: deleteConfirmRows.length }) }}</div>
+      <n-alert v-if="deleteConfirmPinnedCount > 0" type="warning" :bordered="false">
+        <div class="text-sm font-medium">{{ t('snapshots.deleteConfirm.pinnedWarningTitle') }}</div>
+        <div class="text-sm app-text-muted mt-1">
+          {{ t('snapshots.deleteConfirm.pinnedWarning', { count: deleteConfirmPinnedCount }) }}
+        </div>
+        <div class="mt-2">
+          <n-checkbox :checked="deleteConfirmForcePinned" @update:checked="(v) => (deleteConfirmForcePinned = v)">
+            {{ t('snapshots.deleteConfirm.forcePinnedLabel') }}
+          </n-checkbox>
+        </div>
+      </n-alert>
+      <div class="max-h-64 overflow-y-auto rounded app-border-subtle">
+        <div class="app-divide-y">
+          <div
+            v-for="row in deleteConfirmRows"
+            :key="row.run_id"
+            class="px-3 py-2"
+            :class="row.pinned_at != null ? 'border-l-2 border-l-[color:var(--app-warning)]' : ''"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-mono text-xs tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</div>
+                <div class="text-xs app-text-muted truncate mt-0.5">{{ formatTarget(row) }}</div>
+              </div>
+              <div class="flex items-center gap-1 text-xs font-mono app-text-muted">
+                <n-icon v-if="row.pinned_at != null" :component="PinOutline" :size="14" class="text-[var(--app-warning)]" />
+                <span>{{ row.run_id.slice(0, 8) }}…</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <n-button :disabled="deleteConfirmBusy" @click="deleteConfirmOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button
-            type="error"
-            :loading="deleteConfirmBusy"
-            :disabled="deleteConfirmBusy || (deleteConfirmPinnedCount > 0 && !deleteConfirmForcePinned)"
-            @click="confirmDelete"
-          >
-            {{ t('snapshots.actions.confirmDelete') }}
-          </n-button>
-        </div>
-      </template>
-    </n-modal>
 
-    <n-modal v-model:show="deleteLogOpen" preset="card" :style="{ width: isDesktop ? '900px' : '92vw' }">
-      <template #header>{{ t('snapshots.deleteLog.title') }}</template>
+      <template #footer>
+        <n-button :disabled="deleteConfirmBusy" @click="deleteConfirmOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          type="error"
+          :loading="deleteConfirmBusy"
+          :disabled="deleteConfirmBusy || (deleteConfirmPinnedCount > 0 && !deleteConfirmForcePinned)"
+          @click="confirmDelete"
+        >
+          {{ t('snapshots.actions.confirmDelete') }}
+        </n-button>
+      </template>
+    </AppModalShell>
+
+    <AppModalShell
+      v-model:show="deleteLogOpen"
+      :width="isDesktop ? '900px' : '92vw'"
+      :title="t('snapshots.deleteLog.title')"
+    >
       <template #header-extra>
         <div class="flex gap-2">
           <n-button size="small" :disabled="deleteLogLoading || !deleteLogTask || deleteLogTask.status === 'running'" @click="retryDeleteNow">
@@ -915,6 +919,6 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
           </div>
         </div>
       </n-spin>
-    </n-modal>
+    </AppModalShell>
   </div>
 </template>
