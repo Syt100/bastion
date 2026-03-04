@@ -39,6 +39,7 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
+import { createDebouncedTask } from '@/lib/asyncControl'
 import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
 import { createMultiSelectFilterField, createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
 import AppEmptyState from '@/components/AppEmptyState.vue'
@@ -607,14 +608,15 @@ const columns = computed<DataTableColumns<AgentListItem>>(() => [
   },
 ])
 
-let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const debouncedRefresh = createDebouncedTask(
+  () => {
+    void refresh()
+  },
+  LIST_QUERY_DEBOUNCE_MS,
+)
 
 function scheduleRefresh(): void {
-  if (refreshDebounceTimer != null) clearTimeout(refreshDebounceTimer)
-  refreshDebounceTimer = setTimeout(() => {
-    refreshDebounceTimer = null
-    void refresh()
-  }, LIST_QUERY_DEBOUNCE_MS)
+  debouncedRefresh.schedule()
 }
 
 watch([selectedLabels, labelsMode], resetToFirstPageAndRefresh, { deep: true })
@@ -655,10 +657,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (refreshDebounceTimer != null) {
-    clearTimeout(refreshDebounceTimer)
-    refreshDebounceTimer = null
-  }
+  debouncedRefresh.cancel()
 })
 </script>
 

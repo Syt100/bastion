@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 
-import type { PickerActiveChip } from '@/components/pickers/PickerActiveChipsRow.vue'
+import type { FilterChip } from '@/lib/filterChips'
 
 type Primitive = string | number | boolean
 
@@ -17,7 +17,7 @@ type FilterOptionsSource<T extends Primitive> =
 type ListFilterField = {
   clear: () => void
   isActive: () => boolean
-  chips: () => PickerActiveChip[]
+  chips: () => FilterChip[]
 }
 
 function resolveOptions<T extends Primitive>(source: FilterOptionsSource<T>): FilterOption<T>[] {
@@ -161,8 +161,8 @@ export function useListFilters(fields: ListFilterField[]) {
 
   const hasActiveFilters = computed<boolean>(() => filtersActiveCount.value > 0)
 
-  const activeFilterChips = computed<PickerActiveChip[]>(() => {
-    const chips: PickerActiveChip[] = []
+  const activeFilterChips = computed<FilterChip[]>(() => {
+    const chips: FilterChip[] = []
     for (const field of fields) {
       chips.push(...field.chips())
     }

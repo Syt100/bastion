@@ -21,6 +21,9 @@ import { ListOutline } from '@vicons/ionicons5'
 
 import { apiFetch } from '@/lib/api'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
+import { useLatestRequest } from '@/lib/latest'
+import { appendListFilterParams } from '@/lib/listQuery'
+import { isAbortError } from '@/lib/asyncControl'
 import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { useMediaQuery } from '@/lib/media'
@@ -36,6 +39,7 @@ import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/picke
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
+import { useLoadedRowSelection } from '@/components/pickers/useLoadedRowSelection'
 
 export type RunEntriesSelection = {
   files: string[]
@@ -122,6 +126,7 @@ function onPrefixNavigate(): void {
 
 const selected = ref<Map<string, 'file' | 'dir'>>(new Map())
 const checkedRowKeys = computed<string[]>(() => Array.from(selected.value.keys()))
+const latestListRequest = useLatestRequest()
 
 const pickerShortcuts = computed<PickerShortcutItem[]>(() => [
   { combo: 'Enter', description: t('pickers.shortcuts.enterDir') },
@@ -162,13 +167,6 @@ const typeSortOptions = computed(() => [
   { label: t('common.dirFirst'), value: 'dir_first' as const },
   { label: t('common.fileFirst'), value: 'file_first' as const },
 ])
-
-function sizeUnitMultiplier(unit: SizeUnit): number {
-  if (unit === 'KB') return 1024
-  if (unit === 'MB') return 1024 * 1024
-  if (unit === 'GB') return 1024 * 1024 * 1024
-  return 1
-}
 
 function formatSizeRange(min: number | null, max: number | null, unit: SizeUnit): string {
   const u = unit
@@ -303,61 +301,74 @@ function applySizeFilter(): void {
   onFiltersChanged()
 }
 
-async function fetchPage(cursor: number, append: boolean): Promise<void> {
+async function fetchPage(cursor: number, signal: AbortSignal): Promise<RunEntriesResponse | null> {
   const id = runId.value
-  if (!id) return
+  if (!id) return null
 
   const params = new URLSearchParams()
   if (prefix.value.trim()) params.set('prefix', prefix.value.trim())
   params.set('cursor', String(cursor))
   params.set('limit', '200')
-  if (searchApplied.value.trim()) params.set('q', searchApplied.value.trim())
-  if (kindFilter.value !== 'all') params.set('kind', kindFilter.value)
-  if (hideDotfiles.value) params.set('hide_dotfiles', 'true')
-  if (typeSort.value !== 'dir_first') params.set('type_sort', typeSort.value)
-
-  const mult = sizeUnitMultiplier(sizeUnitApplied.value)
-  const minBytes =
-    sizeMinApplied.value != null && Number.isFinite(sizeMinApplied.value)
-      ? Math.max(0, Math.floor(sizeMinApplied.value * mult))
-      : null
-  const maxBytes =
-    sizeMaxApplied.value != null && Number.isFinite(sizeMaxApplied.value)
-      ? Math.max(0, Math.floor(sizeMaxApplied.value * mult))
-      : null
-
-  if (minBytes != null) params.set('min_size_bytes', String(minBytes))
-  if (maxBytes != null) params.set('max_size_bytes', String(maxBytes))
+  appendListFilterParams(params, {
+    q: searchApplied.value,
+    kind: kindFilter.value,
+    hideDotfiles: hideDotfiles.value,
+    typeSort: typeSort.value,
+    typeSortDefault: 'dir_first',
+    size: {
+      min: sizeMinApplied.value,
+      max: sizeMaxApplied.value,
+      unit: sizeUnitApplied.value,
+    },
+    sizeMinKey: 'min_size_bytes',
+    sizeMaxKey: 'max_size_bytes',
+  })
 
   const url = `/api/runs/${encodeURIComponent(id)}/entries?${params.toString()}`
 
-  const res = await apiFetch<RunEntriesResponse>(url)
-  nextCursor.value = res.next_cursor ?? null
-  entries.value = append ? [...entries.value, ...res.entries] : res.entries
+  return await apiFetch<RunEntriesResponse>(url, { signal })
 }
 
 async function refresh(): Promise<void> {
   if (!runId.value) return
+  const current = latestListRequest.next()
   loading.value = true
+  loadingMore.value = false
   try {
-    await fetchPage(0, false)
+    const res = await fetchPage(0, current.signal)
+    if (!res || current.isStale() || current.signal.aborted) return
+    nextCursor.value = res.next_cursor ?? null
+    entries.value = res.entries
   } catch (error) {
+    if (current.isStale() || current.signal.aborted || isAbortError(error)) return
     message.error(formatToastError(t('errors.runEntriesFailed'), error, t))
   } finally {
-    loading.value = false
+    if (!current.isStale()) {
+      loading.value = false
+      current.finish()
+    }
   }
 }
 
 async function loadMore(): Promise<void> {
+  if (loading.value || loadingMore.value) return
   const cur = nextCursor.value
   if (cur == null) return
+  const current = latestListRequest.next()
   loadingMore.value = true
   try {
-    await fetchPage(cur, true)
+    const res = await fetchPage(cur, current.signal)
+    if (!res || current.isStale() || current.signal.aborted) return
+    nextCursor.value = res.next_cursor ?? null
+    entries.value = [...entries.value, ...res.entries]
   } catch (error) {
+    if (current.isStale() || current.signal.aborted || isAbortError(error)) return
     message.error(formatToastError(t('errors.runEntriesFailed'), error, t))
   } finally {
-    loadingMore.value = false
+    if (!current.isStale()) {
+      loadingMore.value = false
+      current.finish()
+    }
   }
 }
 
@@ -454,74 +465,44 @@ function resetAllFilters(): void {
   onFiltersChanged()
 }
 
+function setSelectedFromPaths(nextPaths: Set<string>): void {
+  const prevSelected = selected.value
+  const loadedKinds = new Map(
+    entries.value.map((row) => [row.path, row.kind === 'dir' ? 'dir' : 'file'] as const),
+  )
+  const next = new Map<string, 'file' | 'dir'>()
+
+  for (const path of nextPaths) {
+    const prevKind = prevSelected.get(path)
+    const resolvedKind = prevKind ?? loadedKinds.get(path) ?? 'file'
+    next.set(path, resolvedKind)
+  }
+
+  selected.value = next
+}
+
+const loadedSelection = useLoadedRowSelection({
+  getSelected: () => new Set(selected.value.keys()),
+  setSelected: setSelectedFromPaths,
+  getLoaded: () => entries.value.map((entry) => entry.path),
+  shiftPressed,
+  lastRangeAnchor: lastRangeAnchorPath,
+})
+
 function clearSelection(): void {
-  selected.value = new Map()
-  lastRangeAnchorPath.value = null
+  loadedSelection.clearSelection()
 }
 
 function selectAllLoadedRows(): void {
-  const next = new Map(selected.value)
-  for (const row of entries.value) {
-    next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
-  }
-  selected.value = next
+  loadedSelection.selectAllLoadedRows()
 }
 
 function invertLoadedRowsSelection(): void {
-  const next = new Map(selected.value)
-  for (const row of entries.value) {
-    if (next.has(row.path)) next.delete(row.path)
-    else next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
-  }
-  selected.value = next
+  loadedSelection.invertLoadedRowsSelection()
 }
 
 function updateCheckedRowKeys(keys: Array<string | number>): void {
-  const loaded = entries.value.map((e) => e.path)
-  const loadedSet = new Set(loaded)
-  const desiredLoaded = new Set(keys.map((k) => String(k)).filter((p) => loadedSet.has(p)))
-
-  const prev = selected.value
-  const next = new Map(prev)
-
-  // Apply the desired selection state for loaded rows only; keep selection from other pages intact.
-  for (const row of entries.value) {
-    if (desiredLoaded.has(row.path)) next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
-    else next.delete(row.path)
-  }
-
-  const added: string[] = []
-  const removed: string[] = []
-  for (const p of loaded) {
-    const was = prev.has(p)
-    const now = next.has(p)
-    if (!was && now) added.push(p)
-    else if (was && !now) removed.push(p)
-  }
-
-  if (shiftPressed.value && lastRangeAnchorPath.value && added.length === 1 && removed.length === 0) {
-    const a = lastRangeAnchorPath.value
-    const b = added[0]
-    if (!b) {
-      selected.value = next
-      return
-    }
-    const idxA = loaded.indexOf(a)
-    const idxB = loaded.indexOf(b)
-    if (idxA !== -1 && idxB !== -1) {
-      const from = Math.min(idxA, idxB)
-      const to = Math.max(idxA, idxB)
-      for (const row of entries.value.slice(from, to + 1)) {
-        next.set(row.path, row.kind === 'dir' ? 'dir' : 'file')
-      }
-    }
-  }
-
-  if (added.length === 1 && removed.length === 0) lastRangeAnchorPath.value = added[0] ?? null
-  else if (removed.length === 1 && added.length === 0) lastRangeAnchorPath.value = removed[0] ?? null
-  else if (next.size === 0) lastRangeAnchorPath.value = null
-
-  selected.value = next
+  loadedSelection.updateCheckedRowKeys(keys)
 }
 
 function pick(): void {

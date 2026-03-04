@@ -40,6 +40,7 @@ import PickerShortcutsHelp, { type PickerShortcutItem } from '@/components/picke
 import { usePickerTableBodyMaxHeightPx } from '@/components/pickers/usePickerTableBodyMaxHeightPx'
 import { usePickerKeyboardShortcuts } from '@/components/pickers/usePickerKeyboardShortcuts'
 import { useShiftKeyPressed } from '@/components/pickers/useShiftKeyPressed'
+import { useLoadedRowSelection } from '@/components/pickers/useLoadedRowSelection'
 
 import type {
   PathPickerCapabilities,
@@ -1032,74 +1033,31 @@ function loadedRowPaths(): string[] {
   return tableData.value.map((e) => normalizePath(e.path)).filter((v) => v.length > 0)
 }
 
+const loadedSelection = useLoadedRowSelection({
+  getSelected: () => new Set(selectedUnique.value),
+  setSelected: (next) => {
+    checked.value = Array.from(next)
+  },
+  getLoaded: loadedRowPaths,
+  shiftPressed,
+  lastRangeAnchor: lastRangeAnchorPath,
+})
+
 function clearSelection(): void {
-  checked.value = []
-  lastRangeAnchorPath.value = null
+  loadedSelection.clearSelection()
 }
 
 function selectAllLoadedRows(): void {
-  checked.value = uniqueNormalizedPaths([...checked.value, ...loadedRowPaths()])
+  loadedSelection.selectAllLoadedRows()
 }
 
 function invertLoadedRowsSelection(): void {
-  const loaded = loadedRowPaths()
-  const loadedSet = new Set(loaded)
-  const current = new Set(selectedUnique.value)
-
-  // Toggle only the loaded rows; keep selection from other directories intact.
-  for (const p of loadedSet) {
-    if (current.has(p)) current.delete(p)
-    else current.add(p)
-  }
-
-  checked.value = Array.from(current)
+  loadedSelection.invertLoadedRowsSelection()
 }
 
 function updateCheckedRowKeys(keys: Array<string | number>): void {
   if (isSingleDirMode.value) return
-
-  const loaded = loadedRowPaths()
-  const loadedSet = new Set(loaded)
-
-  const desiredLoaded = new Set(keys.map((k) => normalizePath(String(k))).filter((v) => v.length > 0))
-  const prev = new Set(selectedUnique.value)
-
-  const next = new Set(prev)
-  for (const p of loadedSet) {
-    if (desiredLoaded.has(p)) next.add(p)
-    else next.delete(p)
-  }
-
-  const added: string[] = []
-  const removed: string[] = []
-  for (const p of loaded) {
-    const was = prev.has(p)
-    const now = next.has(p)
-    if (!was && now) added.push(p)
-    else if (was && !now) removed.push(p)
-  }
-
-  if (shiftPressed.value && lastRangeAnchorPath.value && added.length === 1 && removed.length === 0) {
-    const a = lastRangeAnchorPath.value
-    const b = added[0]
-    if (!b) {
-      checked.value = Array.from(next)
-      return
-    }
-    const idxA = loaded.indexOf(a)
-    const idxB = loaded.indexOf(b)
-    if (idxA !== -1 && idxB !== -1) {
-      const from = Math.min(idxA, idxB)
-      const to = Math.max(idxA, idxB)
-      for (const p of loaded.slice(from, to + 1)) next.add(p)
-    }
-  }
-
-  if (added.length === 1 && removed.length === 0) lastRangeAnchorPath.value = added[0] ?? null
-  else if (removed.length === 1 && added.length === 0) lastRangeAnchorPath.value = removed[0] ?? null
-  else if (next.size === 0) lastRangeAnchorPath.value = null
-
-  checked.value = Array.from(next)
+  loadedSelection.updateCheckedRowKeys(keys)
 }
 
 const columns = computed<DataTableColumns<PathPickerEntry>>(() => {

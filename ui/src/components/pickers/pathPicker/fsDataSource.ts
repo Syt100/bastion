@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api'
 import { toApiErrorInfo, type ApiErrorInfo } from '@/lib/errors'
+import { appendListFilterParams } from '@/lib/listQuery'
 
 import type {
   PathPickerCapabilities,
@@ -35,13 +36,6 @@ function nodeIdFromCtx(ctx: unknown): string {
   if (!('nodeId' in ctx)) return ''
   const nodeId = (ctx as { nodeId?: unknown }).nodeId
   return typeof nodeId === 'string' ? nodeId : ''
-}
-
-function sizeUnitMultiplier(unit: string): number {
-  if (unit === 'KB') return 1024
-  if (unit === 'MB') return 1024 * 1024
-  if (unit === 'GB') return 1024 * 1024 * 1024
-  return 1
 }
 
 function computeParentPath(p: string): string {
@@ -105,23 +99,21 @@ async function listOnce(nodeId: string, req: PathPickerListRequest): Promise<Pat
   params.set('limit', String(req.limit))
 
   if (req.cursor && req.cursor.trim()) params.set('cursor', req.cursor.trim())
-  if (req.sortBy) params.set('sort_by', String(req.sortBy))
-  if (req.sortDir) params.set('sort_dir', String(req.sortDir))
-
-  if (req.kind && req.kind !== 'all') params.set('kind', req.kind)
-  if (req.q) params.set('q', req.q)
-  if (req.hideDotfiles) params.set('hide_dotfiles', 'true')
-  if (req.typeSort) params.set('type_sort', req.typeSort)
-
-  if (req.size) {
-    const mult = sizeUnitMultiplier(req.size.unit)
-    const minBytes =
-      req.size.min != null && Number.isFinite(req.size.min) ? Math.max(0, Math.floor(req.size.min * mult)) : null
-    const maxBytes =
-      req.size.max != null && Number.isFinite(req.size.max) ? Math.max(0, Math.floor(req.size.max * mult)) : null
-    if (minBytes != null) params.set('size_min_bytes', String(minBytes))
-    if (maxBytes != null) params.set('size_max_bytes', String(maxBytes))
-  }
+  appendListFilterParams(params, {
+    q: req.q,
+    kind: req.kind,
+    hideDotfiles: req.hideDotfiles,
+    typeSort: req.typeSort,
+    sortBy: req.sortBy ? String(req.sortBy) : null,
+    sortDir: req.sortDir ? String(req.sortDir) : null,
+    size: req.size
+      ? {
+          min: req.size.min,
+          max: req.size.max,
+          unit: req.size.unit,
+        }
+      : null,
+  })
 
   const url = `/api/nodes/${encodeURIComponent(nodeId)}/fs/list?${params.toString()}`
   const res = await apiFetch<FsListResponse>(url)

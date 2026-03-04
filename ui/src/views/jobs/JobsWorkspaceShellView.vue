@@ -13,8 +13,8 @@ import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
-import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
@@ -23,6 +23,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { createDebouncedTask } from '@/lib/asyncControl'
 import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
 import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
@@ -390,14 +391,15 @@ async function refresh(): Promise<void> {
   }
 }
 
-let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const debouncedRefresh = createDebouncedTask(
+  () => {
+    void refresh()
+  },
+  LIST_QUERY_DEBOUNCE_MS,
+)
 
 function scheduleRefresh(): void {
-  if (refreshDebounceTimer != null) clearTimeout(refreshDebounceTimer)
-  refreshDebounceTimer = setTimeout(() => {
-    refreshDebounceTimer = null
-    void refresh()
-  }, LIST_QUERY_DEBOUNCE_MS)
+  debouncedRefresh.schedule()
 }
 
 function resetToFirstPageAndRefresh(): void {
@@ -691,10 +693,7 @@ watch(nodeId, () => {
 
 onBeforeUnmount(() => {
   splitResizeCleanup?.()
-  if (refreshDebounceTimer != null) {
-    clearTimeout(refreshDebounceTimer)
-    refreshDebounceTimer = null
-  }
+  debouncedRefresh.cancel()
 })
 </script>
 
@@ -863,7 +862,7 @@ onBeforeUnmount(() => {
                 <div class="text-xs app-text-muted">
                   {{ jobsResultsLabel }}
                 </div>
-                <PickerActiveChipsRow
+                <ListActiveFiltersRow
                   :chips="activeFilterChips"
                   :clear-label="t('common.clear')"
                   :wrap="layoutMode !== 'split'"
@@ -1084,7 +1083,7 @@ onBeforeUnmount(() => {
           <template #content>
             <div class="mb-2 space-y-2">
               <div class="text-xs app-text-muted">{{ jobsResultsLabel }}</div>
-              <PickerActiveChipsRow
+              <ListActiveFiltersRow
                 :chips="activeFilterChips"
                 :clear-label="t('common.clear')"
                 wrap

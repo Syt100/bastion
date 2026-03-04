@@ -24,6 +24,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { isAbortError } from '@/lib/asyncControl'
 import { buildListRangeSummary } from '@/lib/listUi'
 import { useLatestRequest } from '@/lib/latest'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
@@ -75,12 +76,6 @@ function applyRouteFilters(): void {
 }
 
 applyRouteFilters()
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return error.name === 'AbortError'
-  return 'name' in error && (error as { name?: unknown }).name === 'AbortError'
-}
 
 const statusOptions = computed(() => [
   { label: t('settings.notifications.status.queued'), value: 'queued' },

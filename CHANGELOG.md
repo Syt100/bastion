@@ -26,6 +26,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Jobs and Agents search refresh cadence to use a shared debounce timing for more consistent query responsiveness.
 - Changed list filter behavior across Agents/Notifications Queue/Maintenance Cleanup/Job Snapshots to use shared filter modeling and shared filter field/chips components, improving active-filter visibility consistency and reducing duplicated toolbar filter code.
 - Changed Run Entries and Path picker modals to reuse shared list-filter modeling and active-filter row rendering, unifying filter-count/chip-clear behavior and reducing duplicated picker filter logic.
+- Changed Jobs/picker list internals to share filter chip typing, picker loaded-row selection semantics, list query serialization, and debounce/abort helpers; also hardened Run Entries picker against stale-response overrides during rapid filter/path updates.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).

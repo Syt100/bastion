@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { NButton, NTag } from 'naive-ui'
-
-export type PickerActiveChip = {
-  key: string
-  label: string
-  onClose: () => void
-}
+import type { FilterChip } from '@/lib/filterChips'
 
 defineProps<{
-  chips: PickerActiveChip[]
+  chips: FilterChip[]
   clearLabel: string
   /**
    * When false, chips are rendered on a single line with horizontal scroll.

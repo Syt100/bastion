@@ -130,6 +130,56 @@ describe('RunEntriesPickerModal', () => {
     expect(String(secondCall?.[0])).toContain('hide_dotfiles=true')
   })
 
+  it('ignores stale refresh responses when a newer filter request finishes later', async () => {
+    const pending: Array<{ url: string; resolve: (response: Response) => void }> = []
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      return new Promise<Response>((resolve) => {
+        pending.push({ url, resolve })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { hideDotfiles: boolean }).hideDotfiles = true
+    ;(wrapper.vm as unknown as { onFiltersChanged: () => void }).onFiltersChanged()
+    await flushAsync()
+
+    const first = pending[0]
+    const second = pending[1]
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+    expect(first?.url).not.toContain('hide_dotfiles=true')
+    expect(second?.url).toContain('hide_dotfiles=true')
+
+    second?.resolve(
+      jsonResponse({
+        prefix: '',
+        cursor: 0,
+        next_cursor: null,
+        entries: [{ path: 'new.txt', kind: 'file', size: 1 }],
+      }),
+    )
+    await flushAsync()
+
+    first?.resolve(
+      jsonResponse({
+        prefix: '',
+        cursor: 0,
+        next_cursor: null,
+        entries: [{ path: 'old.txt', kind: 'file', size: 1 }],
+      }),
+    )
+    await flushAsync()
+
+    expect((wrapper.vm as unknown as { entries: Array<{ path: string }> }).entries.map((item) => item.path)).toEqual([
+      'new.txt',
+    ])
+  })
+
   it('keeps filter count from shared model while chips include search + filters', async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }),

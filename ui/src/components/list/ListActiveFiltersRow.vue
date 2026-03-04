@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import PickerActiveChipsRow, { type PickerActiveChip } from '@/components/pickers/PickerActiveChipsRow.vue'
+import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
+import type { FilterChip } from '@/lib/filterChips'
 
 withDefaults(
   defineProps<{
-    chips: PickerActiveChip[]
+    chips: FilterChip[]
     clearLabel: string
     wrap?: boolean
   }>(),

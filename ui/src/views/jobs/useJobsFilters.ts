@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import type { PickerActiveChip } from '@/components/pickers/PickerActiveChipsRow.vue'
+import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
 import { runStatusLabel } from '@/lib/runs'
 import type { RunStatus } from '@/stores/jobs'
 
@@ -41,97 +41,57 @@ export function useJobsFilters(t: Translate) {
     { label: t('jobs.workspace.filters.scheduled'), value: 'scheduled' },
   ])
 
-  const filtersActiveCount = computed(() => {
-    let n = 0
-    if (searchText.value.trim().length > 0) n += 1
-    if (showArchived.value) n += 1
-    if (latestStatusFilter.value !== 'all') n += 1
-    if (scheduleFilter.value !== 'all') n += 1
-    if (sortKey.value !== 'updated_desc') n += 1
-    return n
-  })
-
-  const activeFilterChips = computed<PickerActiveChip[]>(() => {
-    const chips: PickerActiveChip[] = []
-
-    const q = searchText.value.trim()
-    if (q.length > 0) {
-      chips.push({
-        key: 'q',
-        label: `${t('common.search')}: ${q}`,
-        onClose: () => {
-          searchText.value = ''
-        },
-      })
-    }
-
-    if (showArchived.value) {
-      chips.push({
-        key: 'archived',
-        label: t('jobs.showArchived'),
-        onClose: () => {
-          showArchived.value = false
-        },
-      })
-    }
-
-    if (latestStatusFilter.value !== 'all') {
-      const label =
-        latestStatusFilterOptions.value.find((o) => o.value === latestStatusFilter.value)?.label ??
-        String(latestStatusFilter.value)
-      chips.push({
-        key: 'status',
-        label: `${t('runs.columns.status')}: ${label}`,
-        onClose: () => {
-          latestStatusFilter.value = 'all'
-        },
-      })
-    }
-
-    if (scheduleFilter.value !== 'all') {
-      const label =
-        scheduleFilterOptions.value.find((o) => o.value === scheduleFilter.value)?.label ??
-        String(scheduleFilter.value)
-      chips.push({
-        key: 'schedule',
-        label: `${t('jobs.columns.schedule')}: ${label}`,
-        onClose: () => {
-          scheduleFilter.value = 'all'
-        },
-      })
-    }
-
-    if (sortKey.value !== 'updated_desc') {
-      const label = sortOptions.value.find((o) => o.value === sortKey.value)?.label ?? String(sortKey.value)
-      chips.push({
-        key: 'sort',
-        label: `${t('common.sort')}: ${label}`,
-        onClose: () => {
-          sortKey.value = 'updated_desc'
-        },
-      })
-    }
-
-    return chips
-  })
-
-  const hasActiveFilters = computed<boolean>(() => {
-    return (
-      showArchived.value ||
-      searchText.value.trim().length > 0 ||
-      latestStatusFilter.value !== 'all' ||
-      scheduleFilter.value !== 'all' ||
-      sortKey.value !== 'updated_desc'
-    )
-  })
-
-  function clearFilters(): void {
-    searchText.value = ''
-    showArchived.value = false
-    sortKey.value = 'updated_desc'
-    latestStatusFilter.value = 'all'
-    scheduleFilter.value = 'all'
-  }
+  const {
+    filtersActiveCount,
+    activeFilterChips,
+    hasActiveFilters,
+    clearFilters,
+  } = useListFilters([
+    createTextFilterField({
+      key: 'q',
+      label: t('common.search'),
+      value: searchText,
+    }),
+    {
+      clear: () => {
+        showArchived.value = false
+      },
+      isActive: () => showArchived.value,
+      chips: () =>
+        showArchived.value
+          ? [
+              {
+                key: 'archived',
+                label: t('jobs.showArchived'),
+                onClose: () => {
+                  showArchived.value = false
+                },
+              },
+            ]
+          : [],
+    },
+    createSingleSelectFilterField({
+      key: 'status',
+      label: t('runs.columns.status'),
+      value: latestStatusFilter,
+      defaultValue: 'all',
+      options: () => latestStatusFilterOptions.value,
+    }),
+    createSingleSelectFilterField({
+      key: 'schedule',
+      label: t('jobs.columns.schedule'),
+      value: scheduleFilter,
+      defaultValue: 'all',
+      options: () => scheduleFilterOptions.value,
+    }),
+    createSingleSelectFilterField({
+      key: 'sort',
+      label: t('common.sort'),
+      value: sortKey,
+      defaultValue: 'updated_desc',
+      options: () => sortOptions.value,
+    }),
+  ])
 
   return {
     showArchived,

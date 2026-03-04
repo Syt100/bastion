@@ -33,6 +33,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { isAbortError } from '@/lib/asyncControl'
 import { useLatestRequest } from '@/lib/latest'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { copyText } from '@/lib/clipboard'
@@ -61,12 +62,6 @@ const total = ref(0)
 const items = ref<CleanupTaskListItem[]>([])
 
 const latest = useLatestRequest()
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return error.name === 'AbortError'
-  return 'name' in error && (error as { name?: unknown }).name === 'AbortError'
-}
 
 const statusOptions = computed(() => [
   { label: t('settings.maintenance.cleanup.status.queued'), value: 'queued' },

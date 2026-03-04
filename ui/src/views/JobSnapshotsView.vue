@@ -43,6 +43,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
+import { isAbortError } from '@/lib/asyncControl'
 import { formatBytes } from '@/lib/format'
 import { useLatestRequest } from '@/lib/latest'
 import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
@@ -172,12 +173,6 @@ function formatDeleteTaskExecutor(row: RunArtifact): string | null {
   const id = String(row.node_id ?? '').trim()
   if (!id || id === 'hub') return null
   return t('snapshots.deleteTaskExecutor', { node: id })
-}
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return error.name === 'AbortError'
-  return 'name' in error && (error as { name?: unknown }).name === 'AbortError'
 }
 
 const loadingTable = computed(() => listLoading.value && listLoadingKind.value === 'refresh')
