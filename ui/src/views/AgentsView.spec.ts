@@ -48,6 +48,11 @@ const routerApi = {
 const routeApi = {
   query: {} as Record<string, unknown>,
 }
+
+const mediaState = {
+  desktop: true,
+}
+
 vi.mock('vue-router', () => ({
   useRouter: () => routerApi,
   useRoute: () => routeApi,
@@ -55,7 +60,7 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/lib/media', async () => {
   const vue = await import('vue')
-  return { useMediaQuery: () => vue.ref(true) }
+  return { useMediaQuery: () => vue.computed(() => mediaState.desktop) }
 })
 
 vi.mock('naive-ui', async () => {
@@ -115,6 +120,7 @@ describe('AgentsView enrollment token modal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeApi.query = {}
+    mediaState.desktop = true
     agentsApi.items = []
     agentsApi.total = 0
     agentsApi.createEnrollmentToken.mockResolvedValue({ token: 'tok1', expires_at: 1234 })
@@ -142,6 +148,7 @@ describe('AgentsView enrollment token modal', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-stub="NPagination"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('common.paginationRange')
   })
 
   it('renders an enroll command template that includes hub url and token', async () => {
@@ -167,5 +174,31 @@ describe('AgentsView enrollment token modal', () => {
     expect(command).not.toBeNull()
     expect(command!).toContain('--hub-url')
     expect(command!).toContain('--enroll-token tok1')
+  })
+
+  it('renders mobile progressive disclosure affordance for secondary metadata', async () => {
+    mediaState.desktop = false
+    agentsApi.total = 1
+    agentsApi.items = [
+      {
+        id: 'agent-mobile-1',
+        name: 'Mobile Agent',
+        revoked: false,
+        last_seen_at: 1234,
+        online: true,
+        labels: ['edge'],
+        desired_config_snapshot_id: null,
+        applied_config_snapshot_id: null,
+        config_sync_status: 'offline',
+        last_config_sync_attempt_at: null,
+        last_config_sync_error_kind: null,
+        last_config_sync_error: null,
+      },
+    ]
+
+    const wrapper = mount(AgentsView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agents.mobile.moreDetails')
   })
 })

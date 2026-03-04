@@ -16,12 +16,14 @@ import { useI18n } from 'vue-i18n'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
+import AppEmptyState from '@/components/AppEmptyState.vue'
 import { useNotificationsStore, type NotificationChannel, type NotificationQueueItem } from '@/stores/notifications'
 import { useUiStore } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { buildListRangeSummary } from '@/lib/listUi'
 import { useLatestRequest } from '@/lib/latest'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
 
@@ -48,8 +50,14 @@ const pageSize = ref(20)
 const pageSizeOptions = [20, 50, 100]
 const total = ref(0)
 const items = ref<NotificationQueueItem[]>([])
+const retryBusy = ref<Record<string, boolean>>({})
+const cancelBusy = ref<Record<string, boolean>>({})
 
 const latest = useLatestRequest()
+const hasActiveFilters = computed<boolean>(() => (statusFilter.value?.length ?? 0) > 0 || (channelFilter.value?.length ?? 0) > 0)
+const queueBaseEmpty = computed<boolean>(() => total.value === 0 && !hasActiveFilters.value)
+const queueRangeSummary = computed(() => buildListRangeSummary(total.value, page.value, pageSize.value))
+const queuePaginationLabel = computed(() => t('common.paginationRange', queueRangeSummary.value))
 
 function parseQueryList(value: unknown): string[] {
   const split = (raw: string): string[] =>
@@ -152,23 +160,40 @@ async function refresh(): Promise<void> {
 }
 
 async function retryNow(id: string): Promise<void> {
+  if (retryBusy.value[id] === true) return
+  retryBusy.value = { ...retryBusy.value, [id]: true }
   try {
     await notifications.retryNow(id)
     message.success(t('messages.notificationRetryScheduled'))
     await refresh()
   } catch (e) {
     message.error(formatToastError(t('errors.notificationRetryFailed'), e, t))
+  } finally {
+    const next = { ...retryBusy.value }
+    delete next[id]
+    retryBusy.value = next
   }
 }
 
 async function cancel(id: string): Promise<void> {
+  if (cancelBusy.value[id] === true) return
+  cancelBusy.value = { ...cancelBusy.value, [id]: true }
   try {
     await notifications.cancel(id)
     message.success(t('messages.notificationCanceled'))
     await refresh()
   } catch (e) {
     message.error(formatToastError(t('errors.notificationCancelFailed'), e, t))
+  } finally {
+    const next = { ...cancelBusy.value }
+    delete next[id]
+    cancelBusy.value = next
   }
+}
+
+function clearFilters(): void {
+  statusFilter.value = []
+  channelFilter.value = []
 }
 
 watch(
@@ -311,7 +336,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
               NButton,
               {
                 size: 'small',
-                disabled: !(row.status === 'failed' || row.status === 'canceled'),
+                loading: retryBusy.value[row.id] === true,
+                disabled: !(row.status === 'failed' || row.status === 'canceled') || retryBusy.value[row.id] === true,
                 onClick: () => void retryNow(row.id),
               },
               { default: () => t('settings.notifications.queue.actions.retryNow') },
@@ -320,7 +346,8 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
               NButton,
               {
                 size: 'small',
-                disabled: row.status !== 'queued',
+                loading: cancelBusy.value[row.id] === true,
+                disabled: row.status !== 'queued' || cancelBusy.value[row.id] === true,
                 type: 'warning',
                 tertiary: true,
                 onClick: () => void cancel(row.id),
@@ -373,7 +400,34 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
       </template>
 
       <template #content>
-        <div v-if="!isDesktop" class="space-y-3">
+        <AppEmptyState
+          v-if="loading && items.length === 0"
+          :title="t('common.loading')"
+          :description="t('settings.notifications.queue.empty.loadingDescription')"
+          loading
+          variant="plain"
+        />
+        <AppEmptyState
+          v-else-if="!loading && items.length === 0"
+          :title="queueBaseEmpty ? t('settings.notifications.queue.empty.title') : t('settings.notifications.queue.empty.noResultsTitle')"
+          :description="queueBaseEmpty ? t('settings.notifications.queue.empty.description') : t('settings.notifications.queue.empty.noResultsDescription')"
+          variant="plain"
+        >
+          <template #actions>
+            <n-button
+              v-if="!queueBaseEmpty"
+              size="small"
+              @click="clearFilters"
+            >
+              {{ t('common.clear') }}
+            </n-button>
+            <n-button size="small" :loading="loading" @click="refresh">
+              {{ t('common.refresh') }}
+            </n-button>
+          </template>
+        </AppEmptyState>
+
+        <div v-else-if="!isDesktop" class="space-y-3">
           <n-card
             v-for="row in items"
             :key="row.id"
@@ -404,10 +458,22 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
             </div>
 
             <div class="mt-3 flex items-center justify-end gap-2">
-              <n-button size="small" :disabled="!(row.status === 'failed' || row.status === 'canceled')" @click="retryNow(row.id)">
+              <n-button
+                size="small"
+                :loading="retryBusy[row.id] === true"
+                :disabled="!(row.status === 'failed' || row.status === 'canceled') || retryBusy[row.id] === true"
+                @click="retryNow(row.id)"
+              >
                 {{ t('settings.notifications.queue.actions.retryNow') }}
               </n-button>
-              <n-button size="small" type="warning" tertiary :disabled="row.status !== 'queued'" @click="cancel(row.id)">
+              <n-button
+                size="small"
+                type="warning"
+                tertiary
+                :loading="cancelBusy[row.id] === true"
+                :disabled="row.status !== 'queued' || cancelBusy[row.id] === true"
+                @click="cancel(row.id)"
+              >
                 {{ t('settings.notifications.queue.actions.cancel') }}
               </n-button>
             </div>
@@ -432,7 +498,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
           :item-count="total"
           :page-sizes="pageSizeOptions"
           :loading="loading"
-          :total-label="t('settings.notifications.queue.total', { total })"
+          :total-label="queuePaginationLabel"
           @update:page="onUpdatePage"
           @update:page-size="onUpdatePageSize"
         />

@@ -37,6 +37,7 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
+import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
@@ -133,6 +134,8 @@ const statusOptions = computed(() => [
 const agentsPage = ref<number>(1)
 const agentsPageSize = ref<number>(20)
 const agentsPageSizeOptions = [20, 50, 100]
+const agentsRangeSummary = computed(() => buildListRangeSummary(agents.total, agentsPage.value, agentsPageSize.value))
+const agentsPaginationLabel = computed(() => t('common.paginationRange', agentsRangeSummary.value))
 
 const hasActiveFilters = computed<boolean>(() => {
   return (
@@ -593,7 +596,7 @@ function scheduleRefresh(): void {
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null
     void refresh()
-  }, 220)
+  }, LIST_QUERY_DEBOUNCE_MS)
 }
 
 watch([selectedLabels, labelsMode], resetToFirstPageAndRefresh, { deep: true })
@@ -782,20 +785,28 @@ onBeforeUnmount(() => {
             </template>
 
             <div class="text-sm space-y-2">
-              <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
-                <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
-              </div>
-              <div class="flex items-center justify-between gap-3">
-                <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
-                <div class="flex items-center gap-2">
-                  <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
-                  <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
-                </div>
-              </div>
               <div class="flex items-center justify-between gap-3">
                 <div class="app-text-muted">{{ t('agents.columns.lastSeen') }}</div>
                 <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
               </div>
+
+              <details class="rounded app-panel-inset px-3 py-2">
+                <summary class="cursor-pointer text-xs app-text-muted select-none">
+                  {{ t('agents.mobile.moreDetails') }}
+                </summary>
+                <div class="mt-2 space-y-2">
+                  <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
+                    <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="app-text-muted">{{ t('agents.columns.id') }}</div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-xs">{{ shortId(agent.id) }}</span>
+                      <n-button quaternary size="small" @click="copyToClipboard(agent.id)">{{ t('agents.actions.copy') }}</n-button>
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
 
             <template #footer>
@@ -863,6 +874,7 @@ onBeforeUnmount(() => {
           :item-count="agents.total"
           :page-sizes="agentsPageSizeOptions"
           :loading="agents.loading"
+          :total-label="agentsPaginationLabel"
           @update:page="(value) => (agentsPage = value)"
           @update:page-size="(value) => (agentsPageSize = value)"
         />

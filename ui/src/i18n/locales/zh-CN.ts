@@ -48,6 +48,7 @@ const messages = {
     hideDotfiles: '隐藏点文件',
     requestId: '请求 ID',
     stepOf: '步骤 {current}/{total}',
+    paginationRange: '{start}-{end} / {total}',
     back: '上一步',
     return: '返回',
     next: '下一步',
@@ -222,6 +223,9 @@ const messages = {
       statusAll: '全部状态',
       searchPlaceholder: '按名称或 ID 搜索',
     },
+    mobile: {
+      moreDetails: '更多详情',
+    },
     tokenModal: {
       title: '创建接入令牌',
       ttl: '有效期（秒）',
@@ -345,7 +349,7 @@ const messages = {
       },
       filters: {
         scheduled: '已调度',
-        resultsCount: '结果：{filtered}/{total}',
+        resultsCount: '当前显示 {visible} / 筛选后 {filtered}',
       },
       bulk: {
         archiveTitle: '归档任务',
@@ -1061,6 +1065,13 @@ const messages = {
       },
       queue: {
         total: '共 {total} 条',
+        empty: {
+          title: '暂无通知队列项',
+          description: '任务产生通知事件后会显示在这里。',
+          noResultsTitle: '没有匹配的通知',
+          noResultsDescription: '请调整或清空当前筛选条件。',
+          loadingDescription: '正在加载通知队列…',
+        },
         columns: {
           job: '任务',
           channel: '渠道',

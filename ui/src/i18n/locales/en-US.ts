@@ -48,6 +48,7 @@ const messages = {
     hideDotfiles: 'Hide dotfiles',
     requestId: 'Request ID',
     stepOf: 'Step {current}/{total}',
+    paginationRange: '{start}-{end} / {total}',
     back: 'Back',
     return: 'Back',
     next: 'Next',
@@ -222,6 +223,9 @@ const messages = {
       statusAll: 'All statuses',
       searchPlaceholder: 'Search by name or ID',
     },
+    mobile: {
+      moreDetails: 'More details',
+    },
     tokenModal: {
       title: 'Create enrollment token',
       ttl: 'Expires in (seconds)',
@@ -345,7 +349,7 @@ const messages = {
       },
       filters: {
         scheduled: 'Scheduled',
-        resultsCount: 'Results: {filtered}/{total}',
+        resultsCount: 'Showing {visible} of {filtered}',
       },
       bulk: {
         archiveTitle: 'Archive jobs',
@@ -1065,6 +1069,13 @@ const messages = {
       },
       queue: {
         total: '{total} total',
+        empty: {
+          title: 'No queued notifications',
+          description: 'Notifications will appear here after jobs emit events.',
+          noResultsTitle: 'No matching notifications',
+          noResultsDescription: 'Try adjusting or clearing current filters.',
+          loadingDescription: 'Loading notification queue…',
+        },
         columns: {
           job: 'Job',
           channel: 'Channel',

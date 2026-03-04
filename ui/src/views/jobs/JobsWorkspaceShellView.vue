@@ -23,6 +23,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
+import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
 import { runStatusLabel } from '@/lib/runs'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobsFiltersPanel from './JobsFiltersPanel.vue'
@@ -180,12 +181,17 @@ function onSplitResizePointerDown(event: PointerEvent): void {
 
 const pagedFilteredJobs = computed<JobListItem[]>(() => jobs.items)
 const nodeScopedJobs = computed<JobListItem[]>(() => jobs.items)
+const jobsVisibleCount = computed<number>(() => pagedFilteredJobs.value.length)
+const jobsRangeSummary = computed(() => buildListRangeSummary(jobs.total, jobsPage.value, jobsPageSize.value))
+const jobsPaginationLabel = computed(() => t('common.paginationRange', jobsRangeSummary.value))
+const jobsResultsLabel = computed(() => t('jobs.workspace.filters.resultsCount', { visible: jobsVisibleCount.value, filtered: jobs.total }))
 
 const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilters.value)
 
 const selectedJobIds = ref<string[]>([])
 const selectedJobArchived = ref<Record<string, boolean>>({})
 const listSelectMode = ref<boolean>(false)
+const rowRunNowBusy = ref<Record<string, boolean>>({})
 
 const nodeJobsById = computed(() => new Map(nodeScopedJobs.value.map((j) => [j.id, j])))
 
@@ -391,7 +397,7 @@ function scheduleRefresh(): void {
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null
     void refresh()
-  }, 220)
+  }, LIST_QUERY_DEBOUNCE_MS)
 }
 
 function resetToFirstPageAndRefresh(): void {
@@ -411,13 +417,23 @@ async function openEdit(jobId: string): Promise<void> {
 }
 
 async function runNow(jobId: string): Promise<void> {
+  if (rowRunNowBusy.value[jobId] === true) return
+  rowRunNowBusy.value = { ...rowRunNowBusy.value, [jobId]: true }
   try {
     const res = await jobs.runNow(jobId)
     if (res.status === 'rejected') message.warning(t('messages.runRejected'))
     else message.success(t('messages.runQueued'))
   } catch (error) {
     message.error(formatToastError(t('errors.runNowFailed'), error, t))
+  } finally {
+    const next = { ...rowRunNowBusy.value }
+    delete next[jobId]
+    rowRunNowBusy.value = next
   }
+}
+
+function isRowRunNowBusy(jobId: string): boolean {
+  return rowRunNowBusy.value[jobId] === true
 }
 
 function openJob(jobId: string): void {
@@ -609,7 +625,12 @@ const tableColumns = computed<DataTableColumns<JobListItem>>(() => [
       h('div', { class: 'flex items-center gap-2 justify-end' }, [
         h(
           NButton,
-          { size: 'small', disabled: !!row.archived_at, onClick: () => void runNow(row.id) },
+          {
+            size: 'small',
+            loading: isRowRunNowBusy(row.id),
+            disabled: !!row.archived_at || isRowRunNowBusy(row.id),
+            onClick: () => void runNow(row.id),
+          },
           { default: () => t('jobs.actions.runNow') },
         ),
         h(
@@ -840,7 +861,7 @@ onBeforeUnmount(() => {
             <template #content>
               <div class="space-y-2">
                 <div class="text-xs app-text-muted">
-                  {{ t('jobs.workspace.filters.resultsCount', { filtered: jobs.total, total: jobs.total }) }}
+                  {{ jobsResultsLabel }}
                 </div>
                 <PickerActiveChipsRow
                   :chips="activeFilterChips"
@@ -896,15 +917,10 @@ onBeforeUnmount(() => {
                       <div
                         v-for="job in pagedFilteredJobs"
                         :key="job.id"
-                        role="button"
-                        tabindex="0"
                         class="app-list-row"
                         :class="isSelected(job.id) || (layoutMode === 'list' && selectedJobIds.includes(job.id)) ? 'bg-[var(--app-primary-soft)]' : ''"
-                        @click="onJobRowClick(job.id)"
-                        @keydown.enter.prevent="onJobRowClick(job.id)"
-                        @keydown.space.prevent="onJobRowClick(job.id)"
                       >
-                        <div class="min-w-0 flex items-start gap-2">
+                        <div class="min-w-0 flex items-start gap-2 flex-1">
                           <div v-if="layoutMode === 'list' && listSelectMode" class="pt-0.5" @click.stop>
                             <n-checkbox
                               :checked="selectedJobIds.includes(job.id)"
@@ -912,20 +928,28 @@ onBeforeUnmount(() => {
                             />
                           </div>
 
-                          <div class="min-w-0">
-                            <div class="flex items-center gap-2 min-w-0">
-                              <div class="font-medium truncate">{{ job.name }}</div>
-                              <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                                {{ t('jobs.archived') }}
-                              </n-tag>
+                          <button
+                            data-testid="jobs-row-main-trigger"
+                            type="button"
+                            class="min-w-0 flex-1 text-left rounded"
+                            :aria-label="t('jobs.workspace.actions.openDetails')"
+                            @click="onJobRowClick(job.id)"
+                          >
+                            <div class="min-w-0">
+                              <div class="flex items-center gap-2 min-w-0">
+                                <div class="font-medium truncate">{{ job.name }}</div>
+                                <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                                  {{ t('jobs.archived') }}
+                                </n-tag>
+                              </div>
+                              <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+                                <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                                  {{ formatNodeLabel(job.agent_id) }}
+                                </n-tag>
+                                <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
+                              </div>
                             </div>
-                            <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                              <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                                {{ formatNodeLabel(job.agent_id) }}
-                              </n-tag>
-                              <span class="min-w-0 truncate">{{ formatScheduleLabel(job) }}</span>
-                            </div>
-                          </div>
+                          </button>
                         </div>
 
                         <div class="shrink-0 flex items-start gap-2">
@@ -956,7 +980,8 @@ onBeforeUnmount(() => {
                               data-testid="jobs-row-run-now"
                               size="small"
                               quaternary
-                              :disabled="!!job.archived_at"
+                              :loading="isRowRunNowBusy(job.id)"
+                              :disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
                               :title="t('jobs.actions.runNow')"
                               :aria-label="t('jobs.actions.runNow')"
                               @click="() => void runNow(job.id)"
@@ -987,6 +1012,7 @@ onBeforeUnmount(() => {
                 :item-count="jobs.total"
                 :page-sizes="jobsPageSizeOptions"
                 :loading="jobs.loading"
+                :total-label="jobsPaginationLabel"
                 @update:page="(value) => (jobsPage = value)"
                 @update:page-size="(value) => (jobsPageSize = value)"
               />
@@ -1056,6 +1082,16 @@ onBeforeUnmount(() => {
           </template>
 
           <template #content>
+            <div class="mb-2 space-y-2">
+              <div class="text-xs app-text-muted">{{ jobsResultsLabel }}</div>
+              <PickerActiveChipsRow
+                :chips="activeFilterChips"
+                :clear-label="t('common.clear')"
+                wrap
+                @clear="clearFilters"
+              />
+            </div>
+
             <AppEmptyState v-if="jobs.loading && jobs.items.length === 0" :title="t('common.loading')" loading />
             <AppEmptyState
               v-else-if="!jobs.loading && jobs.items.length === 0"
@@ -1077,27 +1113,30 @@ onBeforeUnmount(() => {
                 <div
                   v-for="job in pagedFilteredJobs"
                   :key="job.id"
-                  role="button"
-                  tabindex="0"
                   class="app-list-row"
-                  @click="openJob(job.id)"
-                  @keydown.enter.prevent="openJob(job.id)"
-                  @keydown.space.prevent="openJob(job.id)"
                 >
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <div class="font-medium truncate">{{ job.name }}</div>
-                      <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
-                        {{ t('jobs.archived') }}
-                      </n-tag>
+                  <button
+                    data-testid="jobs-row-main-trigger-mobile"
+                    type="button"
+                    class="min-w-0 flex-1 text-left rounded"
+                    :aria-label="t('jobs.workspace.actions.openDetails')"
+                    @click="openJob(job.id)"
+                  >
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <div class="font-medium truncate">{{ job.name }}</div>
+                        <n-tag v-if="job.archived_at" size="small" :bordered="false" type="warning">
+                          {{ t('jobs.archived') }}
+                        </n-tag>
+                      </div>
+                      <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
+                        <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
+                          {{ formatNodeLabel(job.agent_id) }}
+                        </n-tag>
+                        <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
+                      </div>
                     </div>
-                    <div class="mt-1 flex items-center gap-2 min-w-0 text-xs app-text-muted">
-                      <n-tag size="small" :bordered="false" :type="job.agent_id ? 'default' : 'info'">
-                        {{ formatNodeLabel(job.agent_id) }}
-                      </n-tag>
-                      <span class="min-w-0 truncate">{{ job.schedule ?? t('jobs.scheduleMode.manual') }}</span>
-                    </div>
-                  </div>
+                  </button>
 
                   <div class="shrink-0 flex items-start gap-2 text-right">
                     <div>
@@ -1127,7 +1166,8 @@ onBeforeUnmount(() => {
                         data-testid="jobs-row-run-now-mobile"
                         size="small"
                         quaternary
-                        :disabled="!!job.archived_at"
+                        :loading="isRowRunNowBusy(job.id)"
+                        :disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
                         :title="t('jobs.actions.runNow')"
                         :aria-label="t('jobs.actions.runNow')"
                         @click="() => void runNow(job.id)"
@@ -1156,6 +1196,7 @@ onBeforeUnmount(() => {
               :item-count="jobs.total"
               :page-sizes="jobsPageSizeOptions"
               :loading="jobs.loading"
+              :total-label="jobsPaginationLabel"
               @update:page="(value) => (jobsPage = value)"
               @update:page-size="(value) => (jobsPageSize = value)"
             />

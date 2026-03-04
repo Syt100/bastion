@@ -18,6 +18,12 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Jobs workspace filtering to a single shared filter state model and shared filter panel rendering across split/list/mobile containers.
 - Changed Jobs list row actions to keep primary actions (Run now + More) visible without hover and to enforce explicit action-vs-row click boundaries.
 - Changed list empty-state rendering to support `plain`/`inset` variants and reduce card-within-card visual noise in embedded list sections.
+- Changed Jobs results metrics and mobile filter visibility to show explicit visible/filtered counts with active filter chips in mobile list mode.
+- Changed Jobs row-main activation semantics to dedicated interactive triggers, keeping nested row actions isolated and keyboard-accessible.
+- Changed Jobs/Agents/Notifications pagination footers to show a unified visible-range summary (`start-end / total`) for faster list-size scanning.
+- Changed Notifications Queue to provide explicit loading/no-data/no-results empty states and row-level in-flight feedback for retry/cancel actions.
+- Changed Agents mobile cards to prioritize primary fields and move secondary metadata into progressive disclosure.
+- Changed Jobs and Agents search refresh cadence to use a shared debounce timing for more consistent query responsiveness.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).

@@ -270,6 +270,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     })
 
     expect(wrapper.find('[data-stub="NPagination"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('common.paginationRange')
   })
 
   it('renders a scrollable job list container on desktop', () => {
@@ -388,6 +389,29 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(wrapper.text()).toContain('common.search: persisted')
   })
 
+  it('shows active filter chips in mobile list mode', async () => {
+    stubMatchMedia(false)
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          JobEditorModal: true,
+          ListToolbar: { template: '<div><slot name=\"search\" /><slot name=\"filters\" /><slot name=\"actions\" /></div>' },
+          'router-view': true,
+        },
+      },
+    })
+
+    const input = wrapper.findComponent({ name: 'NInput' })
+    input.vm.$emit('update:value', 'mobile-q')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('common.search: mobile-q')
+  })
+
   it('clicking a row action triggers only the action and not row navigation', async () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
@@ -426,10 +450,10 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
       },
     })
 
-    const row = wrapper.find('.app-list-row')
-    expect(row.exists()).toBe(true)
+    const rowMain = wrapper.find('[data-testid=\"jobs-row-main-trigger\"]')
+    expect(rowMain.exists()).toBe(true)
 
-    await row.trigger('click')
+    await rowMain.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/job1/overview')
   })
 
