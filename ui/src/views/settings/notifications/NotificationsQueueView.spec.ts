@@ -135,6 +135,7 @@ describe('NotificationsQueueView pagination consistency', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('settings.notifications.queue.empty.noResultsTitle')
+    expect(wrapper.text()).toContain('settings.notifications.queue.columns.status: settings.notifications.status.failed')
 
     const clearBtn = wrapper.findAll('button').find((b) => b.text() === 'common.clear')
     expect(clearBtn).toBeTruthy()

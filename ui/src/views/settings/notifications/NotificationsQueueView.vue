@@ -5,7 +5,6 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NSelect,
   NTag,
   NSpace,
   useMessage,
@@ -16,6 +15,8 @@ import { useI18n } from 'vue-i18n'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
+import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import { useNotificationsStore, type NotificationChannel, type NotificationQueueItem } from '@/stores/notifications'
 import { useUiStore } from '@/stores/ui'
@@ -26,6 +27,7 @@ import { formatToastError } from '@/lib/errors'
 import { buildListRangeSummary } from '@/lib/listUi'
 import { useLatestRequest } from '@/lib/latest'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
+import { createMultiSelectFilterField, parseRouteQueryList, useListFilters } from '@/lib/listFilters'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -54,24 +56,8 @@ const retryBusy = ref<Record<string, boolean>>({})
 const cancelBusy = ref<Record<string, boolean>>({})
 
 const latest = useLatestRequest()
-const hasActiveFilters = computed<boolean>(() => (statusFilter.value?.length ?? 0) > 0 || (channelFilter.value?.length ?? 0) > 0)
-const queueBaseEmpty = computed<boolean>(() => total.value === 0 && !hasActiveFilters.value)
 const queueRangeSummary = computed(() => buildListRangeSummary(total.value, page.value, pageSize.value))
 const queuePaginationLabel = computed(() => t('common.paginationRange', queueRangeSummary.value))
-
-function parseQueryList(value: unknown): string[] {
-  const split = (raw: string): string[] =>
-    raw
-      .split(',')
-      .map((v) => v.trim())
-      .filter((v) => v.length > 0)
-
-  if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === 'string').flatMap(split)
-  }
-  if (typeof value === 'string') return split(value)
-  return []
-}
 
 function isQueueStatus(value: string): value is QueueStatus {
   return value === 'queued' || value === 'sending' || value === 'sent' || value === 'failed' || value === 'canceled'
@@ -82,8 +68,8 @@ function isChannel(value: string): value is NotificationChannel {
 }
 
 function applyRouteFilters(): void {
-  const statuses = parseQueryList(route.query.status).filter(isQueueStatus)
-  const channels = parseQueryList(route.query.channel).filter(isChannel)
+  const statuses = parseRouteQueryList(route.query.status).filter(isQueueStatus)
+  const channels = parseRouteQueryList(route.query.channel).filter(isChannel)
   statusFilter.value = statuses
   channelFilter.value = channels
 }
@@ -108,6 +94,27 @@ const channelOptions = computed(() => [
   { label: t('settings.notifications.channel.wecom'), value: 'wecom_bot' },
   { label: t('settings.notifications.channel.email'), value: 'email' },
 ])
+
+const {
+  hasActiveFilters,
+  activeFilterChips,
+  clearFilters: clearListFilters,
+} = useListFilters([
+  createMultiSelectFilterField({
+    key: 'status',
+    label: t('settings.notifications.queue.columns.status'),
+    value: statusFilter,
+    options: () => statusOptions.value,
+  }),
+  createMultiSelectFilterField({
+    key: 'channel',
+    label: t('settings.notifications.queue.columns.channel'),
+    value: channelFilter,
+    options: () => channelOptions.value,
+  }),
+])
+
+const queueBaseEmpty = computed<boolean>(() => total.value === 0 && !hasActiveFilters.value)
 
 function formatChannel(channel: NotificationChannel): string {
   return channel === 'wecom_bot' ? t('settings.notifications.channel.wecom') : t('settings.notifications.channel.email')
@@ -192,8 +199,7 @@ async function cancel(id: string): Promise<void> {
 }
 
 function clearFilters(): void {
-  statusFilter.value = []
-  channelFilter.value = []
+  clearListFilters()
 }
 
 watch(
@@ -367,30 +373,22 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
       <template #toolbar>
         <ListToolbar embedded compact>
           <template #filters>
-            <div class="w-full md:w-56 md:flex-none">
-              <n-select
-                v-model:value="statusFilter"
-                size="small"
-                multiple
-                clearable
-                max-tag-count="responsive"
-                :placeholder="t('settings.notifications.status.all')"
-                :options="statusOptions"
-                class="w-full"
-              />
-            </div>
-            <div class="w-full md:w-56 md:flex-none">
-              <n-select
-                v-model:value="channelFilter"
-                size="small"
-                multiple
-                clearable
-                max-tag-count="responsive"
-                :placeholder="t('settings.notifications.channel.all')"
-                :options="channelOptions"
-                class="w-full"
-              />
-            </div>
+            <ListFilterSelectField
+              v-model:value="statusFilter"
+              multiple
+              clearable
+              max-tag-count="responsive"
+              :placeholder="t('settings.notifications.status.all')"
+              :options="statusOptions"
+            />
+            <ListFilterSelectField
+              v-model:value="channelFilter"
+              multiple
+              clearable
+              max-tag-count="responsive"
+              :placeholder="t('settings.notifications.channel.all')"
+              :options="channelOptions"
+            />
           </template>
 
           <template #actions>
@@ -400,6 +398,13 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
       </template>
 
       <template #content>
+        <ListActiveFiltersRow
+          class="mb-3"
+          :chips="activeFilterChips"
+          :clear-label="t('common.clear')"
+          @clear="clearFilters"
+        />
+
         <AppEmptyState
           v-if="loading && items.length === 0"
           :title="t('common.loading')"

@@ -209,4 +209,24 @@ describe('JobSnapshotsView', () => {
 
     expect(jobsApi.deleteJobSnapshot).toHaveBeenCalledWith('j1', 'r1', { force: false })
   })
+
+  it('shows active filter chips and clears them from shared filter model', async () => {
+    const wrapper = mount(JobSnapshotsView)
+    await flushPromises()
+
+    const selects = wrapper.findAllComponents({ name: 'NSelect' })
+    expect(selects.length).toBeGreaterThanOrEqual(2)
+
+    selects[1]!.vm.$emit('update:value', 'pinned')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('snapshots.filters.pinnedOnly')
+
+    const clearBtn = wrapper.findAll('button').find((b) => b.text() === 'common.clear')
+    expect(clearBtn).toBeTruthy()
+    await clearBtn!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('snapshots.filters.pinnedOnly')
+  })
 })

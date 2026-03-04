@@ -10,7 +10,6 @@ import {
   NInput,
   NModal,
   NPopover,
-  NSelect,
   NSpace,
   NSpin,
   NTag,
@@ -20,6 +19,8 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import ListToolbar from '@/components/list/ListToolbar.vue'
+import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import {
   useIncompleteCleanupStore,
   type CleanupTargetType,
@@ -36,6 +37,7 @@ import { useLatestRequest } from '@/lib/latest'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { copyText } from '@/lib/clipboard'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
+import { createMultiSelectFilterField, useListFilters } from '@/lib/listFilters'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -79,6 +81,24 @@ const statusOptions = computed(() => [
 const targetOptions = computed(() => [
   { label: t('settings.maintenance.cleanup.target.webdav'), value: 'webdav' },
   { label: t('settings.maintenance.cleanup.target.localDir'), value: 'local_dir' },
+])
+
+const {
+  activeFilterChips,
+  clearFilters,
+} = useListFilters([
+  createMultiSelectFilterField({
+    key: 'status',
+    label: t('settings.maintenance.cleanup.columns.status'),
+    value: statusFilter,
+    options: () => statusOptions.value,
+  }),
+  createMultiSelectFilterField({
+    key: 'target',
+    label: t('settings.maintenance.cleanup.columns.target'),
+    value: targetFilter,
+    options: () => targetOptions.value,
+  }),
 ])
 
 function formatTarget(target: CleanupTargetType): string {
@@ -423,37 +443,36 @@ const actionHelpItems = computed(() => [
     <div class="space-y-4">
       <ListToolbar embedded compact>
         <template #filters>
-          <div class="w-full md:w-56 md:flex-none">
-            <n-select
-              v-model:value="statusFilter"
-              size="small"
-              multiple
-              clearable
-              max-tag-count="responsive"
-              :placeholder="t('settings.maintenance.cleanup.status.all')"
-              :options="statusOptions"
-              class="w-full"
-            />
-          </div>
-          <div class="w-full md:w-56 md:flex-none">
-            <n-select
-              v-model:value="targetFilter"
-              size="small"
-              multiple
-              clearable
-              max-tag-count="responsive"
-              :placeholder="t('settings.maintenance.cleanup.target.all')"
-              :options="targetOptions"
-              class="w-full"
-            />
-          </div>
+          <ListFilterSelectField
+            v-model:value="statusFilter"
+            multiple
+            clearable
+            max-tag-count="responsive"
+            :placeholder="t('settings.maintenance.cleanup.status.all')"
+            :options="statusOptions"
+          />
+          <ListFilterSelectField
+            v-model:value="targetFilter"
+            multiple
+            clearable
+            max-tag-count="responsive"
+            :placeholder="t('settings.maintenance.cleanup.target.all')"
+            :options="targetOptions"
+          />
         </template>
 
         <template #actions>
+          <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
           <n-button size="small" class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
           <n-button size="small" circle @click="helpOpen = true">?</n-button>
         </template>
       </ListToolbar>
+
+      <ListActiveFiltersRow
+        :chips="activeFilterChips"
+        :clear-label="t('common.clear')"
+        @clear="clearFilters"
+      />
 
       <div v-if="!isDesktop" class="space-y-3">
         <n-card

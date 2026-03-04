@@ -31,6 +31,8 @@ import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
 import AppPagination from '@/components/list/AppPagination.vue'
+import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
@@ -38,6 +40,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { copyText } from '@/lib/clipboard'
 import { formatToastError } from '@/lib/errors'
 import { buildListRangeSummary, LIST_QUERY_DEBOUNCE_MS } from '@/lib/listUi'
+import { createMultiSelectFilterField, createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 
 const { t } = useI18n()
@@ -137,20 +140,35 @@ const agentsPageSizeOptions = [20, 50, 100]
 const agentsRangeSummary = computed(() => buildListRangeSummary(agents.total, agentsPage.value, agentsPageSize.value))
 const agentsPaginationLabel = computed(() => t('common.paginationRange', agentsRangeSummary.value))
 
-const hasActiveFilters = computed<boolean>(() => {
-  return (
-    searchText.value.trim().length > 0 ||
-    statusFilter.value !== 'all' ||
-    selectedLabels.value.length > 0
-  )
-})
+const {
+  hasActiveFilters,
+  activeFilterChips,
+  clearFilters: clearListFilters,
+} = useListFilters([
+  createTextFilterField({
+    key: 'q',
+    label: t('common.search'),
+    value: searchText,
+  }),
+  createSingleSelectFilterField({
+    key: 'status',
+    label: t('agents.columns.status'),
+    value: statusFilter,
+    defaultValue: 'all',
+    options: () => statusOptions.value,
+  }),
+  createMultiSelectFilterField({
+    key: 'labels',
+    label: t('agents.columns.labels'),
+    value: selectedLabels,
+    options: () => labelOptions.value,
+  }),
+])
 
 const listBaseEmpty = computed<boolean>(() => agents.total === 0 && !hasActiveFilters.value)
 
 function clearFilters(): void {
-  searchText.value = ''
-  statusFilter.value = 'all'
-  selectedLabels.value = []
+  clearListFilters()
   labelsMode.value = 'and'
 }
 
@@ -677,18 +695,16 @@ onBeforeUnmount(() => {
           </template>
 
           <template #filters>
-            <div class="min-w-[14rem] flex-1 md:flex-none md:w-72">
-              <n-select
-                v-model:value="selectedLabels"
-                size="small"
-                multiple
-                filterable
-                clearable
-                :loading="labelIndexLoading"
-                :options="labelOptions"
-                :placeholder="t('agents.filters.labelsPlaceholder')"
-              />
-            </div>
+            <ListFilterSelectField
+              v-model:value="selectedLabels"
+              width="wide"
+              multiple
+              filterable
+              clearable
+              :loading="labelIndexLoading"
+              :options="labelOptions"
+              :placeholder="t('agents.filters.labelsPlaceholder')"
+            />
 
             <div class="shrink-0 flex items-center gap-2">
               <span class="text-sm app-text-muted">{{ t('agents.filters.mode') }}</span>
@@ -698,13 +714,10 @@ onBeforeUnmount(() => {
               </n-radio-group>
             </div>
 
-            <div class="w-full md:w-56 md:flex-none">
-              <n-select
-                v-model:value="statusFilter"
-                size="small"
-                :options="statusOptions"
-              />
-            </div>
+            <ListFilterSelectField
+              v-model:value="statusFilter"
+              :options="statusOptions"
+            />
           </template>
 
           <template #actions>
@@ -731,6 +744,13 @@ onBeforeUnmount(() => {
       </template>
 
       <template #content>
+        <ListActiveFiltersRow
+          class="mb-3"
+          :chips="activeFilterChips"
+          :clear-label="t('common.clear')"
+          @clear="clearFilters"
+        />
+
         <div v-if="!isDesktop" class="space-y-3">
           <AppEmptyState v-if="agents.loading && agents.items.length === 0" :title="t('common.loading')" loading />
           <AppEmptyState

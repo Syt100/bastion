@@ -201,4 +201,13 @@ describe('AgentsView enrollment token modal', () => {
 
     expect(wrapper.text()).toContain('agents.mobile.moreDetails')
   })
+
+  it('shows active filter chip labels when route filter is pre-applied', async () => {
+    routeApi.query = { status: 'offline' }
+
+    const wrapper = mount(AgentsView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agents.columns.status: agents.status.offline')
+  })
 })

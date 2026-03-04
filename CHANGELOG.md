@@ -24,6 +24,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Notifications Queue to provide explicit loading/no-data/no-results empty states and row-level in-flight feedback for retry/cancel actions.
 - Changed Agents mobile cards to prioritize primary fields and move secondary metadata into progressive disclosure.
 - Changed Jobs and Agents search refresh cadence to use a shared debounce timing for more consistent query responsiveness.
+- Changed list filter behavior across Agents/Notifications Queue/Maintenance Cleanup/Job Snapshots to use shared filter modeling and shared filter field/chips components, improving active-filter visibility consistency and reducing duplicated toolbar filter code.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).

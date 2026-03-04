@@ -12,7 +12,6 @@ import {
   NInput,
   NModal,
   NPopover,
-  NSelect,
   NSpace,
   NSpin,
   NTag,
@@ -29,6 +28,8 @@ import AppEmptyState from '@/components/AppEmptyState.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
+import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import {
   useJobsStore,
   type JobDetail,
@@ -44,6 +45,7 @@ import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
 import { formatBytes } from '@/lib/format'
 import { useLatestRequest } from '@/lib/latest'
+import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
 
 const props = defineProps<{
   embedded?: boolean
@@ -202,6 +204,39 @@ const targetOptions = computed(() => [
   { label: t('snapshots.targets.webdav'), value: 'webdav' },
 ])
 
+const {
+  activeFilterChips,
+  clearFilters,
+} = useListFilters([
+  createTextFilterField({
+    key: 'q',
+    label: t('common.search'),
+    value: searchText,
+  }),
+  createSingleSelectFilterField({
+    key: 'status',
+    label: t('snapshots.columns.status'),
+    value: statusFilter,
+    defaultValue: 'all',
+    options: () => statusOptions.value,
+  }),
+  createSingleSelectFilterField({
+    key: 'pinned',
+    label: t('common.filters'),
+    value: pinnedFilter,
+    defaultValue: 'all',
+    options: () => pinnedOptions.value,
+    chipLabel: (_value, optionLabel) => optionLabel,
+  }),
+  createSingleSelectFilterField({
+    key: 'target',
+    label: t('snapshots.columns.target'),
+    value: targetFilter,
+    defaultValue: 'all',
+    options: () => targetOptions.value,
+  }),
+])
+
 const filteredItems = computed<RunArtifact[]>(() => {
   const q = searchText.value.trim().toLowerCase()
 
@@ -217,13 +252,6 @@ const filteredItems = computed<RunArtifact[]>(() => {
     return runId.includes(q) || fmt.includes(q) || target.includes(q)
   })
 })
-
-function clearFilters(): void {
-  searchText.value = ''
-  statusFilter.value = 'all'
-  pinnedFilter.value = 'all'
-  targetFilter.value = 'all'
-}
 
 async function refreshJob(): Promise<void> {
   const id = jobId.value
@@ -653,29 +681,20 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
       </template>
 
       <template #filters>
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="statusFilter"
-            size="small"
-            :options="statusOptions"
-          />
-        </div>
+        <ListFilterSelectField
+          v-model:value="statusFilter"
+          :options="statusOptions"
+        />
 
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="pinnedFilter"
-            size="small"
-            :options="pinnedOptions"
-          />
-        </div>
+        <ListFilterSelectField
+          v-model:value="pinnedFilter"
+          :options="pinnedOptions"
+        />
 
-        <div class="w-full md:w-56 md:flex-none">
-          <n-select
-            v-model:value="targetFilter"
-            size="small"
-            :options="targetOptions"
-          />
-        </div>
+        <ListFilterSelectField
+          v-model:value="targetFilter"
+          :options="targetOptions"
+        />
       </template>
 
       <template #actions>
@@ -683,6 +702,13 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
         <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
       </template>
     </ListToolbar>
+
+    <ListActiveFiltersRow
+      class="mb-3"
+      :chips="activeFilterChips"
+      :clear-label="t('common.clear')"
+      @clear="clearFilters"
+    />
 
     <div v-if="!isDesktop" class="space-y-3">
       <AppEmptyState v-if="listLoading && filteredItems.length === 0" :title="t('common.loading')" loading />
