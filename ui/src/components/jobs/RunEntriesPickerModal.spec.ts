@@ -130,6 +130,40 @@ describe('RunEntriesPickerModal', () => {
     expect(String(secondCall?.[0])).toContain('hide_dotfiles=true')
   })
 
+  it('keeps filter count from shared model while chips include search + filters', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(RunEntriesPickerModal)
+    ;(wrapper.vm as unknown as { open: (runId: string) => void }).open('run-1')
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { searchDraft: string }).searchDraft = 'foo'
+    ;(wrapper.vm as unknown as { applySearch: () => void }).applySearch()
+    await flushAsync()
+
+    ;(wrapper.vm as unknown as { kindFilter: 'all' | 'dir' | 'file' | 'symlink' }).kindFilter = 'file'
+    ;(wrapper.vm as unknown as { onFiltersChanged: () => void }).onFiltersChanged()
+    await flushAsync()
+
+    const vm = wrapper.vm as unknown as {
+      activeFilterCount: number
+      activeChips: Array<{ label: string }>
+      resetAllFilters: () => void
+    }
+    expect(vm.activeFilterCount).toBe(1)
+    expect(vm.activeChips.map((chip) => chip.label)).toEqual(
+      expect.arrayContaining(['common.search: foo', 'common.type: common.file']),
+    )
+
+    vm.resetAllFilters()
+    await flushAsync()
+    expect(vm.activeFilterCount).toBe(0)
+    expect(vm.activeChips).toHaveLength(0)
+  })
+
   it('splits selected entries into files and dirs', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ prefix: '', cursor: 0, next_cursor: null, entries: [] }))
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)

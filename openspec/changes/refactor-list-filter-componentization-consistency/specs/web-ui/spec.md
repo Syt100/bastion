@@ -26,3 +26,12 @@ Agents, Notifications Queue, Maintenance Cleanup, and Job Snapshots SHALL displa
 - **WHEN** list content is displayed
 - **THEN** an active-filter chip row appears using the shared component path
 - **AND** users can clear all filters from the same row-level clear action
+
+### Requirement: Picker Modals Reuse Shared Filter Modeling For Active Chips
+Run entries and path picker modals SHALL reuse the shared local filter model for active-filter count/chips and clear behavior.
+
+#### Scenario: Picker modals keep filter-count/chip behavior via shared model
+- **GIVEN** the user applies filters in RunEntries picker or PathPicker modal
+- **WHEN** the filters toolbar and active-chip row render
+- **THEN** active filter count/chips are derived through shared filter-model utilities
+- **AND** clear-all and per-chip close behaviors remain functional without page-local duplicated chip/count logic

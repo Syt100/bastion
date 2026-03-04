@@ -264,6 +264,43 @@ describe('FsPathPickerModal', () => {
     expect(calls.some((c) => c.includes('q=foo'))).toBe(true)
   })
 
+  it('uses shared filter model for filter count while active chips include search', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        path: '/root',
+        entries: [{ name: 'a.txt', path: '/root/a.txt', kind: 'file', size: 1 }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    wrapper = mount(FsPathPickerModal)
+    ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+    await flushAsync()
+
+    ;(pickerVm() as unknown as { searchDraft: string }).searchDraft = 'foo'
+    ;(pickerVm() as unknown as { applySearch: () => void }).applySearch()
+    await flushAsync()
+
+    ;(pickerVm() as unknown as { hideDotfiles: boolean }).hideDotfiles = true
+    ;(pickerVm() as unknown as { refreshForFilters: () => void }).refreshForFilters()
+    await flushAsync()
+
+    const vm = pickerVm() as {
+      activeFilterCount: number
+      activeChips: Array<{ label: string }>
+      resetAllFiltersAndRefresh: () => void
+    }
+    expect(vm.activeFilterCount).toBe(1)
+    expect(vm.activeChips.map((chip) => chip.label)).toEqual(
+      expect.arrayContaining(['common.search: foo', 'common.hideDotfiles']),
+    )
+
+    vm.resetAllFiltersAndRefresh()
+    await flushAsync()
+    expect(vm.activeFilterCount).toBe(0)
+    expect(vm.activeChips).toHaveLength(0)
+  })
+
   it('includes sort_by and sort_dir in fs list requests', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

@@ -28,9 +28,10 @@ import { MQ } from '@/lib/breakpoints'
 import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
+import { useListFilters } from '@/lib/listFilters'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
-import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
@@ -238,16 +239,82 @@ const showFilters = computed(
 
 const hasSizeApplied = computed(() => sizeMinApplied.value != null || sizeMaxApplied.value != null)
 
-const activeFilterCount = computed(() => {
-  const cap = capabilities.value
-  let count = 0
-  if (supportsKindFilter.value && kindFilter.value !== (cap.kindFilter?.default ?? 'all')) count += 1
-  if (supportsHideDotfiles.value && hideDotfiles.value) count += 1
-  if (supportsSizeFilter.value && hasSizeApplied.value) count += 1
-  if (supportsTypeSort.value && typeSort.value !== (cap.typeSort?.default ?? 'dir_first')) count += 1
-  if (supportsSort.value && (sortBy.value !== cap.sort?.defaultBy || sortDir.value !== cap.sort?.defaultDir)) count += 1
-  return count
-})
+const {
+  filtersActiveCount: activeFilterCount,
+  activeFilterChips,
+  clearFilters: clearListFilterFields,
+} = useListFilters([
+  {
+    clear: clearKindFilter,
+    isActive: () => supportsKindFilter.value && kindFilter.value !== (capabilities.value.kindFilter?.default ?? 'all'),
+    chips: () => {
+      if (!supportsKindFilter.value || kindFilter.value === (capabilities.value.kindFilter?.default ?? 'all')) return []
+      return [
+        {
+          key: 'kind',
+          label: `${t('common.type')}: ${kindLabel(kindFilter.value)}`,
+          onClose: clearKindFilterAndRefresh,
+        },
+      ]
+    },
+  },
+  {
+    clear: clearDotfiles,
+    isActive: () => supportsHideDotfiles.value && hideDotfiles.value,
+    chips: () => {
+      if (!supportsHideDotfiles.value || !hideDotfiles.value) return []
+      return [
+        {
+          key: 'dotfiles',
+          label: t('common.hideDotfiles'),
+          onClose: clearDotfilesAndRefresh,
+        },
+      ]
+    },
+  },
+  {
+    clear: clearSizeFilter,
+    isActive: () => supportsSizeFilter.value && hasSizeApplied.value,
+    chips: () => {
+      if (!supportsSizeFilter.value || !hasSizeApplied.value) return []
+      return [
+        {
+          key: 'size',
+          label: `${t('common.fileSize')}: ${formatSizeRange(sizeMinApplied.value, sizeMaxApplied.value, sizeUnitApplied.value)}`,
+          onClose: clearSizeFilterAndRefresh,
+        },
+      ]
+    },
+  },
+  {
+    clear: resetTypeSort,
+    isActive: () => supportsTypeSort.value && typeSort.value !== (capabilities.value.typeSort?.default ?? 'dir_first'),
+    chips: () => {
+      if (!supportsTypeSort.value || typeSort.value === (capabilities.value.typeSort?.default ?? 'dir_first')) return []
+      return [
+        {
+          key: 'typeSort',
+          label: `${t('common.typeSort')}: ${typeSort.value === 'file_first' ? t('common.fileFirst') : t('common.dirFirst')}`,
+          onClose: resetTypeSortAndRefresh,
+        },
+      ]
+    },
+  },
+  {
+    clear: resetSort,
+    isActive: () => supportsSort.value && (sortBy.value !== capabilities.value.sort?.defaultBy || sortDir.value !== capabilities.value.sort?.defaultDir),
+    chips: () => {
+      if (!supportsSort.value || (sortBy.value === capabilities.value.sort?.defaultBy && sortDir.value === capabilities.value.sort?.defaultDir)) return []
+      return [
+        {
+          key: 'sort',
+          label: `${t('common.sort')}: ${sortByLabel(sortBy.value)} · ${sortDirLabel(sortDir.value)}`,
+          onClose: resetSortAndRefresh,
+        },
+      ]
+    },
+  },
+])
 
 const hasAnySearchOrFilters = computed(
   () => (supportsSearch.value && searchApplied.value.trim().length > 0) || activeFilterCount.value > 0,
@@ -261,57 +328,17 @@ function formatSizeRange(min: number | null, max: number | null, unit: PathPicke
   return '-'
 }
 
-type ActiveChip = {
-  key: string
-  label: string
-  onClose: () => void
-}
-
-const activeChips = computed<ActiveChip[]>(() => {
-  const out: ActiveChip[] = []
-
+const activeChips = computed(() => {
+  const chips = [...activeFilterChips.value]
   const q = searchApplied.value.trim()
   if (supportsSearch.value && q) {
-    out.push({ key: 'search', label: `${t('common.search')}: ${q}`, onClose: clearSearchAndRefresh })
-  }
-
-  if (supportsKindFilter.value && kindFilter.value !== (capabilities.value.kindFilter?.default ?? 'all')) {
-    out.push({
-      key: 'kind',
-      label: `${t('common.type')}: ${kindLabel(kindFilter.value)}`,
-      onClose: clearKindFilterAndRefresh,
+    chips.unshift({
+      key: 'search',
+      label: `${t('common.search')}: ${q}`,
+      onClose: clearSearchAndRefresh,
     })
   }
-
-  if (supportsHideDotfiles.value && hideDotfiles.value) {
-    out.push({ key: 'dotfiles', label: t('common.hideDotfiles'), onClose: clearDotfilesAndRefresh })
-  }
-
-  if (supportsSizeFilter.value && hasSizeApplied.value) {
-    out.push({
-      key: 'size',
-      label: `${t('common.fileSize')}: ${formatSizeRange(sizeMinApplied.value, sizeMaxApplied.value, sizeUnitApplied.value)}`,
-      onClose: clearSizeFilterAndRefresh,
-    })
-  }
-
-  if (supportsTypeSort.value && typeSort.value !== (capabilities.value.typeSort?.default ?? 'dir_first')) {
-    out.push({
-      key: 'typeSort',
-      label: `${t('common.typeSort')}: ${typeSort.value === 'file_first' ? t('common.fileFirst') : t('common.dirFirst')}`,
-      onClose: resetTypeSortAndRefresh,
-    })
-  }
-
-  if (supportsSort.value && (sortBy.value !== capabilities.value.sort?.defaultBy || sortDir.value !== capabilities.value.sort?.defaultDir)) {
-    out.push({
-      key: 'sort',
-      label: `${t('common.sort')}: ${sortByLabel(sortBy.value)} · ${sortDirLabel(sortDir.value)}`,
-      onClose: resetSortAndRefresh,
-    })
-  }
-
-  return out
+  return chips
 })
 
 const pickerShortcuts = computed<PickerShortcutItem[]>(() => [
@@ -430,13 +457,9 @@ function resetSort(): void {
 function resetAllFilters(): void {
   const cap = capabilities.value
   clearSearch()
-  clearKindFilter()
-  clearDotfiles()
-  clearSizeFilter()
+  clearListFilterFields()
   sizeUnitDraft.value = cap.sizeFilter?.defaultUnit ?? 'MB'
   sizeUnitApplied.value = cap.sizeFilter?.defaultUnit ?? 'MB'
-  resetTypeSort()
-  resetSort()
 }
 
 function refreshForFilters(): void {
@@ -1392,7 +1415,7 @@ defineExpose<PathPickerModalExpose>({ open })
         />
       </div>
 
-      <PickerActiveChipsRow
+      <ListActiveFiltersRow
         v-if="!isSingleDirMode"
         :chips="activeChips"
         :clear-label="t('common.clear')"

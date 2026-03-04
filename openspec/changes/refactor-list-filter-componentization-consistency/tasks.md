@@ -13,9 +13,14 @@
 - [x] 3.2 Migrate Notifications Queue filters to shared model/wrappers and surface unified active-filter chips row
 - [x] 3.3 Migrate Maintenance Cleanup filters to shared model/wrappers and surface unified active-filter chips row
 - [x] 3.4 Migrate Job Snapshots filters to shared model/wrappers and surface unified active-filter chips row
+- [x] 3.5 Migrate `RunEntriesPickerModal` filter count/chips/clear logic to shared filter model and shared active-filters row wrapper
+- [x] 3.6 Migrate `PathPickerModal` filter count/chips/clear logic to shared filter model and shared active-filters row wrapper
 
 ## 4. Tests / Validation
 - [x] 4.1 Add/update tests covering shared filter chips visibility and clear behavior on migrated pages
 - [x] 4.2 Run `npm test --prefix ui`
 - [x] 4.3 Run `scripts/ci.sh`
 - [x] 4.4 Update `CHANGELOG.md` via `maintain-changelog-release` workflow for user-visible consistency improvements
+- [x] 4.5 Add/update picker tests covering shared filter count/chips clear behavior
+- [x] 4.6 Re-run `npm test --prefix ui`
+- [x] 4.7 Re-run `scripts/ci.sh`

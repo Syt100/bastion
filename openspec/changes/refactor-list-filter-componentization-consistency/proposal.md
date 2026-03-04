@@ -8,6 +8,7 @@ After recent list-page UX upgrades, filter behavior still diverges across pages 
 - Introduce shared list filter field wrappers for select controls to standardize width/layout and reduce repeated toolbar markup.
 - Introduce a shared active-filters row wrapper for consistent filter visibility/clear affordances.
 - Migrate Agents, Notifications Queue, Maintenance Cleanup, and Job Snapshots list pages to the shared filter model + UI wrappers.
+- Migrate `RunEntriesPickerModal` and `PathPickerModal` active-filter modeling/chips to the shared filter model and shared active-filters row component.
 - Keep existing server contracts and route/filter semantics unchanged while unifying presentation and local state plumbing.
 
 ## Impact
@@ -20,7 +21,10 @@ After recent list-page UX upgrades, filter behavior still diverges across pages 
   - `ui/src/views/settings/notifications/NotificationsQueueView.vue`
   - `ui/src/views/settings/maintenance/MaintenanceCleanupView.vue`
   - `ui/src/views/JobSnapshotsView.vue`
+  - `ui/src/components/jobs/RunEntriesPickerModal.vue`
+  - `ui/src/components/pickers/pathPicker/PathPickerModal.vue`
   - related view tests under `ui/src/views/**.spec.ts`
+  - related picker tests under `ui/src/components/**.spec.ts`
 
 ## Non-Goals
 - Reworking list server-side filtering/pagination APIs.

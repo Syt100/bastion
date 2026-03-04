@@ -25,8 +25,9 @@ import { formatBytes } from '@/lib/format'
 import { formatToastError } from '@/lib/errors'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
+import { useListFilters } from '@/lib/listFilters'
+import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
-import PickerActiveChipsRow from '@/components/pickers/PickerActiveChipsRow.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
 import PickerFooterRow from '@/components/pickers/PickerFooterRow.vue'
 import PickerModalCard from '@/components/pickers/PickerModalCard.vue'
@@ -143,15 +144,6 @@ const hasSearchDraftChanges = computed(() => searchDraft.value.trim() !== search
 
 const hasSizeApplied = computed(() => sizeMinApplied.value != null || sizeMaxApplied.value != null)
 
-const activeFilterCount = computed(() => {
-  let count = 0
-  if (kindFilter.value !== 'all') count += 1
-  if (hideDotfiles.value) count += 1
-  if (hasSizeApplied.value) count += 1
-  if (typeSort.value !== 'dir_first') count += 1
-  return count
-})
-
 const kindOptions = computed(() => [
   { label: t('restore.pick.kindAll'), value: 'all' as const },
   { label: t('common.dir'), value: 'dir' as const },
@@ -186,47 +178,91 @@ function formatSizeRange(min: number | null, max: number | null, unit: SizeUnit)
   return '-'
 }
 
-type ActiveChip = {
-  key: string
-  label: string
-  onClose: () => void
-}
+const {
+  filtersActiveCount: activeFilterCount,
+  activeFilterChips,
+  clearFilters: clearListFilterFields,
+} = useListFilters([
+  {
+    clear: () => {
+      kindFilter.value = 'all'
+    },
+    isActive: () => kindFilter.value !== 'all',
+    chips: () => {
+      if (kindFilter.value === 'all') return []
+      return [
+        {
+          key: 'kind',
+          label: `${t('common.type')}: ${kindLabel(kindFilter.value)}`,
+          onClose: clearKindFilter,
+        },
+      ]
+    },
+  },
+  {
+    clear: () => {
+      hideDotfiles.value = false
+    },
+    isActive: () => hideDotfiles.value,
+    chips: () => {
+      if (!hideDotfiles.value) return []
+      return [
+        {
+          key: 'dotfiles',
+          label: t('common.hideDotfiles'),
+          onClose: clearDotfiles,
+        },
+      ]
+    },
+  },
+  {
+    clear: () => {
+      sizeMinDraft.value = null
+      sizeMaxDraft.value = null
+      sizeMinApplied.value = null
+      sizeMaxApplied.value = null
+    },
+    isActive: () => hasSizeApplied.value,
+    chips: () => {
+      if (!hasSizeApplied.value) return []
+      return [
+        {
+          key: 'size',
+          label: `${t('common.fileSize')}: ${formatSizeRange(sizeMinApplied.value, sizeMaxApplied.value, sizeUnitApplied.value)}`,
+          onClose: clearSizeFilter,
+        },
+      ]
+    },
+  },
+  {
+    clear: () => {
+      typeSort.value = 'dir_first'
+    },
+    isActive: () => typeSort.value !== 'dir_first',
+    chips: () => {
+      if (typeSort.value === 'dir_first') return []
+      return [
+        {
+          key: 'typeSort',
+          label: `${t('common.typeSort')}: ${typeSort.value === 'file_first' ? t('common.fileFirst') : t('common.dirFirst')}`,
+          onClose: resetTypeSort,
+        },
+      ]
+    },
+  },
+])
 
-const activeChips = computed<ActiveChip[]>(() => {
-  const out: ActiveChip[] = []
-
+const activeChips = computed(() => {
+  const chips = [...activeFilterChips.value]
   const q = searchApplied.value.trim()
-  if (q) out.push({ key: 'search', label: `${t('common.search')}: ${q}`, onClose: clearSearch })
-
-  if (kindFilter.value !== 'all') {
-    out.push({
-      key: 'kind',
-      label: `${t('common.type')}: ${kindLabel(kindFilter.value)}`,
-      onClose: clearKindFilter,
+  if (q) {
+    chips.unshift({
+      key: 'search',
+      label: `${t('common.search')}: ${q}`,
+      onClose: clearSearch,
     })
   }
-
-  if (hideDotfiles.value) {
-    out.push({ key: 'dotfiles', label: t('common.hideDotfiles'), onClose: clearDotfiles })
-  }
-
-  if (hasSizeApplied.value) {
-    out.push({
-      key: 'size',
-      label: `${t('common.fileSize')}: ${formatSizeRange(sizeMinApplied.value, sizeMaxApplied.value, sizeUnitApplied.value)}`,
-      onClose: clearSizeFilter,
-    })
-  }
-
-  if (typeSort.value !== 'dir_first') {
-    out.push({
-      key: 'typeSort',
-      label: `${t('common.typeSort')}: ${typeSort.value === 'file_first' ? t('common.fileFirst') : t('common.dirFirst')}`,
-      onClose: resetTypeSort,
-    })
-  }
-
-  return out
+  return chips
 })
 
 const modalStyle = computed(() =>
@@ -412,15 +448,9 @@ function resetTypeSort(): void {
 function resetAllFilters(): void {
   searchDraft.value = ''
   searchApplied.value = ''
-  kindFilter.value = 'all'
-  hideDotfiles.value = false
-  sizeMinDraft.value = null
-  sizeMaxDraft.value = null
+  clearListFilterFields()
   sizeUnitDraft.value = 'MB'
-  sizeMinApplied.value = null
-  sizeMaxApplied.value = null
   sizeUnitApplied.value = 'MB'
-  typeSort.value = 'dir_first'
   onFiltersChanged()
 }
 
@@ -734,7 +764,7 @@ defineExpose<RunEntriesPickerModalExpose>({ open })
         />
       </div>
 
-      <PickerActiveChipsRow :chips="activeChips" :clear-label="t('common.clear')" @clear="resetAllFilters" />
+      <ListActiveFiltersRow :chips="activeChips" :clear-label="t('common.clear')" @clear="resetAllFilters" />
 
       <div class="flex flex-col gap-2 flex-1 min-h-0">
         <div ref="tableContainerEl" class="flex-1 min-h-0 overflow-hidden">
