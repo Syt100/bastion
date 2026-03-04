@@ -7,11 +7,9 @@ import {
   NForm,
   NFormItem,
   NInput,
-  NModal,
   NRadioButton,
   NRadioGroup,
   NSelect,
-  NSpace,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -19,6 +17,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useAgentsStore, type AgentsLabelsMode } from '@/stores/agents'
 import { useBulkOperationsStore, type BulkSelectorRequest, type JobDeployPreviewItem, type JobDeployPreviewResponse } from '@/stores/bulkOperations'
 import { useJobsStore } from '@/stores/jobs'
@@ -232,80 +231,78 @@ defineExpose<JobDeployModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('jobs.deploy.title')">
-    <div class="space-y-4">
-      <div class="text-sm app-text-muted">{{ sourceJobName }}</div>
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.lg" :title="t('jobs.deploy.title')">
+    <div class="text-sm app-text-muted">{{ sourceJobName }}</div>
 
-      <n-card size="small" class="app-card" :bordered="false">
-        <n-form label-placement="top">
-          <n-form-item :label="t('jobs.deploy.target')" :show-feedback="false">
-            <n-radio-group v-model:value="targetMode" size="small">
-              <n-radio-button value="labels">{{ t('jobs.deploy.targetLabels') }}</n-radio-button>
-              <n-radio-button value="nodes">{{ t('jobs.deploy.targetNodes') }}</n-radio-button>
+    <n-card size="small" class="app-card" :bordered="false">
+      <n-form label-placement="top">
+        <n-form-item :label="t('jobs.deploy.target')" :show-feedback="false">
+          <n-radio-group v-model:value="targetMode" size="small">
+            <n-radio-button value="labels">{{ t('jobs.deploy.targetLabels') }}</n-radio-button>
+            <n-radio-button value="nodes">{{ t('jobs.deploy.targetNodes') }}</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
+
+        <template v-if="targetMode === 'labels'">
+          <n-form-item :label="t('jobs.deploy.labels')" :show-feedback="false">
+            <n-select
+              v-model:value="selectedLabels"
+              multiple
+              filterable
+              clearable
+              :loading="labelIndexLoading"
+              :options="labelOptions"
+              :placeholder="t('jobs.deploy.labelsPlaceholder')"
+            />
+          </n-form-item>
+
+          <n-form-item :label="t('jobs.deploy.labelsMode')" :show-feedback="false">
+            <n-radio-group v-model:value="labelsMode" size="small">
+              <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
+              <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
             </n-radio-group>
           </n-form-item>
+        </template>
 
-          <template v-if="targetMode === 'labels'">
-            <n-form-item :label="t('jobs.deploy.labels')" :show-feedback="false">
-              <n-select
-                v-model:value="selectedLabels"
-                multiple
-                filterable
-                clearable
-                :loading="labelIndexLoading"
-                :options="labelOptions"
-                :placeholder="t('jobs.deploy.labelsPlaceholder')"
-              />
-            </n-form-item>
-
-            <n-form-item :label="t('jobs.deploy.labelsMode')" :show-feedback="false">
-              <n-radio-group v-model:value="labelsMode" size="small">
-                <n-radio-button value="and">{{ t('common.and') }}</n-radio-button>
-                <n-radio-button value="or">{{ t('common.or') }}</n-radio-button>
-              </n-radio-group>
-            </n-form-item>
-          </template>
-
-          <template v-else>
-            <n-form-item :label="t('jobs.deploy.nodes')" :show-feedback="false">
-              <n-select
-                v-model:value="selectedNodeIds"
-                multiple
-                filterable
-                clearable
-                :options="nodeOptions"
-                :placeholder="t('jobs.deploy.nodesPlaceholder')"
-              />
-            </n-form-item>
-          </template>
-
-          <n-form-item :label="t('jobs.deploy.nameTemplate')" :show-feedback="false">
-            <n-input v-model:value="nameTemplate" :placeholder="t('jobs.deploy.nameTemplatePlaceholder')" />
-            <div class="text-xs app-text-muted mt-1">{{ t('jobs.deploy.nameTemplateHelp') }}</div>
+        <template v-else>
+          <n-form-item :label="t('jobs.deploy.nodes')" :show-feedback="false">
+            <n-select
+              v-model:value="selectedNodeIds"
+              multiple
+              filterable
+              clearable
+              :options="nodeOptions"
+              :placeholder="t('jobs.deploy.nodesPlaceholder')"
+            />
           </n-form-item>
-        </n-form>
-      </n-card>
+        </template>
 
-      <n-card v-if="preview" size="small" class="app-card" :bordered="false">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div class="text-sm app-text-muted">
-            {{ t('jobs.deploy.previewSummary', previewCounts) }}
-          </div>
-        </div>
-        <div class="overflow-x-auto">
-          <n-data-table :columns="previewColumns" :data="preview.items" :bordered="false" />
-        </div>
-      </n-card>
+        <n-form-item :label="t('jobs.deploy.nameTemplate')" :show-feedback="false">
+          <n-input v-model:value="nameTemplate" :placeholder="t('jobs.deploy.nameTemplatePlaceholder')" />
+          <div class="text-xs app-text-muted mt-1">{{ t('jobs.deploy.nameTemplateHelp') }}</div>
+        </n-form-item>
+      </n-form>
+    </n-card>
 
-      <div v-if="error" class="text-sm text-[var(--app-danger)]">
-        {{ error }}
+    <n-card v-if="preview" size="small" class="app-card" :bordered="false">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div class="text-sm app-text-muted">
+          {{ t('jobs.deploy.previewSummary', previewCounts) }}
+        </div>
       </div>
+      <div class="overflow-x-auto">
+        <n-data-table :columns="previewColumns" :data="preview.items" :bordered="false" />
+      </div>
+    </n-card>
 
-      <n-space justify="end">
-        <n-button :loading="previewLoading" @click="previewDeploy">{{ t('jobs.deploy.preview') }}</n-button>
-        <n-button type="primary" :loading="saving" @click="deploy">{{ t('jobs.deploy.deploy') }}</n-button>
-        <n-button :disabled="previewLoading || saving" @click="show = false">{{ t('common.cancel') }}</n-button>
-      </n-space>
+    <div v-if="error" class="text-sm text-[var(--app-danger)]">
+      {{ error }}
     </div>
-  </n-modal>
+
+    <template #footer>
+      <n-button :loading="previewLoading" @click="previewDeploy">{{ t('jobs.deploy.preview') }}</n-button>
+      <n-button type="primary" :loading="saving" @click="deploy">{{ t('jobs.deploy.deploy') }}</n-button>
+      <n-button :disabled="previewLoading || saving" @click="show = false">{{ t('common.cancel') }}</n-button>
+    </template>
+  </AppModalShell>
 </template>

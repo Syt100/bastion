@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useMessage } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, NSelect, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useSecretsStore } from '@/stores/secrets'
 import { useOperationsStore, type ConflictPolicy, type RestoreDestination } from '@/stores/operations'
@@ -234,104 +235,103 @@ defineExpose<RestoreWizardModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('restore.title')">
-    <div class="space-y-4">
-      <div class="text-sm app-text-muted">{{ runId }}</div>
-      <n-form label-placement="top">
-        <n-form-item :label="t('restore.fields.destinationType')">
-          <n-select v-model:value="destinationType" :options="destinationTypeOptions" />
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.sm" :title="t('restore.title')">
+    <div class="text-sm app-text-muted">{{ runId }}</div>
+    <n-form label-placement="top">
+      <n-form-item :label="t('restore.fields.destinationType')">
+        <n-select v-model:value="destinationType" :options="destinationTypeOptions" />
+      </n-form-item>
+
+      <template v-if="destinationType === 'local_fs'">
+        <n-form-item
+          :label="t('restore.fields.node')"
+          :validation-status="fieldErrors.localFsNodeId ? 'error' : undefined"
+          :feedback="fieldErrors.localFsNodeId"
+        >
+          <n-select v-model:value="localFsNodeId" :options="nodeOptions" />
         </n-form-item>
-
-        <template v-if="destinationType === 'local_fs'">
-          <n-form-item
-            :label="t('restore.fields.node')"
-            :validation-status="fieldErrors.localFsNodeId ? 'error' : undefined"
-            :feedback="fieldErrors.localFsNodeId"
-          >
-            <n-select v-model:value="localFsNodeId" :options="nodeOptions" />
-          </n-form-item>
-          <n-form-item
-            :label="t('restore.fields.destinationDir')"
-            :validation-status="fieldErrors.localFsDirectory ? 'error' : undefined"
-            :feedback="fieldErrors.localFsDirectory"
-          >
-            <div class="space-y-1 w-full">
-              <div class="flex gap-2">
-                <n-input
-                  v-model:value="localFsDirectory"
-                  class="flex-1"
-                  :placeholder="t('restore.fields.destinationDirPlaceholder')"
-                />
-                <n-button @click="openLocalFsDirectoryPicker">{{ t('restore.actions.browse') }}</n-button>
-              </div>
-              <div class="text-xs app-text-muted">{{ t('restore.fields.destinationDirHelp') }}</div>
+        <n-form-item
+          :label="t('restore.fields.destinationDir')"
+          :validation-status="fieldErrors.localFsDirectory ? 'error' : undefined"
+          :feedback="fieldErrors.localFsDirectory"
+        >
+          <div class="space-y-1 w-full">
+            <div class="flex gap-2">
+              <n-input
+                v-model:value="localFsDirectory"
+                class="flex-1"
+                :placeholder="t('restore.fields.destinationDirPlaceholder')"
+              />
+              <n-button @click="openLocalFsDirectoryPicker">{{ t('restore.actions.browse') }}</n-button>
             </div>
-          </n-form-item>
-        </template>
-
-        <template v-else>
-          <n-form-item
-            :label="t('restore.fields.webdavBaseUrl')"
-            :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
-            :feedback="fieldErrors.webdavBaseUrl"
-          >
-            <n-input v-model:value="webdavBaseUrl" :placeholder="t('restore.fields.webdavBaseUrlPlaceholder')" />
-          </n-form-item>
-          <n-form-item
-            :label="t('restore.fields.webdavSecret')"
-            :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
-            :feedback="fieldErrors.webdavSecretName"
-          >
-            <n-select v-model:value="webdavSecretName" :options="webdavSecretOptions" filterable />
-          </n-form-item>
-          <n-form-item
-            :label="t('restore.fields.webdavPrefix')"
-            :validation-status="fieldErrors.webdavPrefix ? 'error' : undefined"
-            :feedback="fieldErrors.webdavPrefix"
-          >
-            <div class="space-y-1 w-full">
-              <div class="flex gap-2">
-                <n-input
-                  v-model:value="webdavPrefix"
-                  class="flex-1"
-                  :placeholder="t('restore.fields.webdavPrefixPlaceholder')"
-                />
-                <n-button @click="openWebdavPrefixPicker">{{ t('restore.actions.browse') }}</n-button>
-              </div>
-              <div class="text-xs app-text-muted">{{ t('restore.fields.webdavPrefixHelp') }}</div>
-            </div>
-          </n-form-item>
-          <div class="text-xs app-text-muted">
-            {{ t('restore.fields.webdavMetaNote') }}
-          </div>
-        </template>
-
-        <n-form-item :label="t('restore.fields.conflictPolicy')">
-          <n-select v-model:value="conflictPolicy" :options="conflictOptions" />
-        </n-form-item>
-        <n-form-item :label="t('restore.fields.selection')">
-          <div class="space-y-2 w-full">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="text-xs app-text-muted">{{ t('restore.fields.selectionHelp') }}</div>
-              <div class="flex items-center gap-2">
-                <n-button size="small" @click="openPicker">{{ t('restore.actions.pick') }}</n-button>
-                <n-button size="small" :disabled="selection == null" @click="clearSelection">
-                  {{ t('restore.actions.clearSelection') }}
-                </n-button>
-              </div>
-            </div>
-            <div v-if="selectionSummary" class="text-sm">
-              {{ selectionSummary }}
-            </div>
+            <div class="text-xs app-text-muted">{{ t('restore.fields.destinationDirHelp') }}</div>
           </div>
         </n-form-item>
-      </n-form>
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-button type="primary" :loading="starting" @click="start">{{ t('restore.actions.start') }}</n-button>
-      </n-space>
-    </div>
-  </n-modal>
+      </template>
+
+      <template v-else>
+        <n-form-item
+          :label="t('restore.fields.webdavBaseUrl')"
+          :validation-status="fieldErrors.webdavBaseUrl ? 'error' : undefined"
+          :feedback="fieldErrors.webdavBaseUrl"
+        >
+          <n-input v-model:value="webdavBaseUrl" :placeholder="t('restore.fields.webdavBaseUrlPlaceholder')" />
+        </n-form-item>
+        <n-form-item
+          :label="t('restore.fields.webdavSecret')"
+          :validation-status="fieldErrors.webdavSecretName ? 'error' : undefined"
+          :feedback="fieldErrors.webdavSecretName"
+        >
+          <n-select v-model:value="webdavSecretName" :options="webdavSecretOptions" filterable />
+        </n-form-item>
+        <n-form-item
+          :label="t('restore.fields.webdavPrefix')"
+          :validation-status="fieldErrors.webdavPrefix ? 'error' : undefined"
+          :feedback="fieldErrors.webdavPrefix"
+        >
+          <div class="space-y-1 w-full">
+            <div class="flex gap-2">
+              <n-input
+                v-model:value="webdavPrefix"
+                class="flex-1"
+                :placeholder="t('restore.fields.webdavPrefixPlaceholder')"
+              />
+              <n-button @click="openWebdavPrefixPicker">{{ t('restore.actions.browse') }}</n-button>
+            </div>
+            <div class="text-xs app-text-muted">{{ t('restore.fields.webdavPrefixHelp') }}</div>
+          </div>
+        </n-form-item>
+        <div class="text-xs app-text-muted">
+          {{ t('restore.fields.webdavMetaNote') }}
+        </div>
+      </template>
+
+      <n-form-item :label="t('restore.fields.conflictPolicy')">
+        <n-select v-model:value="conflictPolicy" :options="conflictOptions" />
+      </n-form-item>
+      <n-form-item :label="t('restore.fields.selection')">
+        <div class="space-y-2 w-full">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs app-text-muted">{{ t('restore.fields.selectionHelp') }}</div>
+            <div class="flex items-center gap-2">
+              <n-button size="small" @click="openPicker">{{ t('restore.actions.pick') }}</n-button>
+              <n-button size="small" :disabled="selection == null" @click="clearSelection">
+                {{ t('restore.actions.clearSelection') }}
+              </n-button>
+            </div>
+          </div>
+          <div v-if="selectionSummary" class="text-sm">
+            {{ selectionSummary }}
+          </div>
+        </div>
+      </n-form-item>
+    </n-form>
+
+    <template #footer>
+      <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+      <n-button type="primary" :loading="starting" @click="start">{{ t('restore.actions.start') }}</n-button>
+    </template>
+  </AppModalShell>
 
   <RunEntriesPickerModal ref="entriesPicker" @picked="onPicked" />
   <FsPathPickerModal ref="fsPicker" @picked="onFsPicked" />

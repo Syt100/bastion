@@ -709,6 +709,13 @@ body {
   padding-right: 2px;
 }
 
+.app-modal-shell__body-plain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-4);
+  min-height: 0;
+}
+
 .app-modal-shell__footer {
   display: flex;
   align-items: center;

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, type CSSProperties } from 'vue'
-import { NButton, NDrawer, NDrawerContent, NModal, NSpace, NTag } from 'naive-ui'
+import { NButton, NDrawer, NDrawerContent, NTag } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import {
@@ -55,6 +56,7 @@ const desktopContentStyle: CSSProperties = {
   flexDirection: 'column',
   overflow: 'hidden',
   minHeight: '0',
+  maxHeight: MODAL_HEIGHT.max,
 }
 
 function tokenForField(
@@ -118,12 +120,12 @@ const headerMetaTokens = computed(() => {
 </script>
 
 <template>
-  <n-modal
+  <AppModalShell
     v-if="isDesktop"
     :show="show"
-    preset="card"
-    :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
+    :width="MODAL_WIDTH.md"
     :content-style="desktopContentStyle"
+    :scroll-body="false"
     :title="title"
     @update:show="emit('update:show', $event)"
   >
@@ -140,11 +142,12 @@ const headerMetaTokens = computed(() => {
         :event="event"
         :max-body-height="maxBodyHeightDesktop"
       />
-      <n-space justify="end" class="shrink-0">
-        <n-button @click="emit('update:show', false)">{{ closeLabel }}</n-button>
-      </n-space>
     </div>
-  </n-modal>
+
+    <template #footer>
+      <n-button @click="emit('update:show', false)">{{ closeLabel }}</n-button>
+    </template>
+  </AppModalShell>
 
   <n-drawer
     v-else

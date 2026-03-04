@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { NAlert, NButton, NModal, NSpace, useMessage } from 'naive-ui'
+import { NAlert, NButton, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useOperationsStore } from '@/stores/operations'
 import { MODAL_WIDTH } from '@/lib/modal'
 import { formatToastError } from '@/lib/errors'
@@ -49,16 +50,15 @@ defineExpose<VerifyWizardModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.sm }" :title="t('verify.title')">
-    <div class="space-y-4">
-      <div class="text-sm app-text-muted">{{ runId }}</div>
-      <n-alert type="info" :title="t('verify.helpTitle')">
-        {{ t('verify.helpBody') }}
-      </n-alert>
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
-        <n-button type="primary" :loading="starting" @click="start">{{ t('verify.actions.start') }}</n-button>
-      </n-space>
-    </div>
-  </n-modal>
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.sm" :title="t('verify.title')">
+    <div class="text-sm app-text-muted">{{ runId }}</div>
+    <n-alert type="info" :title="t('verify.helpTitle')">
+      {{ t('verify.helpBody') }}
+    </n-alert>
+
+    <template #footer>
+      <n-button @click="show = false">{{ t('common.cancel') }}</n-button>
+      <n-button type="primary" :loading="starting" @click="start">{{ t('verify.actions.start') }}</n-button>
+    </template>
+  </AppModalShell>
 </template>

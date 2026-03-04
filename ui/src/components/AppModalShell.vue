@@ -10,6 +10,7 @@ const props = withDefaults(
     title: string
     width?: string
     maskClosable?: boolean
+    scrollBody?: boolean
     bodyClass?: string
     footerClass?: string
     contentStyle?: CSSProperties
@@ -17,6 +18,7 @@ const props = withDefaults(
   {
     width: MODAL_WIDTH.md,
     maskClosable: true,
+    scrollBody: true,
     bodyClass: undefined,
     footerClass: undefined,
     contentStyle: undefined,
@@ -57,7 +59,7 @@ const resolvedContentStyle = computed<CSSProperties>(() => {
       <slot name="header-extra" />
     </template>
 
-    <div class="app-modal-shell__body" :class="bodyClass">
+    <div :class="[scrollBody ? 'app-modal-shell__body' : 'app-modal-shell__body-plain', bodyClass]">
       <slot />
     </div>
 

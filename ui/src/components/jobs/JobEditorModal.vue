@@ -3,7 +3,6 @@ import { computed, nextTick, provide, reactive, ref } from 'vue'
 import {
   NButton,
   NForm,
-  NModal,
   NStep,
   NSteps,
   useMessage,
@@ -20,6 +19,7 @@ import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
+import AppModalShell from '@/components/AppModalShell.vue'
 import FsPathPickerModal, { type FsPathPickerModalExpose } from '@/components/fs/FsPathPickerModal.vue'
 
 import { jobEditorContextKey } from './editor/context'
@@ -55,10 +55,10 @@ const hubRuntimeConfig = useHubRuntimeConfigStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const modalStyle = computed(() =>
+const modalContentStyle = computed(() =>
   isDesktop.value
-    ? { width: MODAL_WIDTH.lg, height: MODAL_HEIGHT.desktopLoose }
-    : { width: MODAL_WIDTH.lg, maxHeight: MODAL_HEIGHT.max },
+    ? { overflow: 'auto', minHeight: 0, height: MODAL_HEIGHT.desktopLoose }
+    : { overflow: 'auto', minHeight: 0, maxHeight: MODAL_HEIGHT.max },
 )
 
 const show = ref<boolean>(false)
@@ -492,11 +492,11 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
 </script>
 
 <template>
-  <n-modal
+  <AppModalShell
     v-model:show="show"
-    preset="card"
-    :style="modalStyle"
-    :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :width="MODAL_WIDTH.lg"
+    :content-style="modalContentStyle"
+    :scroll-body="false"
     :title="mode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
   >
     <div ref="modalBody" class="space-y-4">
@@ -584,6 +584,6 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
         </div>
       </div>
     </template>
-  </n-modal>
+  </AppModalShell>
   <FsPathPickerModal ref="fsPicker" @picked="onFsPickerPicked" />
 </template>

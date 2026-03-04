@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
-import { NButton, NDataTable, NModal, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
+import { NButton, NDataTable, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppModalShell from '@/components/AppModalShell.vue'
 import { useUiStore } from '@/stores/ui'
 import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -117,13 +118,12 @@ defineExpose<JobRunsModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runs.title')">
-    <div class="space-y-3">
-      <div class="text-sm app-text-muted">{{ jobId }}</div>
-      <n-data-table :loading="loading" :columns="columns" :data="runs" />
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.close') }}</n-button>
-      </n-space>
-    </div>
-  </n-modal>
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.lg" :title="t('runs.title')">
+    <div class="text-sm app-text-muted">{{ jobId }}</div>
+    <n-data-table :loading="loading" :columns="columns" :data="runs" />
+
+    <template #footer>
+      <n-button @click="show = false">{{ t('common.close') }}</n-button>
+    </template>
+  </AppModalShell>
 </template>

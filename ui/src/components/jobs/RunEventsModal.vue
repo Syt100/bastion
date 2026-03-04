@@ -2,9 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NButton,
-  NModal,
   NSpin,
-  NSpace,
   NSwitch,
   NTag,
   useMessage,
@@ -24,6 +22,7 @@ import {
   runEventSummaryChips,
   RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
 } from '@/lib/run_events'
+import AppModalShell from '@/components/AppModalShell.vue'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 
 export type RunEventsModalExpose = {
@@ -355,151 +354,149 @@ defineExpose<RunEventsModalExpose>({ open })
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :style="{ width: MODAL_WIDTH.lg }" :title="t('runEvents.title')">
-    <div class="space-y-3">
-      <div class="text-sm app-text-muted flex flex-wrap items-center gap-2 justify-between">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="truncate">{{ runId }}</span>
-          <n-tag
-            size="small"
-            :type="wsStatusTagType(wsStatus)"
-          >
-            {{ t(`runEvents.ws.${wsStatus}`) }}
-          </n-tag>
-          <span v-if="wsStatus === 'reconnecting' && reconnectInSeconds != null" class="text-xs app-text-muted tabular-nums">
-            {{ formatRelativeSeconds(reconnectInSeconds) }}
-          </span>
-          <n-tag v-if="unseenCount > 0" size="small" type="warning">
-            {{ t('runEvents.badges.newCount', { count: unseenCount }) }}
-          </n-tag>
-        </div>
-
-        <div class="flex items-center gap-2 ml-auto">
-          <n-button
-            v-if="wsStatus === 'disconnected' || wsStatus === 'reconnecting' || wsStatus === 'error'"
-            size="small"
-            secondary
-            @click="manualReconnect"
-          >
-            {{ t('runEvents.actions.reconnect') }}
-          </n-button>
-          <div class="flex items-center gap-2">
-            <span class="text-xs app-text-muted">{{ t('runEvents.actions.follow') }}</span>
-            <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
-          </div>
-          <span data-testid="run-events-latest">
-            <n-button size="small" :disabled="!showLatest" @click="jumpToLatest">
-              {{ t('runEvents.actions.latest') }}
-            </n-button>
-          </span>
-        </div>
-      </div>
-
-      <n-spin v-if="loading" size="small" />
-
-      <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('runEvents.noEvents') }}</div>
-
-      <div
-        v-else
-        ref="listEl"
-        data-testid="run-events-list"
-        class="max-h-[65vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-[color:var(--app-border)]"
-        @scroll="handleListScroll"
-      >
-        <div
-          v-for="item in events"
-          :key="item.seq"
-          data-testid="run-event-row"
-          class="px-2 py-1 rounded-md border-l-2 font-mono text-xs cursor-pointer transition-colors hover:bg-[var(--app-hover)]"
-          :class="runEventAccentBorderClass(item.level)"
-          @click="openEventDetails(item)"
+  <AppModalShell v-model:show="show" :width="MODAL_WIDTH.lg" :title="t('runEvents.title')">
+    <div class="text-sm app-text-muted flex flex-wrap items-center gap-2 justify-between">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="truncate">{{ runId }}</span>
+        <n-tag
+          size="small"
+          :type="wsStatusTagType(wsStatus)"
         >
-          <template v-if="isDesktop">
-            <div class="flex items-center gap-1.5">
-              <span
-                class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
-                :title="formatUnixSeconds(item.ts)"
-              >
-                {{ formatListUnixSeconds(item.ts) }}
-              </span>
-              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
-                <span class="block w-full truncate text-center">{{ item.level }}</span>
-              </n-tag>
-              <span class="app-text-muted shrink-0 w-24 truncate">{{ item.kind }}</span>
-              <div class="shrink-0 flex items-center gap-1 min-w-0">
-                <n-tag
-                  v-for="(chip, idx) in pickSummaryChips(item)"
-                  :key="`${item.seq}-chip-${idx}`"
-                  size="tiny"
-                  :bordered="false"
-                  :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
-                >
-                  <span class="inline-block max-w-28 truncate align-bottom">{{ chip.text }}</span>
-                </n-tag>
-              </div>
-              <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
-              <n-button
-                v-if="item.fields"
-                size="tiny"
-                secondary
-                @click.stop="openEventDetails(item)"
-              >
-                {{ t('runEvents.actions.details') }}
-              </n-button>
-            </div>
-          </template>
-          <template v-else>
-            <div class="flex items-center gap-1.5">
-              <span
-                class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
-                :title="formatUnixSeconds(item.ts)"
-              >
-                {{ formatListUnixSeconds(item.ts) }}
-              </span>
-              <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
-                <span class="block w-full truncate text-center">{{ item.level }}</span>
-              </n-tag>
-              <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
-              <n-button
-                v-if="item.fields"
-                size="tiny"
-                secondary
-                @click.stop="openEventDetails(item)"
-              >
-                {{ t('runEvents.actions.details') }}
-              </n-button>
-            </div>
-
-            <div class="mt-0.5 flex items-center gap-2 min-w-0">
-              <span class="app-text-muted truncate max-w-[40%]">{{ item.kind }}</span>
-              <div class="flex items-center gap-1 min-w-0 overflow-hidden">
-                <n-tag
-                  v-for="(chip, idx) in pickSummaryChips(item)"
-                  :key="`${item.seq}-chip-${idx}`"
-                  size="tiny"
-                  :bordered="false"
-                  :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
-                >
-                  <span class="inline-block max-w-24 truncate align-bottom">{{ chip.text }}</span>
-                </n-tag>
-              </div>
-            </div>
-          </template>
-        </div>
+          {{ t(`runEvents.ws.${wsStatus}`) }}
+        </n-tag>
+        <span v-if="wsStatus === 'reconnecting' && reconnectInSeconds != null" class="text-xs app-text-muted tabular-nums">
+          {{ formatRelativeSeconds(reconnectInSeconds) }}
+        </span>
+        <n-tag v-if="unseenCount > 0" size="small" type="warning">
+          {{ t('runEvents.badges.newCount', { count: unseenCount }) }}
+        </n-tag>
       </div>
 
-      <RunEventDetailDialog
-        v-model:show="detailShow"
-        :event="detailEvent"
-        :is-desktop="isDesktop"
-        :title="t('runEvents.details.title')"
-        :close-label="t('common.close')"
-        :header-meta-fields="detailHeaderMetaFields"
-      />
-
-      <n-space justify="end">
-        <n-button @click="show = false">{{ t('common.close') }}</n-button>
-      </n-space>
+      <div class="flex items-center gap-2 ml-auto">
+        <n-button
+          v-if="wsStatus === 'disconnected' || wsStatus === 'reconnecting' || wsStatus === 'error'"
+          size="small"
+          secondary
+          @click="manualReconnect"
+        >
+          {{ t('runEvents.actions.reconnect') }}
+        </n-button>
+        <div class="flex items-center gap-2">
+          <span class="text-xs app-text-muted">{{ t('runEvents.actions.follow') }}</span>
+          <n-switch :value="follow" size="small" @update:value="handleFollowUpdate" />
+        </div>
+        <span data-testid="run-events-latest">
+          <n-button size="small" :disabled="!showLatest" @click="jumpToLatest">
+            {{ t('runEvents.actions.latest') }}
+          </n-button>
+        </span>
+      </div>
     </div>
-  </n-modal>
+
+    <n-spin v-if="loading" size="small" />
+
+    <div v-if="events.length === 0" class="text-sm app-text-muted">{{ t('runEvents.noEvents') }}</div>
+
+    <div
+      v-else
+      ref="listEl"
+      data-testid="run-events-list"
+      class="max-h-[65vh] overflow-auto rounded-md p-1 space-y-1 bg-[var(--n-color)] ring-1 ring-[color:var(--app-border)]"
+      @scroll="handleListScroll"
+    >
+      <div
+        v-for="item in events"
+        :key="item.seq"
+        data-testid="run-event-row"
+        class="px-2 py-1 rounded-md border-l-2 font-mono text-xs cursor-pointer transition-colors hover:bg-[var(--app-hover)]"
+        :class="runEventAccentBorderClass(item.level)"
+        @click="openEventDetails(item)"
+      >
+        <template v-if="isDesktop">
+          <div class="flex items-center gap-1.5">
+            <span
+              class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
+              :title="formatUnixSeconds(item.ts)"
+            >
+              {{ formatListUnixSeconds(item.ts) }}
+            </span>
+            <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+              <span class="block w-full truncate text-center">{{ item.level }}</span>
+            </n-tag>
+            <span class="app-text-muted shrink-0 w-24 truncate">{{ item.kind }}</span>
+            <div class="shrink-0 flex items-center gap-1 min-w-0">
+              <n-tag
+                v-for="(chip, idx) in pickSummaryChips(item)"
+                :key="`${item.seq}-chip-${idx}`"
+                size="tiny"
+                :bordered="false"
+                :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
+              >
+                <span class="inline-block max-w-28 truncate align-bottom">{{ chip.text }}</span>
+              </n-tag>
+            </div>
+            <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
+            <n-button
+              v-if="item.fields"
+              size="tiny"
+              secondary
+              @click.stop="openEventDetails(item)"
+            >
+              {{ t('runEvents.actions.details') }}
+            </n-button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="flex items-center gap-1.5">
+            <span
+              class="app-text-muted shrink-0 tabular-nums whitespace-nowrap leading-4"
+              :title="formatUnixSeconds(item.ts)"
+            >
+              {{ formatListUnixSeconds(item.ts) }}
+            </span>
+            <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)">
+              <span class="block w-full truncate text-center">{{ item.level }}</span>
+            </n-tag>
+            <span class="min-w-0 flex-1 truncate">{{ eventDisplayMessage(item) }}</span>
+            <n-button
+              v-if="item.fields"
+              size="tiny"
+              secondary
+              @click.stop="openEventDetails(item)"
+            >
+              {{ t('runEvents.actions.details') }}
+            </n-button>
+          </div>
+
+          <div class="mt-0.5 flex items-center gap-2 min-w-0">
+            <span class="app-text-muted truncate max-w-[40%]">{{ item.kind }}</span>
+            <div class="flex items-center gap-1 min-w-0 overflow-hidden">
+              <n-tag
+                v-for="(chip, idx) in pickSummaryChips(item)"
+                :key="`${item.seq}-chip-${idx}`"
+                size="tiny"
+                :bordered="false"
+                :type="chip.type === 'success' ? 'success' : chip.type === 'error' ? 'error' : chip.type === 'warning' ? 'warning' : 'default'"
+              >
+                <span class="inline-block max-w-24 truncate align-bottom">{{ chip.text }}</span>
+              </n-tag>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <RunEventDetailDialog
+      v-model:show="detailShow"
+      :event="detailEvent"
+      :is-desktop="isDesktop"
+      :title="t('runEvents.details.title')"
+      :close-label="t('common.close')"
+      :header-meta-fields="detailHeaderMetaFields"
+    />
+
+    <template #footer>
+      <n-button @click="show = false">{{ t('common.close') }}</n-button>
+    </template>
+  </AppModalShell>
 </template>

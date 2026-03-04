@@ -77,4 +77,20 @@ describe('AppModalShell', () => {
     expect(wrapper.get('[data-stub="NModal"]').text()).toContain('custom-header')
     expect(wrapper.get('[data-stub="NModal"]').text()).toContain('header-actions')
   })
+
+  it('supports disabling default scroll body style', () => {
+    const wrapper = mount(AppModalShell, {
+      props: {
+        show: true,
+        title: 'Dialog title',
+        scrollBody: false,
+      },
+      slots: {
+        default: () => 'body-content',
+      },
+    })
+
+    expect(wrapper.find('.app-modal-shell__body').exists()).toBe(false)
+    expect(wrapper.find('.app-modal-shell__body-plain').exists()).toBe(true)
+  })
 })
