@@ -9,7 +9,6 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
-  NModal,
   NRadioButton,
   NRadioGroup,
   NSelect,
@@ -1010,114 +1009,110 @@ onBeforeUnmount(() => {
       </template>
     </AppModalShell>
 
-    <n-modal v-model:show="labelsModalOpen" preset="card" :style="{ width: MODAL_WIDTH.md }" :title="t('agents.labelsModal.title')">
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ t('agents.labelsModal.help') }}</div>
-        <div v-if="labelsAgent" class="text-sm">
-          <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
-          <span class="font-mono ml-2">{{ labelsAgent.id }}</span>
-        </div>
-
-        <n-form label-placement="top">
-          <n-form-item :label="t('agents.labelsModal.labels')">
-            <n-select
-              v-model:value="labelsValue"
-              multiple
-              filterable
-              tag
-              clearable
-              :options="labelOptions"
-              :placeholder="t('agents.labelsModal.placeholder')"
-            />
-          </n-form-item>
-        </n-form>
-
-        <n-space justify="end">
-          <n-button @click="labelsModalOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="labelsSaving" @click="saveAgentLabels">{{ t('common.save') }}</n-button>
-        </n-space>
+    <AppModalShell
+      v-model:show="labelsModalOpen"
+      :width="MODAL_WIDTH.md"
+      :title="t('agents.labelsModal.title')"
+    >
+      <div class="text-sm app-text-muted">{{ t('agents.labelsModal.help') }}</div>
+      <div v-if="labelsAgent" class="text-sm">
+        <span class="app-text-muted">{{ t('agents.columns.id') }}:</span>
+        <span class="font-mono ml-2">{{ labelsAgent.id }}</span>
       </div>
-    </n-modal>
 
-    <n-modal
+      <n-form label-placement="top">
+        <n-form-item :label="t('agents.labelsModal.labels')">
+          <n-select
+            v-model:value="labelsValue"
+            multiple
+            filterable
+            tag
+            clearable
+            :options="labelOptions"
+            :placeholder="t('agents.labelsModal.placeholder')"
+          />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-button @click="labelsModalOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="labelsSaving" @click="saveAgentLabels">{{ t('common.save') }}</n-button>
+      </template>
+    </AppModalShell>
+
+    <AppModalShell
       v-model:show="bulkSyncModalOpen"
-      preset="card"
-      :style="{ width: MODAL_WIDTH.md }"
+      :width="MODAL_WIDTH.md"
       :title="t('agents.bulkSyncModal.title')"
     >
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ t('agents.bulkSyncModal.help') }}</div>
+      <div class="text-sm app-text-muted">{{ t('agents.bulkSyncModal.help') }}</div>
 
-        <n-form label-placement="top">
-          <n-form-item :label="t('agents.bulkSyncModal.target')">
-            <n-radio-group v-model:value="bulkSyncTarget" size="small">
-              <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
-                {{ t('agents.bulkSyncModal.targetSelected', { count: selectedAgentIds.length }) }}
-              </n-radio-button>
-              <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
-                {{ t('agents.bulkSyncModal.targetLabelFilter') }}
-              </n-radio-button>
-            </n-radio-group>
-          </n-form-item>
-        </n-form>
+      <n-form label-placement="top">
+        <n-form-item :label="t('agents.bulkSyncModal.target')">
+          <n-radio-group v-model:value="bulkSyncTarget" size="small">
+            <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
+              {{ t('agents.bulkSyncModal.targetSelected', { count: selectedAgentIds.length }) }}
+            </n-radio-button>
+            <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
+              {{ t('agents.bulkSyncModal.targetLabelFilter') }}
+            </n-radio-button>
+          </n-radio-group>
+        </n-form-item>
+      </n-form>
 
-        <n-space justify="end">
-          <n-button @click="bulkSyncModalOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="bulkSyncSaving" @click="createBulkSyncOperation">
-            {{ t('common.apply') }}
-          </n-button>
-        </n-space>
-      </div>
-    </n-modal>
+      <template #footer>
+        <n-button @click="bulkSyncModalOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="bulkSyncSaving" @click="createBulkSyncOperation">
+          {{ t('common.apply') }}
+        </n-button>
+      </template>
+    </AppModalShell>
 
-    <n-modal
+    <AppModalShell
       v-model:show="bulkLabelsModalOpen"
-      preset="card"
-      :style="{ width: MODAL_WIDTH.md }"
+      :width="MODAL_WIDTH.md"
       :title="t('agents.bulkLabelsModal.title')"
     >
-      <div class="space-y-4">
-        <div class="text-sm app-text-muted">{{ t('agents.bulkLabelsModal.help') }}</div>
+      <div class="text-sm app-text-muted">{{ t('agents.bulkLabelsModal.help') }}</div>
 
-        <n-form label-placement="top">
-          <n-form-item :label="t('agents.bulkLabelsModal.target')">
-            <n-radio-group v-model:value="bulkLabelsTarget" size="small">
-              <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
-                {{ t('agents.bulkLabelsModal.targetSelected', { count: selectedAgentIds.length }) }}
-              </n-radio-button>
-              <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
-                {{ t('agents.bulkLabelsModal.targetLabelFilter') }}
-              </n-radio-button>
-            </n-radio-group>
-          </n-form-item>
+      <n-form label-placement="top">
+        <n-form-item :label="t('agents.bulkLabelsModal.target')">
+          <n-radio-group v-model:value="bulkLabelsTarget" size="small">
+            <n-radio-button value="selected" :disabled="selectedAgentIds.length === 0">
+              {{ t('agents.bulkLabelsModal.targetSelected', { count: selectedAgentIds.length }) }}
+            </n-radio-button>
+            <n-radio-button value="label_filter" :disabled="selectedLabels.length === 0">
+              {{ t('agents.bulkLabelsModal.targetLabelFilter') }}
+            </n-radio-button>
+          </n-radio-group>
+        </n-form-item>
 
-          <n-form-item :label="t('agents.bulkLabelsModal.action')">
-            <n-radio-group v-model:value="bulkLabelsAction" size="small">
-              <n-radio-button value="agent_labels_add">{{ t('agents.bulkLabelsModal.actionAdd') }}</n-radio-button>
-              <n-radio-button value="agent_labels_remove">{{ t('agents.bulkLabelsModal.actionRemove') }}</n-radio-button>
-            </n-radio-group>
-          </n-form-item>
+        <n-form-item :label="t('agents.bulkLabelsModal.action')">
+          <n-radio-group v-model:value="bulkLabelsAction" size="small">
+            <n-radio-button value="agent_labels_add">{{ t('agents.bulkLabelsModal.actionAdd') }}</n-radio-button>
+            <n-radio-button value="agent_labels_remove">{{ t('agents.bulkLabelsModal.actionRemove') }}</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
 
-          <n-form-item :label="t('agents.bulkLabelsModal.labels')">
-            <n-select
-              v-model:value="bulkLabelsValue"
-              multiple
-              filterable
-              tag
-              clearable
-              :options="labelOptions"
-              :placeholder="t('agents.bulkLabelsModal.labelsPlaceholder')"
-            />
-          </n-form-item>
-        </n-form>
+        <n-form-item :label="t('agents.bulkLabelsModal.labels')">
+          <n-select
+            v-model:value="bulkLabelsValue"
+            multiple
+            filterable
+            tag
+            clearable
+            :options="labelOptions"
+            :placeholder="t('agents.bulkLabelsModal.labelsPlaceholder')"
+          />
+        </n-form-item>
+      </n-form>
 
-        <n-space justify="end">
-          <n-button @click="bulkLabelsModalOpen = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :loading="bulkLabelsSaving" @click="createBulkLabelsOperation">
-            {{ t('common.apply') }}
-          </n-button>
-        </n-space>
-      </div>
-    </n-modal>
+      <template #footer>
+        <n-button @click="bulkLabelsModalOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="bulkLabelsSaving" @click="createBulkLabelsOperation">
+          {{ t('common.apply') }}
+        </n-button>
+      </template>
+    </AppModalShell>
   </div>
 </template>
