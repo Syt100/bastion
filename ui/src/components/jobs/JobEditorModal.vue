@@ -55,10 +55,10 @@ const hubRuntimeConfig = useHubRuntimeConfigStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const modalContentStyle = computed(() =>
+const modalContainerStyle = computed(() =>
   isDesktop.value
-    ? { overflow: 'auto', minHeight: 0, height: MODAL_HEIGHT.desktopLoose }
-    : { overflow: 'auto', minHeight: 0, maxHeight: MODAL_HEIGHT.max },
+    ? { height: MODAL_HEIGHT.desktopLoose, maxHeight: MODAL_HEIGHT.max }
+    : { maxHeight: MODAL_HEIGHT.max },
 )
 
 const show = ref<boolean>(false)
@@ -495,7 +495,7 @@ defineExpose<JobEditorModalExpose>({ openCreate: openCreateWithContext, openEdit
   <AppModalShell
     v-model:show="show"
     :width="MODAL_WIDTH.lg"
-    :content-style="modalContentStyle"
+    :style="modalContainerStyle"
     :scroll-body="false"
     :title="mode === 'create' ? t('jobs.createTitle') : t('jobs.editTitle')"
   >

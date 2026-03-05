@@ -914,6 +914,7 @@ function open(nextCtx: unknown, initialPath?: string | PathPickerOpenOptions): v
       resetSessionState(nextCtx, opts)
     },
     refresh,
+    refreshMode: 'after-open-frame',
   })
 }
 

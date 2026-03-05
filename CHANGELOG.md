@@ -57,6 +57,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
+- Fixed task create/edit dialog height regression by enforcing viewport bounds at modal-container layer (instead of content-layer sizing), so long forms stay inside modal scrolling bounds.
+- Fixed path-picker open/refresh jank by staging initial refresh to the next task and removing redundant open-time table-height re-measure chaining.
 - Fixed Agent heartbeat persistence overhead by throttling `agents.last_seen_at` updates to reduce DB write amplification during high message throughput.
 - Fixed docs HTTP test locking to avoid holding sync mutex guards across `await` boundaries.
 - Fixed notifications queue pagination continuity when earlier rows leave the filtered set between page fetches.

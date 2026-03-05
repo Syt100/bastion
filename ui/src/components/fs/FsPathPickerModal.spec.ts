@@ -123,6 +123,26 @@ describe('FsPathPickerModal', () => {
     expect(localStorage.getItem('bastion.fsPicker.lastDir.hub')).toBe('/root/sub')
   })
 
+  it('defers the initial list refresh to the next task when opening', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn(async () => jsonResponse({ path: '/root', entries: [] }))
+      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+      wrapper = mount(FsPathPickerModal)
+      ;(wrapper.vm as unknown as { open: (nodeId: 'hub' | string, initial?: string) => void }).open('hub', '/root')
+
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      await vi.runAllTimersAsync()
+      await Promise.resolve()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('requires a second confirmation click for not-found directories in single-dir mode', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

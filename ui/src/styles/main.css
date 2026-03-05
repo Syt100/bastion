@@ -703,8 +703,9 @@ body {
 .app-modal-shell__body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: var(--app-space-4);
-  max-height: min(68vh, 760px);
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
 }
@@ -712,8 +713,10 @@ body {
 .app-modal-shell__body-plain {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: var(--app-space-4);
   min-height: 0;
+  overflow: auto;
 }
 
 .app-modal-shell__footer {

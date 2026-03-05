@@ -2,28 +2,32 @@
 import { NModal } from 'naive-ui'
 import { computed, type CSSProperties } from 'vue'
 
-import { MODAL_WIDTH } from '@/lib/modal'
+import { MODAL_HEIGHT, MODAL_WIDTH } from '@/lib/modal'
 
 const props = withDefaults(
   defineProps<{
     show: boolean
     title: string
     width?: string
+    containerStyle?: CSSProperties
     style?: CSSProperties
     maskClosable?: boolean
     scrollBody?: boolean
     bodyClass?: string
     footerClass?: string
     contentStyle?: CSSProperties
+    bodyStyle?: CSSProperties
   }>(),
   {
     width: MODAL_WIDTH.md,
+    containerStyle: undefined,
     style: undefined,
     maskClosable: true,
     scrollBody: true,
     bodyClass: undefined,
     footerClass: undefined,
     contentStyle: undefined,
+    bodyStyle: undefined,
   },
 )
 
@@ -31,16 +35,21 @@ const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
 }>()
 
-const modalStyle = computed<CSSProperties>(() => ({ width: props.width, ...(props.style ?? {}) }))
+const modalStyle = computed<CSSProperties>(() => ({
+  width: props.width,
+  maxHeight: MODAL_HEIGHT.max,
+  ...(props.style ?? {}),
+  ...(props.containerStyle ?? {}),
+}))
 const resolvedContentStyle = computed<CSSProperties>(() => {
   if (props.contentStyle) return props.contentStyle
   return {
     display: 'flex',
     flexDirection: 'column',
-    maxHeight: 'calc(100vh - 64px)',
     minHeight: 0,
   }
 })
+const resolvedBodyStyle = computed<CSSProperties | undefined>(() => props.bodyStyle)
 </script>
 
 <template>
@@ -61,7 +70,7 @@ const resolvedContentStyle = computed<CSSProperties>(() => {
       <slot name="header-extra" />
     </template>
 
-    <div :class="[scrollBody ? 'app-modal-shell__body' : 'app-modal-shell__body-plain', bodyClass]">
+    <div :class="[scrollBody ? 'app-modal-shell__body' : 'app-modal-shell__body-plain', bodyClass]" :style="resolvedBodyStyle">
       <slot />
     </div>
 

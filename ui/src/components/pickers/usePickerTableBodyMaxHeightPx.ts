@@ -29,15 +29,8 @@ export function usePickerTableBodyMaxHeightPx(show: Ref<boolean>, options: Optio
     nextTick().then(() => {
       options.onOpen?.()
       start()
-      requestAnimationFrame(() => {
-        measure()
-        requestAnimationFrame(() => {
-          measure()
-        })
-      })
     })
-  })
+  }, { flush: 'post' })
 
   return { tableContainerEl, tableBodyMaxHeightPx: heightPx, measureTableHeight: measure }
 }
-

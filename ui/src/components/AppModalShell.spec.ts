@@ -7,7 +7,7 @@ vi.mock('naive-ui', async () => {
   return {
     NModal: vue.defineComponent({
       name: 'NModal',
-      props: ['show', 'title', 'style'],
+      props: ['show', 'title', 'style', 'contentStyle', 'maskClosable'],
       emits: ['update:show'],
       setup(props, { slots }) {
         return () => {
@@ -92,5 +92,44 @@ describe('AppModalShell', () => {
 
     expect(wrapper.find('.app-modal-shell__body').exists()).toBe(false)
     expect(wrapper.find('.app-modal-shell__body-plain').exists()).toBe(true)
+  })
+
+  it('applies viewport bounds on modal container by default', () => {
+    const wrapper = mount(AppModalShell, {
+      props: {
+        show: true,
+        title: 'Dialog title',
+      },
+      slots: {
+        default: () => 'body-content',
+      },
+    })
+
+    const modal = wrapper.getComponent({ name: 'NModal' })
+    const style = modal.props('style') as Record<string, string>
+    const contentStyle = modal.props('contentStyle') as Record<string, string>
+
+    expect(style.maxHeight).toBe('calc(100vh - 64px)')
+    expect(contentStyle.maxHeight).toBeUndefined()
+  })
+
+  it('merges container style into modal container style while keeping content style optional', () => {
+    const wrapper = mount(AppModalShell, {
+      props: {
+        show: true,
+        title: 'Dialog title',
+        style: { height: '70vh' },
+        containerStyle: { maxHeight: '90vh' },
+      },
+      slots: {
+        default: () => 'body-content',
+      },
+    })
+
+    const modal = wrapper.getComponent({ name: 'NModal' })
+    const style = modal.props('style') as Record<string, string>
+
+    expect(style.height).toBe('70vh')
+    expect(style.maxHeight).toBe('90vh')
   })
 })

@@ -92,7 +92,7 @@ vi.mock('@/components/AppModalShell.vue', async () => {
   return {
     default: vue.defineComponent({
       name: 'AppModalShell',
-      props: ['show'],
+      props: ['show', 'style', 'contentStyle', 'scrollBody'],
       setup(props, { slots }) {
         return () => (props.show ? vue.h('div', { 'data-stub': 'AppModalShell' }, [slots.default?.(), slots.footer?.()]) : null)
       },
@@ -198,5 +198,22 @@ describe('JobEditorModal', () => {
 
     expect(messageApi.error).toHaveBeenCalled()
     expect(wrapper.find('[data-stub="AppModalShell"]').exists()).toBe(false)
+  })
+
+  it('applies desktop height bounds at modal container layer', async () => {
+    const wrapper = mount(JobEditorModal)
+    const vm = wrapper.vm as unknown as {
+      openCreate: (ctx?: { nodeId?: string }) => void
+    }
+
+    vm.openCreate({ nodeId: 'hub' })
+    await flush()
+
+    const modal = wrapper.getComponent({ name: 'AppModalShell' })
+    const style = modal.props('style') as Record<string, string>
+    expect(style.height).toBe('min(85vh, calc(100vh - 64px))')
+    expect(style.maxHeight).toBe('calc(100vh - 64px)')
+    expect(modal.props('contentStyle')).toBeUndefined()
+    expect(modal.props('scrollBody')).toBe(false)
   })
 })

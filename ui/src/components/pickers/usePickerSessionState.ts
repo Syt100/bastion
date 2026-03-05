@@ -32,8 +32,25 @@ export function openPickerSession(options: {
   show: Ref<boolean>
   reset: () => void
   refresh: () => Promise<void> | void
+  refreshMode?: 'immediate' | 'after-open-frame'
+  scheduleRefresh?: (refresh: () => void) => void
 }): void {
+  const refreshMode = options.refreshMode ?? 'immediate'
+
+  const scheduleRefresh =
+    options.scheduleRefresh ??
+    ((run: () => void) => {
+      setTimeout(run, 0)
+    })
+
   options.reset()
   options.show.value = true
-  void options.refresh()
+  if (refreshMode === 'immediate') {
+    void options.refresh()
+    return
+  }
+  scheduleRefresh(() => {
+    if (!options.show.value) return
+    void options.refresh()
+  })
 }
