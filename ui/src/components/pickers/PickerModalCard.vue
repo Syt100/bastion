@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { NModal } from 'naive-ui'
 import type { CSSProperties } from 'vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 
 withDefaults(
   defineProps<{
@@ -18,20 +18,29 @@ withDefaults(
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
 }>()
+
+const DEFAULT_CONTENT_STYLE: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  overflow: 'hidden',
+  minHeight: 0,
+}
 </script>
 
 <template>
-  <n-modal
+  <AppModalShell
     :show="show"
-    preset="card"
-    :style="style"
-    :content-style="contentStyle || { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }"
     :title="title"
+    :style="style"
+    :content-style="contentStyle || DEFAULT_CONTENT_STYLE"
+    :scroll-body="false"
+    body-class="gap-0"
     @update:show="(v) => emit('update:show', v)"
   >
     <slot />
     <template #footer>
       <slot name="footer" />
     </template>
-  </n-modal>
+  </AppModalShell>
 </template>

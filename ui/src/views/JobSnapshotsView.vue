@@ -47,6 +47,7 @@ import { isAbortError } from '@/lib/asyncControl'
 import { formatBytes } from '@/lib/format'
 import { useLatestRequest } from '@/lib/latest'
 import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
+import { nodeJobsPath, nodeScopedPath } from '@/lib/nodeRoute'
 
 const props = defineProps<{
   embedded?: boolean
@@ -98,9 +99,11 @@ const ignoreReason = ref('')
 function openRunDetail(runId: string): void {
   const job = jobId.value
   if (!job) return
-  void router.push(
-    `/n/${encodeURIComponent(nodeIdOrHub.value)}/jobs/${encodeURIComponent(job)}/data/runs/${encodeURIComponent(runId)}`,
-  )
+  void router.push(nodeScopedPath(nodeIdOrHub.value, `jobs/${encodeURIComponent(job)}/data/runs/${encodeURIComponent(runId)}`))
+}
+
+function goBackToJobs(): void {
+  void router.push(nodeJobsPath(nodeIdOrHub.value))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -650,7 +653,7 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
         <NodeContextTag :node-id="nodeIdOrHub" />
       </template>
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-      <n-button @click="$router.push(`/n/${encodeURIComponent(nodeIdOrHub)}/jobs`)">{{ t('common.return') }}</n-button>
+      <n-button @click="goBackToJobs">{{ t('common.return') }}</n-button>
     </PageHeader>
 
     <SelectionToolbar

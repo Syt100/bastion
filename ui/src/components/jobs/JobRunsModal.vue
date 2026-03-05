@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { NButton, NDataTable, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -10,6 +10,8 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
+import { isAbortError } from '@/lib/asyncControl'
+import { useLatestRequest } from '@/lib/latest'
 
 export type JobRunsModalExpose = {
   open: (jobId: string) => Promise<void>
@@ -32,6 +34,7 @@ const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
 const jobId = ref<string | null>(null)
 const runs = ref<RunListItem[]>([])
+const latestRunsRequest = useLatestRequest()
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -101,18 +104,32 @@ const columns = computed<DataTableColumns<RunListItem>>(() => [
 ])
 
 async function open(nextJobId: string): Promise<void> {
+  const req = latestRunsRequest.next()
   show.value = true
   jobId.value = nextJobId
   loading.value = true
   runs.value = []
   try {
-    runs.value = await jobs.listRuns(nextJobId)
+    const nextRuns = await jobs.listRuns(nextJobId, { signal: req.signal })
+    if (req.isStale()) return
+    runs.value = nextRuns
   } catch (error) {
+    if (req.isStale() || isAbortError(error)) return
     message.error(formatToastError(t('errors.fetchRunsFailed'), error, t))
   } finally {
-    loading.value = false
+    if (!req.isStale()) {
+      loading.value = false
+    }
+    req.finish()
   }
 }
+
+watch(show, (open) => {
+  if (!open) {
+    latestRunsRequest.abort()
+    loading.value = false
+  }
+})
 
 defineExpose<JobRunsModalExpose>({ open })
 </script>

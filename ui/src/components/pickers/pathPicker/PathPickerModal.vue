@@ -11,7 +11,6 @@ import {
   NFormItem,
   NIcon,
   NInputNumber,
-  NModal,
   NPopover,
   NSelect,
   NSwitch,
@@ -30,6 +29,7 @@ import { formatToastError } from '@/lib/errors'
 import { formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { useListFilters } from '@/lib/listFilters'
 import AppEmptyState from '@/components/AppEmptyState.vue'
+import AppModalShell from '@/components/AppModalShell.vue'
 import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import PickerPathBarInput, { type PickerPathBarInputExpose } from '@/components/pickers/PickerPathBarInput.vue'
 import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopoverDrawer.vue'
@@ -1583,12 +1583,14 @@ defineExpose<PathPickerModalExpose>({ open })
     </n-drawer-content>
   </n-drawer>
 
-  <n-modal
+  <AppModalShell
     v-if="isDesktop"
     v-model:show="pickCurrentDirConfirmOpen"
-    preset="card"
-    :style="{ width: MODAL_WIDTH.md, maxHeight: MODAL_HEIGHT.max }"
+    :width="MODAL_WIDTH.md"
+    :style="{ maxHeight: MODAL_HEIGHT.max }"
     :content-style="{ overflow: 'auto', minHeight: 0 }"
+    :scroll-body="false"
+    body-class="gap-0"
     :title="t(`${i18nPrefix}.confirm.title`)"
   >
     <div class="space-y-3">
@@ -1618,7 +1620,7 @@ defineExpose<PathPickerModalExpose>({ open })
         </n-button>
       </div>
     </template>
-  </n-modal>
+  </AppModalShell>
 
   <n-drawer v-else v-model:show="pickCurrentDirConfirmOpen" placement="bottom" height="80vh">
     <n-drawer-content :title="t(`${i18nPrefix}.confirm.title`)" closable>

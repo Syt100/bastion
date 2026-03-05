@@ -38,9 +38,10 @@ import { isAbortError } from '@/lib/asyncControl'
 import { useLatestRequest } from '@/lib/latest'
 import { buildListRangeSummary, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZE_OPTIONS } from '@/lib/listUi'
 import { MODAL_WIDTH } from '@/lib/modal'
-import { copyText } from '@/lib/clipboard'
+import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { usePersistentColumnWidths } from '@/lib/columnWidths'
 import { createMultiSelectFilterField, useListFilters } from '@/lib/listFilters'
+import IconActionButton from '@/components/IconActionButton.vue'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -48,6 +49,7 @@ const message = useMessage()
 const ui = useUiStore()
 const cleanup = useIncompleteCleanupStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
+const copyToClipboard = createClipboardCopyAction(t, message)
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -154,15 +156,6 @@ function handleColumnResize(_resizedWidth: number, limitedWidth: number, column:
   const key = (column as { key?: unknown }).key
   if (key === undefined || key === null) return
   columnWidths.setWidth(String(key), limitedWidth)
-}
-
-async function copyToClipboard(value: string): Promise<void> {
-  const ok = await copyText(value)
-  if (ok) {
-    message.success(t('messages.copied'))
-  } else {
-    message.error(t('errors.copyFailed'))
-  }
 }
 
 async function refresh(): Promise<void> {
@@ -477,7 +470,7 @@ const actionHelpItems = computed(() => [
         <template #actions>
           <n-button size="small" @click="clearFilters">{{ t('common.clear') }}</n-button>
           <n-button size="small" class="w-full md:w-auto" :loading="loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-          <n-button size="small" circle @click="helpOpen = true">?</n-button>
+          <IconActionButton size="small" :ariaLabel="t('common.help')" @click="helpOpen = true">?</IconActionButton>
         </template>
       </ListToolbar>
 

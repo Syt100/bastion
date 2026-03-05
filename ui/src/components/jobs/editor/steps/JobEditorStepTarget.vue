@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useJobEditorContext } from '../context'
+import { nodeStoragePath } from '@/lib/nodeRoute'
 
 type Option = { label: string; value: string }
 
@@ -16,7 +17,7 @@ const { t } = useI18n()
 
 const { form, fieldErrors, clearFieldError, onTargetTypeChanged, openLocalBaseDirPicker } = useJobEditorContext()
 
-const manageWebdavSecretsHref = computed(() => `/n/${encodeURIComponent(form.node)}/settings/storage`)
+const manageWebdavSecretsHref = computed(() => nodeStoragePath(form.node))
 
 const showWebdavRawTreeDirect = computed(
   () => form.jobType === 'filesystem' && form.targetType === 'webdav' && form.artifactFormat === 'raw_tree_v1',

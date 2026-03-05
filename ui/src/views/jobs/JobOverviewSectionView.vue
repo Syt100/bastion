@@ -11,6 +11,7 @@ import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
+import { nodeScopedPath } from '@/lib/nodeRoute'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -140,9 +141,7 @@ function openLatestRun(): void {
   const id = ctx.jobId.value
   const r = latestRun.value
   if (!id || !r) return
-  void router.push(
-    `/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(id)}/overview/runs/${encodeURIComponent(r.id)}`,
-  )
+  void router.push(nodeScopedPath(ctx.nodeId.value, `jobs/${encodeURIComponent(id)}/overview/runs/${encodeURIComponent(r.id)}`))
 }
 </script>
 

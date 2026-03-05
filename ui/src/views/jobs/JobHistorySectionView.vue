@@ -18,6 +18,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import { useJobDetailContext } from '@/lib/jobDetailContext'
+import { nodeScopedPath } from '@/lib/nodeRoute'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -73,9 +74,7 @@ watch(
 function openRunDetail(runId: string): void {
   const jobId = ctx.jobId.value
   if (!jobId) return
-  void router.push(
-    `/n/${encodeURIComponent(ctx.nodeId.value)}/jobs/${encodeURIComponent(jobId)}/history/runs/${encodeURIComponent(runId)}`,
-  )
+  void router.push(nodeScopedPath(ctx.nodeId.value, `jobs/${encodeURIComponent(jobId)}/history/runs/${encodeURIComponent(runId)}`))
 }
 
 async function openRunEvents(runId: string): Promise<void> {

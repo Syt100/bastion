@@ -26,7 +26,7 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
-import { copyText } from '@/lib/clipboard'
+import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 
 const { t } = useI18n()
@@ -38,6 +38,7 @@ const secrets = useSecretsStore()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+const copyToClipboard = createClipboardCopyAction(t, message)
 
 const rowBusy = reactive<Record<string, boolean>>({})
 
@@ -50,15 +51,6 @@ async function refresh(): Promise<void> {
     await notifications.refreshDestinations()
   } catch (e) {
     message.error(formatToastError(t('errors.fetchNotificationDestinationsFailed'), e, t))
-  }
-}
-
-async function copyToClipboard(value: string): Promise<void> {
-  const ok = await copyText(value)
-  if (ok) {
-    message.success(t('messages.copied'))
-  } else {
-    message.error(t('errors.copyFailed'))
   }
 }
 

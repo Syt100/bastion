@@ -15,6 +15,7 @@ import { runStatusLabel } from '@/lib/runs'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useViewportLazyReady } from '@/lib/viewportLazyReady'
+import { nodeScopedPath } from '@/lib/nodeRoute'
 
 const loadBackupTrendChart = () => import('@/components/BackupTrendChart.vue')
 const BackupTrendChart = defineAsyncComponent(loadBackupTrendChart)
@@ -104,13 +105,10 @@ function nodeLabel(row: { node_id: string; node_name?: string | null }): string 
 }
 
 function openRun(row: { run_id: string; node_id: string; job_id: string }): void {
-  const path =
-    '/n/' +
-    encodeURIComponent(row.node_id) +
-    '/jobs/' +
-    encodeURIComponent(row.job_id) +
-    '/history/runs/' +
-    encodeURIComponent(row.run_id)
+  const path = nodeScopedPath(
+    row.node_id,
+    `jobs/${encodeURIComponent(row.job_id)}/history/runs/${encodeURIComponent(row.run_id)}`,
+  )
   void router.push(path)
 }
 

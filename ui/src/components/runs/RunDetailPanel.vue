@@ -8,6 +8,7 @@ import { useJobsStore, type RunDetail, type RunEvent } from '@/stores/jobs'
 import { useOperationsStore, type Operation } from '@/stores/operations'
 import { formatToastError } from '@/lib/errors'
 import { copyText } from '@/lib/clipboard'
+import { useRunEventsStream } from '@/lib/runEventsStream'
 import NodeContextTag from '@/components/NodeContextTag.vue'
 import RunDetailSummaryCard from '@/components/runs/RunDetailSummaryCard.vue'
 import RunDetailDetailsTabs from '@/components/runs/RunDetailDetailsTabs.vue'
@@ -15,8 +16,6 @@ import RestoreWizardModal, { type RestoreWizardModalExpose } from '@/components/
 import VerifyWizardModal, { type VerifyWizardModalExpose } from '@/components/jobs/VerifyWizardModal.vue'
 import OperationModal, { type OperationModalExpose } from '@/components/jobs/OperationModal.vue'
 import { runStatusLabel } from '@/lib/runs'
-
-type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
 const props = defineProps<{
   nodeId: string
@@ -35,13 +34,15 @@ const run = ref<RunDetail | null>(null)
 const ops = ref<Operation[]>([])
 const events = ref<RunEvent[]>([])
 
-const wsStatus = ref<WsStatus>('disconnected')
-let socket: WebSocket | null = null
-let lastSeq = 0
-let allowReconnect = false
-let reconnectAttempts = 0
-let reconnectTimer: number | null = null
 let pollTimer: number | null = null
+const runEventsStream = useRunEventsStream({
+  buildUrl: (id, afterSeq) =>
+    wsUrl(`/api/runs/${encodeURIComponent(id)}/events/ws?after_seq=${encodeURIComponent(String(afterSeq))}`),
+  onEvent: (event) => {
+    events.value = [...events.value, event]
+  },
+})
+const wsStatus = runEventsStream.status
 
 const restoreModal = ref<RestoreWizardModalExpose | null>(null)
 const verifyModal = ref<VerifyWizardModalExpose | null>(null)
@@ -52,81 +53,10 @@ function wsUrl(path: string): string {
   return `${proto}//${window.location.host}${path}`
 }
 
-function closeSocket(): void {
-  if (socket) {
-    socket.close()
-    socket = null
-  }
-  if (reconnectTimer !== null) {
-    window.clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  wsStatus.value = 'disconnected'
-}
-
 function stopPolling(): void {
   if (pollTimer !== null) {
     window.clearInterval(pollTimer)
     pollTimer = null
-  }
-}
-
-function reconnectDelaySeconds(attempt: number): number {
-  // 1s, 2s, 4s, 8s, ... capped.
-  const cappedAttempt = Math.max(0, Math.min(10, attempt))
-  return Math.min(30, Math.max(1, 1 << cappedAttempt))
-}
-
-function scheduleReconnect(id: string): void {
-  if (!allowReconnect) return
-  reconnectAttempts += 1
-  const delay = reconnectDelaySeconds(reconnectAttempts - 1)
-  wsStatus.value = 'reconnecting'
-
-  if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    if (!allowReconnect) return
-    connectWs(id, lastSeq, true)
-  }, delay * 1000)
-}
-
-function connectWs(id: string, afterSeq: number, isReconnect: boolean): void {
-  closeSocket()
-  wsStatus.value = isReconnect ? 'reconnecting' : 'connecting'
-
-  const nextSocket = new WebSocket(
-    wsUrl(`/api/runs/${encodeURIComponent(id)}/events/ws?after_seq=${encodeURIComponent(String(afterSeq))}`),
-  )
-  socket = nextSocket
-
-  nextSocket.onopen = () => {
-    wsStatus.value = 'live'
-    reconnectAttempts = 0
-  }
-
-  nextSocket.onmessage = (evt: MessageEvent) => {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(String(evt.data)) as unknown
-    } catch {
-      return
-    }
-    if (!parsed || typeof parsed !== 'object') return
-    const e = parsed as RunEvent
-    if (typeof e.seq !== 'number') return
-    lastSeq = Math.max(lastSeq, e.seq)
-    events.value = [...events.value, e]
-  }
-
-  nextSocket.onerror = () => {
-    wsStatus.value = 'error'
-  }
-
-  nextSocket.onclose = () => {
-    socket = null
-    if (!allowReconnect) return
-    scheduleReconnect(id)
   }
 }
 
@@ -143,8 +73,8 @@ async function loadAll(): Promise<void> {
   run.value = null
   ops.value = []
   events.value = []
-  lastSeq = 0
-  closeSocket()
+  runEventsStream.stop()
+  runEventsStream.setLastSeq(0)
   stopPolling()
 
   try {
@@ -156,10 +86,10 @@ async function loadAll(): Promise<void> {
     run.value = nextRun
     ops.value = nextOps
     events.value = nextEvents
-    lastSeq = nextEvents.reduce((max, e) => Math.max(max, e.seq), 0)
+    const maxSeq = nextEvents.reduce((max, e) => Math.max(max, e.seq), 0)
+    runEventsStream.setLastSeq(maxSeq)
 
-    allowReconnect = true
-    connectWs(id, lastSeq, false)
+    runEventsStream.start(id, maxSeq)
 
     stopPolling()
     pollTimer = window.setInterval(async () => {
@@ -216,9 +146,7 @@ async function requestCancelRun(): Promise<void> {
 }
 
 function reconnectEventsWs(): void {
-  reconnectAttempts = 0
-  allowReconnect = true
-  connectWs(props.runId, lastSeq, true)
+  runEventsStream.reconnect(props.runId)
 }
 
 async function copyRunId(): Promise<void> {
@@ -234,8 +162,7 @@ async function openOperation(opId: string): Promise<void> {
 watch(
   () => props.runId,
   (id) => {
-    allowReconnect = false
-    closeSocket()
+    runEventsStream.stop()
     stopPolling()
     if (id) void loadAll()
   },
@@ -243,8 +170,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  allowReconnect = false
-  closeSocket()
+  runEventsStream.stop()
   stopPolling()
 })
 

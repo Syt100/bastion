@@ -9,6 +9,7 @@ const props = withDefaults(
     show: boolean
     title: string
     width?: string
+    style?: CSSProperties
     maskClosable?: boolean
     scrollBody?: boolean
     bodyClass?: string
@@ -17,6 +18,7 @@ const props = withDefaults(
   }>(),
   {
     width: MODAL_WIDTH.md,
+    style: undefined,
     maskClosable: true,
     scrollBody: true,
     bodyClass: undefined,
@@ -29,7 +31,7 @@ const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
 }>()
 
-const modalStyle = computed<CSSProperties>(() => ({ width: props.width }))
+const modalStyle = computed<CSSProperties>(() => ({ width: props.width, ...(props.style ?? {}) }))
 const resolvedContentStyle = computed<CSSProperties>(() => {
   if (props.contentStyle) return props.contentStyle
   return {

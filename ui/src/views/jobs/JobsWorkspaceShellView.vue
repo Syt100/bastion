@@ -33,10 +33,12 @@ import {
   LIST_QUERY_DEBOUNCE_MS,
 } from '@/lib/listUi'
 import { runStatusLabel } from '@/lib/runs'
+import { nodeScopedPath } from '@/lib/nodeRoute'
 import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobsFiltersPanel from './JobsFiltersPanel.vue'
 import { useJobsFilters } from './useJobsFilters'
 import { useJobsTableColumns } from './useJobsTableColumns'
+import { useSplitWorkspaceResize } from './useSplitWorkspaceResize'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -112,84 +114,18 @@ const jobsListViewModel = computed<JobsWorkspaceListView>({
   },
 })
 
-const SPLIT_LIST_MIN_PX = 280
-const SPLIT_LIST_MAX_PX = 640
-const SPLIT_DETAIL_MIN_PX = 360
-
-const splitGridEl = ref<HTMLElement | null>(null)
-const splitResizeActive = ref<boolean>(false)
-const splitListWidthDraftPx = ref<number | null>(null)
-let splitResizeCleanup: (() => void) | null = null
-
-const splitListWidthPx = computed<number>(() => splitListWidthDraftPx.value ?? ui.jobsWorkspaceSplitListWidthPx)
-
-const gridStyle = computed<Record<string, string> | undefined>(() => {
-  if (layoutMode.value !== 'split') return undefined
-  return {
-    gridTemplateColumns: `minmax(0, ${splitListWidthPx.value}px) minmax(0, 1fr)`,
-  }
+const persistedSplitListWidthPx = computed<number>(() => ui.jobsWorkspaceSplitListWidthPx)
+const {
+  splitGridEl,
+  splitResizeActive,
+  gridStyle,
+  onSplitResizePointerDown,
+  cleanupSplitResize,
+} = useSplitWorkspaceResize({
+  layoutMode,
+  persistedListWidthPx: persistedSplitListWidthPx,
+  setPersistedListWidthPx: (next) => ui.setJobsWorkspaceSplitListWidthPx(next),
 })
-
-function clampInt(n: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(n)))
-}
-
-function onSplitResizePointerDown(event: PointerEvent): void {
-  if (layoutMode.value !== 'split') return
-  const el = splitGridEl.value
-  if (!el) return
-  splitResizeCleanup?.()
-
-  const handle = event.currentTarget as HTMLElement | null
-  handle?.setPointerCapture?.(event.pointerId)
-
-  const startX = event.clientX
-  const startWidth = splitListWidthPx.value
-  splitResizeActive.value = true
-  splitListWidthDraftPx.value = startWidth
-
-  const rect = el.getBoundingClientRect()
-  const style = window.getComputedStyle(el)
-  const colGap = Number.parseFloat(style.columnGap || '0') || 0
-  const maxByContainer = rect.width - colGap - SPLIT_DETAIL_MIN_PX
-  const maxWidth = clampInt(Math.min(SPLIT_LIST_MAX_PX, maxByContainer), SPLIT_LIST_MIN_PX, SPLIT_LIST_MAX_PX)
-
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-
-  let raf: number | null = null
-  const onMove = (e: PointerEvent) => {
-    const dx = e.clientX - startX
-    const next = clampInt(startWidth + dx, SPLIT_LIST_MIN_PX, maxWidth)
-    if (raf != null) cancelAnimationFrame(raf)
-    raf = requestAnimationFrame(() => {
-      raf = null
-      splitListWidthDraftPx.value = next
-    })
-  }
-
-  const cleanup = () => {
-    window.removeEventListener('pointermove', onMove)
-    splitResizeActive.value = false
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    const next = splitListWidthDraftPx.value
-    splitListWidthDraftPx.value = null
-    splitResizeCleanup = null
-    if (typeof next === 'number') {
-      ui.setJobsWorkspaceSplitListWidthPx(next)
-    }
-  }
-
-  const onUp = () => {
-    window.removeEventListener('pointerup', onUp)
-    cleanup()
-  }
-
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
-  splitResizeCleanup = cleanup
-}
 
 const pagedFilteredJobs = computed<JobListItem[]>(() => jobs.items)
 const nodeScopedJobs = computed<JobListItem[]>(() => jobs.items)
@@ -447,7 +383,7 @@ function isRowRunNowBusy(jobId: string): boolean {
 }
 
 function openJob(jobId: string): void {
-  void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs/${encodeURIComponent(jobId)}/overview`)
+  void router.push(nodeScopedPath(nodeId.value, `jobs/${encodeURIComponent(jobId)}/overview`))
 }
 
 function onJobRowClick(jobId: string): void {
@@ -562,7 +498,7 @@ watch(layoutMode, () => {
   if (layoutMode.value !== 'split') {
     filtersPopoverOpen.value = false
     filtersDrawerOpen.value = false
-    splitResizeCleanup?.()
+    cleanupSplitResize()
   }
   if (layoutMode.value !== 'list') {
     listSelectMode.value = false
@@ -602,7 +538,7 @@ watch(nodeId, () => {
 })
 
 onBeforeUnmount(() => {
-  splitResizeCleanup?.()
+  cleanupSplitResize()
   debouncedRefresh.cancel()
 })
 </script>

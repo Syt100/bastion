@@ -22,6 +22,7 @@ import {
   runEventSummaryChips,
   RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
 } from '@/lib/run_events'
+import { useRunEventsStream, type RunEventsWsStatus } from '@/lib/runEventsStream'
 import AppModalShell from '@/components/AppModalShell.vue'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 
@@ -29,7 +30,6 @@ export type RunEventsModalExpose = {
   open: (runId: string) => Promise<void>
 }
 
-type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 type SummaryChip = { text: string; type: 'default' | 'warning' | 'error' | 'success' }
 
 const { t } = useI18n()
@@ -41,13 +41,6 @@ const show = ref<boolean>(false)
 const loading = ref<boolean>(false)
 const runId = ref<string | null>(null)
 const events = ref<RunEvent[]>([])
-const wsStatus = ref<WsStatus>('disconnected')
-
-let lastSeq = 0
-let socket: WebSocket | null = null
-let allowReconnect = false
-let reconnectTimer: number | null = null
-let reconnectCountdownTimer: number | null = null
 let nowTicker: number | null = null
 let suppressAutoUnfollowUntil = 0
 
@@ -87,9 +80,22 @@ const listEl = ref<HTMLElement | null>(null)
 const showLatest = computed(() => !follow.value || unseenCount.value > 0)
 
 const nowTick = ref<number>(Math.floor(Date.now() / 1000))
-
-const reconnectAttempts = ref<number>(0)
-const reconnectInSeconds = ref<number | null>(null)
+const runEventsStream = useRunEventsStream({
+  buildUrl: (id, afterSeq) =>
+    wsUrl(`/api/runs/${encodeURIComponent(id)}/events/ws?after_seq=${encodeURIComponent(String(afterSeq))}`),
+  validateEvent: (event) => typeof event.ts === 'number',
+  onEvent: async (event) => {
+    events.value.push(event)
+    await nextTick()
+    if (follow.value) {
+      scrollToLatest()
+    } else {
+      unseenCount.value += 1
+    }
+  },
+})
+const wsStatus = runEventsStream.status
+const reconnectInSeconds = runEventsStream.reconnectInSeconds
 
 const detailShow = ref<boolean>(false)
 const detailEvent = ref<RunEvent | null>(null)
@@ -112,28 +118,11 @@ function runEventAccentBorderClass(level: string): string {
   return 'border-[color:var(--app-border)]'
 }
 
-function wsStatusTagType(status: WsStatus): 'success' | 'error' | 'warning' | 'default' {
+function wsStatusTagType(status: RunEventsWsStatus): 'success' | 'error' | 'warning' | 'default' {
   if (status === 'live') return 'success'
   if (status === 'error') return 'error'
   if (status === 'reconnecting') return 'warning'
   return 'default'
-}
-
-function closeSocket(): void {
-  if (socket) {
-    socket.close()
-    socket = null
-  }
-  if (reconnectTimer !== null) {
-    window.clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  if (reconnectCountdownTimer !== null) {
-    window.clearInterval(reconnectCountdownTimer)
-    reconnectCountdownTimer = null
-  }
-  reconnectInSeconds.value = null
-  wsStatus.value = 'disconnected'
 }
 
 function scrollToLatest(): void {
@@ -190,94 +179,9 @@ function stopNowTicker(): void {
   }
 }
 
-function reconnectDelaySeconds(attempt: number): number {
-  // 1s, 2s, 4s, 8s, ... capped.
-  const cappedAttempt = Math.max(0, Math.min(10, attempt))
-  return Math.min(30, Math.max(1, 1 << cappedAttempt))
-}
-
-function scheduleReconnect(id: string): void {
-  if (!allowReconnect) return
-  reconnectAttempts.value += 1
-  const delay = reconnectDelaySeconds(reconnectAttempts.value - 1)
-  reconnectInSeconds.value = delay
-  wsStatus.value = 'reconnecting'
-
-  if (reconnectCountdownTimer !== null) window.clearInterval(reconnectCountdownTimer)
-  reconnectCountdownTimer = window.setInterval(() => {
-    if (reconnectInSeconds.value == null) return
-    reconnectInSeconds.value = Math.max(0, reconnectInSeconds.value - 1)
-  }, 1000)
-
-  if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    if (!allowReconnect) return
-    connectWs(id, lastSeq, true)
-  }, delay * 1000)
-}
-
-function connectWs(id: string, afterSeq: number, isReconnect: boolean): void {
-  closeSocket()
-  wsStatus.value = isReconnect ? 'reconnecting' : 'connecting'
-
-  const nextSocket = new WebSocket(
-    wsUrl(`/api/runs/${encodeURIComponent(id)}/events/ws?after_seq=${encodeURIComponent(String(afterSeq))}`),
-  )
-  socket = nextSocket
-
-  nextSocket.onopen = () => {
-    wsStatus.value = 'live'
-    reconnectAttempts.value = 0
-    reconnectInSeconds.value = null
-    if (reconnectCountdownTimer !== null) {
-      window.clearInterval(reconnectCountdownTimer)
-      reconnectCountdownTimer = null
-    }
-  }
-
-  nextSocket.onmessage = async (evt: MessageEvent) => {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(String(evt.data)) as unknown
-    } catch {
-      return
-    }
-
-    if (!parsed || typeof parsed !== 'object') return
-    const e = parsed as RunEvent
-    if (typeof e.seq !== 'number' || typeof e.ts !== 'number') return
-    if (e.seq <= lastSeq) return
-
-    lastSeq = e.seq
-    events.value.push(e)
-    await nextTick()
-    if (follow.value) {
-      scrollToLatest()
-    } else {
-      unseenCount.value += 1
-    }
-  }
-
-  nextSocket.onerror = () => {
-    wsStatus.value = 'error'
-  }
-
-  nextSocket.onclose = () => {
-    socket = null
-    if (!allowReconnect) {
-      wsStatus.value = 'disconnected'
-      return
-    }
-    scheduleReconnect(id)
-  }
-}
-
 function manualReconnect(): void {
   if (!runId.value) return
-  reconnectAttempts.value = 0
-  reconnectInSeconds.value = null
-  connectWs(runId.value, lastSeq, false)
+  runEventsStream.reconnect(runId.value)
 }
 
 function eventDisplayMessage(e: RunEvent): string {
@@ -305,33 +209,31 @@ async function open(id: string): Promise<void> {
   runId.value = id
   loading.value = true
   events.value = []
-  lastSeq = 0
+  runEventsStream.setLastSeq(0)
   setFollowEnabled(true)
   unseenCount.value = 0
-  reconnectAttempts.value = 0
-  reconnectInSeconds.value = null
-  allowReconnect = true
+  runEventsStream.stop()
   startNowTicker()
 
   try {
     const initial = await jobs.listRunEvents(id)
     events.value = initial
-    lastSeq = initial.reduce((m, e) => Math.max(m, e.seq), 0)
+    const maxSeq = initial.reduce((m, e) => Math.max(m, e.seq), 0)
+    runEventsStream.setLastSeq(maxSeq)
     await nextTick()
     scrollToLatest()
+    runEventsStream.start(id, maxSeq)
   } catch (error) {
     message.error(formatToastError(t('errors.fetchRunEventsFailed'), error, t))
+    runEventsStream.stop()
   } finally {
     loading.value = false
   }
-
-  connectWs(id, lastSeq, false)
 }
 
 watch(show, (open) => {
   if (!open) {
-    allowReconnect = false
-    closeSocket()
+    runEventsStream.stop()
     stopNowTicker()
     detailShow.value = false
     detailEvent.value = null
@@ -339,8 +241,7 @@ watch(show, (open) => {
 })
 
 onBeforeUnmount(() => {
-  allowReconnect = false
-  closeSocket()
+  runEventsStream.stop()
   stopNowTicker()
 })
 

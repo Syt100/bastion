@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NButton, NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
+import { NIcon, NPopover, NProgress, NStep, NSteps, NTag } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
@@ -10,6 +10,7 @@ import { formatBytes } from '@/lib/format'
 import { useMediaQuery } from '@/lib/media'
 import { useUiStore } from '@/stores/ui'
 import type { RunEvent, RunStatus } from '@/stores/jobs'
+import IconActionButton from '@/components/IconActionButton.vue'
 
 type ProgressUnits = { files: number; dirs: number; bytes: number }
 
@@ -478,11 +479,11 @@ function progressNumber(pct: number | null): number {
           <span>{{ t('runs.progress.stages.title') }}</span>
           <n-popover trigger="click" placement="top-start" :show-arrow="false">
             <template #trigger>
-              <n-button size="tiny" circle quaternary :aria-label="t('common.help')">
+              <IconActionButton :ariaLabel="t('common.help')">
                 <template #icon>
                   <n-icon :component="HelpCircleOutline" :size="14" />
                 </template>
-              </n-button>
+              </IconActionButton>
             </template>
             <div class="max-w-[420px] space-y-3 whitespace-pre-wrap break-words text-sm">
               <div>
@@ -525,11 +526,11 @@ function progressNumber(pct: number | null): number {
             <div class="text-sm font-medium truncate">{{ stageLabel(stageForLabel) }}</div>
             <n-popover trigger="click" placement="top-start" :show-arrow="false">
               <template #trigger>
-                <n-button size="tiny" circle quaternary>
+                <IconActionButton :ariaLabel="t('common.help')">
                   <template #icon>
                     <n-icon :component="HelpCircleOutline" :size="14" />
                   </template>
-                </n-button>
+                </IconActionButton>
               </template>
               <div class="max-w-[420px] whitespace-pre-wrap break-words text-sm">
                 <div class="font-medium mb-1">{{ currentStageHelp.title }}</div>

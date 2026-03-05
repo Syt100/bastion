@@ -318,8 +318,10 @@ export const useJobsStore = defineStore('jobs', () => {
     })
   }
 
-  async function listRuns(jobId: string): Promise<RunListItem[]> {
-    return await apiFetch<RunListItem[]>(`/api/jobs/${encodeURIComponent(jobId)}/runs`)
+  async function listRuns(jobId: string, options: { signal?: AbortSignal } = {}): Promise<RunListItem[]> {
+    return await apiFetch<RunListItem[]>(`/api/jobs/${encodeURIComponent(jobId)}/runs`, {
+      signal: options.signal,
+    })
   }
 
   async function listRunEvents(runId: string): Promise<RunEvent[]> {

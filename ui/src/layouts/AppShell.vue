@@ -39,6 +39,7 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { LAYOUT } from '@/lib/layout'
 import { formatToastError } from '@/lib/errors'
+import { isNodeScopedPath, nodeJobsPath, nodeScopedPath, nodeStoragePath, stripNodeScope } from '@/lib/nodeRoute'
 import { getSettingsMenuRouteKeys, getSettingsSidebarItems } from '@/navigation/settings'
 import { getLocaleDropdownOptions } from '@/i18n/language'
 
@@ -55,21 +56,21 @@ const system = useSystemStore()
 const versionTag = computed(() => (system.version ? `v${system.version}` : null))
 
 const nodeIdParam = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
-const menuPath = computed(() => (route.path.startsWith('/n/') ? route.path.replace(/^\/n\/[^/]+/, '') || '/' : route.path))
+const menuPath = computed(() => stripNodeScope(route.path))
 const nodeSuffix = computed(() => {
-  if (!route.path.startsWith('/n/')) return null
-  const suffix = route.path.replace(/^\/n\/[^/]+/, '')
+  if (!isNodeScopedPath(route.path)) return null
+  const suffix = stripNodeScope(route.path)
   // Job-scoped URLs include job/run ids which are not meaningful across nodes.
   // When switching node from within a job context, return to the node-scoped jobs workspace.
   if (suffix.startsWith('/jobs/')) return '/jobs'
-  return suffix === '' ? '/jobs' : suffix
+  return suffix === '/' ? '/jobs' : suffix
 })
 const selectedNodeId = computed({
   get: () => nodeIdParam.value ?? ui.preferredNodeId ?? 'hub',
   set: (value: string) => void onSelectNode(value),
 })
 
-const isNodeScoped = computed(() => route.path.startsWith('/n/'))
+const isNodeScoped = computed(() => isNodeScopedPath(route.path))
 const nodePickerLabel = computed(() =>
   isNodeScoped.value ? t('nav.nodePicker.currentLabel') : t('nav.nodePicker.preferredLabel'),
 )
@@ -93,7 +94,7 @@ const isDesktop = useMediaQuery(MQ.mdUp)
 const isJobsWorkbench = computed(
   () =>
     isDesktop.value &&
-    route.path.startsWith('/n/') &&
+    isNodeScopedPath(route.path) &&
     (menuPath.value === '/jobs' || menuPath.value.startsWith('/jobs/')),
 )
 
@@ -158,11 +159,11 @@ function navigateMenu(key: unknown): void {
   if (!menuRouteKeySet.has(key)) return
   if (key === activeKey.value) return
   if (key === '/jobs') {
-    void router.push(`/n/${encodeURIComponent(selectedNodeId.value)}/jobs`)
+    void router.push(nodeJobsPath(selectedNodeId.value))
     return
   }
   if (key === '/settings/storage') {
-    void router.push(`/n/${encodeURIComponent(selectedNodeId.value)}/settings/storage`)
+    void router.push(nodeStoragePath(selectedNodeId.value))
     return
   }
   void router.push(key)
@@ -210,10 +211,10 @@ async function onSelectNode(nodeId: string): Promise<void> {
   ui.setPreferredNodeId(nodeId)
 
   // On global pages, the node picker sets the preferred node only.
-  if (!route.path.startsWith('/n/')) return
+  if (!isNodeScopedPath(route.path)) return
 
   const suffix = nodeSuffix.value ?? '/jobs'
-  const target = `/n/${encodeURIComponent(nodeId)}/${suffix.replace(/^\/+/, '')}`
+  const target = nodeScopedPath(nodeId, suffix)
   if (route.path === target) return
   void router.push(target)
 }

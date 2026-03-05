@@ -21,6 +21,7 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
 import { JOB_DETAIL_CONTEXT } from '@/lib/jobDetailContext'
+import { nodeJobsPath, nodeScopedPath } from '@/lib/nodeRoute'
 
 type SectionKey = 'overview' | 'history' | 'data'
 
@@ -37,6 +38,7 @@ const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 const jobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
 const runId = computed(() => (typeof route.params.runId === 'string' ? route.params.runId : null))
+const jobsListPath = computed(() => nodeJobsPath(nodeId.value))
 
 const loading = ref<boolean>(false)
 const job = ref<JobDetail | null>(null)
@@ -71,7 +73,7 @@ function goSection(key: unknown): void {
   if (key !== 'overview' && key !== 'history' && key !== 'data') return
   const id = jobId.value
   if (!id) return
-  void router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs/${encodeURIComponent(id)}/${key}`)
+  void router.push(nodeScopedPath(nodeId.value, `jobs/${encodeURIComponent(id)}/${key}`))
 }
 
 function closeRunDrawer(): void {
@@ -163,7 +165,7 @@ async function confirmDeletePermanently(): Promise<void> {
     message.success(t('messages.jobDeleted'))
     deleteOpen.value = false
     // Return to jobs list.
-    await router.push(`/n/${encodeURIComponent(nodeId.value)}/jobs`)
+    await router.push(jobsListPath.value)
   } catch (error) {
     message.error(formatToastError(t('errors.deleteJobFailed'), error, t))
   } finally {
@@ -217,7 +219,7 @@ function onSelectMore(key: string | number): void {
       v-if="!isDesktop"
       sticky
       :title="job?.name ?? t('jobs.detail.title')"
-      :back-to="`/n/${encodeURIComponent(nodeId)}/jobs`"
+      :back-to="jobsListPath"
     >
       <template #actions>
         <n-button

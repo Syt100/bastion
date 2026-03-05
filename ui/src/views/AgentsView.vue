@@ -37,9 +37,10 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
-import { copyText } from '@/lib/clipboard'
+import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
+import { nodeJobsPath, nodeStoragePath } from '@/lib/nodeRoute'
 import {
   buildListRangeSummary,
   DEFAULT_LIST_PAGE_SIZE,
@@ -65,6 +66,7 @@ const ui = useUiStore()
 const agents = useAgentsStore()
 const bulkOps = useBulkOperationsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
+const copyWithFeedback = createClipboardCopyAction(t, message)
 
 const tokenModalOpen = ref<boolean>(false)
 const tokenCreating = ref<boolean>(false)
@@ -238,20 +240,15 @@ async function createToken(): Promise<void> {
 }
 
 async function copyToClipboard(value: string): Promise<void> {
-  const ok = await copyText(value)
-  if (ok) {
-    message.success(t('messages.copied'))
-  } else {
-    message.error(t('errors.copyFailed'))
-  }
+  await copyWithFeedback(value)
 }
 
 function openAgentJobs(agentId: string): void {
-  void router.push(`/n/${encodeURIComponent(agentId)}/jobs`)
+  void router.push(nodeJobsPath(agentId))
 }
 
 function openAgentStorage(agentId: string): void {
-  void router.push(`/n/${encodeURIComponent(agentId)}/settings/storage`)
+  void router.push(nodeStoragePath(agentId))
 }
 
 async function revokeAgent(agentId: string): Promise<void> {

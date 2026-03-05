@@ -27,6 +27,7 @@ const SetupView = () => import('@/views/SetupView.vue')
 
 import { pinia } from '@/pinia'
 import { useAuthStore } from '@/stores/auth'
+import { nodeJobsPath } from '@/lib/nodeRoute'
 
 const EmptyView = { render: () => null }
 
@@ -52,7 +53,7 @@ const router = createRouter({
         {
           path: 'n/:nodeId',
           children: [
-            { path: '', redirect: (to) => ({ path: `/n/${encodeURIComponent(String(to.params.nodeId))}/jobs` }) },
+            { path: '', redirect: (to) => ({ path: nodeJobsPath(String(to.params.nodeId)) }) },
             {
               path: 'jobs',
               component: JobsWorkspaceShellView,
