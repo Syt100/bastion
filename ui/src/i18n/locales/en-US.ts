@@ -127,6 +127,7 @@ const messages = {
     },
     recent: {
       title: 'Recent runs',
+      subtitle: 'Open the latest backup activity before drilling into trends.',
       empty: 'No runs yet',
       columns: {
         status: 'Status',
@@ -164,9 +165,23 @@ const messages = {
   auth: {
     signIn: 'Sign in',
     signInSubtitle: 'Sign in to manage backups and restores',
+    heroTitle: 'Keep backups, restores, and agents in one control plane',
+    heroBody: 'Bastion gives operators a single place to schedule backups, watch agent health, and investigate failures before they become restore-time surprises.',
+    heroHelp: 'Open the product docs if this is your first deployment or you need setup details.',
+    docsCta: 'View docs',
+    heroCards: {
+      jobsTitle: 'Backup jobs',
+      jobsBody: 'Create schedules, retention, and target settings from one workspace.',
+      agentsTitle: 'Agent health',
+      agentsBody: 'See which nodes are online, synced, or need attention.',
+      restoresTitle: 'Restore readiness',
+      restoresBody: 'Track recent runs and failures before you need to recover data.',
+    },
     username: 'Username',
     password: 'Password',
     login: 'Sign in',
+    loginHelp: 'Use your Bastion admin account to access the Hub.',
+    loginHelpDetail: 'If this is a new environment, review the docs first so the initial setup matches your network and TLS plan.',
     initTitle: 'Initialize Bastion',
     initSubtitle: 'Create the first admin account',
     confirmPassword: 'Confirm password',
@@ -177,11 +192,22 @@ const messages = {
     subtitle: 'Manage connected agents',
     empty: {
       title: 'No agents yet',
-      description: 'Create an enrollment token to connect your first agent.',
+      description: 'Turn this page into your agent control plane by connecting the first node.',
+      guideTitle: 'Suggested first-run flow',
+      steps: {
+        createToken: 'Create an enrollment token for the node you want to attach.',
+        runCommand: 'Run the Bastion agent command on that machine with the Hub URL and token.',
+        verifyOnline: 'Return here to confirm the agent is online and config sync is healthy.',
+      },
+      commandExample: 'bastion agent --hub-url {hubUrl} --enroll-token <token> --name "<friendly-name>"',
     },
     newToken: 'Create enrollment token',
     bulkLabels: 'Bulk edit labels',
     bulkSync: 'Sync config',
+    bulkScope: {
+      title: 'Bulk actions for the current filter',
+      description: 'Apply label or config-sync actions to agents matching the {count} selected label filters.',
+    },
     revokeConfirm: 'Revoke this agent? It will need a new enrollment token to reconnect.',
     rotateConfirm: 'Rotate this agent key? The old key will stop working immediately.',
     status: {
@@ -330,10 +356,11 @@ const messages = {
     title: 'Jobs',
     subtitle: 'Create and schedule backup jobs',
     workspace: {
-      emptyTitle: 'Select a job',
-      emptyDescription: 'Choose a job from the list to view its workspace.',
+      emptyTitle: 'Pick a job to continue',
+      emptyDescription: 'Open a job from the list to work in its workspace, or create a new one to start onboarding backups.',
       quickLinks: 'Quick links',
       actions: {
+        workspace: 'Workspace',
         splitView: 'Split view',
         fullList: 'Full list',
         fullDetail: 'Full detail',

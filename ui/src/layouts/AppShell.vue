@@ -20,7 +20,6 @@ import {
 } from 'naive-ui'
 import {
   ArchiveOutline,
-  EllipsisHorizontal,
   HomeOutline,
   MenuOutline,
   PeopleOutline,
@@ -173,30 +172,6 @@ function onUpdateExpandedKeys(keys: string[]): void {
   expandedKeys.value = keys
 }
 
-const mobileActions = computed(() => [
-  ...getLocaleDropdownOptions(),
-  { type: 'divider', key: '__d1' },
-  { label: t('common.help'), key: 'docs' },
-  { label: ui.darkMode ? t('common.light') : t('common.dark'), key: 'toggle_theme' },
-  { type: 'divider', key: '__d2' },
-  { label: t('common.logout'), key: 'logout' },
-])
-
-function onSelectMobileAction(key: string | number): void {
-  if (key === 'docs') {
-    openDocs()
-    return
-  }
-  if (key === 'toggle_theme') {
-    ui.toggleDarkMode()
-    return
-  }
-  if (key === 'logout') {
-    void onLogout()
-    return
-  }
-  onSelectLanguage(key)
-}
 
 async function onLogout(): Promise<void> {
   try {
@@ -296,7 +271,7 @@ watch(nodeIdParam, (value) => {
         class="app-glass app-topbar px-4"
         :class="isDesktop ? 'shrink-0' : 'sticky top-0 z-50'"
       >
-        <div class="h-14 flex items-center justify-between max-w-7xl mx-auto">
+        <div class="h-14 flex items-center justify-between max-w-[88rem] mx-auto">
           <div class="flex items-center gap-3">
             <n-button v-if="!isDesktop" quaternary :aria-label="t('common.openMenu')" @click="mobileMenuOpen = true">
               <template #icon>
@@ -310,32 +285,21 @@ watch(nodeIdParam, (value) => {
             </template>
           </div>
 
-          <div class="flex items-center gap-2">
-            <template v-if="isDesktop">
-              <n-button quaternary @click="openDocs">{{ t('common.help') }}</n-button>
-              <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
-                <n-button quaternary>{{ t('common.language') }}</n-button>
-              </n-dropdown>
-              <n-button quaternary @click="ui.toggleDarkMode()">
-                {{ ui.darkMode ? t('common.light') : t('common.dark') }}
-              </n-button>
-              <n-button quaternary type="error" @click="onLogout">{{ t('common.logout') }}</n-button>
-            </template>
-            <template v-else>
-              <n-dropdown :options="mobileActions" trigger="click" @select="onSelectMobileAction">
-                <n-button quaternary :aria-label="t('common.more')">
-                  <template #icon>
-                    <n-icon><EllipsisHorizontal /></n-icon>
-                  </template>
-                </n-button>
-              </n-dropdown>
-            </template>
+          <div v-if="isDesktop" class="app-topbar-action-group flex items-center gap-1 rounded-full px-1 py-1">
+            <n-button quaternary size="small" @click="openDocs">{{ t('common.help') }}</n-button>
+            <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
+              <n-button quaternary size="small">{{ t('common.language') }}</n-button>
+            </n-dropdown>
+            <n-button quaternary size="small" @click="ui.toggleDarkMode()">
+              {{ ui.darkMode ? t('common.light') : t('common.dark') }}
+            </n-button>
+            <n-button quaternary size="small" type="error" @click="onLogout">{{ t('common.logout') }}</n-button>
           </div>
         </div>
       </n-layout-header>
 
-      <div
-        data-testid="app-shell-content"
+      <main
+        data-testid="app-shell-main"
         class="bg-transparent"
         :class="
           isDesktop
@@ -347,7 +311,7 @@ watch(nodeIdParam, (value) => {
       >
         <div class="p-4" :class="isDesktop && isJobsWorkbench ? 'h-full min-h-0 flex flex-col' : ''">
           <div
-            class="max-w-7xl mx-auto w-full"
+            class="max-w-[88rem] mx-auto w-full"
             :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0 flex flex-col' : ''"
           >
             <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
@@ -356,7 +320,7 @@ watch(nodeIdParam, (value) => {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </n-layout>
   </n-layout>
 
@@ -390,6 +354,17 @@ watch(nodeIdParam, (value) => {
           }
         "
       />
+
+      <div class="mt-4 border-t border-[color:var(--app-border)] pt-4 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <n-button size="small" @click="mobileMenuOpen = false; openDocs()">{{ t('common.help') }}</n-button>
+          <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
+            <n-button size="small">{{ t('common.language') }}</n-button>
+          </n-dropdown>
+          <n-button size="small" @click="ui.toggleDarkMode()">{{ ui.darkMode ? t('common.light') : t('common.dark') }}</n-button>
+          <n-button size="small" type="error" @click="mobileMenuOpen = false; onLogout()">{{ t('common.logout') }}</n-button>
+        </div>
+      </div>
     </n-drawer-content>
   </n-drawer>
 </template>

@@ -320,7 +320,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(list.classes()).toContain('overflow-y-auto')
   })
 
-  it('hides the job workspace pane in list-only layout', () => {
+  it('maps persisted list layout back to workspace mode when table view is not active', () => {
     routeApi.params = { nodeId: 'hub', jobId: 'job1' }
     uiStore.jobsWorkspaceLayoutMode = 'list'
 
@@ -337,8 +337,30 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
       },
     })
 
-    expect(wrapper.find('router-view-stub').exists()).toBe(false)
+    expect(wrapper.find('router-view-stub').exists()).toBe(true)
     expect(wrapper.find('[data-testid="jobs-list-scroll"]').exists()).toBe(true)
+  })
+
+  it('keeps workspace list full width until a job is selected', () => {
+    routeApi.params = { nodeId: 'hub' }
+    uiStore.jobsWorkspaceLayoutMode = 'split'
+    uiStore.jobsWorkspaceListView = 'list'
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: true,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="jobs-list-scroll"]').exists()).toBe(true)
+    expect(wrapper.find('app-empty-state-stub').exists()).toBe(false)
   })
 
   it('selecting table view forces list-only layout', async () => {
@@ -354,8 +376,8 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     })
 
     const groups = wrapper.findAllComponents({ name: 'NRadioGroup' })
-    expect(groups.length).toBeGreaterThanOrEqual(2)
-    groups[1]!.vm.$emit('update:value', 'table')
+    expect(groups.length).toBeGreaterThanOrEqual(1)
+    groups[0]!.vm.$emit('update:value', 'table')
 
     expect(uiStore.setJobsWorkspaceLayoutMode).toHaveBeenCalledWith('list')
     expect(uiStore.setJobsWorkspaceListView).toHaveBeenCalledWith('table')

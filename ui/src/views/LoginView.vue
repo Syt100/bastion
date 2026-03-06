@@ -79,7 +79,12 @@ async function onSubmit(): Promise<void> {
           :validation-status="fieldErrors.username ? 'error' : undefined"
           :feedback="fieldErrors.username"
         >
-          <n-input v-model:value="username" size="large" autocomplete="username" />
+          <n-input
+            v-model:value="username"
+            size="large"
+            autocomplete="username"
+            :input-props="{ name: 'username', 'aria-label': t('auth.username') }"
+          />
         </n-form-item>
         <n-form-item
           :label="t('auth.password')"
@@ -91,6 +96,7 @@ async function onSubmit(): Promise<void> {
             size="large"
             type="password"
             autocomplete="current-password"
+            :input-props="{ name: 'current-password', 'aria-label': t('auth.password') }"
           />
         </n-form-item>
         <n-button
@@ -102,6 +108,11 @@ async function onSubmit(): Promise<void> {
         >
           {{ t('auth.login') }}
         </n-button>
+
+        <div class="mt-4 space-y-1 text-sm app-text-muted">
+          <div>{{ t('auth.loginHelp') }}</div>
+          <div>{{ t('auth.loginHelpDetail') }}</div>
+        </div>
       </n-form>
     </n-card>
   </AuthLayout>

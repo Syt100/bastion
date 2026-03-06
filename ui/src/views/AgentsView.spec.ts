@@ -213,4 +213,13 @@ describe('AgentsView enrollment token modal', () => {
 
     expect(wrapper.text()).toContain('agents.columns.status: agents.status.offline')
   })
+
+  it('renders guided onboarding copy in the empty state', async () => {
+    const wrapper = mount(AgentsView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agents.empty.guideTitle')
+    expect(wrapper.text()).toContain('agents.empty.steps.createToken')
+    expect(wrapper.text()).toContain('agents.empty.commandExample')
+  })
 })

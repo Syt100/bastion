@@ -13,6 +13,8 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 
 ### Changed
+- Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.
+- Changed Agents and auth entry surfaces to add guided onboarding/trust copy, stronger empty-state actions, and clearer login context for first-time operators.
 - Changed list-oriented Web UI pages (Jobs/Agents/Notifications Queue) to use a shared scaffold pattern with consistent toolbar/content/footer regions.
 - Changed list pagination UX by introducing a unified pagination component and migrating Notifications Queue from back/next-only controls to page + page-size controls.
 - Changed Jobs workspace filtering to a single shared filter state model and shared filter panel rendering across split/list/mobile containers.
@@ -60,6 +62,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
+- Fixed Jobs workspace list rows to keep full-size actions while reducing left-side chrome and aligning second-line node/schedule metadata with the latest-run time in narrower panes.
 - Fixed task create/edit dialog height regression by enforcing viewport bounds at modal-container layer (instead of content-layer sizing), so long forms stay inside modal scrolling bounds.
 - Fixed path-picker open/refresh jank by staging initial refresh to the next task and removing redundant open-time table-height re-measure chaining.
 - Fixed Agent heartbeat persistence overhead by throttling `agents.last_seen_at` updates to reduce DB write amplification during high message throughput.

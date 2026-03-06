@@ -98,4 +98,40 @@ describe('JobsListRowItem', () => {
     expect(wrapper.emitted('update:checked')?.[0]).toEqual([true])
     expect(wrapper.emitted('overflow-select')?.[0]).toEqual(['more'])
   })
+
+  it('keeps status on the left and reserves the right side for actions/time so schedule text stays visible', () => {
+    const wrapper = mount(JobsListRowItem, {
+      props: {
+        job: sampleJob,
+        mainTriggerTestId: 'main-trigger',
+        runNowTestId: 'run-now-trigger',
+        openDetailsLabel: 'open',
+        archivedLabel: 'archived',
+        neverRanLabel: 'never',
+        runNowLabel: 'run now',
+        nodeLabel: 'Hub（本机）',
+        scheduleLabel: 'manual only',
+        latestRunStatusLabel: 'failed',
+        latestRunStatusType: 'error',
+        latestRunStartedAtLabel: '2026-03-06 12:34',
+        latestRunStartedAtTitle: '2026-03-06 12:34:56',
+        runNowLoading: false,
+        runNowDisabled: false,
+        overflowOptions: [{ label: 'more', key: 'more' }],
+      },
+    })
+
+    expect(wrapper.find('.app-list-row').classes()).not.toContain('flex-wrap')
+    expect(wrapper.find('.job-row-title-line').classes()).toContain('min-h-7')
+    expect(wrapper.find('.job-row-status').exists()).toBe(true)
+    expect(wrapper.find('.job-row-node').exists()).toBe(true)
+    expect(wrapper.find('.job-row-side').classes()).toContain('items-end')
+    expect(wrapper.find('.job-row-actions').classes()).toContain('justify-end')
+    expect(wrapper.html()).not.toContain('w-[5.75rem]')
+    expect(wrapper.html()).not.toContain("mobile ? 'small' : 'tiny'")
+    expect(wrapper.text()).toContain('Hub（本机）')
+    expect(wrapper.text()).toContain('manual only')
+    expect(wrapper.text()).toContain('2026-03-06 12:34')
+  })
+
 })

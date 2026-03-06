@@ -127,6 +127,7 @@ const messages = {
     },
     recent: {
       title: '最近运行',
+      subtitle: '先看最新备份活动，再决定是否需要深入查看趋势。',
       empty: '暂无运行记录',
       columns: {
         status: '状态',
@@ -164,9 +165,23 @@ const messages = {
   auth: {
     signIn: '登录',
     signInSubtitle: '登录以管理备份与恢复',
+    heroTitle: '在一个控制台里管理备份、恢复与客户端',
+    heroBody: 'Bastion 将备份调度、客户端状态和失败排查集中到同一个入口，帮助你在真正需要恢复之前就发现问题。',
+    heroHelp: '如果这是首次部署，先打开产品文档确认初始化、网络和 TLS 方案。',
+    docsCta: '查看文档',
+    heroCards: {
+      jobsTitle: '备份任务',
+      jobsBody: '在统一工作台里配置计划、保留策略和目标端。',
+      agentsTitle: '客户端状态',
+      agentsBody: '快速查看哪些节点在线、已同步或需要处理。',
+      restoresTitle: '恢复准备度',
+      restoresBody: '先看最近运行与失败，再决定是否需要进入恢复排查。',
+    },
     username: '用户名',
     password: '密码',
     login: '登录',
+    loginHelp: '使用 Bastion 管理员账号登录 Hub。',
+    loginHelpDetail: '如果是新环境，建议先阅读文档，确保初始化流程与网络/TLS 规划一致。',
     initTitle: '初始化 Bastion',
     initSubtitle: '首次使用需要创建管理员账号',
     confirmPassword: '确认密码',
@@ -177,11 +192,22 @@ const messages = {
     subtitle: '管理已接入 Hub 的客户端',
     empty: {
       title: '暂无客户端',
-      description: '先创建接入令牌并接入第一个客户端。',
+      description: '先接入第一个节点，让这里成为客户端控制台。',
+      guideTitle: '建议按以下顺序完成首次接入',
+      steps: {
+        createToken: '先创建一个接入令牌，用于目标节点首次绑定。',
+        runCommand: '在目标机器上执行 Bastion agent 命令，并带上 Hub 地址与令牌。',
+        verifyOnline: '回到此页确认客户端已在线，且配置同步状态正常。',
+      },
+      commandExample: 'bastion agent --hub-url {hubUrl} --enroll-token <令牌> --name "<友好名称>"',
     },
     newToken: '创建接入令牌',
     bulkLabels: '批量编辑标签',
     bulkSync: '同步配置',
+    bulkScope: {
+      title: '针对当前筛选范围的批量操作',
+      description: '对命中这 {count} 个标签筛选条件的客户端执行标签或配置同步操作。',
+    },
     revokeConfirm: '撤销该客户端？撤销后需要重新接入才能再次连接。',
     rotateConfirm: '确认轮换该客户端的连接密钥？旧密钥将立即失效。',
     status: {
@@ -330,10 +356,11 @@ const messages = {
     title: '备份任务',
     subtitle: '创建并调度备份任务',
     workspace: {
-      emptyTitle: '请选择一个任务',
-      emptyDescription: '从列表中选择任务以进入任务工作台。',
+      emptyTitle: '请选择一个任务继续',
+      emptyDescription: '从列表中打开任务进入工作台，或直接创建一个新任务开始配置备份。',
       quickLinks: '快捷入口',
       actions: {
+        workspace: '工作台',
         splitView: '分栏',
         fullList: '仅列表',
         fullDetail: '仅详情',

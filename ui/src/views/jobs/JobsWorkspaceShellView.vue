@@ -22,7 +22,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useUiStore, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
-import { formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
+import { formatUnixSecondsMdHm, formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
 import { useIdBusyState } from '@/lib/idBusyState'
@@ -83,18 +83,11 @@ applyRouteQuery(route.query as Record<string, unknown>)
 
 const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   if (!isDesktop.value) return 'split'
+  if (ui.jobsWorkspaceListView === 'table') return 'list'
+  if (!selectedJobId.value) return 'list'
   const mode = ui.jobsWorkspaceLayoutMode
-  if (mode === 'detail' && !selectedJobId.value) return 'list'
+  if (mode === 'detail' || mode === 'list') return 'split'
   return mode
-})
-
-const layoutModeModel = computed<JobsWorkspaceLayoutMode>({
-  get: () => layoutMode.value,
-  set: (value) => {
-    if (!isDesktop.value) return
-    if (value === 'detail' && !selectedJobId.value) return
-    ui.setJobsWorkspaceLayoutMode(value)
-  },
 })
 
 const jobsListView = computed<JobsWorkspaceListView>(() => {
@@ -103,14 +96,17 @@ const jobsListView = computed<JobsWorkspaceListView>(() => {
   return ui.jobsWorkspaceListView
 })
 
-const jobsListViewModel = computed<JobsWorkspaceListView>({
-  get: () => jobsListView.value,
+const jobsPrimaryViewModel = computed<'workspace' | 'table'>({
+  get: () => (layoutMode.value === 'list' && jobsListView.value === 'table' ? 'table' : 'workspace'),
   set: (value) => {
-    // Table view requires full-width list. Selecting it forces list-only layout.
+    if (!isDesktop.value) return
     if (value === 'table') {
+      ui.setJobsWorkspaceListView('table')
       ui.setJobsWorkspaceLayoutMode('list')
+      return
     }
-    ui.setJobsWorkspaceListView(value)
+    ui.setJobsWorkspaceListView('list')
+    ui.setJobsWorkspaceLayoutMode('split')
   },
 })
 
@@ -555,14 +551,8 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-if="isDesktop">
-        <n-radio-group v-model:value="layoutModeModel" size="small" class="shrink-0">
-          <n-radio-button value="list">{{ t('jobs.workspace.actions.fullList') }}</n-radio-button>
-          <n-radio-button value="split">{{ t('jobs.workspace.actions.splitView') }}</n-radio-button>
-          <n-radio-button value="detail" :disabled="!selectedJobId">{{ t('jobs.workspace.actions.fullDetail') }}</n-radio-button>
-        </n-radio-group>
-
-        <n-radio-group v-model:value="jobsListViewModel" size="small" class="shrink-0">
-          <n-radio-button value="list">{{ t('jobs.workspace.views.list') }}</n-radio-button>
+        <n-radio-group v-model:value="jobsPrimaryViewModel" size="small" class="shrink-0">
+          <n-radio-button value="workspace">{{ t('jobs.workspace.actions.workspace') }}</n-radio-button>
           <n-radio-button value="table">{{ t('jobs.workspace.views.table') }}</n-radio-button>
         </n-radio-group>
       </template>
@@ -776,7 +766,7 @@ onBeforeUnmount(() => {
                         :schedule-label="formatScheduleLabel(job)"
                         :latest-run-status-label="job.latest_run_status ? runStatusLabel(t, job.latest_run_status) : null"
                         :latest-run-status-type="job.latest_run_status ? runStatusTagType(job.latest_run_status) : null"
-                        :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsYmdHm(job.latest_run_started_at) : null"
+                        :latest-run-started-at-label="job.latest_run_started_at != null ? formatUnixSecondsMdHm(job.latest_run_started_at) : null"
                         :latest-run-started-at-title="job.latest_run_started_at != null ? formatUnixSecondsYmdHms(job.latest_run_started_at) : null"
                         :run-now-loading="isRowRunNowBusy(job.id)"
                         :run-now-disabled="!!job.archived_at || isRowRunNowBusy(job.id)"
@@ -816,7 +806,12 @@ onBeforeUnmount(() => {
             v-else
             :title="t('jobs.workspace.emptyTitle')"
             :description="t('jobs.workspace.emptyDescription')"
-          />
+          >
+            <template #actions>
+              <n-button size="small" @click="refresh">{{ t('jobs.workspace.actions.refreshList') }}</n-button>
+              <n-button size="small" type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
+            </template>
+          </AppEmptyState>
         </div>
       </div>
     </template>

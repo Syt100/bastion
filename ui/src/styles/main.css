@@ -685,6 +685,12 @@ body {
   box-shadow: var(--app-shadow-sm);
 }
 
+.app-topbar-action-group {
+  border: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+  box-shadow: var(--app-shadow-sm);
+}
+
 .app-selection-toolbar {
   background: linear-gradient(
     90deg,

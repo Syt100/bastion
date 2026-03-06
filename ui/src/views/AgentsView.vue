@@ -177,6 +177,7 @@ const {
 ])
 
 const listBaseEmpty = computed<boolean>(() => agents.total === 0 && !hasActiveFilters.value)
+const hasScopedBulkActions = computed<boolean>(() => selectedAgentIds.value.length === 0 && selectedLabels.value.length > 0)
 
 function clearFilters(): void {
   clearListFilters()
@@ -645,21 +646,6 @@ onBeforeUnmount(() => {
           </template>
 
           <template #actions>
-            <n-button
-              v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
-              size="small"
-              @click="openBulkLabelsModal"
-            >
-              {{ t('agents.bulkLabels') }}
-            </n-button>
-            <n-button
-              v-if="selectedAgentIds.length === 0 && selectedLabels.length > 0"
-              size="small"
-              @click="openBulkSyncModal"
-            >
-              {{ t('agents.bulkSync') }}
-            </n-button>
-
             <n-button size="small" @click="clearFilters">
               {{ t('common.clear') }}
             </n-button>
@@ -675,6 +661,20 @@ onBeforeUnmount(() => {
           @clear="clearFilters"
         />
 
+        <div
+          v-if="hasScopedBulkActions"
+          class="mb-3 rounded-2xl app-panel-inset px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+        >
+          <div>
+            <div class="font-medium">{{ t('agents.bulkScope.title') }}</div>
+            <div class="text-sm app-text-muted">{{ t('agents.bulkScope.description', { count: selectedLabels.length }) }}</div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <n-button size="small" @click="openBulkLabelsModal">{{ t('agents.bulkLabels') }}</n-button>
+            <n-button size="small" @click="openBulkSyncModal">{{ t('agents.bulkSync') }}</n-button>
+          </div>
+        </div>
+
         <div v-if="!isDesktop" class="space-y-3">
           <ListStatePresenter
             :loading="agents.loading"
@@ -686,13 +686,31 @@ onBeforeUnmount(() => {
             :filtered-empty-title="t('common.noData')"
           >
             <template #baseActions>
-              <n-button
-                type="primary"
-                size="small"
-                @click="openTokenModal"
-              >
-                {{ t('agents.newToken') }}
-              </n-button>
+              <div class="max-w-md space-y-3 text-left">
+                <div class="text-center text-sm app-text-muted">{{ t('agents.empty.guideTitle') }}</div>
+                <ol class="space-y-2 text-sm">
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">1</span>
+                    <span>{{ t('agents.empty.steps.createToken') }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">2</span>
+                    <span>{{ t('agents.empty.steps.runCommand') }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">3</span>
+                    <span>{{ t('agents.empty.steps.verifyOnline') }}</span>
+                  </li>
+                </ol>
+                <div class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all">
+                  {{ t('agents.empty.commandExample', { hubUrl }) }}
+                </div>
+                <div class="flex items-center justify-center gap-2">
+                  <n-button type="primary" size="small" @click="openTokenModal">
+                    {{ t('agents.newToken') }}
+                  </n-button>
+                </div>
+              </div>
             </template>
 
             <template #filteredActions>
@@ -790,9 +808,31 @@ onBeforeUnmount(() => {
             :filtered-empty-title="t('common.noData')"
           >
             <template #baseActions>
-              <n-button type="primary" size="small" @click="openTokenModal">
-                {{ t('agents.newToken') }}
-              </n-button>
+              <div class="max-w-md space-y-3 text-left">
+                <div class="text-center text-sm app-text-muted">{{ t('agents.empty.guideTitle') }}</div>
+                <ol class="space-y-2 text-sm">
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">1</span>
+                    <span>{{ t('agents.empty.steps.createToken') }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">2</span>
+                    <span>{{ t('agents.empty.steps.runCommand') }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--app-primary-soft)] text-xs font-semibold">3</span>
+                    <span>{{ t('agents.empty.steps.verifyOnline') }}</span>
+                  </li>
+                </ol>
+                <div class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all">
+                  {{ t('agents.empty.commandExample', { hubUrl }) }}
+                </div>
+                <div class="flex items-center justify-center gap-2">
+                  <n-button type="primary" size="small" @click="openTokenModal">
+                    {{ t('agents.newToken') }}
+                  </n-button>
+                </div>
+              </div>
             </template>
 
             <template #filteredActions>

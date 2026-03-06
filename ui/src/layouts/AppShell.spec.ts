@@ -159,7 +159,9 @@ describe('AppShell node selector', () => {
       },
     })
 
-    expect(wrapper.find('[data-testid="app-shell-content"]').classes()).toContain('overflow-y-auto')
+    const main = wrapper.find('main[data-testid="app-shell-main"]')
+    expect(main.exists()).toBe(true)
+    expect(main.classes()).toContain('overflow-y-auto')
   })
 
   it('uses workbench mode (no outer scroll) for Jobs workspace pages on desktop', () => {
@@ -172,6 +174,6 @@ describe('AppShell node selector', () => {
       },
     })
 
-    expect(wrapper.find('[data-testid="app-shell-content"]').classes()).toContain('overflow-hidden')
+    expect(wrapper.find('main[data-testid="app-shell-main"]').classes()).toContain('overflow-hidden')
   })
 })

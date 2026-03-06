@@ -29,6 +29,16 @@ export function formatUnixSecondsYmdHm(ts: number | null): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
 }
 
+export function formatUnixSecondsMdHm(ts: number | null): string {
+  if (!ts) return '-'
+  const d = new Date(ts * 1000)
+  const mm = pad2(d.getMonth() + 1)
+  const dd = pad2(d.getDate())
+  const hh = pad2(d.getHours())
+  const mi = pad2(d.getMinutes())
+  return `${mm}-${dd} ${hh}:${mi}`
+}
+
 export function useUnixSecondsFormatter(_locale: MaybeRef<string>) {
   void _locale
 

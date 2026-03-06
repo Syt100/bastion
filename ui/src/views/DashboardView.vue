@@ -38,6 +38,7 @@ const showInitialSkeleton = computed(() => dashboard.loading && !overview.value)
 const offlineAgents = computed(() => overview.value?.stats.agents.offline ?? 0)
 const failedNotifications = computed(() => overview.value?.stats.notifications.failed ?? 0)
 const recentRuns = computed(() => overview.value?.recent_runs ?? [])
+const recentRunsPreview = computed(() => recentRuns.value.slice(0, 4))
 
 const trendDays = computed(() => overview.value?.trend_7d.map((d) => d.day) ?? [])
 const trendSuccess = computed(() => overview.value?.trend_7d.map((d) => d.success) ?? [])
@@ -47,33 +48,6 @@ const trendSectionEnabled = computed(() => trendDays.value.length > 0)
 const { target: trendChartTarget, ready: trendChartReady } = useViewportLazyReady(trendSectionEnabled, {
   rootMargin: '200px 0px',
 })
-
-const recentRunsSectionEnabled = computed(() => isDesktop.value && recentRuns.value.length > 0)
-const { target: recentRunsTarget, ready: recentRunsReady } = useViewportLazyReady(recentRunsSectionEnabled, {
-  rootMargin: '180px 0px',
-})
-
-function scheduleIdlePrefetchRecentTable(): void {
-  if (typeof window === 'undefined') return
-
-  const win = window as Window & {
-    requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number
-  }
-
-  if (typeof win.requestIdleCallback === 'function') {
-    win.requestIdleCallback(
-      () => {
-        void loadRecentRunsDesktopTable()
-      },
-      { timeout: 3000 },
-    )
-    return
-  }
-
-  window.setTimeout(() => {
-    void loadRecentRunsDesktopTable()
-  }, 1200)
-}
 
 async function refresh(): Promise<void> {
   try {
@@ -85,9 +59,6 @@ async function refresh(): Promise<void> {
 
 onMounted(() => {
   void refresh()
-  if (isDesktop.value) {
-    scheduleIdlePrefetchRecentTable()
-  }
 })
 
 function statusTagType(status: string): 'success' | 'error' | 'warning' | 'info' | 'default' {
@@ -156,6 +127,80 @@ function openNotificationFailures(): void {
         </div>
       </n-card>
     </div>
+
+    <n-card class="app-card" :bordered="false" :title="t('dashboard.recent.title')">
+      <AppEmptyState v-if="dashboard.loading && recentRuns.length === 0" :title="t('common.loading')" loading />
+      <AppEmptyState v-else-if="!dashboard.loading && recentRuns.length === 0" :title="t('dashboard.recent.empty')" />
+
+      <div v-else class="min-h-[12rem]">
+        <div v-if="!isDesktop" class="space-y-3">
+          <n-card
+            v-for="row in recentRuns"
+            :key="row.run_id"
+            size="small"
+            class="app-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-medium truncate">{{ row.job_name }}</div>
+                  <div class="text-xs app-text-muted mt-0.5 truncate">{{ nodeLabel(row) }}</div>
+                </div>
+                <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">
+                  {{ runStatusLabel(t, row.status) }}
+                </n-tag>
+              </div>
+            </template>
+
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <div class="app-text-muted">{{ t('dashboard.recent.columns.startedAt') }}</div>
+              <div class="font-mono tabular-nums text-right">{{ formatUnixSeconds(row.started_at) }}</div>
+              <div class="app-text-muted">{{ t('dashboard.recent.columns.endedAt') }}</div>
+              <div class="font-mono tabular-nums text-right">{{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}</div>
+            </div>
+
+            <div v-if="row.error" class="mt-3 text-xs text-[var(--app-danger)] truncate">{{ row.error }}</div>
+
+            <template #footer>
+              <div class="flex justify-end">
+                <n-button size="small" @click="openRun(row)">{{ t('dashboard.recent.actions.open') }}</n-button>
+              </div>
+            </template>
+          </n-card>
+        </div>
+
+        <Suspense v-else>
+          <template #default>
+            <DashboardRecentRunsDesktopTable :rows="recentRuns" :loading="dashboard.loading" @open-run="openRun" />
+          </template>
+          <template #fallback>
+            <div class="rounded app-panel-inset p-4 space-y-3">
+              <div class="text-sm app-text-muted">{{ t('dashboard.recent.subtitle') }}</div>
+              <div
+                v-for="row in recentRunsPreview"
+                :key="row.run_id"
+                class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-4 py-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="font-medium truncate">{{ row.job_name }}</div>
+                    <div class="mt-1 text-xs app-text-muted truncate">{{ nodeLabel(row) }}</div>
+                  </div>
+                  <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">
+                    {{ runStatusLabel(t, row.status) }}
+                  </n-tag>
+                </div>
+                <div class="mt-3 flex items-center justify-between gap-4 text-xs app-text-muted">
+                  <span>{{ formatUnixSeconds(row.started_at) }}</span>
+                  <n-button size="small" tertiary @click="openRun(row)">{{ t('dashboard.recent.actions.open') }}</n-button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </Suspense>
+      </div>
+    </n-card>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
       <n-card size="small" class="app-card" :bordered="false">
@@ -264,70 +309,6 @@ function openNotificationFailures(): void {
           </template>
           <template #fallback>
             <AppEmptyState :title="t('common.loading')" loading />
-          </template>
-        </Suspense>
-      </div>
-    </n-card>
-
-    <n-card class="app-card" :bordered="false" :title="t('dashboard.recent.title')">
-      <AppEmptyState v-if="dashboard.loading && recentRuns.length === 0" :title="t('common.loading')" loading />
-      <AppEmptyState v-else-if="!dashboard.loading && recentRuns.length === 0" :title="t('dashboard.recent.empty')" />
-
-      <div v-else ref="recentRunsTarget" class="min-h-[12rem]">
-        <div v-if="!isDesktop" class="space-y-3">
-          <n-card
-            v-for="row in recentRuns"
-            :key="row.run_id"
-            size="small"
-            class="app-card"
-            :bordered="false"
-          >
-            <template #header>
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="font-medium truncate">{{ row.job_name }}</div>
-                  <div class="text-xs app-text-muted mt-0.5 truncate">{{ nodeLabel(row) }}</div>
-                </div>
-                <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">{{ runStatusLabel(t, row.status) }}</n-tag>
-              </div>
-            </template>
-
-            <div class="text-sm">
-              <div class="flex items-start justify-between gap-4 py-1">
-                <div class="app-text-muted">{{ t('dashboard.recent.columns.startedAt') }}</div>
-                <div class="font-mono tabular-nums">{{ formatUnixSeconds(row.started_at) }}</div>
-              </div>
-              <div class="flex items-start justify-between gap-4 py-1">
-                <div class="app-text-muted">{{ t('dashboard.recent.columns.endedAt') }}</div>
-                <div class="font-mono tabular-nums">{{ row.ended_at ? formatUnixSeconds(row.ended_at) : '-' }}</div>
-              </div>
-              <div v-if="row.error" class="mt-2 text-xs text-[var(--app-danger)] truncate">{{ row.error }}</div>
-            </div>
-
-            <template #footer>
-              <div class="flex justify-end">
-                <n-button size="small" @click="openRun(row)">{{ t('dashboard.recent.actions.open') }}</n-button>
-              </div>
-            </template>
-          </n-card>
-        </div>
-
-        <div v-else-if="!recentRunsReady" class="rounded app-panel-inset p-4 space-y-3">
-          <div class="flex items-center gap-2 text-sm app-text-muted">
-            <InlineLoadingDots />
-            <span>{{ t('dashboard.recent.preparingTable') }}</span>
-          </div>
-          <n-skeleton text :repeat="5" />
-        </div>
-
-        <Suspense v-else>
-          <template #default>
-            <DashboardRecentRunsDesktopTable :rows="recentRuns" :loading="dashboard.loading" @open-run="openRun" />
-          </template>
-          <template #fallback>
-            <div class="rounded app-panel-inset p-4 space-y-2">
-              <n-skeleton text :repeat="5" />
-            </div>
           </template>
         </Suspense>
       </div>

@@ -108,4 +108,14 @@ describe('LoginView', () => {
     expect(authApi.login).toHaveBeenCalledWith('admin', 'p1')
     expect(routerApi.push).toHaveBeenCalledWith('/')
   })
+
+  it('shows the updated trust and guidance copy', async () => {
+    apiFetchMock.mockResolvedValue({ needs_setup: false })
+
+    const wrapper = mount(LoginView)
+    await Promise.resolve()
+
+    expect(wrapper.text()).toContain('auth.heroTitle')
+    expect(wrapper.text()).toContain('auth.loginHelp')
+  })
 })
