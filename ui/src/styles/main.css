@@ -530,6 +530,31 @@ body {
   border: 1px solid var(--app-border);
 }
 
+.app-tabs-embedded {
+  padding-inline: var(--app-space-1);
+}
+
+.app-tabs-embedded :where(.n-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.app-embedded-card-stack .app-card {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-embedded-card-stack .app-card > .n-card-header,
+.app-embedded-card-stack .app-card > .n-card__content,
+.app-embedded-card-stack .app-card > .n-card__footer,
+.app-embedded-card-stack .app-card > .n-card__action {
+  padding: var(--app-space-2) !important;
+}
+
+.app-tab-shell-body {
+  padding-top: var(--app-space-3);
+}
+
 .app-kbd {
   padding: 0.125rem 0.375rem;
   border-radius: var(--app-radius-sm);

@@ -3,7 +3,6 @@ import { computed, h, onMounted, reactive, ref } from 'vue'
 import {
   NAlert,
   NButton,
-  NCard,
   NDataTable,
   NForm,
   NFormItem,
@@ -439,11 +438,14 @@ onMounted(refresh)
 
 <template>
   <div class="space-y-6">
-    <n-card class="app-card" :bordered="false" :title="t('settings.wecom.title')">
-      <template #header-extra>
-        <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
-        <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
-      </template>
+    <section class="space-y-3">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="app-section-title">{{ t('settings.wecom.title') }}</h2>
+        <div class="flex items-center gap-2">
+          <n-button type="primary" size="small" @click="openWecomCreate">{{ t('settings.wecom.new') }}</n-button>
+          <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
+        </div>
+      </div>
 
       <div v-if="!isDesktop" class="space-y-2">
         <div
@@ -497,13 +499,16 @@ onMounted(refresh)
       <div v-else class="overflow-x-auto">
         <n-data-table :loading="notifications.loadingDestinations" :columns="wecomColumns" :data="wecom" />
       </div>
-    </n-card>
+    </section>
 
-    <n-card class="app-card" :bordered="false" :title="t('settings.smtp.title')">
-      <template #header-extra>
-        <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
-        <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
-      </template>
+    <section class="space-y-3 pt-6 border-t border-[color:var(--app-border)]">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="app-section-title">{{ t('settings.smtp.title') }}</h2>
+        <div class="flex items-center gap-2">
+          <n-button type="primary" size="small" @click="openSmtpCreate">{{ t('settings.smtp.new') }}</n-button>
+          <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
+        </div>
+      </div>
 
       <div v-if="!isDesktop" class="space-y-2">
         <div
@@ -557,7 +562,7 @@ onMounted(refresh)
       <div v-else class="overflow-x-auto">
         <n-data-table :loading="notifications.loadingDestinations" :columns="smtpColumns" :data="smtp" />
       </div>
-    </n-card>
+    </section>
 
     <AppModalShell
       v-model:show="wecomEditorOpen"

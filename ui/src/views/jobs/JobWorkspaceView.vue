@@ -304,30 +304,34 @@ function onSelectMore(key: string | number): void {
           </n-dropdown>
         </div>
       </div>
+
     </n-card>
 
-    <n-card class="app-card" :bordered="false">
-      <n-tabs :value="activeSection" type="line" size="small" :pane-style="{ display: 'none' }" @update:value="goSection">
-        <n-tab-pane name="overview" :tab="t('jobs.workspace.sections.overview')" />
-        <n-tab-pane name="history" :tab="t('jobs.workspace.sections.history')" />
-        <n-tab-pane name="data" :tab="t('jobs.workspace.sections.data')" />
-      </n-tabs>
+    <n-card class="app-card" :class="isDesktop ? 'flex-1 min-h-0 flex flex-col' : ''" :bordered="false">
+      <div class="app-tabs-embedded">
+        <n-tabs :value="activeSection" type="line" size="small" :pane-style="{ display: 'none' }" @update:value="goSection">
+          <n-tab-pane name="overview" :tab="t('jobs.workspace.sections.overview')" />
+          <n-tab-pane name="history" :tab="t('jobs.workspace.sections.history')" />
+          <n-tab-pane name="data" :tab="t('jobs.workspace.sections.data')" />
+        </n-tabs>
+      </div>
+
+      <ScrollShadowPane
+        v-if="isDesktop"
+        wrapper-class="flex-1 min-h-0"
+        class="app-embedded-card-stack app-tab-shell-body"
+        data-testid="job-section-scroll"
+        shadow-from="var(--app-surface)"
+      >
+        <router-view v-if="jobId" />
+        <AppEmptyState v-else :title="t('common.noData')" />
+      </ScrollShadowPane>
+
+      <div v-else class="app-embedded-card-stack app-tab-shell-body">
+        <router-view v-if="jobId" />
+        <AppEmptyState v-else :title="t('common.noData')" />
+      </div>
     </n-card>
-
-    <ScrollShadowPane
-      v-if="isDesktop"
-      wrapper-class="flex-1 min-h-0"
-      data-testid="job-section-scroll"
-      shadow-from="var(--app-bg-solid)"
-    >
-      <router-view v-if="jobId" />
-      <AppEmptyState v-else :title="t('common.noData')" />
-    </ScrollShadowPane>
-
-    <div v-else>
-      <router-view v-if="jobId" />
-      <AppEmptyState v-else :title="t('common.noData')" />
-    </div>
 
     <AppModalShell
       v-model:show="inspectOpen"

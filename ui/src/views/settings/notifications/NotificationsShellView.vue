@@ -33,15 +33,19 @@ const tabs = computed(() => getNotificationsNavItems())
 </script>
 
 <template>
-  <div class="space-y-4">
-    <template v-if="isDesktop && !isIndex">
-      <n-card class="app-card" :bordered="false">
+  <div class="space-y-3">
+    <n-card v-if="isDesktop && !isIndex" class="app-card" :bordered="false">
+      <div class="app-tabs-embedded">
         <n-tabs type="line" :value="active" :pane-style="{ display: 'none' }" @update:value="go">
           <n-tab-pane v-for="item in tabs" :key="item.key" :name="item.key" :tab="t(item.titleKey)" />
         </n-tabs>
-      </n-card>
-    </template>
+      </div>
 
-    <router-view />
+      <div class="app-tab-shell-body">
+        <router-view />
+      </div>
+    </n-card>
+
+    <router-view v-else />
   </div>
 </template>

@@ -3,7 +3,6 @@ import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NButton,
-  NCard,
   NDataTable,
   NTag,
   NSpace,
@@ -358,7 +357,11 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
 </script>
 
 <template>
-  <n-card class="app-card" :bordered="false" :title="t('settings.notifications.queueTitle')">
+  <section class="space-y-3">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="app-section-title">{{ t('settings.notifications.queueTitle') }}</h2>
+    </div>
+
     <ListPageScaffold>
       <template #toolbar>
         <ListToolbar embedded compact>
@@ -423,23 +426,19 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
         </AppEmptyState>
 
         <div v-else-if="!isDesktop" class="space-y-3">
-          <n-card
+          <div
             v-for="row in items"
             :key="row.id"
-            size="small"
-            class="app-card"
-            :bordered="false"
+            class="rounded-lg app-border-subtle p-3"
           >
-            <template #header>
-              <div class="flex items-center justify-between gap-3">
-                <div class="font-medium truncate">{{ row.job_name }}</div>
-                <n-tag size="small" :bordered="false">
-                  {{ formatStatus(row.status) }}
-                </n-tag>
-              </div>
-            </template>
+            <div class="flex items-center justify-between gap-3">
+              <div class="font-medium truncate">{{ row.job_name }}</div>
+              <n-tag size="small" :bordered="false">
+                {{ formatStatus(row.status) }}
+              </n-tag>
+            </div>
 
-            <div class="text-xs app-text-muted space-y-1">
+            <div class="mt-3 text-xs app-text-muted space-y-1">
               <div>{{ t('settings.notifications.queue.columns.channel') }}: {{ formatChannel(row.channel) }}</div>
               <div>{{ t('settings.notifications.queue.columns.destination') }}: {{ row.destination }}</div>
               <div v-if="row.status === 'queued'">
@@ -472,7 +471,7 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
                 {{ t('settings.notifications.queue.actions.cancel') }}
               </n-button>
             </div>
-          </n-card>
+          </div>
         </div>
 
         <div v-else class="overflow-x-auto">
@@ -499,5 +498,5 @@ const columns = computed<DataTableColumns<NotificationQueueItem>>(() => [
         />
       </template>
     </ListPageScaffold>
-  </n-card>
+  </section>
 </template>

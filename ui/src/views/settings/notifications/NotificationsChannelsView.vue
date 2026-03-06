@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { NAlert, NButton, NCard, NForm, NFormItem, NSwitch, useMessage } from 'naive-ui'
+import { NAlert, NButton, NForm, NFormItem, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useNotificationsStore, type NotificationsSettings } from '@/stores/notifications'
@@ -59,32 +59,34 @@ onMounted(refresh)
 </script>
 
 <template>
-  <n-card class="app-card" :bordered="false" :title="t('settings.notifications.channelsTitle')">
-    <div class="space-y-4">
-      <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
-
-      <n-alert v-if="!draft.enabled" type="warning" :bordered="false">
-        {{ t('settings.notifications.globalDisabledHelp') }}
-      </n-alert>
-
-      <n-form label-placement="left" label-width="220">
-        <n-form-item :label="t('settings.notifications.globalEnabled')">
-          <n-switch v-model:value="draft.enabled" />
-        </n-form-item>
-
-        <n-form-item :label="t('settings.notifications.wecomEnabled')">
-          <n-switch v-model:value="draft.channels.wecom_bot.enabled" :disabled="!draft.enabled" />
-        </n-form-item>
-
-        <n-form-item :label="t('settings.notifications.emailEnabled')">
-          <n-switch v-model:value="draft.channels.email.enabled" :disabled="!draft.enabled" />
-        </n-form-item>
-      </n-form>
-
-      <div class="flex items-center justify-end gap-2">
-        <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</n-button>
-      </div>
+  <section class="space-y-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="app-section-title">{{ t('settings.notifications.channelsTitle') }}</h2>
     </div>
-  </n-card>
+
+    <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
+
+    <n-alert v-if="!draft.enabled" type="warning" :bordered="false">
+      {{ t('settings.notifications.globalDisabledHelp') }}
+    </n-alert>
+
+    <n-form label-placement="left" label-width="220">
+      <n-form-item :label="t('settings.notifications.globalEnabled')">
+        <n-switch v-model:value="draft.enabled" />
+      </n-form-item>
+
+      <n-form-item :label="t('settings.notifications.wecomEnabled')">
+        <n-switch v-model:value="draft.channels.wecom_bot.enabled" :disabled="!draft.enabled" />
+      </n-form-item>
+
+      <n-form-item :label="t('settings.notifications.emailEnabled')">
+        <n-switch v-model:value="draft.channels.email.enabled" :disabled="!draft.enabled" />
+      </n-form-item>
+    </n-form>
+
+    <div class="flex items-center justify-end gap-2">
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</n-button>
+    </div>
+  </section>
 </template>

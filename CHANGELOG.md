@@ -33,6 +33,9 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed remaining Jobs/Settings/Snapshots page dialogs to reuse the shared modal shell, including header-extra action slots, so page-level modal spacing, footer layout, and scroll containment are consistent across core management views.
 - Changed reusable Jobs/Run dialog components (editor/deploy/runs/restore/verify/events/detail) to reuse the shared modal shell, and extended the shell with configurable body scrolling so component-level modal behavior stays consistent without regressing specialized layouts.
 - Changed run-related dialogs to enforce latest-request semantics and shared WebSocket stream lifecycle control, preventing stale run-list/event updates during rapid context switches.
+- Changed Jobs detail and Settings > Notifications tab navigation to use the same embedded line-tab visual pattern as Run Details, reducing split-card tab/content layout noise.
+- Changed Settings > Notifications desktop subpages to use an outer container card with embedded tab rail + plain inner sections (replacing nested cards) to improve density and reduce excessive vertical gaps.
+- Changed Jobs detail and Settings > Notifications tab-shell body spacing to share a common spacing token (`var(--app-space-3)`) so rail-to-content density stays consistent.
 - Changed node-scoped route construction, clipboard feedback, and icon-only help actions to shared UI primitives to reduce duplicated logic and keep interaction/accessibility behavior consistent.
 - Changed Jobs workspace split-layout resize logic to a dedicated composable and added direct modal regression specs (editor/deploy/runs/restore/verify) to reduce maintenance risk during future UI refactors.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.

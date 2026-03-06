@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { NAlert, NButton, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import { useNotificationsStore, type NotificationsSettings } from '@/stores/notifications'
@@ -80,57 +80,59 @@ onMounted(refresh)
 </script>
 
 <template>
-  <n-card class="app-card" :bordered="false" :title="t('settings.notifications.templatesTitle')">
-    <div class="space-y-4">
-      <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
-
-      <n-alert type="info" :bordered="false">
-          <div class="space-y-1">
-            <div class="font-medium">{{ t('settings.notifications.templateHelpTitle') }}</div>
-          <div class="text-xs app-text-muted">
-            {{ t('settings.notifications.templateHelpVars') }}
-          </div>
-        </div>
-      </n-alert>
-
-      <n-form label-placement="top">
-        <n-form-item
-          :label="t('settings.notifications.wecomTemplate')"
-          :validation-status="fieldErrors.wecomMarkdown ? 'error' : undefined"
-          :feedback="fieldErrors.wecomMarkdown"
-        >
-          <n-input
-            v-model:value="draft.templates.wecom_markdown"
-            type="textarea"
-            :autosize="{ minRows: 6, maxRows: 14 }"
-          />
-        </n-form-item>
-
-        <n-form-item
-          :label="t('settings.notifications.emailSubjectTemplate')"
-          :validation-status="fieldErrors.emailSubject ? 'error' : undefined"
-          :feedback="fieldErrors.emailSubject"
-        >
-          <n-input v-model:value="draft.templates.email_subject" />
-        </n-form-item>
-
-        <n-form-item
-          :label="t('settings.notifications.emailBodyTemplate')"
-          :validation-status="fieldErrors.emailBody ? 'error' : undefined"
-          :feedback="fieldErrors.emailBody"
-        >
-          <n-input
-            v-model:value="draft.templates.email_body"
-            type="textarea"
-            :autosize="{ minRows: 8, maxRows: 16 }"
-          />
-        </n-form-item>
-      </n-form>
-
-      <div class="flex items-center justify-end gap-2">
-        <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</n-button>
-      </div>
+  <section class="space-y-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="app-section-title">{{ t('settings.notifications.templatesTitle') }}</h2>
     </div>
-  </n-card>
+
+    <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
+
+    <n-alert type="info" :bordered="false">
+      <div class="space-y-1">
+        <div class="font-medium">{{ t('settings.notifications.templateHelpTitle') }}</div>
+        <div class="text-xs app-text-muted">
+          {{ t('settings.notifications.templateHelpVars') }}
+        </div>
+      </div>
+    </n-alert>
+
+    <n-form label-placement="top">
+      <n-form-item
+        :label="t('settings.notifications.wecomTemplate')"
+        :validation-status="fieldErrors.wecomMarkdown ? 'error' : undefined"
+        :feedback="fieldErrors.wecomMarkdown"
+      >
+        <n-input
+          v-model:value="draft.templates.wecom_markdown"
+          type="textarea"
+          :autosize="{ minRows: 6, maxRows: 14 }"
+        />
+      </n-form-item>
+
+      <n-form-item
+        :label="t('settings.notifications.emailSubjectTemplate')"
+        :validation-status="fieldErrors.emailSubject ? 'error' : undefined"
+        :feedback="fieldErrors.emailSubject"
+      >
+        <n-input v-model:value="draft.templates.email_subject" />
+      </n-form-item>
+
+      <n-form-item
+        :label="t('settings.notifications.emailBodyTemplate')"
+        :validation-status="fieldErrors.emailBody ? 'error' : undefined"
+        :feedback="fieldErrors.emailBody"
+      >
+        <n-input
+          v-model:value="draft.templates.email_body"
+          type="textarea"
+          :autosize="{ minRows: 8, maxRows: 16 }"
+        />
+      </n-form-item>
+    </n-form>
+
+    <div class="flex items-center justify-end gap-2">
+      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</n-button>
+    </div>
+  </section>
 </template>
