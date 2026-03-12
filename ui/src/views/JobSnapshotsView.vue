@@ -44,6 +44,11 @@ import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatToastError } from '@/lib/errors'
 import { isAbortError } from '@/lib/asyncControl'
+import {
+  envelopeEventDiagnostic,
+  preferredEventDiagnostic,
+  type PreferredEventDiagnostic,
+} from '@/lib/eventDiagnostics'
 import { formatBytes } from '@/lib/format'
 import { useLatestRequest } from '@/lib/latest'
 import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
@@ -162,6 +167,31 @@ function lastErrorLabel(kind?: string | null, msg?: string | null): string {
   if (msg) parts.push(msg)
   return parts.join(': ')
 }
+
+function deleteLogEventDiagnostic(event: SnapshotDeleteEvent): PreferredEventDiagnostic | null {
+  return envelopeEventDiagnostic(event, t)
+}
+
+function deleteLogEventMessage(event: SnapshotDeleteEvent): string {
+  return deleteLogEventDiagnostic(event)?.message ?? event.message
+}
+
+function deleteLogEventHint(event: SnapshotDeleteEvent): string | null {
+  return deleteLogEventDiagnostic(event)?.hint ?? null
+}
+
+function deleteLogEventKind(event: SnapshotDeleteEvent): string {
+  return deleteLogEventDiagnostic(event)?.kind ?? event.kind
+}
+
+const deleteLogDiagnostic = computed<PreferredEventDiagnostic | null>(() =>
+  preferredEventDiagnostic(
+    deleteLogEvents.value,
+    t,
+    deleteLogTask.value?.last_error_kind ?? null,
+    deleteLogTask.value?.last_error ?? null,
+  ),
+)
 
 function formatJson(value: unknown): string {
   try {
@@ -887,8 +917,14 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
             <div class="app-text-muted">{{ t('snapshots.deleteLog.attempts') }}</div>
             <div class="font-mono tabular-nums">{{ deleteLogTask.attempts }}</div>
             <div class="app-text-muted">{{ t('snapshots.deleteLog.lastError') }}</div>
-            <div class="min-w-0">
-              <div class="truncate">{{ lastErrorLabel(deleteLogTask.last_error_kind, deleteLogTask.last_error) || '-' }}</div>
+            <div class="min-w-0 space-y-1">
+              <n-tag v-if="deleteLogDiagnostic?.kind" size="small" :bordered="false" type="error">
+                {{ deleteLogDiagnostic.kind }}
+              </n-tag>
+              <div class="break-words">{{ deleteLogDiagnostic?.message || '-' }}</div>
+              <div v-if="deleteLogDiagnostic?.hint" class="text-xs app-text-muted">
+                {{ deleteLogDiagnostic.hint }}
+              </div>
             </div>
           </div>
 
@@ -904,8 +940,11 @@ const columns = computed<DataTableColumns<RunArtifact>>(() => {
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <div class="text-xs font-mono tabular-nums">{{ formatUnixSeconds(e.ts) }}</div>
-                    <div class="text-sm mt-0.5">{{ e.message }}</div>
-                    <div class="text-xs app-text-muted mt-0.5">{{ e.kind }}</div>
+                    <div class="text-sm mt-0.5">{{ deleteLogEventMessage(e) }}</div>
+                    <div v-if="deleteLogEventHint(e)" class="text-xs app-text-muted mt-1">
+                      {{ deleteLogEventHint(e) }}
+                    </div>
+                    <div class="text-xs app-text-muted mt-0.5">{{ deleteLogEventKind(e) }}</div>
                   </div>
                   <n-tag size="small" :bordered="false" :type="e.level === 'error' ? 'error' : e.level === 'warn' ? 'warning' : 'default'">
                     {{ e.level }}

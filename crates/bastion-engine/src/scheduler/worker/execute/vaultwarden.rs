@@ -10,16 +10,44 @@ use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
+use crate::error_envelope::{insert_error_envelope, with_context_param};
 use crate::run_events;
 use crate::run_events_bus::RunEventsBus;
 
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
-use super::check_run_canceled;
 use super::planner::plan_vaultwarden_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
+use super::{check_run_canceled, execute_stage_envelope};
+
+fn vaultwarden_source_consistency_event_fields(
+    consistency: &serde_json::Value,
+) -> serde_json::Value {
+    let mut fields = consistency.as_object().cloned().unwrap_or_default();
+    let total = fields
+        .values()
+        .filter_map(|value| value.as_u64())
+        .sum::<u64>();
+    let envelope = with_context_param(
+        execute_stage_envelope(
+            "vaultwarden",
+            "consistency_check",
+            "packaging",
+            "scheduler.execute.vaultwarden.source_consistency",
+            "consistency",
+            "diagnostics.hint.execute.source_consistency",
+            "diagnostics.message.execute.source_consistency",
+            "internal",
+            false,
+        ),
+        "signal_total",
+        total,
+    );
+    insert_error_envelope(&mut fields, envelope);
+    serde_json::Value::Object(fields)
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_vaultwarden_run(
@@ -140,7 +168,7 @@ pub(super) async fn execute_vaultwarden_run(
     let artifacts = build.artifacts;
 
     if consistency_policy.should_emit_warnings() && consistency_total > 0 {
-        let fields = serde_json::to_value(&consistency)?;
+        let consistency_fields = serde_json::to_value(&consistency)?;
         let _ = run_events::append_and_broadcast(
             db,
             run_events_bus,
@@ -148,7 +176,9 @@ pub(super) async fn execute_vaultwarden_run(
             "warn",
             "source_consistency",
             "source consistency warnings",
-            Some(fields),
+            Some(vaultwarden_source_consistency_event_fields(
+                &consistency_fields,
+            )),
         )
         .await;
     }
@@ -298,4 +328,24 @@ pub(super) async fn execute_vaultwarden_run(
     }
 
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vaultwarden_source_consistency_event_fields;
+
+    #[test]
+    fn source_consistency_fields_include_error_envelope() {
+        let fields = vaultwarden_source_consistency_event_fields(&serde_json::json!({
+            "changed_files": 3,
+            "changed_dirs": 1,
+        }));
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("code"))
+                .and_then(|value| value.as_str()),
+            Some("scheduler.execute.vaultwarden.source_consistency")
+        );
+    }
 }

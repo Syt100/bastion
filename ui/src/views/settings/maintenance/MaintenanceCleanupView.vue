@@ -35,6 +35,11 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { isAbortError } from '@/lib/asyncControl'
+import {
+  envelopeEventDiagnostic,
+  preferredEventDiagnostic,
+  type PreferredEventDiagnostic,
+} from '@/lib/eventDiagnostics'
 import { useLatestRequest } from '@/lib/latest'
 import { buildListRangeSummary, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZE_OPTIONS } from '@/lib/listUi'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -150,6 +155,22 @@ function lastErrorLabel(kind: string | null, message: string | null): string {
   return parts.join(': ')
 }
 
+function cleanupEventDiagnostic(event: GetCleanupTaskResponse['events'][number]): PreferredEventDiagnostic | null {
+  return envelopeEventDiagnostic(event, t)
+}
+
+function cleanupEventMessage(event: GetCleanupTaskResponse['events'][number]): string {
+  return cleanupEventDiagnostic(event)?.message ?? event.message
+}
+
+function cleanupEventHint(event: GetCleanupTaskResponse['events'][number]): string | null {
+  return cleanupEventDiagnostic(event)?.hint ?? null
+}
+
+function cleanupEventKind(event: GetCleanupTaskResponse['events'][number]): string {
+  return cleanupEventDiagnostic(event)?.kind ?? event.kind
+}
+
 function handleColumnResize(_resizedWidth: number, limitedWidth: number, column: unknown): void {
   if (!column || typeof column !== 'object') return
   if (!('key' in column)) return
@@ -237,6 +258,16 @@ async function unignore(runId: string): Promise<void> {
 const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detail = ref<GetCleanupTaskResponse | null>(null)
+const detailDiagnostic = computed<PreferredEventDiagnostic | null>(() =>
+  detail.value
+    ? preferredEventDiagnostic(
+        detail.value.events,
+        t,
+        detail.value.task.last_error_kind,
+        detail.value.task.last_error,
+      )
+    : null,
+)
 
 async function openDetails(runId: string): Promise<void> {
   detailOpen.value = true
@@ -611,23 +642,28 @@ const actionHelpItems = computed(() => [
           <div />
         </div>
 
-        <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
+        <div v-if="detailDiagnostic" class="space-y-1">
           <div class="flex items-center justify-between gap-2">
             <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
             <n-button
               size="tiny"
               tertiary
-              :disabled="!(detail.task.last_error || detail.task.last_error_kind)"
-              @click="copyToClipboard(lastErrorLabel(detail.task.last_error_kind ?? null, detail.task.last_error ?? null))"
+              :disabled="!detailDiagnostic?.copyText"
+              @click="copyToClipboard(detailDiagnostic?.copyText ?? '')"
             >
               {{ t('common.copy') }}
             </n-button>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <n-tag v-if="detail.task.last_error_kind" size="small" type="error" :bordered="false">
-              {{ detail.task.last_error_kind }}
-            </n-tag>
-            <div class="text-sm whitespace-pre-wrap break-words">{{ detail.task.last_error }}</div>
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <n-tag v-if="detailDiagnostic.kind" size="small" type="error" :bordered="false">
+                {{ detailDiagnostic.kind }}
+              </n-tag>
+            </div>
+            <div class="text-sm whitespace-pre-wrap break-words">{{ detailDiagnostic.message }}</div>
+            <div v-if="detailDiagnostic.hint" class="text-sm app-text-muted whitespace-pre-wrap break-words">
+              {{ detailDiagnostic.hint }}
+            </div>
           </div>
         </div>
 
@@ -649,12 +685,13 @@ const actionHelpItems = computed(() => [
           <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card" :bordered="false">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <div class="text-sm font-medium truncate">{{ e.kind }}</div>
+                <div class="text-sm font-medium truncate">{{ cleanupEventKind(e) }}</div>
                 <div class="text-xs app-text-muted mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
               </div>
               <n-tag size="small" :type="eventLevelTagType(e.level)" :bordered="false">{{ e.level }}</n-tag>
             </div>
-            <div class="text-sm mt-2">{{ e.message }}</div>
+            <div class="text-sm mt-2">{{ cleanupEventMessage(e) }}</div>
+            <div v-if="cleanupEventHint(e)" class="text-sm app-text-muted mt-1">{{ cleanupEventHint(e) }}</div>
             <div v-if="e.fields" class="mt-2">
               <n-code :code="formatJson(e.fields)" language="json" />
             </div>
@@ -704,23 +741,28 @@ const actionHelpItems = computed(() => [
             <div />
           </div>
 
-          <div v-if="detail.task.last_error || detail.task.last_error_kind" class="space-y-1">
+          <div v-if="detailDiagnostic" class="space-y-1">
             <div class="flex items-center justify-between gap-2">
               <div class="app-text-muted">{{ t('settings.maintenance.cleanup.columns.lastError') }}:</div>
               <n-button
                 size="tiny"
                 tertiary
-                :disabled="!(detail.task.last_error || detail.task.last_error_kind)"
-                @click="copyToClipboard(lastErrorLabel(detail.task.last_error_kind ?? null, detail.task.last_error ?? null))"
+                :disabled="!detailDiagnostic?.copyText"
+                @click="copyToClipboard(detailDiagnostic?.copyText ?? '')"
               >
                 {{ t('common.copy') }}
               </n-button>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <n-tag v-if="detail.task.last_error_kind" size="small" type="error" :bordered="false">
-                {{ detail.task.last_error_kind }}
-              </n-tag>
-              <div class="text-sm whitespace-pre-wrap break-words">{{ detail.task.last_error }}</div>
+            <div class="space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <n-tag v-if="detailDiagnostic.kind" size="small" type="error" :bordered="false">
+                  {{ detailDiagnostic.kind }}
+                </n-tag>
+              </div>
+              <div class="text-sm whitespace-pre-wrap break-words">{{ detailDiagnostic.message }}</div>
+              <div v-if="detailDiagnostic.hint" class="text-sm app-text-muted whitespace-pre-wrap break-words">
+                {{ detailDiagnostic.hint }}
+              </div>
             </div>
           </div>
 
@@ -742,12 +784,13 @@ const actionHelpItems = computed(() => [
             <n-card v-for="e in detail.events" :key="e.seq" size="small" class="app-card" :bordered="false">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
-                  <div class="text-sm font-medium truncate">{{ e.kind }}</div>
+                  <div class="text-sm font-medium truncate">{{ cleanupEventKind(e) }}</div>
                   <div class="text-xs app-text-muted mt-0.5">{{ formatUnixSeconds(e.ts) }}</div>
                 </div>
                 <n-tag size="small" :type="eventLevelTagType(e.level)" :bordered="false">{{ e.level }}</n-tag>
               </div>
-              <div class="text-sm mt-2">{{ e.message }}</div>
+              <div class="text-sm mt-2">{{ cleanupEventMessage(e) }}</div>
+              <div v-if="cleanupEventHint(e)" class="text-sm app-text-muted mt-1">{{ cleanupEventHint(e) }}</div>
               <div v-if="e.fields" class="mt-2">
                 <n-code :code="formatJson(e.fields)" language="json" />
               </div>

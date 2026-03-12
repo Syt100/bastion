@@ -2,10 +2,12 @@ use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 
+use bastion_core::error_envelope::ErrorEnvelopeV1;
 use bastion_core::job_spec;
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
+use crate::error_envelope::{envelope, origin, retriable, retriable_with_reason, transport};
 use crate::run_events_bus::RunEventsBus;
 
 mod filesystem;
@@ -38,6 +40,35 @@ pub(super) fn check_run_canceled(
         }));
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn execute_stage_envelope(
+    component: &'static str,
+    op: &'static str,
+    stage: &'static str,
+    code: impl Into<String>,
+    kind: impl Into<String>,
+    hint_key: &'static str,
+    message_key: &'static str,
+    transport_protocol: &'static str,
+    is_retriable: bool,
+) -> ErrorEnvelopeV1 {
+    let kind = kind.into();
+    envelope(
+        code,
+        kind.clone(),
+        if is_retriable {
+            retriable_with_reason(true, kind.clone())
+        } else {
+            retriable(false)
+        },
+        hint_key,
+        message_key,
+        transport(transport_protocol),
+    )
+    .with_origin(origin("scheduler", component, op))
+    .with_stage(stage)
 }
 
 pub(super) struct ExecuteRunArgs<'a> {

@@ -10,16 +10,17 @@ use bastion_core::run_failure::RunFailedWithSummary;
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
+use crate::error_envelope::{insert_error_envelope, with_context_param};
 use crate::run_events;
 use crate::run_events_bus::RunEventsBus;
 
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
-use super::check_run_canceled;
 use super::planner::plan_filesystem_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
+use super::{check_run_canceled, execute_stage_envelope};
 
 #[cfg(unix)]
 fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
@@ -29,6 +30,170 @@ fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io:
 #[cfg(windows)]
 fn create_dir_link(link: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_dir(target, link)
+}
+
+fn snapshot_unavailable_event_fields(
+    mode: &str,
+    provider: Option<&str>,
+    reason: &str,
+) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert("mode".to_string(), serde_json::json!(mode));
+    if let Some(provider) = provider.filter(|value| !value.trim().is_empty()) {
+        fields.insert("provider".to_string(), serde_json::json!(provider));
+    }
+    fields.insert("status".to_string(), serde_json::json!("unavailable"));
+    fields.insert("reason".to_string(), serde_json::json!(reason));
+
+    let mut envelope = execute_stage_envelope(
+        "filesystem",
+        "snapshot_prepare",
+        "snapshot",
+        "scheduler.execute.filesystem.snapshot_unavailable",
+        "snapshot_unavailable",
+        "diagnostics.hint.execute.snapshot_unavailable",
+        "diagnostics.message.execute.snapshot_unavailable",
+        "internal",
+        false,
+    );
+    envelope = with_context_param(envelope, "mode", mode);
+    if let Some(provider) = provider.filter(|value| !value.trim().is_empty()) {
+        envelope = with_context_param(envelope, "provider", provider);
+    }
+    envelope = with_context_param(envelope, "reason", reason);
+    insert_error_envelope(&mut fields, envelope);
+
+    serde_json::Value::Object(fields)
+}
+
+fn direct_data_path_unavailable_event_fields(
+    error: &str,
+    stage_data_dir: &std::path::Path,
+    target_data_dir: &std::path::Path,
+) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert("error".to_string(), serde_json::json!(error));
+    fields.insert(
+        "stage_data_dir".to_string(),
+        serde_json::json!(stage_data_dir.to_string_lossy().to_string()),
+    );
+    fields.insert(
+        "target_data_dir".to_string(),
+        serde_json::json!(target_data_dir.to_string_lossy().to_string()),
+    );
+
+    let mut envelope = execute_stage_envelope(
+        "filesystem",
+        "direct_data_path",
+        "packaging",
+        "scheduler.execute.filesystem.direct_data_path_unavailable",
+        "io",
+        "diagnostics.hint.execute.direct_data_path_unavailable",
+        "diagnostics.message.execute.direct_data_path_unavailable",
+        "file",
+        false,
+    );
+    envelope = with_context_param(
+        envelope,
+        "stage_data_dir",
+        stage_data_dir.to_string_lossy().to_string(),
+    );
+    envelope = with_context_param(
+        envelope,
+        "target_data_dir",
+        target_data_dir.to_string_lossy().to_string(),
+    );
+    insert_error_envelope(&mut fields, envelope);
+
+    serde_json::Value::Object(fields)
+}
+
+fn snapshot_cleanup_failed_event_fields(provider: &str, error: &str) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert("provider".to_string(), serde_json::json!(provider));
+    fields.insert("error".to_string(), serde_json::json!(error));
+
+    let mut envelope = execute_stage_envelope(
+        "filesystem",
+        "snapshot_cleanup",
+        "snapshot",
+        "scheduler.execute.filesystem.snapshot_cleanup_failed",
+        "io",
+        "diagnostics.hint.execute.snapshot_cleanup_failed",
+        "diagnostics.message.execute.snapshot_cleanup_failed",
+        "file",
+        false,
+    );
+    envelope = with_context_param(envelope, "provider", provider);
+    insert_error_envelope(&mut fields, envelope);
+
+    serde_json::Value::Object(fields)
+}
+
+fn filesystem_issues_event_fields(
+    warnings_total: u64,
+    errors_total: u64,
+    sample_warnings: &[String],
+    sample_errors: &[String],
+) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "warnings_total".to_string(),
+        serde_json::json!(warnings_total),
+    );
+    fields.insert("errors_total".to_string(), serde_json::json!(errors_total));
+    fields.insert(
+        "sample_warnings".to_string(),
+        serde_json::json!(sample_warnings),
+    );
+    fields.insert(
+        "sample_errors".to_string(),
+        serde_json::json!(sample_errors),
+    );
+
+    let mut envelope = execute_stage_envelope(
+        "filesystem",
+        "build",
+        "packaging",
+        "scheduler.execute.filesystem.issues",
+        "partial_failure",
+        "diagnostics.hint.execute.filesystem_issues",
+        "diagnostics.message.execute.filesystem_issues",
+        "internal",
+        false,
+    );
+    envelope = with_context_param(envelope, "warnings_total", warnings_total);
+    envelope = with_context_param(envelope, "errors_total", errors_total);
+    insert_error_envelope(&mut fields, envelope);
+
+    serde_json::Value::Object(fields)
+}
+
+fn filesystem_source_consistency_event_fields(
+    consistency: &serde_json::Value,
+) -> serde_json::Value {
+    let mut fields = consistency.as_object().cloned().unwrap_or_default();
+    let total = fields
+        .values()
+        .filter_map(|value| value.as_u64())
+        .sum::<u64>();
+    let envelope = with_context_param(
+        execute_stage_envelope(
+            "filesystem",
+            "consistency_check",
+            "packaging",
+            "scheduler.execute.filesystem.source_consistency",
+            "consistency",
+            "diagnostics.hint.execute.source_consistency",
+            "diagnostics.message.execute.source_consistency",
+            "internal",
+            false,
+        ),
+        "signal_total",
+        total,
+    );
+    insert_error_envelope(&mut fields, envelope);
+    serde_json::Value::Object(fields)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -171,7 +336,11 @@ pub(super) async fn execute_filesystem_run(
                             "warn",
                             "snapshot_unavailable",
                             "snapshot unavailable",
-                            Some(snapshot_summary.clone()),
+                            Some(snapshot_unavailable_event_fields(
+                                snapshot_mode_str(snapshot_mode),
+                                unavail.provider.as_deref(),
+                                &unavail.reason,
+                            )),
                         )
                         .await;
 
@@ -205,7 +374,11 @@ pub(super) async fn execute_filesystem_run(
                     "warn",
                     "snapshot_unavailable",
                     "snapshot unavailable",
-                    Some(snapshot_summary.clone()),
+                    Some(snapshot_unavailable_event_fields(
+                        snapshot_mode_str(snapshot_mode),
+                        snapshot_provider.as_deref(),
+                        &reason,
+                    )),
                 )
                 .await;
 
@@ -346,10 +519,11 @@ pub(super) async fn execute_filesystem_run(
         let stage_data_dir = backup::stage_dir(&data_dir, &run_id_owned).join("data");
 
         if let Err(error) = std::fs::create_dir_all(&target_data_dir) {
-            let fields = serde_json::json!({
-                "error": error.to_string(),
-                "target_data_dir": target_data_dir.to_string_lossy().to_string(),
-            });
+            let fields = direct_data_path_unavailable_event_fields(
+                &error.to_string(),
+                &stage_data_dir,
+                &target_data_dir,
+            );
             let _ = run_events::append_and_broadcast(
                 db,
                 run_events_bus,
@@ -389,11 +563,11 @@ pub(super) async fn execute_filesystem_run(
                     .await;
                 }
                 Err(error) => {
-                    let fields = serde_json::json!({
-                        "error": error.to_string(),
-                        "stage_data_dir": stage_data_dir.to_string_lossy().to_string(),
-                        "target_data_dir": target_data_dir.to_string_lossy().to_string(),
-                    });
+                    let fields = direct_data_path_unavailable_event_fields(
+                        &error.to_string(),
+                        &stage_data_dir,
+                        &target_data_dir,
+                    );
                     let _ = run_events::append_and_broadcast(
                         db,
                         run_events_bus,
@@ -461,10 +635,7 @@ pub(super) async fn execute_filesystem_run(
                 );
             }
 
-            let fields = serde_json::json!({
-                "provider": provider,
-                "error": error.to_string(),
-            });
+            let fields = snapshot_cleanup_failed_event_fields(&provider, &error.to_string());
             let _ = run_events::append_and_broadcast(
                 db,
                 run_events_bus,
@@ -515,12 +686,12 @@ pub(super) async fn execute_filesystem_run(
         } else {
             "warn"
         };
-        let fields = serde_json::json!({
-            "warnings_total": build.issues.warnings_total,
-            "errors_total": build.issues.errors_total,
-            "sample_warnings": &build.issues.sample_warnings,
-            "sample_errors": &build.issues.sample_errors,
-        });
+        let fields = filesystem_issues_event_fields(
+            build.issues.warnings_total,
+            build.issues.errors_total,
+            &build.issues.sample_warnings,
+            &build.issues.sample_errors,
+        );
         let _ = run_events::append_and_broadcast(
             db,
             run_events_bus,
@@ -538,7 +709,7 @@ pub(super) async fn execute_filesystem_run(
         consistency_policy.should_fail(consistency_total, consistency_fail_threshold);
 
     if consistency_policy.should_emit_warnings() && consistency_total > 0 {
-        let fields = serde_json::to_value(&build.consistency)?;
+        let consistency_fields = serde_json::to_value(&build.consistency)?;
         let _ = run_events::append_and_broadcast(
             db,
             run_events_bus,
@@ -546,7 +717,9 @@ pub(super) async fn execute_filesystem_run(
             "warn",
             "source_consistency",
             "source consistency warnings",
-            Some(fields),
+            Some(filesystem_source_consistency_event_fields(
+                &consistency_fields,
+            )),
         )
         .await;
     }
@@ -790,4 +963,46 @@ pub(super) async fn execute_filesystem_run(
     }
 
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{direct_data_path_unavailable_event_fields, snapshot_unavailable_event_fields};
+
+    #[test]
+    fn snapshot_unavailable_fields_include_error_envelope() {
+        let fields =
+            snapshot_unavailable_event_fields("required", Some("vss"), "provider unavailable");
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("code"))
+                .and_then(|value| value.as_str()),
+            Some("scheduler.execute.filesystem.snapshot_unavailable")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("context"))
+                .and_then(|value| value.get("provider"))
+                .and_then(|value| value.as_str()),
+            Some("vss")
+        );
+    }
+
+    #[test]
+    fn direct_data_path_unavailable_fields_include_file_transport() {
+        let fields = direct_data_path_unavailable_event_fields(
+            "permission denied",
+            std::path::Path::new("/tmp/stage"),
+            std::path::Path::new("/srv/target"),
+        );
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("transport"))
+                .and_then(|value| value.get("protocol"))
+                .and_then(|value| value.as_str()),
+            Some("file")
+        );
+    }
 }

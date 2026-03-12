@@ -6,6 +6,8 @@ const messageApi = {
   error: vi.fn(),
 }
 
+const i18nDict: Record<string, string> = {}
+
 vi.mock('naive-ui', async () => {
   const vue = await import('vue')
   const stub = (name: string) =>
@@ -93,7 +95,9 @@ vi.mock('naive-ui', async () => {
 })
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string) => i18nDict[key] ?? key,
+  }),
 }))
 
 const routeApi = {
@@ -155,6 +159,7 @@ function stubMatchMedia(matches: boolean): void {
 describe('JobSnapshotsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const key of Object.keys(i18nDict)) delete i18nDict[key]
     stubMatchMedia(true)
   })
 
@@ -228,5 +233,85 @@ describe('JobSnapshotsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('snapshots.filters.pinnedOnly')
+  })
+
+  it('prefers envelope diagnostics in the delete log modal', async () => {
+    stubMatchMedia(false)
+    i18nDict['diagnostics.message.execute.snapshot_cleanup_failed'] = 'Snapshot cleanup failed'
+    i18nDict['diagnostics.hint.execute.snapshot_cleanup_failed'] = 'Clean up stale snapshots'
+
+    jobsApi.listJobSnapshots.mockResolvedValueOnce({
+      items: [
+        {
+          run_id: 'r1',
+          job_id: 'j1',
+          node_id: 'hub',
+          target_type: 'local_dir',
+          target_snapshot: { target: { type: 'local_dir', base_dir: '/tmp' } },
+          artifact_format: 'archive_v1',
+          status: 'present',
+          started_at: 0,
+          ended_at: 10,
+          transfer_bytes: 0,
+          delete_task: {
+            status: 'retrying',
+            attempts: 2,
+            next_attempt_at: 20,
+            last_error_kind: 'network',
+            last_error: 'legacy delete error',
+          },
+        },
+      ],
+      next_cursor: null,
+    })
+    jobsApi.getJobSnapshotDeleteTask.mockResolvedValueOnce({
+      run_id: 'r1',
+      job_id: 'j1',
+      node_id: 'hub',
+      target_snapshot: {},
+      target_type: 'local_dir',
+      status: 'retrying',
+      attempts: 2,
+      created_at: 1,
+      updated_at: 2,
+      next_attempt_at: 20,
+      last_error_kind: 'network',
+      last_error: 'legacy delete error',
+      ignored_at: null,
+      ignored_by_user_id: null,
+      ignore_reason: null,
+    })
+    jobsApi.getJobSnapshotDeleteEvents.mockResolvedValueOnce([
+      {
+        run_id: 'r1',
+        seq: 1,
+        ts: 1,
+        level: 'warn',
+        kind: 'failed',
+        message: 'legacy event',
+        fields: {
+          error_envelope: {
+            code: 'scheduler.execute.filesystem.snapshot_cleanup_failed',
+            kind: 'io',
+            retriable: { value: false, reason: null, retry_after_sec: null },
+            hint: { key: 'diagnostics.hint.execute.snapshot_cleanup_failed', params: {} },
+            message: { key: 'diagnostics.message.execute.snapshot_cleanup_failed', params: {} },
+            transport: { protocol: 'file' },
+          },
+        },
+      },
+    ])
+
+    const wrapper = mount(JobSnapshotsView)
+    await flushPromises()
+
+    const deleteLogBtn = wrapper.findAll('button').find((button) => button.text() === 'snapshots.actions.deleteLog')
+    expect(deleteLogBtn).toBeTruthy()
+    await deleteLogBtn!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Snapshot cleanup failed')
+    expect(wrapper.text()).toContain('Clean up stale snapshots')
+    expect(wrapper.text()).toContain('snapshots.deleteLog.lastErrorioSnapshot cleanup failedClean up stale snapshots')
   })
 })

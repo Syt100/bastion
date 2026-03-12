@@ -19,6 +19,9 @@ use bastion_core::agent_protocol::{
 use bastion_core::agent_stream::{
     ArtifactChunkFrameV1Flags, decode_artifact_chunk_frame_v1, encode_artifact_chunk_frame_v1,
 };
+use bastion_core::error_envelope::{
+    ErrorEnvelopeV1, ErrorOriginV1, ErrorRetriableV1, ErrorTransportV1, LocalizedTextRefV1,
+};
 use bastion_engine::agent_manager::AgentManager;
 use bastion_engine::run_events;
 use bastion_engine::run_events_bus::RunEventsBus;
@@ -371,6 +374,17 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                             } else {
                                 "failed"
                             };
+                            let event_fields = if final_status == runs_repo::RunStatus::Failed {
+                                Some(agent_task_result_failure_fields(
+                                    &agent_id,
+                                    &task_id,
+                                    &run_id,
+                                    summary.as_ref(),
+                                    error.as_deref(),
+                                ))
+                            } else {
+                                Some(serde_json::json!({ "agent_id": agent_id.clone() }))
+                            };
                             let _ = run_events::append_and_broadcast(
                                 &db,
                                 &run_events_bus,
@@ -378,7 +392,7 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                 event_level,
                                 event_kind,
                                 event_kind,
-                                Some(serde_json::json!({ "agent_id": agent_id.clone() })),
+                                event_fields,
                             )
                             .await;
                         }
@@ -489,7 +503,13 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                         "error",
                                         "abandoned",
                                         &format!("abandoned: {last_error}"),
-                                        Some(serde_json::json!({ "agent_id": agent_id.clone(), "error_kind": kind })),
+                                        Some(snapshot_delete_failure_fields(
+                                            &agent_id,
+                                            kind,
+                                            &last_error,
+                                            None,
+                                            "abandoned",
+                                        )),
                                         now,
                                     )
                                     .await;
@@ -548,7 +568,13 @@ async fn handle_agent_socket(ctx: AgentSocketContext, socket: WebSocket) {
                                     "warn",
                                     "failed",
                                     &format!("failed: {last_error}"),
-                                    Some(serde_json::json!({ "agent_id": agent_id.clone(), "error_kind": kind, "next_attempt_at": next_attempt_at })),
+                                    Some(snapshot_delete_failure_fields(
+                                        &agent_id,
+                                        kind,
+                                        &last_error,
+                                        Some(next_attempt_at.saturating_sub(now).max(0) as u64),
+                                        "failed",
+                                    )),
                                     now,
                                 )
                                 .await;
@@ -868,6 +894,124 @@ fn should_persist_agent_last_seen(last_persisted_at: i64, now: i64) -> bool {
     now.saturating_sub(last_persisted_at) >= AGENT_LAST_SEEN_MIN_UPDATE_SECS
 }
 
+fn localized_text(key: &'static str) -> LocalizedTextRefV1 {
+    LocalizedTextRefV1::new(key)
+}
+
+fn insert_error_envelope(
+    fields: &mut serde_json::Map<String, serde_json::Value>,
+    envelope: ErrorEnvelopeV1,
+) {
+    let Ok(value) = serde_json::to_value(envelope) else {
+        return;
+    };
+    fields.insert("error_envelope".to_string(), value);
+}
+
+fn normalize_error_code(value: Option<&str>) -> String {
+    let raw = value.unwrap_or("unknown").trim().to_lowercase();
+    let mut out = String::new();
+    let mut last_sep = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_sep = false;
+        } else if !last_sep {
+            out.push('_');
+            last_sep = true;
+        }
+    }
+    let normalized = out.trim_matches('_').to_string();
+    if normalized.is_empty() {
+        "unknown".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn task_result_hint_text(code: &str) -> &'static str {
+    match code {
+        "source_consistency" => {
+            "source changed during backup; review the consistency policy and inspect the run summary"
+        }
+        "snapshot_unavailable" => {
+            "snapshot provider was unavailable; review snapshot mode/provider support and source path configuration"
+        }
+        "integrity_check" => {
+            "integrity checks failed; inspect the reported lines and repair the database before retrying"
+        }
+        "network" | "timeout" | "rate_limited" => {
+            "transient execution failure detected; review agent connectivity and retry once the environment stabilizes"
+        }
+        _ => "inspect the related agent logs and run summary for the root cause",
+    }
+}
+
+fn task_result_is_retriable(code: &str) -> bool {
+    matches!(
+        code,
+        "network" | "timeout" | "rate_limited" | "upstream_unavailable"
+    )
+}
+
+fn agent_task_result_failure_fields(
+    agent_id: &str,
+    task_id: &str,
+    run_id: &str,
+    summary: Option<&serde_json::Value>,
+    error: Option<&str>,
+) -> serde_json::Value {
+    let normalized_code = normalize_error_code(
+        summary
+            .and_then(|value| value.get("error_code"))
+            .and_then(|value| value.as_str())
+            .or(error),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("agent_id".to_string(), serde_json::json!(agent_id));
+    fields.insert("error_kind".to_string(), serde_json::json!(normalized_code));
+    fields.insert(
+        "hint".to_string(),
+        serde_json::json!(task_result_hint_text(&normalized_code)),
+    );
+    if let Some(error) = error.filter(|value| !value.trim().is_empty()) {
+        fields.insert("error".to_string(), serde_json::json!(error));
+    }
+    if let Some(code) = summary
+        .and_then(|value| value.get("error_code"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
+        fields.insert("error_code".to_string(), serde_json::json!(code));
+    }
+
+    let mut envelope = ErrorEnvelopeV1::new(
+        format!("agent.task_result.{normalized_code}"),
+        normalized_code.clone(),
+        if task_result_is_retriable(&normalized_code) {
+            ErrorRetriableV1::new(true).with_reason(normalized_code.clone())
+        } else {
+            ErrorRetriableV1::new(false)
+        },
+        localized_text("diagnostics.hint.agent.task_result_failed"),
+        localized_text("diagnostics.message.agent.task_result_failed"),
+        ErrorTransportV1::new("agent_ws"),
+    )
+    .with_origin(ErrorOriginV1::new("agent", "ws", "task_result"))
+    .with_stage("finalize")
+    .with_context(serde_json::json!({
+        "agent_id": agent_id,
+        "task_id": task_id,
+        "run_id": run_id,
+        "error_code": summary.and_then(|value| value.get("error_code")).cloned(),
+    }));
+    if let Some(error) = error.filter(|value| !value.trim().is_empty()) {
+        envelope = envelope.with_debug(serde_json::json!({ "error": error }));
+    }
+    insert_error_envelope(&mut fields, envelope);
+    serde_json::Value::Object(fields)
+}
+
 fn normalize_delete_error_kind(kind: Option<&str>) -> &'static str {
     match kind.unwrap_or("").trim() {
         "config" => "config",
@@ -904,6 +1048,76 @@ fn should_abandon_delete_task(attempts: i64, created_at: i64, now: i64) -> bool 
     age >= MAX_AGE_SECS
 }
 
+fn snapshot_delete_hint_text(kind: &str) -> &'static str {
+    match kind {
+        "config" => "review snapshot target settings and delete task metadata",
+        "auth" => "verify credentials and permissions for the delete operation",
+        "network" => "check network connectivity and retry artifact deletion",
+        "http" => "inspect the HTTP response/body and upstream availability",
+        _ => "inspect artifact delete task logs for the root cause",
+    }
+}
+
+fn snapshot_delete_failure_fields(
+    agent_id: &str,
+    kind: &str,
+    error: &str,
+    retry_after_sec: Option<u64>,
+    status: &str,
+) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert("agent_id".to_string(), serde_json::json!(agent_id));
+    fields.insert("error_kind".to_string(), serde_json::json!(kind));
+    fields.insert(
+        "hint".to_string(),
+        serde_json::json!(snapshot_delete_hint_text(kind)),
+    );
+    if let Some(retry_after_sec) = retry_after_sec {
+        fields.insert(
+            "retry_after_secs".to_string(),
+            serde_json::json!(retry_after_sec),
+        );
+    }
+
+    let envelope = ErrorEnvelopeV1::new(
+        format!("agent.snapshot_delete.{kind}"),
+        kind.to_string(),
+        if matches!(kind, "network" | "http") {
+            let mut out = ErrorRetriableV1::new(true).with_reason(kind.to_string());
+            if let Some(retry_after_sec) = retry_after_sec {
+                out = out.with_retry_after_sec(retry_after_sec);
+            }
+            out
+        } else {
+            ErrorRetriableV1::new(false)
+        },
+        localized_text(match kind {
+            "config" => "diagnostics.hint.artifact_delete.config",
+            "auth" => "diagnostics.hint.artifact_delete.auth",
+            "network" => "diagnostics.hint.artifact_delete.network",
+            "http" => "diagnostics.hint.artifact_delete.http",
+            _ => "diagnostics.hint.artifact_delete.unknown",
+        }),
+        localized_text(match kind {
+            "config" => "diagnostics.message.artifact_delete.config",
+            "auth" => "diagnostics.message.artifact_delete.auth",
+            "network" => "diagnostics.message.artifact_delete.network",
+            "http" => "diagnostics.message.artifact_delete.http",
+            _ => "diagnostics.message.artifact_delete.unknown",
+        }),
+        ErrorTransportV1::new("agent_ws"),
+    )
+    .with_origin(ErrorOriginV1::new("agent", "ws", "snapshot_delete_result"))
+    .with_stage("cleanup")
+    .with_context(serde_json::json!({
+        "agent_id": agent_id,
+        "status": status,
+    }))
+    .with_debug(serde_json::json!({ "error": error }));
+    insert_error_envelope(&mut fields, envelope);
+    serde_json::Value::Object(fields)
+}
+
 fn delete_backoff_seconds(run_id: &str, attempts: i64, kind: &str) -> i64 {
     let attempts = attempts.max(1);
 
@@ -934,7 +1148,10 @@ fn delete_jitter_seconds(run_id: &str, attempts: i64, max_jitter: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{AGENT_LAST_SEEN_MIN_UPDATE_SECS, should_persist_agent_last_seen};
+    use super::{
+        AGENT_LAST_SEEN_MIN_UPDATE_SECS, agent_task_result_failure_fields,
+        should_persist_agent_last_seen, snapshot_delete_failure_fields,
+    };
 
     #[test]
     fn should_persist_last_seen_only_after_min_interval() {
@@ -952,5 +1169,61 @@ mod tests {
             base,
             base + AGENT_LAST_SEEN_MIN_UPDATE_SECS + 5
         ));
+    }
+
+    #[test]
+    fn task_result_failure_fields_include_error_envelope_context() {
+        let fields = agent_task_result_failure_fields(
+            "agent-1",
+            "task-1",
+            "run-1",
+            Some(&serde_json::json!({ "error_code": "source_consistency" })),
+            Some("source changed during backup"),
+        );
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_kind").and_then(|value| value.as_str()),
+            Some("source_consistency")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("transport"))
+                .and_then(|value| value.get("protocol"))
+                .and_then(|value| value.as_str()),
+            Some("agent_ws")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("context"))
+                .and_then(|value| value.get("task_id"))
+                .and_then(|value| value.as_str()),
+            Some("task-1")
+        );
+    }
+
+    #[test]
+    fn snapshot_delete_failure_fields_include_retry_metadata() {
+        let fields = snapshot_delete_failure_fields(
+            "agent-1",
+            "network",
+            "dial tcp timeout",
+            Some(90),
+            "failed",
+        );
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("retriable"))
+                .and_then(|value| value.get("retry_after_sec"))
+                .and_then(|value| value.as_u64()),
+            Some(90)
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("message"))
+                .and_then(|value| value.get("key"))
+                .and_then(|value| value.as_str()),
+            Some("diagnostics.message.artifact_delete.network")
+        );
     }
 }

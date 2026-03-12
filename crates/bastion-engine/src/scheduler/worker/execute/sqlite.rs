@@ -10,16 +10,47 @@ use bastion_core::progress::{ProgressKindV1, ProgressUnitsV1};
 use bastion_storage::jobs_repo;
 use bastion_storage::secrets::SecretsCrypto;
 
+use crate::error_envelope::{insert_error_envelope, with_context_param};
 use crate::run_events;
 use crate::run_events_bus::RunEventsBus;
 
 use bastion_backup as backup;
 use bastion_backup::backup_encryption;
 
-use super::check_run_canceled;
 use super::planner::plan_sqlite_execution;
 use super::progress::{RUN_PROGRESS_MIN_INTERVAL, RunProgressUpdate, spawn_run_progress_writer};
 use super::rolling_archive;
+use super::{check_run_canceled, execute_stage_envelope};
+
+fn sqlite_integrity_check_event_fields(
+    ok: bool,
+    truncated: bool,
+    lines: &[String],
+) -> serde_json::Value {
+    let mut fields = serde_json::Map::new();
+    fields.insert("ok".to_string(), serde_json::json!(ok));
+    fields.insert("truncated".to_string(), serde_json::json!(truncated));
+    fields.insert("lines".to_string(), serde_json::json!(lines));
+
+    if !ok {
+        let mut envelope = execute_stage_envelope(
+            "sqlite",
+            "integrity_check",
+            "snapshot",
+            "scheduler.execute.sqlite.integrity_check",
+            "integrity",
+            "diagnostics.hint.execute.sqlite_integrity_check",
+            "diagnostics.message.execute.sqlite_integrity_check",
+            "file",
+            false,
+        );
+        envelope = with_context_param(envelope, "lines", lines);
+        envelope = with_context_param(envelope, "truncated", truncated);
+        insert_error_envelope(&mut fields, envelope);
+    }
+
+    serde_json::Value::Object(fields)
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_sqlite_run(
@@ -128,11 +159,7 @@ pub(super) async fn execute_sqlite_run(
     };
 
     if let Some(check) = build.integrity_check.as_ref() {
-        let data = serde_json::json!({
-            "ok": check.ok,
-            "truncated": check.truncated,
-            "lines": check.lines,
-        });
+        let data = sqlite_integrity_check_event_fields(check.ok, check.truncated, &check.lines);
         let _ = run_events::append_and_broadcast(
             db,
             run_events_bus,
@@ -254,4 +281,29 @@ pub(super) async fn execute_sqlite_run(
         },
         "planner": planner_summary,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sqlite_integrity_check_event_fields;
+
+    #[test]
+    fn failed_integrity_check_fields_include_error_envelope() {
+        let fields =
+            sqlite_integrity_check_event_fields(false, false, &["row 1 malformed".to_string()]);
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("kind"))
+                .and_then(|value| value.as_str()),
+            Some("integrity")
+        );
+        assert_eq!(
+            obj.get("error_envelope")
+                .and_then(|value| value.get("message"))
+                .and_then(|value| value.get("key"))
+                .and_then(|value| value.as_str()),
+            Some("diagnostics.message.execute.sqlite_integrity_check")
+        );
+    }
 }

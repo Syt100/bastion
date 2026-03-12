@@ -1786,6 +1786,17 @@ const messages = {
         http: '产物删除失败：HTTP 响应异常',
         unknown: '产物删除失败：未知错误',
       },
+      agent: {
+        task_result_failed: 'Agent 回报任务执行失败',
+      },
+      execute: {
+        snapshot_unavailable: '文件系统快照未能成功准备',
+        direct_data_path_unavailable: 'Raw-tree 直写数据路径不可用，Bastion 将回退到暂存写入',
+        snapshot_cleanup_failed: '打包后清理文件系统快照失败',
+        filesystem_issues: '文件系统打包过程报告了警告或错误',
+        source_consistency: '备份期间检测到了源数据一致性告警',
+        sqlite_integrity_check: 'SQLite 完整性检查失败',
+      },
     },
     hint: {
       run_failed: {
@@ -1829,6 +1840,17 @@ const messages = {
         network: '请检查网络连通性后重试删除。',
         http: '请检查 HTTP 状态/响应体与上游可用性。',
         unknown: '请查看产物删除任务日志定位根因。',
+      },
+      agent: {
+        task_result_failed: '请结合 Agent 日志、运行摘要和最近运行事件一起定位根因。',
+      },
+      execute: {
+        snapshot_unavailable: '请检查快照模式/提供方支持情况，并确认源路径配置正确。',
+        direct_data_path_unavailable: '请检查执行节点上的目标目录权限、目录存在性以及符号链接支持情况。',
+        snapshot_cleanup_failed: '请检查执行节点上的快照提供方状态，并按需清理残留快照。',
+        filesystem_issues: '请结合示例警告/错误判断是否需要调整源端状态或策略。',
+        source_consistency: '请查看一致性样本，并考虑在备份前静默源端或调整策略阈值。',
+        sqlite_integrity_check: '请检查完整性校验输出，并在重试前修复或替换 SQLite 数据库。',
       },
     },
   },

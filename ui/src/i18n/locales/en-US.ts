@@ -1791,6 +1791,17 @@ const messages = {
         http: 'Artifact delete failed due to unexpected HTTP response',
         unknown: 'Artifact delete failed due to an unknown error',
       },
+      agent: {
+        task_result_failed: 'Agent reported that the task failed',
+      },
+      execute: {
+        snapshot_unavailable: 'Filesystem snapshot could not be prepared',
+        direct_data_path_unavailable: 'Raw-tree direct data path is unavailable; Bastion will fall back to staged writes',
+        snapshot_cleanup_failed: 'Filesystem snapshot cleanup failed after packaging',
+        filesystem_issues: 'Filesystem packaging reported warnings or errors',
+        source_consistency: 'Source consistency warnings were reported during backup',
+        sqlite_integrity_check: 'SQLite integrity check failed',
+      },
     },
     hint: {
       run_failed: {
@@ -1834,6 +1845,17 @@ const messages = {
         network: 'Check network connectivity and retry artifact deletion.',
         http: 'Inspect HTTP status/body and upstream availability.',
         unknown: 'Inspect artifact delete task logs for root cause.',
+      },
+      agent: {
+        task_result_failed: 'Inspect the related agent logs, run summary, and recent run events for the root cause.',
+      },
+      execute: {
+        snapshot_unavailable: 'Check snapshot mode/provider support and verify the source path configuration.',
+        direct_data_path_unavailable: 'Check target directory permissions, existence, and symlink support on the execution node.',
+        snapshot_cleanup_failed: 'Inspect the snapshot provider state on the execution node and clean up stale snapshots if needed.',
+        filesystem_issues: 'Review the sample warnings/errors to decide whether the source or policy needs adjustment.',
+        source_consistency: 'Review the consistency sample and consider quiescing the source or adjusting policy thresholds.',
+        sqlite_integrity_check: 'Inspect the integrity check output and repair or replace the SQLite database before retrying.',
       },
     },
   },
