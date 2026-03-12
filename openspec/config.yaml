@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  Bastion is a self-hosted backup orchestration product built as a Rust workspace.
+
+  Main surfaces:
+  - Rust backend and CLI
+  - Vue 3 + TypeScript Web UI
+  - VitePress documentation site
+
+  Workflow:
+  - Use OpenSpec first for non-trivial product, architecture, or workflow changes.
+  - Keep `tasks.md` truthful; only mark tasks complete after implementation and validation.
+
+  Validation:
+  - Prefer targeted tests first, then broader verification as confidence increases.
+  - Before push, run `scripts/ci.sh`.
+
+  UI expectations:
+  - Preserve mobile responsive behavior.
+  - Prefer shared, token-driven styles and reusable UI primitives over page-specific one-offs.
+
+  Release notes:
+  - Update `CHANGELOG.md` for user-visible changes.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
