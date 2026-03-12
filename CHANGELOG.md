@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
 - Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
+- Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
 
 ### Changed
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.
@@ -45,6 +46,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).
 - Changed run/maintenance/notification failure events to emit a unified `error_envelope` contract (schema version, stable code/kind, retriable metadata, i18n keys, transport protocol details, and context payloads) while keeping legacy fields for compatibility.
 - Changed Run Events UI to render envelope-first localized diagnostics with graceful fallback, protocol-specific detail rows (HTTP/SFTP/provider fields), and async-operation/partial-failure panels.
+- Changed snapshot management and maintenance cleanup diagnostics to prefer canonical envelope-based messages/hints/details, with fallback to legacy task error fields when newer event envelopes are unavailable.
 - Changed Web UI i18n startup to lazy-load only the active locale before mount and load other locales on demand, reducing initial bundle payload.
 - Changed Agent/Hub websocket relay paths to bounded queues with explicit backpressure handling to avoid unbounded memory growth under slow consumers.
 - Changed CI checks to run `clippy` for both default-feature and all-features builds.

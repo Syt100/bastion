@@ -17,23 +17,23 @@
 - [x] 3.5 Commit refactor batch(es) (detailed message; split by area if large)
 
 ## 4. Docs - UI Style Guide (EN + zh-CN)
-- [ ] 4.1 Add a developer-facing UI style guide page under `docs/dev/` (tokens, scales, recipes, do/don’t)
-- [ ] 4.2 Add a zh-CN version under `docs/zh/dev/`
-- [ ] 4.3 Link the guide from the docs sidebars (EN + zh-CN)
-- [ ] 4.4 Commit docs updates (detailed message)
+- [x] 4.1 Add a developer-facing UI style guide page under `docs/dev/` (tokens, scales, recipes, do/don’t)
+- [x] 4.2 Add a zh-CN version under `docs/zh/dev/`
+- [x] 4.3 Link the guide from the docs sidebars (EN + zh-CN)
+- [x] 4.4 Commit docs updates (detailed message)
 
 ## 5. Guardrails
-- [ ] 5.1 Add a fast rg-based check for banned “non-token” patterns in `ui/src`
-- [ ] 5.2 Integrate the check into `scripts/ci.sh`
-- [ ] 5.3 Commit guardrails (detailed message)
+- [x] 5.1 Add a fast rg-based check for banned “non-token” patterns in `ui/src`
+- [x] 5.2 Integrate the check into `scripts/ci.sh`
+- [x] 5.3 Commit guardrails (detailed message)
 
 ## 6. Tests
-- [ ] 6.1 Add/adjust tests for changes that are easy to regress (token usage, docs build wiring, etc.)
-- [ ] 6.2 Commit tests (detailed message)
+- [x] 6.1 Add/adjust tests for changes that are easy to regress (token usage, docs build wiring, etc.)
+- [x] 6.2 Commit tests (detailed message)
 
 ## 7. Validation
-- [ ] 7.1 Run `npm test --prefix ui`
-- [ ] 7.2 Run `npm run lint --prefix ui`
-- [ ] 7.3 Run `npm run build-only --prefix ui`
-- [ ] 7.4 Run `DOCS_BASE=/docs/ npm run build --prefix docs`
-- [ ] 7.5 Run `bash scripts/ci.sh`
+- [x] 7.1 Run `npm test --prefix ui`
+- [x] 7.2 Run `npm run lint --prefix ui`
+- [x] 7.3 Run `npm run build-only --prefix ui`
+- [x] 7.4 Run `DOCS_BASE=/docs/ npm run build --prefix docs`
+- [x] 7.5 Run `bash scripts/ci.sh`
