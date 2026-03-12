@@ -34,6 +34,12 @@ bash scripts/changelog_test.sh
 echo "==> Release preflight: tests"
 bash scripts/release-preflight_test.sh
 
+echo "==> UI: style guardrails"
+bash scripts/check-ui-style-guardrails.sh
+
+echo "==> UI: style guardrail tests"
+bash scripts/check-ui-style-guardrails_test.sh
+
 echo "==> Rust: forbid tokio/full"
 if command -v rg >/dev/null 2>&1; then
   if rg -nU --glob 'crates/*/Cargo.toml' 'tokio\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"full"' ; then
