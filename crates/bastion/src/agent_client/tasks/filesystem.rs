@@ -159,6 +159,7 @@ pub(super) async fn run_filesystem_backup(
     } else {
         serde_json::json!({ "mode": snapshot_mode_str(snapshot_mode), "status": "unavailable" })
     };
+    let snapshot_settings = backup::filesystem::source_snapshot::SnapshotSettings::capture();
     let mut snapshot_handle: Option<backup::filesystem::source_snapshot::SourceSnapshotHandle> =
         None;
     let mut read_mapping: Option<backup::filesystem::FilesystemReadMapping> = None;
@@ -208,11 +209,13 @@ pub(super) async fn run_filesystem_backup(
                 .await?;
 
                 let run_dir = backup::run_dir(ctx.data_dir, ctx.run_id);
+                let snapshot_settings = snapshot_settings.clone();
                 let attempt = tokio::task::spawn_blocking(move || {
                     backup::filesystem::source_snapshot::attempt_source_snapshot(
                         &root,
                         &run_dir,
                         provider_override.as_deref(),
+                        &snapshot_settings,
                     )
                 })
                 .await?;

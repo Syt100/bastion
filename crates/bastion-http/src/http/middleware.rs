@@ -4,8 +4,23 @@ use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::response::Response;
 
+use super::error::{self, AppErrorRenderOptions};
 use super::shared;
 use super::{AppError, AppState};
+
+pub(super) async fn bind_error_render_options_middleware(
+    state: axum::extract::State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    error::with_app_error_render_options(
+        AppErrorRenderOptions {
+            debug_errors: state.config.debug_errors,
+        },
+        async move { next.run(req).await },
+    )
+    .await
+}
 
 pub(super) async fn require_secure_middleware(
     state: axum::extract::State<AppState>,

@@ -1,18 +1,30 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::future::Future;
 
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
-static DEBUG_ERRORS: AtomicBool = AtomicBool::new(false);
-
-pub(in crate::http) fn set_debug_errors(enabled: bool) {
-    DEBUG_ERRORS.store(enabled, Ordering::Relaxed);
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(in crate::http) struct AppErrorRenderOptions {
+    pub debug_errors: bool,
 }
 
-fn debug_errors_enabled() -> bool {
-    DEBUG_ERRORS.load(Ordering::Relaxed)
+tokio::task_local! {
+    static APP_ERROR_RENDER_OPTIONS: AppErrorRenderOptions;
+}
+
+pub(in crate::http) async fn with_app_error_render_options<T>(
+    options: AppErrorRenderOptions,
+    future: impl Future<Output = T>,
+) -> T {
+    APP_ERROR_RENDER_OPTIONS.scope(options, future).await
+}
+
+fn current_app_error_render_options() -> AppErrorRenderOptions {
+    APP_ERROR_RENDER_OPTIONS
+        .try_with(|options| *options)
+        .unwrap_or_default()
 }
 
 #[derive(Debug)]
@@ -21,6 +33,7 @@ pub(in crate::http) struct AppError {
     code: &'static str,
     message: String,
     details: Option<serde_json::Value>,
+    debug_details: Option<serde_json::Value>,
 }
 
 impl AppError {
@@ -45,6 +58,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -57,6 +71,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -66,6 +81,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -75,6 +91,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -84,6 +101,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -93,6 +111,7 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            debug_details: None,
         }
     }
 
@@ -247,6 +266,29 @@ fn debug_details(error: &anyhow::Error) -> serde_json::Value {
     serde_json::json!({ "debug": { "chain": chain } })
 }
 
+fn merge_response_details(
+    details: Option<serde_json::Value>,
+    debug_details: Option<serde_json::Value>,
+    options: AppErrorRenderOptions,
+) -> Option<serde_json::Value> {
+    if !options.debug_errors {
+        return details;
+    }
+
+    match (details, debug_details) {
+        (None, debug_details) => debug_details,
+        (details, None) => details,
+        (
+            Some(serde_json::Value::Object(mut details)),
+            Some(serde_json::Value::Object(debug_details)),
+        ) => {
+            details.extend(debug_details);
+            Some(serde_json::Value::Object(details))
+        }
+        (details, Some(_debug_details)) => details,
+    }
+}
+
 impl<E> From<E> for AppError
 where
     E: Into<anyhow::Error>,
@@ -260,22 +302,27 @@ where
         }
 
         tracing::error!(error = %error, "request failed");
-        let details = if debug_errors_enabled() {
-            Some(debug_details(&error))
-        } else {
-            None
-        };
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal_error",
             message: "Internal server error".to_string(),
-            details,
+            details: None,
+            debug_details: Some(debug_details(&error)),
         }
     }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        self.into_response_with_options(current_app_error_render_options())
+    }
+}
+
+impl AppError {
+    pub(in crate::http) fn into_response_with_options(
+        self,
+        options: AppErrorRenderOptions,
+    ) -> Response {
         #[derive(Serialize)]
         struct Body {
             error: &'static str,
@@ -284,10 +331,11 @@ impl IntoResponse for AppError {
             details: Option<serde_json::Value>,
         }
 
+        let details = merge_response_details(self.details, self.debug_details, options);
         let body = Json(Body {
             error: self.code,
             message: self.message,
-            details: self.details,
+            details,
         });
         (self.status, body).into_response()
     }
@@ -296,14 +344,11 @@ impl IntoResponse for AppError {
 #[cfg(test)]
 mod tests {
     use std::io::ErrorKind;
-    use std::sync::{Mutex, OnceLock};
 
-    use super::{AppError, set_debug_errors};
+    use axum::body::to_bytes;
+    use axum::response::IntoResponse;
 
-    fn debug_flag_guard() -> std::sync::MutexGuard<'static, ()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(())).lock().unwrap()
-    }
+    use super::{AppError, AppErrorRenderOptions, with_app_error_render_options};
 
     #[test]
     fn classify_permission_denied_as_403() {
@@ -353,26 +398,50 @@ mod tests {
         assert_eq!(details["violations"][0]["params"]["min_length"], 12);
     }
 
-    #[test]
-    fn debug_details_are_gated_by_flag() {
-        let _guard = debug_flag_guard();
-        set_debug_errors(false);
+    async fn render_internal_error_details(
+        options: AppErrorRenderOptions,
+    ) -> Option<serde_json::Value> {
+        with_app_error_render_options(options, async {
+            let app: AppError = anyhow::anyhow!("boom").into();
+            let resp = app.into_response();
+            let bytes = to_bytes(resp.into_body(), 1024 * 1024)
+                .await
+                .expect("body bytes");
+            let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+            body.get("details").cloned()
+        })
+        .await
+    }
 
-        let err = anyhow::anyhow!("boom");
-        let app: AppError = err.into();
-        assert_eq!(app.status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(app.code, "internal_error");
-        assert!(app.details.is_none());
+    #[tokio::test]
+    async fn debug_details_are_gated_by_render_options() {
+        let disabled = render_internal_error_details(AppErrorRenderOptions {
+            debug_errors: false,
+        })
+        .await;
+        assert!(disabled.is_none());
 
-        set_debug_errors(true);
-        let err = anyhow::anyhow!("boom");
-        let app: AppError = err.into();
-        assert_eq!(app.status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(app.code, "internal_error");
-        assert!(app.details.is_some());
-        let details = app.details.expect("details should exist");
-        assert!(details.get("debug").is_some());
+        let enabled = render_internal_error_details(AppErrorRenderOptions { debug_errors: true })
+            .await
+            .expect("details");
+        assert!(enabled.get("debug").is_some());
+    }
 
-        set_debug_errors(false);
+    #[tokio::test(flavor = "multi_thread")]
+    async fn render_options_do_not_leak_between_concurrent_scopes() {
+        let (disabled, enabled) = tokio::join!(
+            render_internal_error_details(AppErrorRenderOptions {
+                debug_errors: false,
+            }),
+            render_internal_error_details(AppErrorRenderOptions { debug_errors: true }),
+        );
+
+        assert!(disabled.is_none());
+        assert!(
+            enabled
+                .as_ref()
+                .and_then(|value| value.get("debug"))
+                .is_some()
+        );
     }
 }

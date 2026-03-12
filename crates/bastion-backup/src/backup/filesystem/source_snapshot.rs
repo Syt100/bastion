@@ -38,14 +38,14 @@ pub enum SnapshotAttempt {
     Unavailable(SnapshotUnavailable),
 }
 
-#[derive(Debug, Clone)]
-struct SnapshotSettings {
+#[derive(Debug, Clone, Default)]
+pub struct SnapshotSettings {
     btrfs_enabled: bool,
     allowlist_prefixes: Vec<PathBuf>,
 }
 
 impl SnapshotSettings {
-    fn from_env() -> Self {
+    pub fn capture() -> Self {
         let allowlist = std::env::var("BASTION_FS_SNAPSHOT_ALLOWLIST").unwrap_or_default();
         let allowlist_prefixes = allowlist
             .split(',')
@@ -65,9 +65,9 @@ pub fn attempt_source_snapshot(
     root: &Path,
     run_dir: &Path,
     provider_override: Option<&str>,
+    settings: &SnapshotSettings,
 ) -> SnapshotAttempt {
-    let settings = SnapshotSettings::from_env();
-    attempt_source_snapshot_inner(root, run_dir, provider_override, &settings)
+    attempt_source_snapshot_inner(root, run_dir, provider_override, settings)
 }
 
 fn attempt_source_snapshot_inner(
@@ -272,7 +272,12 @@ mod tests {
         let root = tmp.path().join("root");
         std::fs::create_dir_all(&root).expect("create root");
 
-        let attempt = attempt_source_snapshot(&root, tmp.path(), Some("nope"));
+        let attempt = attempt_source_snapshot(
+            &root,
+            tmp.path(),
+            Some("nope"),
+            &SnapshotSettings::default(),
+        );
         match attempt {
             SnapshotAttempt::Unavailable(unavail) => {
                 assert_eq!(unavail.provider.as_deref(), Some("nope"));
@@ -296,6 +301,26 @@ mod tests {
             SnapshotAttempt::Unavailable(unavail) => {
                 assert_eq!(unavail.provider.as_deref(), Some("btrfs"));
                 assert!(unavail.reason.contains("allowlist is empty"));
+            }
+            SnapshotAttempt::Ready(_) => panic!("expected unavailable"),
+        }
+    }
+
+    #[test]
+    fn attempt_source_snapshot_uses_explicit_settings_when_disabled() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(&root).expect("create root");
+        let settings = SnapshotSettings {
+            btrfs_enabled: false,
+            allowlist_prefixes: vec![tmp.path().to_path_buf()],
+        };
+
+        let attempt = attempt_source_snapshot(&root, tmp.path(), None, &settings);
+        match attempt {
+            SnapshotAttempt::Unavailable(unavail) => {
+                assert_eq!(unavail.provider.as_deref(), Some("btrfs"));
+                assert!(unavail.reason.contains("disabled by config"));
             }
             SnapshotAttempt::Ready(_) => panic!("expected unavailable"),
         }

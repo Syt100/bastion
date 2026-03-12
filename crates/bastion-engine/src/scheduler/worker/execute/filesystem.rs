@@ -213,6 +213,7 @@ pub(super) async fn execute_filesystem_run(
     check_run_canceled(run_id, cancel_token)?;
     let progress_tx =
         spawn_run_progress_writer(db.clone(), run_id.to_string(), ProgressKindV1::Backup);
+    let snapshot_settings = backup::filesystem::source_snapshot::SnapshotSettings::capture();
 
     let data_dir = data_dir.to_path_buf();
     let job_id = job.id.clone();
@@ -284,11 +285,13 @@ pub(super) async fn execute_filesystem_run(
                 .await;
 
                 let run_dir = backup::run_dir(&data_dir, &run_id_owned);
+                let snapshot_settings = snapshot_settings.clone();
                 let attempt = tokio::task::spawn_blocking(move || {
                     backup::filesystem::source_snapshot::attempt_source_snapshot(
                         &root,
                         &run_dir,
                         provider_override.as_deref(),
+                        &snapshot_settings,
                     )
                 })
                 .await?;
