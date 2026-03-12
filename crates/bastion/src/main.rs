@@ -948,12 +948,12 @@ fn resolve_log_filter(
 }
 
 #[derive(Debug, Clone, Default)]
-struct RuntimeEnv {
+pub(crate) struct RuntimeEnv {
     rust_log: Option<String>,
 }
 
 impl RuntimeEnv {
-    fn capture() -> Self {
+    pub(crate) fn capture() -> Self {
         Self {
             rust_log: std::env::var("RUST_LOG").ok(),
         }

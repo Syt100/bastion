@@ -66,6 +66,7 @@ fn service_main_inner() -> Result<(), anyhow::Error> {
         let locale = crate::i18n::cli::resolve_cli_locale();
         let cmd = crate::i18n::cli::localize_command(Cli::command(), locale);
         let matches = cmd.get_matches_from(vec![OsString::from("bastion")]);
+        let runtime_env = crate::RuntimeEnv::capture();
         let Cli {
             command,
             hub,
@@ -90,7 +91,7 @@ fn service_main_inner() -> Result<(), anyhow::Error> {
             );
         }
 
-        crate::run_hub(hub, logging, &matches, shutdown.clone()).await
+        crate::run_hub(hub, logging, &matches, shutdown.clone(), &runtime_env).await
     });
 
     let exit_code = match result {
