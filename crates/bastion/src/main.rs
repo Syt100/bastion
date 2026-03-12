@@ -30,6 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let locale = i18n::cli::resolve_cli_locale();
     let cmd = i18n::cli::localize_command(Cli::command(), locale);
     let matches = cmd.get_matches_from(argv);
+    let runtime_env = RuntimeEnv::capture();
     let Cli {
         command,
         hub,
@@ -39,20 +40,22 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(command) = command {
         match command {
             Command::Agent(args) => {
-                let _logging_guard = logging::init(&logging_args)?;
+                let effective_logging_args =
+                    apply_runtime_env_logging_fallback(logging_args, &runtime_env);
+                let _logging_guard = logging::init(&effective_logging_args)?;
                 info!(
-                    log_file = ?logging_args.log_file,
-                    log_rotation = ?logging_args.log_rotation,
-                    log_keep_files = logging_args.log_keep_files,
+                    log_file = ?effective_logging_args.log_file,
+                    log_rotation = ?effective_logging_args.log_rotation,
+                    log_keep_files = effective_logging_args.log_keep_files,
                     "logging initialized"
                 );
                 agent_client::run(args).await?;
             }
             Command::Config(args) => {
-                run_config_command(args, hub, logging_args, &matches).await?;
+                run_config_command(args, hub, logging_args, &matches, &runtime_env).await?;
             }
             Command::Doctor(args) => {
-                run_doctor_command(args, hub, logging_args, &matches).await?;
+                run_doctor_command(args, hub, logging_args, &matches, &runtime_env).await?;
             }
             #[cfg(windows)]
             Command::Service(args) => {
@@ -60,21 +63,25 @@ async fn main() -> Result<(), anyhow::Error> {
             }
             #[cfg(windows)]
             Command::Tray(args) => {
-                let _logging_guard = logging::init(&logging_args)?;
+                let effective_logging_args =
+                    apply_runtime_env_logging_fallback(logging_args, &runtime_env);
+                let _logging_guard = logging::init(&effective_logging_args)?;
                 info!(
-                    log_file = ?logging_args.log_file,
-                    log_rotation = ?logging_args.log_rotation,
-                    log_keep_files = logging_args.log_keep_files,
+                    log_file = ?effective_logging_args.log_file,
+                    log_rotation = ?effective_logging_args.log_rotation,
+                    log_keep_files = effective_logging_args.log_keep_files,
                     "logging initialized"
                 );
                 win_tray::run(args)?;
             }
             Command::Keypack { command } => {
-                let _logging_guard = logging::init(&logging_args)?;
+                let effective_logging_args =
+                    apply_runtime_env_logging_fallback(logging_args, &runtime_env);
+                let _logging_guard = logging::init(&effective_logging_args)?;
                 info!(
-                    log_file = ?logging_args.log_file,
-                    log_rotation = ?logging_args.log_rotation,
-                    log_keep_files = logging_args.log_keep_files,
+                    log_file = ?effective_logging_args.log_file,
+                    log_rotation = ?effective_logging_args.log_rotation,
+                    log_keep_files = effective_logging_args.log_keep_files,
                     "logging initialized"
                 );
                 let config = hub.into_config()?;
@@ -119,7 +126,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let shutdown = CancellationToken::new();
     spawn_shutdown_signal_handlers(shutdown.clone());
-    run_hub(hub, logging_args, &matches, shutdown).await
+    run_hub(hub, logging_args, &matches, shutdown, &runtime_env).await
 }
 
 fn spawn_shutdown_signal_handlers(shutdown: CancellationToken) {
@@ -168,6 +175,7 @@ pub(crate) async fn run_hub(
     logging_args: crate::config::LoggingArgs,
     matches: &clap::ArgMatches,
     shutdown: CancellationToken,
+    runtime_env: &RuntimeEnv,
 ) -> Result<(), anyhow::Error> {
     let mut config = hub.into_config()?;
     let pool = bastion_storage::db::init(&config.data_dir).await?;
@@ -177,7 +185,7 @@ pub(crate) async fn run_hub(
         .unwrap_or_default();
 
     let (hub_runtime_config, effective_logging_args) =
-        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args);
+        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args, runtime_env);
 
     let _logging_guard = logging::init(&effective_logging_args)?;
     info!(
@@ -272,6 +280,7 @@ async fn run_config_command(
     hub: crate::config::HubArgs,
     logging_args: crate::config::LoggingArgs,
     matches: &clap::ArgMatches,
+    runtime_env: &RuntimeEnv,
 ) -> Result<(), anyhow::Error> {
     let mut config = hub.into_config()?;
     let pool = bastion_storage::db::init(&config.data_dir).await?;
@@ -280,7 +289,7 @@ async fn run_config_command(
         .unwrap_or_default();
 
     let (meta, _effective_logging_args) =
-        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args);
+        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args, runtime_env);
 
     let ui = ui_assets_info();
     let docs = docs_assets_info();
@@ -409,6 +418,7 @@ async fn run_doctor_command(
     hub: crate::config::HubArgs,
     logging_args: crate::config::LoggingArgs,
     matches: &clap::ArgMatches,
+    runtime_env: &RuntimeEnv,
 ) -> Result<(), anyhow::Error> {
     let mut checks: Vec<serde_json::Value> = Vec::new();
 
@@ -485,7 +495,7 @@ async fn run_doctor_command(
     };
 
     let (meta, _effective_logging_args) =
-        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args);
+        resolve_hub_runtime_config_meta(&mut config, matches, &saved, logging_args, runtime_env);
 
     checks.push(serde_json::json!({
         "id": "runtime_config",
@@ -657,6 +667,7 @@ fn resolve_hub_runtime_config_meta(
     matches: &clap::ArgMatches,
     saved: &hub_runtime_config_repo::HubRuntimeConfig,
     mut effective_logging_args: crate::config::LoggingArgs,
+    runtime_env: &RuntimeEnv,
 ) -> (HubRuntimeConfigMeta, crate::config::LoggingArgs) {
     let mut sources = HubRuntimeConfigSources {
         bind_host: map_value_source(matches.value_source("host")),
@@ -700,9 +711,13 @@ fn resolve_hub_runtime_config_meta(
         matches,
         saved.log_filter.as_deref(),
         effective_logging_args.log.as_deref(),
+        runtime_env.rust_log.as_deref(),
     );
     sources.log_filter = log_filter_source;
-    if sources.log_filter == ConfigValueSource::Db {
+    if matches!(
+        sources.log_filter,
+        ConfigValueSource::Db | ConfigValueSource::EnvRustLog
+    ) {
         effective_logging_args.log = Some(effective_log_filter.clone());
     }
 
@@ -904,6 +919,7 @@ fn resolve_log_filter(
     matches: &clap::ArgMatches,
     saved: Option<&str>,
     explicit_log: Option<&str>,
+    rust_log_env: Option<&str>,
 ) -> (String, ConfigValueSource) {
     // BASTION_LOG / --log
     let explicit_source = map_value_source(matches.value_source("log"));
@@ -915,8 +931,8 @@ fn resolve_log_filter(
     }
 
     // RUST_LOG
-    if let Ok(filter) = std::env::var("RUST_LOG") {
-        return (filter, ConfigValueSource::EnvRustLog);
+    if let Some(filter) = rust_log_env {
+        return (filter.to_string(), ConfigValueSource::EnvRustLog);
     }
 
     // DB
@@ -929,6 +945,31 @@ fn resolve_log_filter(
         "info,tower_http=warn".to_string(),
         ConfigValueSource::Default,
     )
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuntimeEnv {
+    rust_log: Option<String>,
+}
+
+impl RuntimeEnv {
+    fn capture() -> Self {
+        Self {
+            rust_log: std::env::var("RUST_LOG").ok(),
+        }
+    }
+}
+
+fn apply_runtime_env_logging_fallback(
+    mut logging_args: crate::config::LoggingArgs,
+    runtime_env: &RuntimeEnv,
+) -> crate::config::LoggingArgs {
+    if logging_args.log.is_none()
+        && let Some(rust_log) = runtime_env.rust_log.as_ref()
+    {
+        logging_args.log = Some(rust_log.clone());
+    }
+    logging_args
 }
 
 fn read_keypack_password(
@@ -954,47 +995,11 @@ fn read_keypack_password(
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
-    use std::sync::{Mutex, OnceLock};
-
     use clap::{CommandFactory as _, FromArgMatches as _};
     use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
-
-    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD.get_or_init(|| Mutex::new(())).lock().unwrap()
-    }
-
-    struct EnvVarGuard {
-        key: &'static str,
-        previous: Option<OsString>,
-    }
-
-    impl EnvVarGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let previous = std::env::var_os(key);
-            unsafe {
-                std::env::set_var(key, value);
-            }
-            Self { key, previous }
-        }
-    }
-
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            match &self.previous {
-                Some(value) => unsafe {
-                    std::env::set_var(self.key, value);
-                },
-                None => unsafe {
-                    std::env::remove_var(self.key);
-                },
-            }
-        }
-    }
 
     fn parse_cli_from(args: &[&str]) -> (clap::ArgMatches, Cli) {
         let matches = Cli::command()
@@ -1021,8 +1026,13 @@ mod tests {
             ..hub_runtime_config_repo::HubRuntimeConfig::default()
         };
 
-        let (meta, effective_logging) =
-            resolve_hub_runtime_config_meta(&mut config, &matches, &saved, cli.logging);
+        let (meta, effective_logging) = resolve_hub_runtime_config_meta(
+            &mut config,
+            &matches,
+            &saved,
+            cli.logging,
+            &RuntimeEnv::default(),
+        );
 
         assert_eq!(config.hub_timezone, "Asia/Shanghai");
         assert_eq!(config.run_retention_days, 30);
@@ -1089,8 +1099,13 @@ mod tests {
             ..hub_runtime_config_repo::HubRuntimeConfig::default()
         };
 
-        let (meta, effective_logging) =
-            resolve_hub_runtime_config_meta(&mut config, &matches, &saved, cli.logging);
+        let (meta, effective_logging) = resolve_hub_runtime_config_meta(
+            &mut config,
+            &matches,
+            &saved,
+            cli.logging,
+            &RuntimeEnv::default(),
+        );
 
         assert_eq!(config.hub_timezone, "UTC");
         assert_eq!(config.run_retention_days, 91);
@@ -1120,14 +1135,48 @@ mod tests {
 
     #[test]
     fn resolve_log_filter_prefers_rust_log_over_db_value() {
-        let _guard = env_guard();
-        let _rust_log = EnvVarGuard::set("RUST_LOG", "trace,bastion=debug");
         let (matches, _cli) = parse_cli_from(&["bastion"]);
 
-        let (filter, source) = resolve_log_filter(&matches, Some("info,bastion=warn"), None);
+        let (filter, source) = resolve_log_filter(
+            &matches,
+            Some("info,bastion=warn"),
+            None,
+            Some("trace,bastion=debug"),
+        );
 
         assert_eq!(filter, "trace,bastion=debug");
         assert_eq!(source, ConfigValueSource::EnvRustLog);
+    }
+
+    #[test]
+    fn resolve_hub_runtime_config_meta_prefers_explicit_runtime_env_over_db_value() {
+        let dir = TempDir::new().expect("tempdir");
+        let data_dir = dir.path().display().to_string();
+        let (matches, cli) = parse_cli_from(&["bastion", "--data-dir", &data_dir]);
+        let mut config = cli.hub.into_config().expect("config");
+        let saved = hub_runtime_config_repo::HubRuntimeConfig {
+            log_filter: Some("info,bastion=warn".to_string()),
+            ..hub_runtime_config_repo::HubRuntimeConfig::default()
+        };
+
+        let runtime_env = RuntimeEnv {
+            rust_log: Some("trace,bastion=debug".to_string()),
+        };
+
+        let (meta, effective_logging) = resolve_hub_runtime_config_meta(
+            &mut config,
+            &matches,
+            &saved,
+            cli.logging,
+            &runtime_env,
+        );
+
+        assert_eq!(meta.sources.log_filter, ConfigValueSource::EnvRustLog);
+        assert_eq!(meta.logging.filter, "trace,bastion=debug");
+        assert_eq!(
+            effective_logging.log.as_deref(),
+            Some("trace,bastion=debug")
+        );
     }
 
     #[test]

@@ -62,8 +62,6 @@ pub fn init(args: &LoggingArgs) -> Result<LoggingGuard, anyhow::Error> {
 fn build_filter(args: &LoggingArgs) -> Result<tracing_subscriber::EnvFilter, anyhow::Error> {
     let filter_str = if let Some(filter) = args.log.as_deref() {
         filter.to_string()
-    } else if let Ok(filter) = std::env::var("RUST_LOG") {
-        filter
     } else {
         // Conservative defaults: INFO for our code, but avoid noisy HTTP access logs by default.
         "info,tower_http=warn".to_string()
