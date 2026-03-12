@@ -951,3 +951,222 @@ fn read_keypack_password(
         (None, false) => anyhow::bail!("missing password: provide --password or --password-stdin"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::sync::{Mutex, OnceLock};
+
+    use clap::{CommandFactory as _, FromArgMatches as _};
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+        GUARD.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    std::env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    std::env::remove_var(self.key);
+                },
+            }
+        }
+    }
+
+    fn parse_cli_from(args: &[&str]) -> (clap::ArgMatches, Cli) {
+        let matches = Cli::command()
+            .try_get_matches_from(args)
+            .expect("clap matches");
+        let cli = Cli::from_arg_matches(&matches).expect("cli parse");
+        (matches, cli)
+    }
+
+    #[test]
+    fn resolve_hub_runtime_config_meta_applies_db_values_when_cli_absent() {
+        let dir = TempDir::new().expect("tempdir");
+        let data_dir = dir.path().display().to_string();
+        let (matches, cli) = parse_cli_from(&["bastion", "--data-dir", &data_dir]);
+        let mut config = cli.hub.into_config().expect("config");
+        let saved = hub_runtime_config_repo::HubRuntimeConfig {
+            hub_timezone: Some("Asia/Shanghai".to_string()),
+            run_retention_days: Some(30),
+            incomplete_cleanup_days: Some(2),
+            log_filter: Some("debug,bastion=trace".to_string()),
+            log_file: Some("/tmp/bastion.log".to_string()),
+            log_rotation: Some("hourly".to_string()),
+            log_keep_files: Some(9),
+            ..hub_runtime_config_repo::HubRuntimeConfig::default()
+        };
+
+        let (meta, effective_logging) =
+            resolve_hub_runtime_config_meta(&mut config, &matches, &saved, cli.logging);
+
+        assert_eq!(config.hub_timezone, "Asia/Shanghai");
+        assert_eq!(config.run_retention_days, 30);
+        assert_eq!(config.incomplete_cleanup_days, 2);
+        assert_eq!(meta.sources.data_dir, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.hub_timezone, ConfigValueSource::Db);
+        assert_eq!(meta.sources.run_retention_days, ConfigValueSource::Db);
+        assert_eq!(meta.sources.incomplete_cleanup_days, ConfigValueSource::Db);
+        assert_eq!(meta.sources.log_filter, ConfigValueSource::Db);
+        assert_eq!(meta.sources.log_file, ConfigValueSource::Db);
+        assert_eq!(meta.sources.log_rotation, ConfigValueSource::Db);
+        assert_eq!(meta.sources.log_keep_files, ConfigValueSource::Db);
+        assert_eq!(meta.logging.filter, "debug,bastion=trace");
+        assert_eq!(meta.logging.file.as_deref(), Some("/tmp/bastion.log"));
+        assert_eq!(meta.logging.rotation, "hourly");
+        assert_eq!(meta.logging.keep_files, 9);
+        assert_eq!(
+            effective_logging.log.as_deref(),
+            Some("debug,bastion=trace")
+        );
+        assert_eq!(
+            effective_logging
+                .log_file
+                .as_ref()
+                .map(|v| v.display().to_string()),
+            Some("/tmp/bastion.log".to_string())
+        );
+        assert_eq!(effective_logging.log_rotation, LogRotation::Hourly);
+        assert_eq!(effective_logging.log_keep_files, 9);
+    }
+
+    #[test]
+    fn resolve_hub_runtime_config_meta_keeps_cli_values_over_db() {
+        let dir = TempDir::new().expect("tempdir");
+        let data_dir = dir.path().display().to_string();
+        let (matches, cli) = parse_cli_from(&[
+            "bastion",
+            "--data-dir",
+            &data_dir,
+            "--hub-timezone",
+            "UTC",
+            "--run-retention-days",
+            "91",
+            "--incomplete-cleanup-days",
+            "0",
+            "--log",
+            "warn,bastion=info",
+            "--log-file",
+            "/tmp/current.log",
+            "--log-rotation",
+            "never",
+            "--log-keep-files",
+            "4",
+        ]);
+        let mut config = cli.hub.into_config().expect("config");
+        let saved = hub_runtime_config_repo::HubRuntimeConfig {
+            hub_timezone: Some("Asia/Shanghai".to_string()),
+            run_retention_days: Some(30),
+            incomplete_cleanup_days: Some(2),
+            log_filter: Some("debug,bastion=trace".to_string()),
+            log_file: Some("/tmp/old.log".to_string()),
+            log_rotation: Some("hourly".to_string()),
+            log_keep_files: Some(9),
+            ..hub_runtime_config_repo::HubRuntimeConfig::default()
+        };
+
+        let (meta, effective_logging) =
+            resolve_hub_runtime_config_meta(&mut config, &matches, &saved, cli.logging);
+
+        assert_eq!(config.hub_timezone, "UTC");
+        assert_eq!(config.run_retention_days, 91);
+        assert_eq!(config.incomplete_cleanup_days, 0);
+        assert_eq!(meta.sources.hub_timezone, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.run_retention_days, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.incomplete_cleanup_days, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.log_filter, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.log_file, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.log_rotation, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.log_keep_files, ConfigValueSource::Cli);
+        assert_eq!(meta.logging.filter, "warn,bastion=info");
+        assert_eq!(meta.logging.file.as_deref(), Some("/tmp/current.log"));
+        assert_eq!(meta.logging.rotation, "never");
+        assert_eq!(meta.logging.keep_files, 4);
+        assert_eq!(effective_logging.log.as_deref(), Some("warn,bastion=info"));
+        assert_eq!(
+            effective_logging
+                .log_file
+                .as_ref()
+                .map(|v| v.display().to_string()),
+            Some("/tmp/current.log".to_string())
+        );
+        assert_eq!(effective_logging.log_rotation, LogRotation::Never);
+        assert_eq!(effective_logging.log_keep_files, 4);
+    }
+
+    #[test]
+    fn resolve_log_filter_prefers_rust_log_over_db_value() {
+        let _guard = env_guard();
+        let _rust_log = EnvVarGuard::set("RUST_LOG", "trace,bastion=debug");
+        let (matches, _cli) = parse_cli_from(&["bastion"]);
+
+        let (filter, source) = resolve_log_filter(&matches, Some("info,bastion=warn"), None);
+
+        assert_eq!(filter, "trace,bastion=debug");
+        assert_eq!(source, ConfigValueSource::EnvRustLog);
+    }
+
+    #[test]
+    fn check_assets_reports_missing_index_with_guidance() {
+        let result = check_assets(
+            "docs",
+            &json!({
+                "mode": "filesystem",
+                "env": "BASTION_DOCS_DIR",
+                "dir": "/tmp/missing-docs",
+                "index": "/tmp/missing-docs/index.html",
+            }),
+        );
+
+        assert_eq!(result["status"], "fail");
+        let message = result["message"].as_str().expect("message");
+        assert!(message.contains("BASTION_DOCS_DIR"));
+        assert!(message.contains("/tmp/missing-docs/index.html"));
+    }
+
+    #[test]
+    fn check_assets_accepts_existing_index_file() {
+        let dir = TempDir::new().expect("tempdir");
+        let index = dir.path().join("index.html");
+        std::fs::write(&index, "<html></html>").expect("write index");
+
+        let result = check_assets(
+            "ui",
+            &json!({
+                "mode": "filesystem",
+                "env": "BASTION_UI_DIR",
+                "dir": dir.path().display().to_string(),
+                "index": index.display().to_string(),
+            }),
+        );
+
+        assert_eq!(result["status"], "ok");
+        let message = result["message"].as_str().expect("message");
+        assert!(message.contains("assets found"));
+        assert!(message.contains("index.html"));
+    }
+}

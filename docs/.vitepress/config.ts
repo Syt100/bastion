@@ -92,7 +92,10 @@ export default defineConfig(({ command }) => {
               },
               {
                 text: 'Reference',
-                items: [{ text: 'CLI', link: '/user/reference/cli' }],
+                items: [
+                  { text: 'CLI', link: '/user/reference/cli' },
+                  { text: 'Config & env', link: '/user/reference/config' },
+                ],
               },
             ],
             '/dev/': [
@@ -180,7 +183,10 @@ export default defineConfig(({ command }) => {
               },
               {
                 text: '参考',
-                items: [{ text: 'CLI', link: '/zh/user/reference/cli' }],
+                items: [
+                  { text: 'CLI', link: '/zh/user/reference/cli' },
+                  { text: '配置与环境变量', link: '/zh/user/reference/config' },
+                ],
               },
             ],
             '/zh/dev/': [
