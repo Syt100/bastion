@@ -2362,3 +2362,215 @@ Picker modal wrappers and picker confirmation card dialogs SHALL align with shar
 - **THEN** title/content/footer actions remain unchanged
 - **AND** body/footer spacing and structure follow shared shell conventions
 
+### Requirement: Picker Lists SHALL Ignore Stale Responses
+Picker list surfaces SHALL protect refresh/load-more data state from stale asynchronous responses.
+
+#### Scenario: Older request resolves after a newer filter/path request
+- **GIVEN** a picker list has triggered request A and then request B with newer state
+- **WHEN** request A resolves after request B
+- **THEN** request A result SHALL NOT override the currently displayed rows/cursor state
+- **AND** loading indicators SHALL settle according to the latest active request
+
+### Requirement: Picker Loaded-Row Selection Semantics SHALL Be Shared
+Picker surfaces that support multi-row selection SHALL share one loaded-row selection model for select-all, invert, and shift-range behaviors.
+
+#### Scenario: Shared loaded-row selection is reused across picker modals
+- **GIVEN** two picker modals expose loaded-row selection controls
+- **WHEN** the user triggers select-all/invert/shift-range actions
+- **THEN** both modals SHALL derive the next selected set from the same shared selection logic
+- **AND** selection from non-loaded pages/paths SHALL remain preserved where applicable
+
+### Requirement: Jobs Workspace Filters SHALL Use Shared Filter Modeling
+Jobs workspace list filtering SHALL use the shared list filter model for active-count/chip generation and clear behavior.
+
+#### Scenario: Jobs filter chips/count use shared model
+- **GIVEN** the user applies search and/or select-based filters in Jobs workspace
+- **WHEN** filter chips and active filter count are rendered
+- **THEN** chips/count SHALL be derived through the shared filter model utility
+- **AND** clear-all SHALL reset to Jobs-defined defaults without page-local duplicated chip/count logic
+
+### Requirement: Picker/List Query Serialization SHALL Be Shared
+Picker/list request query parameter serialization for common filters SHALL be provided through shared helpers.
+
+#### Scenario: Shared serialization keeps query semantics stable
+- **GIVEN** picker-like list requests with search, kind, dotfiles, type sort, size range, and sort options
+- **WHEN** requests are serialized to query parameters
+- **THEN** shared helpers SHALL produce consistent parameter keys and value normalization
+- **AND** migrated surfaces SHALL preserve existing backend contract semantics
+
+### Requirement: Debounce And Abort Guards SHALL Be Shared Utilities
+List views with debounced refresh and abort-aware error handling SHALL reuse shared utility helpers.
+
+#### Scenario: Debounced refresh + abort guard reuse
+- **GIVEN** list views that debounce refresh or swallow abort cancellation errors
+- **WHEN** those views are implemented
+- **THEN** debounce scheduling and abort-error detection SHALL be provided by shared utility helpers
+- **AND** equivalent views SHALL avoid reimplementing ad-hoc timer/abort detection logic
+
+### Requirement: Core List Pages Reuse Shared Route-Filter Hydration
+Core list pages SHALL reuse shared route-query parsing helpers for hydrating filter state from URL query values.
+
+#### Scenario: Route query values are parsed with shared helper semantics
+- **GIVEN** a list page reads filter values from `route.query`
+- **WHEN** query values are strings, arrays, comma-separated strings, or invalid values
+- **THEN** page filter state is hydrated via shared parsing helpers
+- **AND** unknown values are ignored without breaking defaults
+
+### Requirement: Server-Paginated List Pages Reuse Shared Pagination Behavior
+Server-paginated list pages SHALL reuse shared pagination component behavior and shared page-size options to avoid per-page interaction drift.
+
+#### Scenario: List pages expose consistent pagination controls
+- **GIVEN** two or more server-paginated list pages
+- **WHEN** users change page or page size
+- **THEN** each page uses the same pagination component interaction model
+- **AND** page-size option defaults are sourced from shared constants
+
+### Requirement: Picker Open/Reset Lifecycle Uses Shared Model
+Picker modals with large open/reset state blocks SHALL reuse a shared picker lifecycle/reset model.
+
+#### Scenario: Picker opens with clean deterministic state
+- **GIVEN** a picker modal is opened repeatedly with different contexts
+- **WHEN** the picker initializes state for a new session
+- **THEN** reset logic is executed through shared lifecycle helpers
+- **AND** stale local UI state from prior sessions is cleared consistently
+
+### Requirement: Per-Item Busy State Uses Shared Infrastructure
+Views that track request-in-flight status by entity id SHALL reuse shared busy-state composables.
+
+#### Scenario: Busy flags are managed through shared id helpers
+- **GIVEN** a list view supports row-level operations with loading states
+- **WHEN** an operation starts or finishes for a specific row id
+- **THEN** busy state is updated via shared id-based helpers
+- **AND** local pages avoid duplicating map-clone/delete boilerplate
+
+### Requirement: Store List Query Serialization Reuses Shared Builders
+Store list APIs SHALL reuse shared query serialization helpers for common list/filter/pagination parameter patterns.
+
+#### Scenario: List stores serialize common parameters consistently
+- **GIVEN** stores build `URLSearchParams` for paginated/filterable list endpoints
+- **WHEN** filters and pagination parameters are applied
+- **THEN** shared serializer helpers construct common query keys and values
+- **AND** existing endpoint-specific parameter names remain unchanged
+
+### Requirement: Jobs Workspace Row Rendering Is Componentized
+Jobs workspace SHALL split duplicated row/table rendering into shared subcomponents while preserving current actions and selection behavior.
+
+#### Scenario: Desktop/mobile row actions remain behaviorally equivalent after extraction
+- **GIVEN** Jobs workspace renders list/table rows across desktop and mobile layouts
+- **WHEN** users select rows, open details, run now, or open overflow actions
+- **THEN** extracted row-rendering components preserve the same action semantics
+- **AND** duplicated per-layout row markup is reduced through reusable components
+
+### Requirement: Jobs Results Summary Uses Explicit Visible And Filtered Semantics
+The Jobs workspace SHALL display list metrics that clearly distinguish currently visible items from filtered total matches.
+
+#### Scenario: Jobs list shows visible count and filtered total
+- **GIVEN** the Jobs workspace list is loaded
+- **WHEN** the current page has M rows and the filtered dataset has N total rows
+- **THEN** the UI shows both M and N in the results summary
+- **AND** the summary no longer renders an ambiguous duplicated total expression
+
+### Requirement: Jobs Mobile Filter Visibility Matches Desktop Parity
+The Jobs workspace SHALL surface active filter conditions in mobile list mode using the same filter-chip source of truth as desktop layouts.
+
+#### Scenario: Mobile layout shows and clears active filters via chips
+- **GIVEN** the user applies search or filter controls in Jobs mobile list mode
+- **WHEN** the list content renders
+- **THEN** active filter chips are visible above list content
+- **AND** chip close / clear actions reset the same underlying filter model used in desktop layouts
+
+### Requirement: Jobs Row Activation Semantics Are Explicit And Accessible
+Jobs list rows SHALL separate row-main activation from nested action controls using explicit interactive elements with keyboard-friendly semantics.
+
+#### Scenario: Row-main activation and row-action activation do not conflict
+- **GIVEN** a Jobs list row with row-main activation and nested action controls
+- **WHEN** the user triggers a row action control
+- **THEN** only the action executes
+- **AND** row-main navigation/select behavior does not fire
+
+#### Scenario: Row-main activation supports keyboard interaction
+- **GIVEN** a Jobs list row in list mode
+- **WHEN** keyboard users focus and activate the row-main trigger
+- **THEN** the same row-main behavior executes as pointer activation
+
+### Requirement: Notifications Queue Provides Explicit Empty-State Variants
+Notifications Queue SHALL provide explicit empty-state guidance for loading-empty, base empty, and filtered-no-results states.
+
+#### Scenario: Queue shows context-aware empty state messaging
+- **GIVEN** Notifications Queue has no rows to display
+- **WHEN** state is loading-empty, no queued entries, or filter-no-match
+- **THEN** the page shows state-appropriate empty-state title/description/actions
+- **AND** users can recover quickly (for example, via clear filters or refresh)
+
+### Requirement: List Pagination Summaries Include Visible Range And Total
+List pages that use shared pagination SHALL expose a consistent visible-range summary with total count.
+
+#### Scenario: Jobs, Agents, and Notifications show range summary consistently
+- **GIVEN** a paginated list page among Jobs, Agents, or Notifications Queue
+- **WHEN** pagination footer is rendered
+- **THEN** the summary includes visible start/end indices and total count
+- **AND** formatting is consistent across these pages
+
+### Requirement: Agents Mobile Cards Prioritize Primary Information
+Agents mobile cards SHALL prioritize primary scan fields and move secondary metadata into progressive disclosure.
+
+#### Scenario: Secondary metadata is collapsed by default on mobile cards
+- **GIVEN** the user views Agents on mobile viewport
+- **WHEN** agent cards render
+- **THEN** primary identity/status/actions remain directly visible
+- **AND** less-critical metadata is accessible through an explicit expand/collapse affordance
+
+### Requirement: Key Async Row Actions Provide In-Flight Feedback
+List row actions for high-frequency operations SHALL provide immediate in-flight feedback and duplicate-submit prevention.
+
+#### Scenario: Triggering row action sets local busy state
+- **GIVEN** a user triggers a key row action (for example, "Run now" or notification retry/cancel)
+- **WHEN** the async request is in flight
+- **THEN** the corresponding control shows loading/busy feedback
+- **AND** repeated triggers for the same row action are temporarily disabled until completion
+
+### Requirement: Search-Driven List Refresh Uses A Shared Debounce Cadence
+Search-driven list refresh behavior SHALL use a shared debounce cadence across list pages that support text query search.
+
+#### Scenario: Jobs and Agents search refresh cadence is consistent
+- **GIVEN** the user types in Jobs or Agents search input
+- **WHEN** query text changes rapidly
+- **THEN** refresh requests are deferred by the same debounce interval before fetch
+- **AND** the effective cadence is consistent across both pages
+
+### Requirement: Page Surfaces SHALL Expose Consistent Visual Hierarchy
+The web UI SHALL provide consistent hierarchy levels for page titles, section titles, and metadata text across shared layout components.
+
+#### Scenario: Shared headers and list shells render consistent hierarchy
+- **GIVEN** pages render `PageHeader` and list scaffolds
+- **WHEN** the user navigates between Jobs and Agents list pages
+- **THEN** title, subtitle, and metadata text use consistent visual hierarchy classes
+- **AND** hierarchy levels do not depend on per-page ad-hoc utility combinations
+
+### Requirement: Shared Surfaces SHALL Reduce Decorative Noise
+The web UI SHALL tune shared chrome tokens so backgrounds, borders, and shadows prioritize data readability over decoration.
+
+#### Scenario: Content remains dominant across themes
+- **GIVEN** the user views a list-heavy page in any supported theme
+- **WHEN** cards, toolbars, and list containers are displayed
+- **THEN** surface styling uses reduced-noise defaults (subtler background intensity and chrome)
+- **AND** primary content contrast remains clear in light and dark modes
+
+### Requirement: List Scaffolds SHALL Use Unified Spacing Rhythm
+Shared list layout components SHALL enforce consistent vertical spacing for toolbar, content, and pagination zones.
+
+#### Scenario: Two list pages share spacing cadence
+- **GIVEN** two pages use `ListPageScaffold`
+- **WHEN** both render toolbar, content area, and pagination
+- **THEN** the vertical spacing cadence is consistent
+- **AND** page-local overrides are no longer required for basic rhythm
+
+### Requirement: Dense List Metadata SHALL Follow Shared Emphasis Rules
+List rows and data-table secondary metadata SHALL use shared low-emphasis styles to preserve scanability in dense datasets.
+
+#### Scenario: Row metadata remains readable without competing with primary labels
+- **GIVEN** a list row contains primary text and secondary metadata
+- **WHEN** the row is rendered in list or table mode
+- **THEN** primary text remains visually dominant
+- **AND** secondary metadata uses shared reduced-emphasis styles
+
