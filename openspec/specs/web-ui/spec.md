@@ -2215,3 +2215,81 @@ UI SHALL continue to render meaningful diagnostics when canonical envelope field
 - **THEN** UI SHALL render legacy diagnostics without regression
 - **AND** generic localized fallback SHALL be shown if both envelope and legacy diagnostics are unavailable
 
+### Requirement: Shared Modal Shell SHALL Enforce Container-vs-Body Layout Boundaries
+The web UI SHALL enforce a shared modal layout contract where viewport-bounding size constraints are applied to the modal container layer, while body scrolling and internal flow are handled by the modal body layer.
+
+#### Scenario: Long-form dialog remains viewport-bounded
+- **GIVEN** a dialog with long form content (for example, task create/edit)
+- **WHEN** the dialog opens on desktop or mobile
+- **THEN** the modal container height remains bounded by viewport-safe limits
+- **AND** the user scrolls dialog content inside the modal body instead of the page growing beyond intended modal bounds
+
+#### Scenario: Plain body mode does not bypass overflow safety
+- **GIVEN** a dialog using `scrollBody=false`
+- **WHEN** content height exceeds available body space
+- **THEN** body layout still respects bounded height and overflow rules defined by the shared modal contract
+- **AND** footer actions remain reachable without layout breakage
+
+### Requirement: Modal Layout Regressions SHALL Be Covered by Unit Tests
+The web UI SHALL include unit tests for shared modal layout contract behavior so height/overflow regressions are detected before merge.
+
+#### Scenario: Contract tests cover container and body responsibilities
+- **GIVEN** the shared modal shell and a representative long-form dialog
+- **WHEN** unit tests run in CI
+- **THEN** tests verify container-level sizing inputs and body-level scrolling behavior are applied to the expected layers
+- **AND** regressions that move viewport constraints into incorrect layers fail tests
+
+### Requirement: Reusable Dialog Components SHALL Reuse Shared Modal Shell
+Reusable Jobs and Run dialog components SHALL render through the shared modal shell to keep modal body/footers and optional slot behavior consistent.
+
+#### Scenario: Component-level dialogs use the shared shell without behavior regressions
+- **GIVEN** the user opens reusable dialogs such as job editor/deploy/runs/restore/verify and run-event details/events
+- **WHEN** dialog content, actions, and optional header slots are rendered
+- **THEN** the dialog components use the shared modal shell wrapper
+- **AND** existing submit/cancel flows, emitted events, and scroll behavior remain unchanged
+
+### Requirement: Run List Dialogs SHALL Ignore Stale Responses
+Run list dialogs SHALL only apply data from the latest open/load request for the current job context.
+
+#### Scenario: User switches job quickly while run list is loading
+- **GIVEN** the user opens run list for job A and immediately opens run list for job B
+- **WHEN** job A's request resolves after job B
+- **THEN** the dialog shows runs for job B only
+- **AND** stale responses from earlier requests are ignored
+
+### Requirement: Run Event Streams SHALL Reuse Shared Lifecycle Control
+Run event consumers SHALL share the same stream lifecycle logic for connect, reconnect backoff, and sequence deduplication.
+
+#### Scenario: WebSocket reconnect and message dedupe remains consistent
+- **GIVEN** multiple run event consumers in the UI
+- **WHEN** connections drop and later recover
+- **THEN** both consumers use the same reconnect backoff policy
+- **AND** duplicate or old event sequences are not appended
+
+### Requirement: Picker Session Opening SHALL Stage Transition and Initial Refresh
+The web UI SHALL stage picker session startup so modal visibility/enter transition and first list refresh are sequenced to reduce frame contention during dialog open.
+
+#### Scenario: Open transition is not blocked by immediate heavy refresh work
+- **GIVEN** a user opens a directory picker dialog
+- **WHEN** the session starts
+- **THEN** the dialog is shown before heavy list refresh work begins
+- **AND** initial data refresh still occurs automatically within the same open session
+
+### Requirement: Picker Table Height Measurement SHALL Avoid Redundant Open-Frame Work
+The web UI SHALL measure picker table body height with a stable lifecycle that avoids unnecessary repeated open-frame measurements.
+
+#### Scenario: Open lifecycle performs stable measurement setup
+- **GIVEN** a picker dialog opens
+- **WHEN** table-body max height is initialized
+- **THEN** the measurement lifecycle performs only the required initial measurement/setup steps
+- **AND** subsequent re-measurements are driven by meaningful size changes instead of redundant chained frame callbacks
+
+### Requirement: Picker Open/Refresh Performance Guards SHALL Include Unit Tests
+The web UI SHALL include unit tests that assert picker open sequencing and measurement lifecycle behavior to prevent regressions.
+
+#### Scenario: Unit tests detect sequencing regressions
+- **GIVEN** picker session and table-height composables
+- **WHEN** unit tests run in CI
+- **THEN** tests verify open sequencing, refresh trigger timing, and measurement lifecycle expectations
+- **AND** regressions that reintroduce open-time contention fail tests
+
