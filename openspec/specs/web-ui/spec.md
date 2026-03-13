@@ -2293,3 +2293,72 @@ The web UI SHALL include unit tests that assert picker open sequencing and measu
 - **THEN** tests verify open sequencing, refresh trigger timing, and measurement lifecycle expectations
 - **AND** regressions that reintroduce open-time contention fail tests
 
+### Requirement: Agents Management Dialogs SHALL Reuse Shared Modal Shell
+Agents management dialogs SHALL reuse the shared modal shell component for consistent body spacing, footer actions, and scroll containment.
+
+#### Scenario: Agents labels and bulk dialogs follow shared modal structure
+- **GIVEN** the user opens labels, bulk sync, or bulk labels dialogs on the Agents page
+- **WHEN** dialog content is rendered and actions are shown in the footer
+- **THEN** the dialogs use the shared modal shell wrapper
+- **AND** existing form behavior and submit/cancel semantics remain unchanged
+
+### Requirement: Core Page Dialogs SHALL Reuse Shared Modal Shell
+Core page dialogs SHALL reuse the shared modal shell so body spacing, footer actions, and scroll containment stay consistent across Jobs/Settings/Snapshots surfaces.
+
+#### Scenario: Page-level dialogs render through shared shell
+- **GIVEN** the user opens dialogs on Job Snapshots, Job Workspace, Bulk Operations, Settings Storage, Notifications Destinations, or Maintenance Cleanup pages
+- **WHEN** dialog content and footer actions are rendered
+- **THEN** the dialogs use the shared modal shell wrapper
+- **AND** existing titles, header-extra actions, and submit/cancel behavior remain unchanged
+
+### Requirement: Large Web UI Screens SHALL Separate Orchestration From Presentation
+Large Web UI screens/components SHALL extract shared orchestration logic (query sync, async loading, bulk actions, or picker state) into dedicated composables/modules.
+
+#### Scenario: Refactored view keeps existing behavior
+- **GIVEN** a large screen with filters, pagination, and action handlers
+- **WHEN** orchestration logic is extracted to composables/modules
+- **THEN** visible behavior and route/query semantics stay unchanged
+- **AND** the screen becomes easier to maintain with smaller focused units
+
+### Requirement: Jobs Modal Flows SHALL Have Direct Regression Coverage
+Critical jobs modal flows SHALL include direct component tests for open/submit/error behavior.
+
+#### Scenario: Modal flow changes trigger test failures when behavior regresses
+- **GIVEN** jobs modals such as editor/deploy/runs/restore/verify
+- **WHEN** open flow, primary action, or API error handling regresses
+- **THEN** component-level tests fail and surface the regression
+
+### Requirement: Node-Scoped Route Paths SHALL Use Shared Builders
+Node-scoped navigation paths SHALL be constructed and parsed through shared route helpers to prevent drift in encoding and suffix handling.
+
+#### Scenario: Node id and suffix normalization stay consistent
+- **GIVEN** a node id that may contain special characters
+- **WHEN** UI code builds jobs/settings paths or switches node context
+- **THEN** node route helpers are used for encoding and suffix normalization
+- **AND** resulting paths remain consistent across pages
+
+### Requirement: Clipboard Feedback SHALL Reuse Shared Behavior
+Views that expose copy actions SHALL use a shared copy+feedback primitive for success/error toasts.
+
+#### Scenario: Copy action feedback is consistent across views
+- **GIVEN** the user clicks copy actions on agents/settings pages
+- **WHEN** clipboard write succeeds or fails
+- **THEN** the same success/error feedback behavior is used
+
+### Requirement: Icon-Only Actions SHALL Provide Accessible Labels
+Icon-only action controls SHALL provide explicit accessible labels through a shared component contract.
+
+#### Scenario: Help buttons remain readable by assistive technologies
+- **GIVEN** an icon-only help button in desktop or mobile layouts
+- **WHEN** the control is rendered
+- **THEN** it exposes a non-empty accessible label
+
+### Requirement: Picker Modal Wrappers SHALL Align With Shared Modal Shell
+Picker modal wrappers and picker confirmation card dialogs SHALL align with shared modal shell structure while preserving existing flows.
+
+#### Scenario: Picker confirm modal keeps behavior after shell alignment
+- **GIVEN** the user opens picker current-directory confirmation
+- **WHEN** modal shell wrappers are aligned
+- **THEN** title/content/footer actions remain unchanged
+- **AND** body/footer spacing and structure follow shared shell conventions
+
