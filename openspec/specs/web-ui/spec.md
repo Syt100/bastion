@@ -2574,3 +2574,147 @@ List rows and data-table secondary metadata SHALL use shared low-emphasis styles
 - **THEN** primary text remains visually dominant
 - **AND** secondary metadata uses shared reduced-emphasis styles
 
+### Requirement: List Filters Use Shared Modeling For Active State And Chips
+List pages that expose filter controls SHALL use a shared local filter-model utility for active-state derivation, clear behavior, and active-filter chip generation.
+
+#### Scenario: Shared filter model drives clear and chip state
+- **GIVEN** a list page with search and/or select-based filters
+- **WHEN** filters are changed
+- **THEN** active-filter count/chips are derived from the shared filter model
+- **AND** clear-all resets the same model back to page-defined defaults
+
+### Requirement: List Filter Controls Reuse Shared Field Wrappers
+List pages that render select-based toolbar filters SHALL reuse shared list filter field wrappers for consistent sizing and toolbar presentation.
+
+#### Scenario: Filter select controls render with consistent width and layout
+- **GIVEN** list pages with one or more select filters in toolbar regions
+- **WHEN** those filters are rendered on desktop and mobile breakpoints
+- **THEN** shared field wrappers provide consistent container sizing and select control layout
+- **AND** pages avoid repeating ad-hoc width utility blocks for equivalent filter fields
+
+### Requirement: Active Filter Visibility Is Consistent Across Core List Pages
+Agents, Notifications Queue, Maintenance Cleanup, and Job Snapshots SHALL display active-filter chips with a consistent clear affordance.
+
+#### Scenario: Migrated list pages show active chips and support clear-all
+- **GIVEN** the user applies one or more filters on Agents, Notifications Queue, Maintenance Cleanup, or Job Snapshots
+- **WHEN** list content is displayed
+- **THEN** an active-filter chip row appears using the shared component path
+- **AND** users can clear all filters from the same row-level clear action
+
+### Requirement: Picker Modals Reuse Shared Filter Modeling For Active Chips
+Run entries and path picker modals SHALL reuse the shared local filter model for active-filter count/chips and clear behavior.
+
+#### Scenario: Picker modals keep filter-count/chip behavior via shared model
+- **GIVEN** the user applies filters in RunEntries picker or PathPicker modal
+- **WHEN** the filters toolbar and active-chip row render
+- **THEN** active filter count/chips are derived through shared filter-model utilities
+- **AND** clear-all and per-chip close behaviors remain functional without page-local duplicated chip/count logic
+
+### Requirement: List Filters SHALL Use Shared Field Presentation
+List pages SHALL present filter labels and controls through shared field presentation primitives in both inline and stacked modes.
+
+#### Scenario: Inline and stacked filter panels share visual structure
+- **GIVEN** a page renders filters inline on desktop and stacked on constrained layouts
+- **WHEN** the user opens or interacts with filters
+- **THEN** filter label/control structure remains consistent between modes
+- **AND** pages avoid duplicating handcrafted label/select/switch wrappers
+
+### Requirement: List Pages SHALL Expose Unified Filter Summary Feedback
+List pages SHALL expose result summary and active-filter chips through a shared summary row pattern.
+
+#### Scenario: Filter effects are visible at a predictable location
+- **GIVEN** one or more filters are active
+- **WHEN** the list content renders
+- **THEN** result count and active filter chips are shown in a consistent summary row
+- **AND** clearing filters uses a shared interaction pattern
+
+### Requirement: List State Feedback SHALL Reuse Shared Presenter
+Loading, base-empty, and filtered-empty states SHALL be rendered through a shared state presenter component.
+
+#### Scenario: Empty-state semantics stay consistent across pages
+- **GIVEN** Jobs and Agents list pages can be loading, empty, or filtered-empty
+- **WHEN** there are no rows to render
+- **THEN** the page uses a shared state presenter
+- **AND** action affordances (create/clear) are surfaced with consistent structure
+
+### Requirement: Interactive Icons SHALL Use Shared Size and Tone Semantics
+The UI SHALL provide a shared icon wrapper for interactive controls so icon size and semantic tone remain consistent.
+
+#### Scenario: Action icons keep consistent dimensions
+- **GIVEN** multiple action controls render icons across list pages
+- **WHEN** the controls are displayed together
+- **THEN** icons use shared size semantics instead of arbitrary per-page sizing
+- **AND** semantic tone mapping is applied consistently
+
+### Requirement: Modal Shells SHALL Reuse a Shared Structural Wrapper
+The UI SHALL render critical card-style modals through a shared modal shell wrapper with consistent spacing and scroll behavior.
+
+#### Scenario: Modal content and footer remain stable across pages
+- **GIVEN** the user opens modal dialogs on Jobs and Agents pages
+- **WHEN** dialogs include long content or loading transitions
+- **THEN** body spacing and footer alignment remain consistent
+- **AND** modal content area scroll behavior is predictable
+
+### Requirement: Shared Micro-Interaction Rules SHALL Be Applied to Core List Surfaces
+Core list surfaces SHALL use shared motion rules for hover/focus/press feedback with reduced-motion fallback.
+
+#### Scenario: Users receive consistent interaction feedback
+- **GIVEN** users interact with list rows, cards, and filter trigger controls
+- **WHEN** hover/focus/press states occur
+- **THEN** interactions use shared duration/easing tokens
+- **AND** reduced-motion preference disables non-essential transitions
+
+### Requirement: Global Shell SHALL Emphasize Primary Content And Unified Actions
+The web UI SHALL present navigation chrome and global actions so that primary page content remains visually dominant and desktop/mobile global actions are grouped consistently.
+
+#### Scenario: Desktop shell keeps content primary while grouping global actions
+- **GIVEN** the user is on any authenticated desktop page
+- **WHEN** the shell renders navigation and topbar controls
+- **THEN** the content area remains the dominant visual surface
+- **AND** global actions are grouped together instead of competing with page-level actions
+
+#### Scenario: Mobile shell exposes navigation and global actions in one coherent system
+- **GIVEN** the user is on any authenticated mobile page
+- **WHEN** they open global navigation
+- **THEN** they can access navigation, node context, and global actions without hunting across separate menus
+
+### Requirement: Dashboard SHALL Prioritize Actionable First-Screen Information
+The dashboard SHALL place high-priority health signals and recent activity ahead of lower-priority analytical context.
+
+#### Scenario: Users see urgent status before secondary analytics
+- **GIVEN** the dashboard contains health, run, and trend information
+- **WHEN** the page loads on the first screen
+- **THEN** actionable status cards and recent activity appear before trend-only context
+- **AND** the user can navigate directly to the relevant management surface from those areas
+
+### Requirement: Jobs Workspace SHALL Reduce Redundant Top-Level Layout Decisions
+The Jobs workspace SHALL minimize redundant top-level layout choices so users can enter the primary workflow without first interpreting multiple overlapping display modes.
+
+#### Scenario: Users enter the jobs workflow through a clear primary mode
+- **GIVEN** the user opens the Jobs workspace
+- **WHEN** the top-level toolbar is shown
+- **THEN** the page presents a clear primary workflow mode
+- **AND** secondary display choices do not require interpreting multiple overlapping groups of toggles
+
+### Requirement: Empty And Auth States SHALL Provide Guided Next Steps
+The web UI SHALL turn first-run empty states and the login screen into guided surfaces with clear next actions and product context.
+
+#### Scenario: Agents empty state guides first-time setup
+- **GIVEN** there are no connected agents
+- **WHEN** the Agents page renders
+- **THEN** the empty state explains the setup flow in concise steps
+- **AND** the primary setup action is visually obvious
+
+#### Scenario: Login page communicates context and help affordances
+- **GIVEN** the user is on the login page
+- **WHEN** the page renders
+- **THEN** the UI communicates what Bastion manages and offers supporting guidance beyond the credential form
+
+### Requirement: Authenticated Pages SHALL Expose Main Landmark Semantics
+Authenticated pages SHALL expose a clear main content landmark to improve navigation for assistive technologies.
+
+#### Scenario: Main content region is discoverable to assistive technology
+- **GIVEN** the user navigates an authenticated page with a screen reader or accessibility audit
+- **WHEN** the page structure is evaluated
+- **THEN** the primary content area is exposed as a main landmark
+
