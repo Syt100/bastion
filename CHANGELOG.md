@@ -8,12 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
+- Added an aggregated Command Center API (`/api/command-center`) and new Command Center / Runs landing views that surface attention items, critical activity, and recovery-readiness signals from one scope-aware response.
 - Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
 - Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 - Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
 
 ### Changed
+- Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.
 - Changed Agents and auth entry surfaces to add guided onboarding/trust copy, stronger empty-state actions, and clearer login context for first-time operators.
 - Changed list-oriented Web UI pages (Jobs/Agents/Notifications Queue) to use a shared scaffold pattern with consistent toolbar/content/footer regions.

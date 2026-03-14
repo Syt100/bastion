@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { computed, reactive } from 'vue'
+import { reactive } from 'vue'
 
 const routeApi = reactive({
   query: { scope: 'all', range: '24h' } as Record<string, unknown>,

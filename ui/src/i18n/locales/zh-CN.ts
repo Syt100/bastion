@@ -203,10 +203,17 @@ const messages = {
       warning: '警告',
       info: '信息',
     },
+    actions: {
+      openRun: '打开运行',
+      openJobs: '打开任务',
+      openQueue: '打开队列',
+      openFleet: '打开舰队',
+    },
     readiness: {
       none: '暂无信号',
       blockersTitle: '当前还缺什么',
       healthyNote: '当前范围内最近的备份与校验信号都已经具备。',
+      emptyNote: '当前范围内还没有活动任务，因此恢复准备度暂时没有可评估的信号。',
       coverage: '{covered}/{total} 个活动任务已覆盖',
       overall: {
         healthy: '健康',
@@ -218,6 +225,126 @@ const messages = {
       },
       verify: {
         title: '最近成功校验',
+      },
+    },
+    blockers: {
+      missing_backup: {
+        title: '还没有可用的成功备份',
+        summary: '至少要先有一次成功备份，恢复准备度才有基础信号。',
+      },
+      partial_backup_coverage: {
+        title: '并不是每个任务都有成功备份',
+        summary: '部分活动任务还没有成功完成过备份。',
+      },
+      missing_verification: {
+        title: '缺少校验信号',
+        summary: '已经有备份，但当前范围还没有成功的校验记录。',
+      },
+      partial_verification_coverage: {
+        title: '校验覆盖还不完整',
+        summary: '并不是每个活动任务都有成功的校验记录。',
+      },
+      verify_older_than_backup: {
+        title: '校验信号落后于最新备份',
+        summary: '已经出现比最近一次成功校验更新的成功备份。',
+      },
+      section_unavailable: {
+        title: '恢复准备度暂时不可用',
+        summary: '服务器暂时无法汇总恢复准备度信号，请稍后重试。',
+      },
+    },
+    items: {
+      run: {
+        failed: {
+          title: '{job} 运行失败',
+          summary: '最近一次运行未成功完成。',
+        },
+        rejected: {
+          title: '{job} 被拒绝',
+          summary: '这次运行在执行前被拒绝，请检查前置条件。',
+        },
+        success: {
+          title: '{job} 已成功完成',
+          summary: '这个范围内最近一次值得关注的活动来自成功运行。',
+        },
+        running: {
+          title: '{job} 正在运行',
+          summary: '这个运行仍在进行，值得继续关注。',
+        },
+        queued: {
+          title: '{job} 已排队',
+          summary: '这个运行已经排队，等待执行。',
+        },
+        canceled: {
+          title: '{job} 已取消',
+          summary: '这次运行已被取消。',
+        },
+        unknown: {
+          title: '{job} 状态已变更',
+          summary: '这个运行最近有新的状态变化。',
+        },
+      },
+      operation: {
+        verify: {
+          success: {
+            title: '{job} 校验已完成',
+            summary: '最近一次校验已成功完成。',
+          },
+          failed: {
+            title: '{job} 校验失败',
+            summary: '最近一次校验未成功完成。',
+          },
+          running: {
+            title: '{job} 正在校验',
+            summary: '校验流程仍在进行中。',
+          },
+          unknown: {
+            title: '{job} 校验状态已更新',
+            summary: '校验流程最近有新的状态变化。',
+          },
+        },
+        restore: {
+          success: {
+            title: '{job} 恢复已完成',
+            summary: '最近一次恢复流程已成功完成。',
+          },
+          failed: {
+            title: '{job} 恢复失败',
+            summary: '最近一次恢复流程未成功完成。',
+          },
+          running: {
+            title: '{job} 正在恢复',
+            summary: '恢复流程仍在进行中。',
+          },
+          unknown: {
+            title: '{job} 恢复状态已更新',
+            summary: '恢复流程最近有新的状态变化。',
+          },
+        },
+        generic: {
+          title: '{job} 运维流程已更新',
+          summary: '这个备份相关的运维流程有新的状态变化。',
+        },
+      },
+      notification: {
+        failed: {
+          title: '{job} 的通知投递失败',
+          summary: '通知投递失败，需要重试或检查目标配置。',
+        },
+        queued: {
+          title: '{job} 的通知仍在排队',
+          summary: '{channel} 通知仍在等待发送。',
+        },
+      },
+      agent: {
+        offline: {
+          title: '{node} 离线',
+          summary: 'Hub 在正常心跳窗口内没有收到这个客户端的状态上报。',
+        },
+        revoked: {
+          title: '{node} 已吊销',
+          summary: '这个客户端需要重新接入后才能继续接收任务。',
+        },
       },
     },
     empty: {

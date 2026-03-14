@@ -10,7 +10,7 @@ import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { COMMAND_CENTER_RANGE_OPTIONS, parseCommandCenterRangePreset, resolveRouteScope } from '@/lib/commandCenter'
-import { scopeToNodeId } from '@/lib/scope'
+import { formatCommandCenterScopeLabel, presentCommandCenterItem } from '@/lib/commandCenterPresentation'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -27,9 +27,7 @@ const primaryItems = computed(() => snapshot.value?.critical_activity.items ?? [
 const secondaryItems = computed(() => snapshot.value?.watchlist.items ?? [])
 const showInitialSkeleton = computed(() => commandCenter.loading && !snapshot.value)
 const scopeLabel = computed(() => {
-  if (effectiveScope.value === 'all') return t('nav.scopePicker.all')
-  if (effectiveScope.value === 'hub') return t('nav.scopePicker.hub')
-  return scopeToNodeId(effectiveScope.value) ?? effectiveScope.value
+  return formatCommandCenterScopeLabel(effectiveScope.value, t)
 })
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -62,6 +60,18 @@ function severityTagType(severity: CommandCenterItem['severity']): 'error' | 'wa
 
 function openHref(href: string): void {
   void router.push(href)
+}
+
+function itemTitle(item: CommandCenterItem): string {
+  return presentCommandCenterItem(item, t).title
+}
+
+function itemSummary(item: CommandCenterItem): string {
+  return presentCommandCenterItem(item, t).summary
+}
+
+function primaryActionLabel(item: CommandCenterItem): string {
+  return presentCommandCenterItem(item, t).primaryActionLabel
 }
 
 watch([effectiveScope, rangePreset], () => {
@@ -116,20 +126,20 @@ watch([effectiveScope, rangePreset], () => {
           <article v-for="item in primaryItems" :key="item.id" class="console-item">
             <div class="min-w-0">
               <div class="flex items-start gap-2 flex-wrap">
-                <div class="console-item-title">{{ item.title }}</div>
+                <div class="console-item-title">{{ itemTitle(item) }}</div>
                 <n-tag size="small" :bordered="false" :type="severityTagType(item.severity)">
                   {{ t(`commandCenter.severity.${item.severity}`) }}
                 </n-tag>
               </div>
-              <p class="console-item-summary">{{ item.summary }}</p>
+              <p class="console-item-summary">{{ itemSummary(item) }}</p>
               <div class="console-item-meta">
                 <span>{{ formatUnixSeconds(item.occurred_at) }}</span>
-                <span>{{ item.scope }}</span>
+                <span>{{ formatCommandCenterScopeLabel(item.scope, t) }}</span>
               </div>
             </div>
 
             <n-button size="small" tertiary @click="openHref(item.primary_action.href)">
-              {{ item.primary_action.label }}
+              {{ primaryActionLabel(item) }}
             </n-button>
           </article>
         </div>
@@ -147,15 +157,15 @@ watch([effectiveScope, rangePreset], () => {
         <div v-else class="space-y-3">
           <article v-for="item in secondaryItems" :key="item.id" class="console-item console-item-compact">
             <div class="min-w-0">
-              <div class="console-item-title">{{ item.title }}</div>
-              <p class="console-item-summary">{{ item.summary }}</p>
+              <div class="console-item-title">{{ itemTitle(item) }}</div>
+              <p class="console-item-summary">{{ itemSummary(item) }}</p>
               <div class="console-item-meta">
                 <span>{{ formatUnixSeconds(item.occurred_at) }}</span>
               </div>
             </div>
 
             <n-button size="small" quaternary @click="openHref(item.primary_action.href)">
-              {{ item.primary_action.label }}
+              {{ primaryActionLabel(item) }}
             </n-button>
           </article>
         </div>

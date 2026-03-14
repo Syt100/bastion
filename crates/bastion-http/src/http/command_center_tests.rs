@@ -58,9 +58,7 @@ fn build_app(
     })
 }
 
-async fn create_authed_session(
-    pool: &sqlx::SqlitePool,
-) -> (reqwest::Client, String) {
+async fn create_authed_session(pool: &sqlx::SqlitePool) -> (reqwest::Client, String) {
     let user_password = uuid::Uuid::new_v4().to_string();
     auth::create_user(pool, "admin", &user_password)
         .await
@@ -260,16 +258,20 @@ async fn command_center_returns_scoped_sections_and_ready_readiness() {
     assert_eq!(body["scope"]["requested"].as_str(), Some("agent:agent1"));
     assert_eq!(body["scope"]["effective"].as_str(), Some("agent:agent1"));
     assert_eq!(body["attention"]["state"].as_str(), Some("ready"));
-    assert!(body["attention"]["items"]
-        .as_array()
-        .unwrap_or(&Vec::new())
-        .iter()
-        .any(|item| item["kind"].as_str() == Some("run_failed")));
-    assert!(body["critical_activity"]["items"]
-        .as_array()
-        .unwrap_or(&Vec::new())
-        .iter()
-        .any(|item| item["kind"].as_str() == Some("operation_verify_success")));
+    assert!(
+        body["attention"]["items"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .any(|item| item["kind"].as_str() == Some("run_failed"))
+    );
+    assert!(
+        body["critical_activity"]["items"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .any(|item| item["kind"].as_str() == Some("operation_verify_success"))
+    );
     assert_eq!(
         body["recovery_readiness"]["overall"].as_str(),
         Some("healthy")
@@ -322,7 +324,10 @@ async fn command_center_returns_empty_state_for_scope_without_data() {
     assert_eq!(body["attention"]["state"].as_str(), Some("empty"));
     assert_eq!(body["critical_activity"]["state"].as_str(), Some("empty"));
     assert_eq!(body["watchlist"]["state"].as_str(), Some("empty"));
-    assert_eq!(body["recovery_readiness"]["overall"].as_str(), Some("empty"));
+    assert_eq!(
+        body["recovery_readiness"]["overall"].as_str(),
+        Some("empty")
+    );
 
     server.abort();
 }
@@ -381,17 +386,22 @@ async fn command_center_readiness_is_degraded_when_verify_is_missing() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = resp.json().await.expect("json");
 
-    assert_eq!(body["recovery_readiness"]["state"].as_str(), Some("degraded"));
+    assert_eq!(
+        body["recovery_readiness"]["state"].as_str(),
+        Some("degraded")
+    );
     assert_eq!(
         body["recovery_readiness"]["overall"].as_str(),
         Some("degraded")
     );
     assert!(body["recovery_readiness"]["verify"]["recent_success_at"].is_null());
-    assert!(body["recovery_readiness"]["blockers"]
-        .as_array()
-        .unwrap_or(&Vec::new())
-        .iter()
-        .any(|blocker| blocker["kind"].as_str() == Some("missing_verification")));
+    assert!(
+        body["recovery_readiness"]["blockers"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .any(|blocker| blocker["kind"].as_str() == Some("missing_verification"))
+    );
 
     server.abort();
 }

@@ -46,7 +46,10 @@ pub(super) struct RunResponse {
     error: Option<String>,
 }
 
-async fn get_run_response(db: &sqlx::SqlitePool, run_id: &str) -> Result<Option<RunResponse>, AppError> {
+async fn get_run_response(
+    db: &sqlx::SqlitePool,
+    run_id: &str,
+) -> Result<Option<RunResponse>, AppError> {
     let row = sqlx::query(
         r#"
         SELECT
@@ -79,7 +82,9 @@ async fn get_run_response(db: &sqlx::SqlitePool, run_id: &str) -> Result<Option<
         return Ok(None);
     };
 
-    let status = row.get::<String, _>("status").parse::<runs_repo::RunStatus>()?;
+    let status = row
+        .get::<String, _>("status")
+        .parse::<runs_repo::RunStatus>()?;
     let progress_json = row.get::<Option<String>, _>("progress_json");
     let progress = progress_json
         .map(|value| serde_json::from_str::<serde_json::Value>(&value))

@@ -174,11 +174,9 @@ impl RequestedScope {
             return Ok(Self::Agent(agent_id.to_string()));
         }
 
-        Err(
-            AppError::bad_request("invalid_scope", "invalid scope")
-                .with_reason("unsupported_value")
-                .with_field("scope"),
-        )
+        Err(AppError::bad_request("invalid_scope", "invalid scope")
+            .with_reason("unsupported_value")
+            .with_field("scope"))
     }
 
     fn as_str(&self) -> String {
@@ -207,17 +205,18 @@ struct ResolvedRange {
 
 impl ResolvedRange {
     fn parse(raw: Option<&str>, now_ts: i64) -> Result<Self, AppError> {
-        let raw = raw.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("24h");
+        let raw = raw
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("24h");
         let (preset, seconds) = match raw {
             "24h" => ("24h", 24 * 60 * 60),
             "7d" => ("7d", 7 * 24 * 60 * 60),
             "30d" => ("30d", 30 * 24 * 60 * 60),
             _ => {
-                return Err(
-                    AppError::bad_request("invalid_range", "invalid range")
-                        .with_reason("unsupported_value")
-                        .with_field("range"),
-                );
+                return Err(AppError::bad_request("invalid_range", "invalid range")
+                    .with_reason("unsupported_value")
+                    .with_field("range"));
             }
         };
 
@@ -333,12 +332,15 @@ pub(super) async fn get_command_center(
     let requested_scope = RequestedScope::parse(query.scope.as_deref())?;
     let resolved_range = ResolvedRange::parse(query.range.as_deref(), now_ts)?;
 
-    let attention = section_or_degraded(build_attention(&state, &requested_scope, resolved_range).await);
-    let critical_activity =
-        section_or_degraded(build_critical_activity(&state, &requested_scope, resolved_range).await);
+    let attention =
+        section_or_degraded(build_attention(&state, &requested_scope, resolved_range).await);
+    let critical_activity = section_or_degraded(
+        build_critical_activity(&state, &requested_scope, resolved_range).await,
+    );
     let recovery_readiness =
         recovery_readiness_or_degraded(build_recovery_readiness(&state, &requested_scope).await);
-    let watchlist = section_or_degraded(build_watchlist(&state, &requested_scope, resolved_range).await);
+    let watchlist =
+        section_or_degraded(build_watchlist(&state, &requested_scope, resolved_range).await);
 
     Ok(Json(CommandCenterResponse {
         generated_at: now_ts,
@@ -403,7 +405,8 @@ fn recovery_readiness_or_degraded(result: anyhow::Result<RecoveryReadiness>) -> 
                 blockers: vec![RecoveryReadinessBlocker {
                     kind: "section_unavailable".to_string(),
                     title: "Recovery readiness is unavailable".to_string(),
-                    summary: "The server could not assemble readiness signals for this scope.".to_string(),
+                    summary: "The server could not assemble readiness signals for this scope."
+                        .to_string(),
                     href: "/system/runtime".to_string(),
                 }],
             }
@@ -516,7 +519,10 @@ async fn build_attention(
             (
                 "agent_revoked",
                 Severity::Critical,
-                format!("{} is revoked", row.agent_name.as_deref().unwrap_or(&row.agent_id)),
+                format!(
+                    "{} is revoked",
+                    row.agent_name.as_deref().unwrap_or(&row.agent_id)
+                ),
                 "This agent must be re-enrolled before it can receive work again.".to_string(),
                 revoked_at,
             )
@@ -524,7 +530,10 @@ async fn build_attention(
             (
                 "agent_offline",
                 Severity::Warning,
-                format!("{} is offline", row.agent_name.as_deref().unwrap_or(&row.agent_id)),
+                format!(
+                    "{} is offline",
+                    row.agent_name.as_deref().unwrap_or(&row.agent_id)
+                ),
                 "The Hub has not heard from this agent in the normal heartbeat window.".to_string(),
                 row.last_seen_at.unwrap_or(row.created_at),
             )
@@ -540,12 +549,20 @@ async fn build_attention(
             scope: format!("agent:{}", row.agent_id),
             context: CommandCenterItemContext {
                 node_id: Some(row.agent_id.clone()),
-                node_name: Some(row.agent_name.clone().unwrap_or_else(|| row.agent_id.clone())),
+                node_name: Some(
+                    row.agent_name
+                        .clone()
+                        .unwrap_or_else(|| row.agent_id.clone()),
+                ),
                 ..Default::default()
             },
             primary_action: CommandCenterAction {
                 label: "Open fleet".to_string(),
-                href: fleet_href(if kind == "agent_revoked" { "revoked" } else { "offline" }),
+                href: fleet_href(if kind == "agent_revoked" {
+                    "revoked"
+                } else {
+                    "offline"
+                }),
             },
             secondary_action: None,
         });
@@ -589,10 +606,12 @@ async fn build_critical_activity(
             kind: format!("run_{}", row.status),
             severity,
             title: format!("{} {}", row.job_name, activity_suffix_for_run(&row.status)),
-            summary: row
-                .error
-                .clone()
-                .unwrap_or_else(|| format!("{} scope activity.", scope_label_from_agent(row.agent_id.as_deref()))),
+            summary: row.error.clone().unwrap_or_else(|| {
+                format!(
+                    "{} scope activity.",
+                    scope_label_from_agent(row.agent_id.as_deref())
+                )
+            }),
             occurred_at,
             scope: scope_value.clone(),
             context: CommandCenterItemContext {
@@ -730,7 +749,11 @@ async fn build_watchlist(
             id: format!("watch-op:{}", row.operation_id),
             kind: format!("operation_{}_running", row.kind),
             severity: Severity::Info,
-            title: format!("{} {}", row.job_name, activity_suffix_for_operation(&row.kind, &row.status)),
+            title: format!(
+                "{} {}",
+                row.job_name,
+                activity_suffix_for_operation(&row.kind, &row.status)
+            ),
             summary: "An operator workflow is still in progress for this backup.".to_string(),
             occurred_at: row.started_at,
             scope: scope_value.clone(),
@@ -834,8 +857,7 @@ async fn build_recovery_readiness(
 
     let mut backup_covered_jobs = 0_i64;
     for row in &backup_coverage {
-        if row.latest_success_at.is_some()
-            && scoped_jobs.iter().any(|job| job.job_id == row.job_id)
+        if row.latest_success_at.is_some() && scoped_jobs.iter().any(|job| job.job_id == row.job_id)
         {
             backup_covered_jobs += 1;
         }
@@ -843,8 +865,7 @@ async fn build_recovery_readiness(
 
     let mut verify_covered_jobs = 0_i64;
     for row in &verify_coverage {
-        if row.latest_success_at.is_some()
-            && scoped_jobs.iter().any(|job| job.job_id == row.job_id)
+        if row.latest_success_at.is_some() && scoped_jobs.iter().any(|job| job.job_id == row.job_id)
         {
             verify_covered_jobs += 1;
         }
@@ -863,7 +884,8 @@ async fn build_recovery_readiness(
         blockers.push(RecoveryReadinessBlocker {
             kind: "missing_backup".to_string(),
             title: "No successful backup is available".to_string(),
-            summary: "At least one successful backup is required before recovery can be trusted.".to_string(),
+            summary: "At least one successful backup is required before recovery can be trusted."
+                .to_string(),
             href: jobs_scope_href(&scope.as_str()),
         });
     } else if backup_covered_jobs < active_jobs_count {
@@ -903,8 +925,12 @@ async fn build_recovery_readiness(
         blockers.push(RecoveryReadinessBlocker {
             kind: "verify_older_than_backup".to_string(),
             title: "Verification is older than the latest backup".to_string(),
-            summary: "A newer successful backup exists than the newest successful verify signal.".to_string(),
-            href: run_detail_href(&backup.run_id, &job_scope_string(backup.agent_id.as_deref())),
+            summary: "A newer successful backup exists than the newest successful verify signal."
+                .to_string(),
+            href: run_detail_href(
+                &backup.run_id,
+                &job_scope_string(backup.agent_id.as_deref()),
+            ),
         });
     }
 
@@ -1290,9 +1316,7 @@ async fn load_verify_job_signals(state: &AppState) -> anyhow::Result<Vec<JobSign
         .collect())
 }
 
-async fn load_latest_successful_backup(
-    state: &AppState,
-) -> anyhow::Result<Vec<LatestBackupRow>> {
+async fn load_latest_successful_backup(state: &AppState) -> anyhow::Result<Vec<LatestBackupRow>> {
     let rows = sqlx::query(
         r#"
         SELECT
@@ -1325,9 +1349,7 @@ async fn load_latest_successful_backup(
         .collect())
 }
 
-async fn load_latest_successful_verify(
-    state: &AppState,
-) -> anyhow::Result<Vec<LatestVerifyRow>> {
+async fn load_latest_successful_verify(state: &AppState) -> anyhow::Result<Vec<LatestVerifyRow>> {
     let rows = sqlx::query(
         r#"
         SELECT
@@ -1410,11 +1432,7 @@ fn node_name_for_agent(agent_id: Option<&str>, agent_name: Option<&str>) -> Opti
 }
 
 fn scope_label_from_agent(agent_id: Option<&str>) -> &'static str {
-    if agent_id.is_some() {
-        "Agent"
-    } else {
-        "Hub"
-    }
+    if agent_id.is_some() { "Agent" } else { "Hub" }
 }
 
 fn run_detail_href(run_id: &str, scope: &str) -> String {

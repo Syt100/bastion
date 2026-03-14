@@ -203,10 +203,17 @@ const messages = {
       warning: 'Warning',
       info: 'Info',
     },
+    actions: {
+      openRun: 'Open run',
+      openJobs: 'Open jobs',
+      openQueue: 'Open queue',
+      openFleet: 'Open fleet',
+    },
     readiness: {
       none: 'No signal yet',
       blockersTitle: 'What is holding confidence back',
       healthyNote: 'Recent backup and verification signals are both present for this scope.',
+      emptyNote: 'This scope does not have active jobs yet, so there is no readiness signal to evaluate.',
       coverage: '{covered}/{total} active jobs covered',
       overall: {
         healthy: 'Healthy',
@@ -218,6 +225,126 @@ const messages = {
       },
       verify: {
         title: 'Latest successful verify',
+      },
+    },
+    blockers: {
+      missing_backup: {
+        title: 'No successful backup is available yet',
+        summary: 'Recovery readiness needs at least one successful backup signal before it can be trusted.',
+      },
+      partial_backup_coverage: {
+        title: 'Some jobs still lack a successful backup',
+        summary: 'Not every active job has completed a successful backup yet.',
+      },
+      missing_verification: {
+        title: 'Verification signal is missing',
+        summary: 'Backups exist, but this scope still has no successful verify record.',
+      },
+      partial_verification_coverage: {
+        title: 'Verification coverage is incomplete',
+        summary: 'Not every active job has a successful verify record yet.',
+      },
+      verify_older_than_backup: {
+        title: 'Verification is older than the latest backup',
+        summary: 'A newer successful backup exists than the newest successful verify signal.',
+      },
+      section_unavailable: {
+        title: 'Recovery readiness is temporarily unavailable',
+        summary: 'The server could not assemble readiness signals right now. Please try again shortly.',
+      },
+    },
+    items: {
+      run: {
+        failed: {
+          title: '{job} failed',
+          summary: 'The latest run did not complete successfully.',
+        },
+        rejected: {
+          title: '{job} was rejected',
+          summary: 'The run was rejected before execution. Check prerequisites and guardrails.',
+        },
+        success: {
+          title: '{job} completed successfully',
+          summary: 'This success is the most recent noteworthy run activity for the selected scope.',
+        },
+        running: {
+          title: '{job} is running',
+          summary: 'This run is still in progress and worth following.',
+        },
+        queued: {
+          title: '{job} is queued',
+          summary: 'This run is queued and waiting to start.',
+        },
+        canceled: {
+          title: '{job} was canceled',
+          summary: 'This run was canceled before it completed.',
+        },
+        unknown: {
+          title: '{job} changed state',
+          summary: 'This run recently moved to a new state.',
+        },
+      },
+      operation: {
+        verify: {
+          success: {
+            title: '{job} verification completed',
+            summary: 'The latest verify operation completed successfully.',
+          },
+          failed: {
+            title: '{job} verification failed',
+            summary: 'The latest verify operation did not complete successfully.',
+          },
+          running: {
+            title: '{job} verification is running',
+            summary: 'A verify workflow is still in progress.',
+          },
+          unknown: {
+            title: '{job} verification changed state',
+            summary: 'The verify workflow recently moved to a new state.',
+          },
+        },
+        restore: {
+          success: {
+            title: '{job} restore completed',
+            summary: 'The latest restore workflow completed successfully.',
+          },
+          failed: {
+            title: '{job} restore failed',
+            summary: 'The latest restore workflow did not complete successfully.',
+          },
+          running: {
+            title: '{job} restore is running',
+            summary: 'A restore workflow is still in progress.',
+          },
+          unknown: {
+            title: '{job} restore changed state',
+            summary: 'The restore workflow recently moved to a new state.',
+          },
+        },
+        generic: {
+          title: '{job} operation updated',
+          summary: 'A backup-related operator workflow has a new status.',
+        },
+      },
+      notification: {
+        failed: {
+          title: 'Notification delivery failed for {job}',
+          summary: 'Delivery failed and may need a retry or destination check.',
+        },
+        queued: {
+          title: 'Notification is still queued for {job}',
+          summary: '{channel} delivery is still waiting in the queue.',
+        },
+      },
+      agent: {
+        offline: {
+          title: '{node} is offline',
+          summary: 'The Hub has not heard from this agent in the normal heartbeat window.',
+        },
+        revoked: {
+          title: '{node} is revoked',
+          summary: 'This agent must be re-enrolled before it can receive work again.',
+        },
       },
     },
     empty: {

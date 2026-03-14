@@ -285,7 +285,7 @@ watch(legacyNodeId, (value) => {
         <n-menu :value="activePrimaryKey" :options="primaryMenuOptions" @update:value="navigatePrimary" />
 
         <div v-if="secondaryMenuOptions.length > 0" class="mt-5">
-          <div class="px-3 pb-2 text-[11px] uppercase tracking-[0.16em] app-text-muted">
+          <div class="px-3 pb-2 text-xs uppercase tracking-[0.16em] app-text-muted">
             {{ t('nav.context') }}
           </div>
           <n-menu :value="activeSecondaryKey" :options="secondaryMenuOptions" @update:value="navigateSecondary" />
@@ -313,7 +313,7 @@ watch(legacyNodeId, (value) => {
             </template>
 
             <div v-else class="min-w-0">
-              <div class="text-[11px] uppercase tracking-[0.16em] app-text-muted">{{ t('nav.workspace') }}</div>
+              <div class="text-xs uppercase tracking-[0.16em] app-text-muted">{{ t('nav.workspace') }}</div>
               <div class="font-medium truncate">{{ currentPrimaryLabel }}</div>
             </div>
           </div>
@@ -385,7 +385,7 @@ watch(legacyNodeId, (value) => {
         />
 
         <div v-if="secondaryMenuOptions.length > 0">
-          <div class="mb-2 text-[11px] uppercase tracking-[0.16em] app-text-muted">
+          <div class="mb-2 text-xs uppercase tracking-[0.16em] app-text-muted">
             {{ t('nav.context') }}
           </div>
           <n-menu
