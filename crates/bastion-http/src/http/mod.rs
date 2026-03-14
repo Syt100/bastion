@@ -21,6 +21,7 @@ use bastion_storage::secrets::SecretsCrypto;
 mod agents;
 mod auth;
 mod bulk_operations;
+mod command_center;
 mod dashboard;
 mod docs;
 mod error;
@@ -198,6 +199,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ready", get(ready))
         .route("/api/system", get(system_status))
         .route("/api/dashboard/overview", get(dashboard::get_overview))
+        .route("/api/command-center", get(command_center::get_command_center))
         .route(
             "/api/settings/hub-runtime-config",
             get(settings::get_hub_runtime_config).put(settings::put_hub_runtime_config),
@@ -489,6 +491,9 @@ mod jobs_list_tests;
 
 #[cfg(test)]
 mod dashboard_tests;
+
+#[cfg(test)]
+mod command_center_tests;
 
 #[cfg(test)]
 mod auth_tests;

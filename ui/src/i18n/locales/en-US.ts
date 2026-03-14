@@ -86,14 +86,22 @@ const messages = {
   },
   nav: {
     dashboard: 'Dashboard',
+    commandCenter: 'Command Center',
     jobs: 'Jobs',
-    agents: 'Agents',
-    settings: 'Settings',
-    nodePicker: {
-      currentLabel: 'Current node',
-      preferredLabel: 'Preferred node',
-      hintCurrent: 'Switching node changes the current page scope.',
-      hintPreferred: 'Used when opening node-scoped pages (Jobs, Storage, etc.).',
+    runs: 'Runs',
+    fleet: 'Fleet',
+    integrations: 'Integrations',
+    system: 'System',
+    context: 'Context',
+    workspace: 'Workspace',
+    scopePicker: {
+      currentLabel: 'Current scope',
+      preferredLabel: 'Preferred scope',
+      hintCurrent: 'Changing scope refreshes the current collection view.',
+      hintPreferred: 'Used as the default scope when a page does not pin its own scope.',
+      hintLegacy: 'This legacy workspace is still node-scoped; choose Hub or a specific agent.',
+      all: 'All systems',
+      hub: 'Hub',
     },
   },
   dashboard: {
@@ -154,6 +162,85 @@ const messages = {
       sat: 'Sat',
       sun: 'Sun',
     },
+  },
+  commandCenter: {
+    title: 'Command Center',
+    subtitle: 'Triage backup risk, critical activity, and recovery confidence from one surface.',
+    range: {
+      last24h: '24h',
+      last7d: '7d',
+      last30d: '30d',
+    },
+    hero: {
+      kicker: 'Operational posture',
+      title: 'Lead with the failures, not the counters.',
+      healthy: 'No urgent items are competing for attention right now. Use the rails to confirm that backups and verification signals still look recent enough.',
+      attention: 'Use this page as the first stop for failed runs, offline fleet issues, delivery failures, and recovery signals that look incomplete.',
+      scope: 'Scope: {scope}',
+      generatedAt: 'Generated {time}',
+      metrics: {
+        attention: 'Attention',
+        activity: 'Activity',
+        readiness: 'Readiness',
+      },
+    },
+    sections: {
+      attention: {
+        title: 'Needs attention',
+      },
+      activity: {
+        title: 'Recent critical activity',
+      },
+      readiness: {
+        title: 'Recovery readiness',
+      },
+      watchlist: {
+        title: 'Watchlist',
+      },
+    },
+    severity: {
+      critical: 'Critical',
+      warning: 'Warning',
+      info: 'Info',
+    },
+    readiness: {
+      none: 'No signal yet',
+      blockersTitle: 'What is holding confidence back',
+      healthyNote: 'Recent backup and verification signals are both present for this scope.',
+      coverage: '{covered}/{total} active jobs covered',
+      overall: {
+        healthy: 'Healthy',
+        degraded: 'Degraded',
+        empty: 'No data',
+      },
+      backup: {
+        title: 'Latest successful backup',
+      },
+      verify: {
+        title: 'Latest successful verify',
+      },
+    },
+    empty: {
+      attention: 'Nothing currently needs immediate action in this scope.',
+      activity: 'No notable activity was recorded in the selected time window.',
+      watchlist: 'No active runs, queued notifications, or in-flight operator tasks are waiting here.',
+    },
+  },
+  fleet: {
+    title: 'Fleet',
+    subtitle: 'Manage connected agents, enrollment, and config sync health.',
+  },
+  integrations: {
+    title: 'Integrations',
+    subtitle: 'Manage storage destinations, notification delivery, and supporting connection secrets.',
+    storage: {
+      scopeFallback:
+        'Storage secrets are managed per node. “All systems” falls back to the Hub until the scoped integrations workspace lands.',
+    },
+  },
+  system: {
+    title: 'System',
+    subtitle: 'Runtime, maintenance, appearance, and product-level configuration.',
   },
   placeholder: {
     comingSoon: 'Coming soon',
@@ -354,6 +441,17 @@ const messages = {
   },
   jobs: {
     title: 'Jobs',
+    landing: {
+      subtitle: 'Open the current jobs workspace by scope while the canonical jobs surface is still being rebuilt.',
+      kicker: 'Migration bridge',
+      title: 'Jobs are moving into the new top-level console.',
+      body: 'The detailed jobs workspace still lives in the existing node-specific flow for now. Use the current scope to jump directly into the right workspace without losing the new shell structure.',
+      scope: 'Requested scope: {scope}',
+      node: 'Workspace node: {node}',
+      allScopeHint: 'The current jobs workspace cannot show “All systems” yet. Narrow the shell scope to Hub or a specific agent, then open the workspace.',
+      openWorkspace: 'Open current workspace',
+      backToCommandCenter: 'Back to Command Center',
+    },
     subtitle: 'Create and schedule backup jobs',
     workspace: {
       emptyTitle: 'Pick a job to continue',
@@ -1200,6 +1298,7 @@ const messages = {
   },
   runs: {
     title: 'Runs',
+    subtitle: 'Review recent critical activity and jump into stable run detail routes.',
     latestRun: 'Latest run',
     neverRan: 'Never ran',
     filters: {
@@ -1252,6 +1351,9 @@ const messages = {
       },
     },
     detail: {
+      pageTitle: 'Run detail',
+      pageSubtitle: 'Inspect a single run on its stable top-level route.',
+      backToRuns: 'Back to Runs',
       overviewTitle: 'Overview',
       duration: 'Duration',
       target: 'Target',
@@ -1269,6 +1371,15 @@ const messages = {
       summaryHighlights: 'Highlights',
       summaryDetails: 'Details',
       rawJson: 'Raw JSON',
+    },
+    landing: {
+      kicker: 'Recent execution',
+      title: 'Track run outcomes from stable top-level routes.',
+      body: 'This surface is already using the new route model. Use it to review recent critical activity by scope and jump into run details without navigating through a job first.',
+      primaryTitle: 'Recent critical activity',
+      watchlistTitle: 'Still in flight',
+      empty: 'No recent run or operator activity matched this scope.',
+      watchlistEmpty: 'No running runs, queued notifications, or active operator workflows are waiting here.',
     },
     progress: {
       title: 'Progress',
@@ -1882,6 +1993,7 @@ const messages = {
     fetchJobsFailed: 'Could not load jobs',
     fetchJobFailed: 'Could not load job',
     fetchDashboardFailed: 'Could not load dashboard',
+    fetchCommandCenterFailed: 'Could not load Command Center',
     saveJobFailed: 'Could not save job',
     deleteJobFailed: 'Could not delete job',
     archiveJobFailed: 'Could not archive job',

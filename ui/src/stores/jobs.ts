@@ -90,6 +90,9 @@ export type RunEvent = {
 export type RunDetail = {
   id: string
   job_id: string
+  job_name?: string | null
+  node_id: string
+  node_name?: string | null
   status: RunStatus
   started_at: number
   ended_at: number | null

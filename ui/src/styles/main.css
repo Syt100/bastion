@@ -790,3 +790,193 @@ body {
     transform: none !important;
   }
 }
+
+.console-shell {
+  container-type: inline-size;
+}
+
+.console-hero,
+.console-panel {
+  border: 1px solid color-mix(in srgb, var(--app-border) 88%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 92%, transparent), var(--app-surface)),
+    var(--app-surface);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.console-hero {
+  padding: clamp(1.1rem, 2vw, 1.5rem);
+}
+
+.console-kicker {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+.console-hero-title {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.console-hero-copy {
+  margin-top: 0.75rem;
+  max-width: 44rem;
+  color: var(--app-text-muted);
+  line-height: 1.65;
+}
+
+.console-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  min-width: min(100%, 24rem);
+}
+
+.console-hero-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface-2) 74%, var(--app-surface));
+}
+
+.console-hero-metric-label {
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.console-hero-metric-value {
+  font-size: clamp(1.05rem, 2vw, 1.45rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.console-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .console-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.95fr);
+    align-items: start;
+  }
+
+  .console-rail-panel {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+.console-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+  background: color-mix(in srgb, var(--app-surface-2) 52%, var(--app-surface));
+}
+
+.console-item-compact {
+  padding: 0.85rem 0.9rem;
+}
+
+.console-item-title {
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.console-item-summary {
+  margin-top: 0.35rem;
+  color: var(--app-text-muted);
+  line-height: 1.6;
+}
+
+.console-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--app-text-muted);
+}
+
+.console-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.console-signal-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.console-signal {
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface-2) 52%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+}
+
+.console-signal-label {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--app-text-muted);
+}
+
+.console-signal-value {
+  margin-top: 0.35rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.console-signal-meta {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+}
+
+.console-success-note {
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-success) 10%, var(--app-surface));
+  color: color-mix(in srgb, var(--app-success) 72%, var(--app-text));
+}
+
+.console-range-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+@media (max-width: 767px) {
+  .console-hero-metrics {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .console-item {
+    flex-direction: column;
+  }
+
+  .console-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

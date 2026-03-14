@@ -14,10 +14,11 @@ const router = useRouter()
 
 const isDesktop = useMediaQuery(MQ.mdUp)
 
-const isIndex = computed(() => route.path === '/settings/notifications')
+const basePath = '/integrations/notifications'
+const isIndex = computed(() => route.path === basePath)
 
 const active = computed(() => {
-  const match = route.path.match(/^\/settings\/notifications\/([^/]+)/)
+  const match = route.path.match(/^\/integrations\/notifications\/([^/]+)/)
   const key = match?.[1]
   if (key && isNotificationsTabKey(key)) return key
   return DEFAULT_NOTIFICATIONS_TAB_KEY
@@ -26,7 +27,7 @@ const active = computed(() => {
 function go(key: unknown): void {
   if (typeof key !== 'string') return
   if (!isNotificationsTabKey(key)) return
-  void router.push(`/settings/notifications/${key}`)
+  void router.push(`${basePath}/${key}`)
 }
 
 const tabs = computed(() => getNotificationsNavItems())

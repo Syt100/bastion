@@ -3,18 +3,46 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
 
-const routeState = reactive<{ path: string; params: Record<string, unknown> }>({ path: '/', params: {} })
+const routeState = reactive<{
+  path: string
+  params: Record<string, unknown>
+  query: Record<string, unknown>
+  matched: Array<{ meta: Record<string, unknown> }>
+}>({
+  path: '/',
+  params: {},
+  query: {},
+  matched: [{ meta: { primaryNav: 'command-center', scopeMode: 'collection' } }],
+})
+
 const routerPush = vi.fn()
 
 const uiStore = {
   preferredNodeId: 'hub',
+  preferredScope: 'all',
   locale: 'en-US',
   darkMode: false,
   toggleDarkMode: vi.fn(),
   setLocale: vi.fn(),
   setPreferredNodeId: vi.fn((value: string) => {
     uiStore.preferredNodeId = value
+    uiStore.preferredScope = value === 'hub' ? 'hub' : `agent:${value}`
   }),
+  setPreferredScope: vi.fn((value: string) => {
+    uiStore.preferredScope = value
+  }),
+}
+
+function setRoute(options: {
+  path: string
+  params?: Record<string, unknown>
+  query?: Record<string, unknown>
+  meta?: Record<string, unknown>
+}): void {
+  routeState.path = options.path
+  routeState.params = options.params ?? {}
+  routeState.query = options.query ?? {}
+  routeState.matched = [{ meta: options.meta ?? {} }]
 }
 
 vi.mock('vue-router', () => ({
@@ -31,7 +59,10 @@ vi.mock('@/stores/auth', () => ({
 }))
 
 vi.mock('@/stores/agents', () => ({
-  useAgentsStore: () => ({ items: [], refresh: vi.fn().mockResolvedValue(undefined) }),
+  useAgentsStore: () => ({
+    items: [{ id: 'agent1', name: 'Agent One', online: true, revoked: false }],
+    refresh: vi.fn().mockResolvedValue(undefined),
+  }),
 }))
 
 vi.mock('@/stores/ui', () => ({
@@ -40,11 +71,6 @@ vi.mock('@/stores/ui', () => ({
 
 vi.mock('@/stores/system', () => ({
   useSystemStore: () => ({ version: null, insecureHttp: false }),
-}))
-
-vi.mock('@/navigation/settings', () => ({
-  getSettingsMenuRouteKeys: () => ['/settings'],
-  getSettingsSidebarItems: () => [],
 }))
 
 vi.mock('@/i18n/language', () => ({
@@ -62,7 +88,7 @@ vi.mock('naive-ui', async () => {
     vue.defineComponent({
       name,
       props: ['value', 'options', 'show'],
-      emits: ['update:value', 'update:expanded-keys', 'update:show', 'select'],
+      emits: ['update:value', 'update:show', 'select'],
       setup(_props, { slots }) {
         return () => vue.h('div', { 'data-stub': name }, slots.default?.())
       },
@@ -70,7 +96,6 @@ vi.mock('naive-ui', async () => {
 
   return {
     NButton: stub('NButton'),
-    NCard: stub('NCard'),
     NDrawer: stub('NDrawer'),
     NDrawerContent: stub('NDrawerContent'),
     NDropdown: stub('NDropdown'),
@@ -90,9 +115,14 @@ vi.mock('@vicons/ionicons5', async () => {
   const icon = (name: string) => vue.defineComponent({ name, setup: () => () => vue.h('i') })
   return {
     ArchiveOutline: icon('ArchiveOutline'),
-    EllipsisHorizontal: icon('EllipsisHorizontal'),
+    CloudOutline: icon('CloudOutline'),
+    ColorPaletteOutline: icon('ColorPaletteOutline'),
+    ConstructOutline: icon('ConstructOutline'),
     HomeOutline: icon('HomeOutline'),
+    InformationCircleOutline: icon('InformationCircleOutline'),
     MenuOutline: icon('MenuOutline'),
+    NotificationsOutline: icon('NotificationsOutline'),
+    OptionsOutline: icon('OptionsOutline'),
     PeopleOutline: icon('PeopleOutline'),
     SettingsOutline: icon('SettingsOutline'),
   }
@@ -110,68 +140,89 @@ vi.mock('@/components/AppLogo.vue', async () => {
 
 import AppShell from './AppShell.vue'
 
-describe('AppShell node selector', () => {
+describe('AppShell scope selector and navigation', () => {
   beforeEach(() => {
     uiStore.preferredNodeId = 'hub'
+    uiStore.preferredScope = 'all'
     uiStore.setPreferredNodeId.mockClear()
+    uiStore.setPreferredScope.mockClear()
     routerPush.mockClear()
-    routeState.path = '/'
-    routeState.params = {}
+    setRoute({
+      path: '/',
+      meta: { primaryNav: 'command-center', scopeMode: 'collection' },
+    })
   })
 
-  it('updates preferred node without navigating on global pages', async () => {
-    routeState.path = '/agents'
-    routeState.params = {}
+  it('updates the current collection route scope on collection pages', async () => {
+    const wrapper = mount(AppShell, {
+      global: { stubs: { 'router-view': { template: '<div />' } } },
+    })
+
+    ;(wrapper.vm as unknown as { selectedScope: string }).selectedScope = 'agent:agent1'
+
+    expect(uiStore.setPreferredScope).toHaveBeenCalledWith('agent:agent1')
+    expect(routerPush).toHaveBeenCalledWith({
+      path: '/',
+      query: { scope: 'agent:agent1' },
+      hash: undefined,
+    })
+  })
+
+  it('updates preferred scope without navigating on non-scope-aware pages', async () => {
+    setRoute({
+      path: '/fleet',
+      meta: { primaryNav: 'fleet', scopeMode: 'none' },
+    })
 
     const wrapper = mount(AppShell, {
-      global: {
-        stubs: { 'router-view': { template: '<div />' } },
-      },
+      global: { stubs: { 'router-view': { template: '<div />' } } },
     })
-    ;(wrapper.vm as unknown as { selectedNodeId: string }).selectedNodeId = 'agent1'
 
-    expect(uiStore.setPreferredNodeId).toHaveBeenCalledWith('agent1')
+    ;(wrapper.vm as unknown as { selectedScope: string }).selectedScope = 'hub'
+
+    expect(uiStore.setPreferredScope).toHaveBeenCalledWith('hub')
     expect(routerPush).not.toHaveBeenCalled()
   })
 
-  it('navigates when selecting a node on node-scoped pages', async () => {
-    routeState.path = '/n/hub/jobs'
-    routeState.params = { nodeId: 'hub' }
+  it('navigates legacy node-scoped workspaces when scope changes there', async () => {
+    setRoute({
+      path: '/n/hub/jobs',
+      params: { nodeId: 'hub' },
+      meta: { primaryNav: 'jobs', scopeMode: 'legacy-node' },
+    })
 
     const wrapper = mount(AppShell, {
-      global: {
-        stubs: { 'router-view': { template: '<div />' } },
-      },
+      global: { stubs: { 'router-view': { template: '<div />' } } },
     })
-    ;(wrapper.vm as unknown as { selectedNodeId: string }).selectedNodeId = 'agent1'
 
-    expect(uiStore.setPreferredNodeId).toHaveBeenCalledWith('agent1')
+    ;(wrapper.vm as unknown as { selectedScope: string }).selectedScope = 'agent:agent1'
+
+    expect(uiStore.setPreferredScope).toHaveBeenCalledWith('agent:agent1')
     expect(routerPush).toHaveBeenCalledWith('/n/agent1/jobs')
   })
 
-  it('uses a scrollable content region on desktop for normal pages', () => {
-    routeState.path = '/agents'
-    routeState.params = {}
-
-    const wrapper = mount(AppShell, {
-      global: {
-        stubs: { 'router-view': { template: '<div />' } },
-      },
+  it('shows contextual navigation on system pages', () => {
+    setRoute({
+      path: '/system/runtime',
+      meta: { primaryNav: 'system', secondaryNav: 'runtime', scopeMode: 'none' },
     })
 
-    const main = wrapper.find('main[data-testid="app-shell-main"]')
-    expect(main.exists()).toBe(true)
-    expect(main.classes()).toContain('overflow-y-auto')
+    const wrapper = mount(AppShell, {
+      global: { stubs: { 'router-view': { template: '<div />' } } },
+    })
+
+    expect(wrapper.html()).toContain('nav.context')
   })
 
-  it('uses workbench mode (no outer scroll) for Jobs workspace pages on desktop', () => {
-    routeState.path = '/n/hub/jobs'
-    routeState.params = { nodeId: 'hub' }
+  it('uses workbench mode (no outer scroll) for legacy jobs workspace pages on desktop', () => {
+    setRoute({
+      path: '/n/hub/jobs',
+      params: { nodeId: 'hub' },
+      meta: { primaryNav: 'jobs', scopeMode: 'legacy-node' },
+    })
 
     const wrapper = mount(AppShell, {
-      global: {
-        stubs: { 'router-view': { template: '<div />' } },
-      },
+      global: { stubs: { 'router-view': { template: '<div />' } } },
     })
 
     expect(wrapper.find('main[data-testid="app-shell-main"]').classes()).toContain('overflow-hidden')

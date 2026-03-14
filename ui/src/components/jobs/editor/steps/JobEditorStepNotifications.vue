@@ -18,7 +18,7 @@ const { t } = useI18n()
 
 const { form } = useJobEditorContext()
 
-const manageDestinationsHref = '/settings/notifications/destinations'
+const manageDestinationsHref = '/integrations/notifications/destinations'
 </script>
 
 <template>

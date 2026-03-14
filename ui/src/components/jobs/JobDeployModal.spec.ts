@@ -116,7 +116,7 @@ describe('JobDeployModal', () => {
 
     await vm.deploy()
     expect(bulkOpsApi.create).toHaveBeenCalled()
-    expect(routerPush).toHaveBeenCalledWith({ path: '/settings/bulk-operations', query: { open: 'op-1' } })
+    expect(routerPush).toHaveBeenCalledWith({ path: '/system/bulk-operations', query: { open: 'op-1' } })
   })
 
   it('blocks deploy when preview is missing', async () => {

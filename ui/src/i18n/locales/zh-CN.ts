@@ -86,14 +86,22 @@ const messages = {
   },
   nav: {
     dashboard: '概览',
+    commandCenter: '指挥中心',
     jobs: '备份任务',
-    agents: '客户端',
-    settings: '设置',
-    nodePicker: {
-      currentLabel: '当前节点',
-      preferredLabel: '偏好节点',
-      hintCurrent: '切换节点会切换当前页面的节点范围。',
-      hintPreferred: '用于打开节点范围页面（任务/存储等）。',
+    runs: '运行记录',
+    fleet: '客户端舰队',
+    integrations: '集成',
+    system: '系统',
+    context: '上下文',
+    workspace: '工作区',
+    scopePicker: {
+      currentLabel: '当前范围',
+      preferredLabel: '偏好范围',
+      hintCurrent: '切换范围会刷新当前集合视图。',
+      hintPreferred: '当页面没有固定范围时，默认使用这个范围。',
+      hintLegacy: '这个旧工作区仍然按节点切分；请选择 Hub 或某个具体客户端。',
+      all: '全部系统',
+      hub: 'Hub',
     },
   },
   dashboard: {
@@ -154,6 +162,84 @@ const messages = {
       sat: '周六',
       sun: '周日',
     },
+  },
+  commandCenter: {
+    title: '指挥中心',
+    subtitle: '把备份风险、关键活动和恢复信心放到同一个操作面板里。',
+    range: {
+      last24h: '24 小时',
+      last7d: '7 天',
+      last30d: '30 天',
+    },
+    hero: {
+      kicker: '运行态势',
+      title: '先处理风险，再看计数。',
+      healthy: '当前没有紧急事项在争抢注意力。接下来重点确认最近备份和校验信号是否仍然足够新。',
+      attention: '把这里当作首个入口：先看失败运行、离线客户端、通知投递失败，以及恢复准备度里不完整的信号。',
+      scope: '范围：{scope}',
+      generatedAt: '生成时间 {time}',
+      metrics: {
+        attention: '待处理',
+        activity: '关键活动',
+        readiness: '恢复准备度',
+      },
+    },
+    sections: {
+      attention: {
+        title: '需要处理',
+      },
+      activity: {
+        title: '近期关键活动',
+      },
+      readiness: {
+        title: '恢复准备度',
+      },
+      watchlist: {
+        title: '观察列表',
+      },
+    },
+    severity: {
+      critical: '严重',
+      warning: '警告',
+      info: '信息',
+    },
+    readiness: {
+      none: '暂无信号',
+      blockersTitle: '当前还缺什么',
+      healthyNote: '当前范围内最近的备份与校验信号都已经具备。',
+      coverage: '{covered}/{total} 个活动任务已覆盖',
+      overall: {
+        healthy: '健康',
+        degraded: '降级',
+        empty: '暂无数据',
+      },
+      backup: {
+        title: '最近成功备份',
+      },
+      verify: {
+        title: '最近成功校验',
+      },
+    },
+    empty: {
+      attention: '这个范围里当前没有需要立刻处理的事项。',
+      activity: '所选时间窗口内没有记录到值得关注的活动。',
+      watchlist: '没有运行中的任务、排队通知或正在进行的运维操作。',
+    },
+  },
+  fleet: {
+    title: '客户端舰队',
+    subtitle: '管理已接入节点、接入令牌与配置同步状态。',
+  },
+  integrations: {
+    title: '集成',
+    subtitle: '管理存储目标、通知投递以及相关连接凭据。',
+    storage: {
+      scopeFallback: '存储凭据仍然按节点管理。“全部系统”会先回退到 Hub，直到新的集成工作区支持完整范围视图。',
+    },
+  },
+  system: {
+    title: '系统',
+    subtitle: '运行时、维护、外观和产品级配置。',
   },
   placeholder: {
     comingSoon: '即将支持',
@@ -355,6 +441,17 @@ const messages = {
   jobs: {
     title: '备份任务',
     subtitle: '创建并调度备份任务',
+    landing: {
+      subtitle: '在新的顶层壳子里，按范围打开当前任务工作区。',
+      kicker: '迁移桥接',
+      title: '任务工作区正在迁入新的控制台结构。',
+      body: '详细的任务工作区暂时仍位于旧的按节点划分流程里。你可以先在新的壳子中选择范围，再直接跳转到对应工作区，不丢失新的导航结构。',
+      scope: '请求范围：{scope}',
+      node: '工作区节点：{node}',
+      allScopeHint: '当前任务工作区还不能直接展示“全部系统”。请先在壳子里把范围收窄到 Hub 或某个客户端，再打开工作区。',
+      openWorkspace: '打开当前工作区',
+      backToCommandCenter: '返回指挥中心',
+    },
     workspace: {
       emptyTitle: '请选择一个任务继续',
       emptyDescription: '从列表中打开任务进入工作台，或直接创建一个新任务开始配置备份。',
@@ -1196,6 +1293,7 @@ const messages = {
   },
   runs: {
     title: '运行记录',
+    subtitle: '按稳定顶层路由查看最近关键活动，并直接进入 run 详情。',
     latestRun: '最近一次运行',
     neverRan: '从未运行',
     filters: {
@@ -1248,6 +1346,9 @@ const messages = {
       },
     },
     detail: {
+      pageTitle: '运行详情',
+      pageSubtitle: '在稳定的顶层路由下检查单次运行。',
+      backToRuns: '返回运行记录',
       overviewTitle: '概览',
       duration: '耗时',
       target: '目标',
@@ -1265,6 +1366,15 @@ const messages = {
       summaryHighlights: '摘要要点',
       summaryDetails: '更多信息',
       rawJson: '原始 JSON',
+    },
+    landing: {
+      kicker: '近期执行',
+      title: '通过稳定的顶层路由跟踪运行结果。',
+      body: '这个页面已经切到新的路由模型。你可以按范围查看近期关键活动，并在不先进入某个任务的情况下直接打开运行详情。',
+      primaryTitle: '近期关键活动',
+      watchlistTitle: '仍在进行中',
+      empty: '当前范围内没有匹配的运行或运维活动。',
+      watchlistEmpty: '当前没有运行中的任务、排队通知或活跃的运维工作流。',
     },
     progress: {
       title: '进度',
@@ -1877,6 +1987,7 @@ const messages = {
     fetchJobsFailed: '获取任务列表失败',
     fetchJobFailed: '获取任务失败',
     fetchDashboardFailed: '加载概览失败',
+    fetchCommandCenterFailed: '加载指挥中心失败',
     saveJobFailed: '保存任务失败',
     deleteJobFailed: '删除任务失败',
     archiveJobFailed: '归档任务失败',

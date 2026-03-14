@@ -45,6 +45,7 @@ describe('RunDetailSummaryCard', () => {
         run: {
           id: 'run1',
           job_id: 'job1',
+          node_id: 'hub',
           status: 'success',
           started_at: 1000,
           ended_at: 1001,
@@ -82,6 +83,7 @@ describe('RunDetailSummaryCard', () => {
         run: {
           id: 'run1',
           job_id: 'job1',
+          node_id: 'hub',
           status: 'success',
           started_at: 1000,
           ended_at: 1001,
@@ -113,4 +115,3 @@ describe('RunDetailSummaryCard', () => {
     expect(wrapper.text()).not.toContain('runs.badges.sourceChanged')
   })
 })
-

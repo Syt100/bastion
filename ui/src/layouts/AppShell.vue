@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, onMounted, ref, watch, watchEffect } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NButton,
-  NCard,
   NDrawer,
   NDrawerContent,
   NDropdown,
@@ -18,29 +17,24 @@ import {
   type MenuOption,
   useMessage,
 } from 'naive-ui'
-import {
-  ArchiveOutline,
-  HomeOutline,
-  MenuOutline,
-  PeopleOutline,
-  SettingsOutline,
-} from '@vicons/ionicons5'
+import { MenuOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
+import AppLogo from '@/components/AppLogo.vue'
+import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAgentsStore } from '@/stores/agents'
+import { useSystemStore } from '@/stores/system'
 import { useUiStore } from '@/stores/ui'
 import type { SupportedLocale } from '@/i18n'
-import { useSystemStore } from '@/stores/system'
-import InsecureHttpBanner from '@/components/InsecureHttpBanner.vue'
-import AppLogo from '@/components/AppLogo.vue'
-import { useMediaQuery } from '@/lib/media'
-import { MQ } from '@/lib/breakpoints'
-import { LAYOUT } from '@/lib/layout'
-import { formatToastError } from '@/lib/errors'
-import { isNodeScopedPath, nodeJobsPath, nodeScopedPath, nodeStoragePath, stripNodeScope } from '@/lib/nodeRoute'
-import { getSettingsMenuRouteKeys, getSettingsSidebarItems } from '@/navigation/settings'
 import { getLocaleDropdownOptions } from '@/i18n/language'
+import { MQ } from '@/lib/breakpoints'
+import { formatToastError } from '@/lib/errors'
+import { LAYOUT } from '@/lib/layout'
+import { useMediaQuery } from '@/lib/media'
+import { PRIMARY_NAV_ITEMS, getSecondaryNavItems, type ShellPrimaryNavKey } from '@/navigation/shell'
+import { isNodeScopedPath, nodeScopedPath, stripNodeScope } from '@/lib/nodeRoute'
+import { parseScopeQueryValue, scopeFromNodeId, scopeToNodeId, type ScopeValue } from '@/lib/scope'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,125 +47,189 @@ const agents = useAgentsStore()
 const system = useSystemStore()
 
 const versionTag = computed(() => (system.version ? `v${system.version}` : null))
-
-const nodeIdParam = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
-const menuPath = computed(() => stripNodeScope(route.path))
-const nodeSuffix = computed(() => {
-  if (!isNodeScopedPath(route.path)) return null
-  const suffix = stripNodeScope(route.path)
-  // Job-scoped URLs include job/run ids which are not meaningful across nodes.
-  // When switching node from within a job context, return to the node-scoped jobs workspace.
-  if (suffix.startsWith('/jobs/')) return '/jobs'
-  return suffix === '/' ? '/jobs' : suffix
-})
-const selectedNodeId = computed({
-  get: () => nodeIdParam.value ?? ui.preferredNodeId ?? 'hub',
-  set: (value: string) => void onSelectNode(value),
-})
-
-const isNodeScoped = computed(() => isNodeScopedPath(route.path))
-const nodePickerLabel = computed(() =>
-  isNodeScoped.value ? t('nav.nodePicker.currentLabel') : t('nav.nodePicker.preferredLabel'),
-)
-const nodePickerHint = computed(() =>
-  isNodeScoped.value ? t('nav.nodePicker.hintCurrent') : t('nav.nodePicker.hintPreferred'),
-)
-
-const activeKey = computed(() => {
-  const ordered = [...menuRouteKeys].sort((a, b) => b.length - a.length)
-  for (const key of ordered) {
-    if (key === '/') {
-      if (menuPath.value === '/') return '/'
-      continue
-    }
-    if (menuPath.value === key || menuPath.value.startsWith(`${key}/`)) return key
-  }
-  return menuPath.value
-})
 const mobileMenuOpen = ref(false)
 const isDesktop = useMediaQuery(MQ.mdUp)
-const isJobsWorkbench = computed(
-  () =>
-    isDesktop.value &&
-    isNodeScopedPath(route.path) &&
-    (menuPath.value === '/jobs' || menuPath.value.startsWith('/jobs/')),
-)
 
 watch(isDesktop, (value) => {
-  if (value) {
-    mobileMenuOpen.value = false
-  }
+  if (value) mobileMenuOpen.value = false
 })
 
 function icon(iconComponent: Component) {
   return () => h(NIcon, null, { default: () => h(iconComponent) })
 }
 
-const menuRouteKeys: string[] = ['/', '/jobs', '/agents', ...getSettingsMenuRouteKeys()]
-const menuRouteKeySet = new Set<string>(menuRouteKeys)
-
-const settingsParentKey = 'settings'
-const expandedKeys = ref<string[]>([])
-
-watchEffect(() => {
-  if (!isDesktop.value) return
-  if (!menuPath.value.startsWith('/settings')) return
-  if (expandedKeys.value.includes(settingsParentKey)) return
-  expandedKeys.value = [...expandedKeys.value, settingsParentKey]
+const currentPrimaryNav = computed<ShellPrimaryNavKey>(() => {
+  for (const record of [...route.matched].reverse()) {
+    const value = record.meta?.primaryNav
+    if (
+      value === 'command-center' ||
+      value === 'jobs' ||
+      value === 'runs' ||
+      value === 'fleet' ||
+      value === 'integrations' ||
+      value === 'system'
+    ) {
+      return value
+    }
+  }
+  return 'command-center'
 })
 
-const menuOptions = computed<MenuOption[]>(() => [
-  { label: t('nav.dashboard'), key: '/', icon: icon(HomeOutline) },
-  { label: t('nav.jobs'), key: '/jobs', icon: icon(ArchiveOutline) },
-  { label: t('nav.agents'), key: '/agents', icon: icon(PeopleOutline) },
-  ...(isDesktop.value
-    ? [
-        {
-          label: t('nav.settings'),
-          key: settingsParentKey,
-          icon: icon(SettingsOutline),
-          children: [
-            ...getSettingsSidebarItems().map((item) => ({
-              label: t(item.titleKey),
-              key: item.to,
-            })),
-          ],
-        } satisfies MenuOption,
-      ]
-    : [{ label: t('nav.settings'), key: '/settings', icon: icon(SettingsOutline) }]),
-])
+const currentScopeMode = computed<'collection' | 'detail' | 'none' | 'legacy-node'>(() => {
+  for (const record of [...route.matched].reverse()) {
+    const value = record.meta?.scopeMode
+    if (value === 'collection' || value === 'detail' || value === 'none' || value === 'legacy-node') {
+      return value
+    }
+  }
+  return 'none'
+})
 
-const languageOptions = computed(() => getLocaleDropdownOptions())
+const explicitScope = computed(() => parseScopeQueryValue(route.query.scope))
+const legacyNodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : null))
+const isLegacyNodeRoute = computed(() => currentScopeMode.value === 'legacy-node' || !!legacyNodeId.value)
+const nodeSuffix = computed(() => {
+  if (!isNodeScopedPath(route.path)) return null
+  const suffix = stripNodeScope(route.path)
+  if (suffix.startsWith('/jobs/')) return '/jobs'
+  return suffix === '/' ? '/jobs' : suffix
+})
+
+const selectedScope = computed<ScopeValue>({
+  get: () => {
+    if (legacyNodeId.value) return scopeFromNodeId(legacyNodeId.value)
+    if (currentScopeMode.value === 'collection') return explicitScope.value ?? ui.preferredScope
+    return ui.preferredScope
+  },
+  set: (value) => {
+    void onSelectScope(value)
+  },
+})
+
+const scopePickerLabel = computed(() =>
+  currentScopeMode.value === 'collection' || isLegacyNodeRoute.value
+    ? t('nav.scopePicker.currentLabel')
+    : t('nav.scopePicker.preferredLabel'),
+)
+
+const scopePickerHint = computed(() => {
+  if (isLegacyNodeRoute.value) return t('nav.scopePicker.hintLegacy')
+  if (currentScopeMode.value === 'collection') return t('nav.scopePicker.hintCurrent')
+  return t('nav.scopePicker.hintPreferred')
+})
+
+function formatScopeLabel(scope: ScopeValue): string {
+  if (scope === 'all') return t('nav.scopePicker.all')
+  if (scope === 'hub') return t('nav.scopePicker.hub')
+  const agentId = scopeToNodeId(scope)
+  const agent = agents.items.find((item) => item.id === agentId)
+  if (!agent) return agentId || scope
+  const status = agent.revoked
+    ? t('agents.status.revoked')
+    : agent.online
+      ? t('agents.status.online')
+      : t('agents.status.offline')
+  return agent.name?.trim() ? `${agent.name} — ${status}` : `${agent.id} — ${status}`
+}
+
+const scopeOptions = computed(() => {
+  const options: Array<{ label: string; value: ScopeValue; disabled?: boolean }> = []
+  if (!isLegacyNodeRoute.value) {
+    options.push({ label: formatScopeLabel('all'), value: 'all' })
+  }
+  options.push({ label: formatScopeLabel('hub'), value: 'hub' })
+  for (const agent of agents.items) {
+    const scope = `agent:${agent.id}` as ScopeValue
+    options.push({
+      label: formatScopeLabel(scope),
+      value: scope,
+      disabled: agent.revoked,
+    })
+  }
+  return options
+})
+
+const primaryMenuOptions = computed<MenuOption[]>(() =>
+  PRIMARY_NAV_ITEMS.map((item) => ({
+    label: t(item.titleKey),
+    key: item.to,
+    icon: icon(item.icon),
+  })),
+)
+
+const secondaryNavItems = computed(() => getSecondaryNavItems(currentPrimaryNav.value))
+const secondaryMenuOptions = computed<MenuOption[]>(() =>
+  secondaryNavItems.value.map((item) => ({
+    label: t(item.titleKey),
+    key: item.to,
+  })),
+)
+
+const activePrimaryKey = computed(() => {
+  const current = PRIMARY_NAV_ITEMS.find((item) => item.key === currentPrimaryNav.value)
+  return current?.to ?? '/'
+})
+
+const activeSecondaryKey = computed(() => {
+  for (const item of secondaryNavItems.value) {
+    if (route.path === item.to || route.path.startsWith(`${item.to}/`)) return item.to
+  }
+  return null
+})
+
+const currentPrimaryLabel = computed(() => {
+  const current = PRIMARY_NAV_ITEMS.find((item) => item.key === currentPrimaryNav.value)
+  return current ? t(current.titleKey) : t('app.name')
+})
+
+const isJobsWorkbench = computed(
+  () => isDesktop.value && currentPrimaryNav.value === 'jobs' && isNodeScopedPath(route.path),
+)
+
+function navigatePrimary(key: unknown): void {
+  if (typeof key !== 'string') return
+  if (key === route.path) return
+  void router.push(key)
+}
+
+function navigateSecondary(key: unknown): void {
+  if (typeof key !== 'string') return
+  void router.push(key)
+}
+
+async function onSelectScope(scope: ScopeValue): Promise<void> {
+  ui.setPreferredScope(scope)
+
+  if (isLegacyNodeRoute.value) {
+    const nodeId = scopeToNodeId(scope)
+    if (!nodeId) return
+    const suffix = nodeSuffix.value ?? '/jobs'
+    const target = nodeScopedPath(nodeId, suffix)
+    if (route.path === target) return
+    await router.push(target)
+    return
+  }
+
+  if (currentScopeMode.value === 'collection') {
+    await router.push({
+      path: route.path,
+      query: {
+        ...route.query,
+        scope,
+      },
+      hash: route.hash,
+    })
+  }
+}
 
 function onSelectLanguage(key: string | number): void {
   ui.setLocale(key as SupportedLocale)
 }
 
 function openDocs(): void {
-  // Open in a new tab so users can keep their current UI state.
   const docsRoot = ui.locale === 'zh-CN' ? '/docs/zh/' : '/docs/'
   window.open(docsRoot, '_blank', 'noopener')
 }
-
-function navigateMenu(key: unknown): void {
-  if (typeof key !== 'string') return
-  if (!menuRouteKeySet.has(key)) return
-  if (key === activeKey.value) return
-  if (key === '/jobs') {
-    void router.push(nodeJobsPath(selectedNodeId.value))
-    return
-  }
-  if (key === '/settings/storage') {
-    void router.push(nodeStoragePath(selectedNodeId.value))
-    return
-  }
-  void router.push(key)
-}
-
-function onUpdateExpandedKeys(keys: string[]): void {
-  expandedKeys.value = keys
-}
-
 
 async function onLogout(): Promise<void> {
   try {
@@ -182,38 +240,7 @@ async function onLogout(): Promise<void> {
   }
 }
 
-async function onSelectNode(nodeId: string): Promise<void> {
-  ui.setPreferredNodeId(nodeId)
-
-  // On global pages, the node picker sets the preferred node only.
-  if (!isNodeScopedPath(route.path)) return
-
-  const suffix = nodeSuffix.value ?? '/jobs'
-  const target = nodeScopedPath(nodeId, suffix)
-  if (route.path === target) return
-  void router.push(target)
-}
-
-function formatNodeLabel(agentId: string | null): string {
-  if (!agentId) return t('jobs.nodes.hub')
-  const agent = agents.items.find((a) => a.id === agentId)
-  if (!agent) return agentId
-  const status = agent.revoked
-    ? t('agents.status.revoked')
-    : agent.online
-      ? t('agents.status.online')
-      : t('agents.status.offline')
-  return agent.name ? `${agent.name} — ${status}` : `${agent.id} — ${status}`
-}
-
-const nodeOptions = computed(() => [
-  { label: formatNodeLabel(null), value: 'hub' },
-  ...agents.items.map((a) => ({
-    label: formatNodeLabel(a.id),
-    value: a.id,
-    disabled: a.revoked,
-  })),
-])
+const languageOptions = computed(() => getLocaleDropdownOptions())
 
 onMounted(async () => {
   try {
@@ -223,7 +250,7 @@ onMounted(async () => {
   }
 })
 
-watch(nodeIdParam, (value) => {
+watch(legacyNodeId, (value) => {
   if (!value) return
   ui.setPreferredNodeId(value)
 })
@@ -239,29 +266,30 @@ watch(nodeIdParam, (value) => {
       v-if="isDesktop"
       bordered
       class="app-glass flex flex-col"
-      collapse-mode="width"
-      :collapsed-width="LAYOUT.siderCollapsedWidth"
       :width="LAYOUT.siderWidth"
+      :collapsed-width="LAYOUT.siderCollapsedWidth"
+      collapse-mode="width"
     >
       <div class="h-14 px-4 flex items-center gap-3 border-b border-[color:var(--app-border)]">
         <AppLogo />
         <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
       </div>
 
-      <div class="px-4 py-3 border-b border-[color:var(--app-border)]">
-        <div class="text-xs app-text-muted mb-1">{{ nodePickerLabel }}</div>
-        <n-select v-model:value="selectedNodeId" :options="nodeOptions" filterable />
-        <div class="text-xs app-text-muted mt-2">{{ nodePickerHint }}</div>
+      <div class="px-4 py-3 border-b border-[color:var(--app-border)] space-y-2">
+        <div class="text-xs app-text-muted">{{ scopePickerLabel }}</div>
+        <n-select v-model:value="selectedScope" :options="scopeOptions" filterable />
+        <div class="text-xs app-text-muted">{{ scopePickerHint }}</div>
       </div>
 
-      <div class="flex-1 min-h-0 overflow-y-auto">
-        <n-menu
-          :value="activeKey"
-          :options="menuOptions"
-          :expanded-keys="expandedKeys"
-          @update:value="navigateMenu"
-          @update:expanded-keys="onUpdateExpandedKeys"
-        />
+      <div class="flex-1 min-h-0 overflow-y-auto px-2 py-3">
+        <n-menu :value="activePrimaryKey" :options="primaryMenuOptions" @update:value="navigatePrimary" />
+
+        <div v-if="secondaryMenuOptions.length > 0" class="mt-5">
+          <div class="px-3 pb-2 text-[11px] uppercase tracking-[0.16em] app-text-muted">
+            {{ t('nav.context') }}
+          </div>
+          <n-menu :value="activeSecondaryKey" :options="secondaryMenuOptions" @update:value="navigateSecondary" />
+        </div>
       </div>
     </n-layout-sider>
 
@@ -271,8 +299,8 @@ watch(nodeIdParam, (value) => {
         class="app-glass app-topbar px-4"
         :class="isDesktop ? 'shrink-0' : 'sticky top-0 z-50'"
       >
-        <div class="h-14 flex items-center justify-between max-w-[88rem] mx-auto">
-          <div class="flex items-center gap-3">
+        <div class="h-14 flex items-center justify-between max-w-[88rem] mx-auto gap-4">
+          <div class="flex items-center gap-3 min-w-0">
             <n-button v-if="!isDesktop" quaternary :aria-label="t('common.openMenu')" @click="mobileMenuOpen = true">
               <template #icon>
                 <n-icon><MenuOutline /></n-icon>
@@ -283,6 +311,11 @@ watch(nodeIdParam, (value) => {
               <AppLogo />
               <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
             </template>
+
+            <div v-else class="min-w-0">
+              <div class="text-[11px] uppercase tracking-[0.16em] app-text-muted">{{ t('nav.workspace') }}</div>
+              <div class="font-medium truncate">{{ currentPrimaryLabel }}</div>
+            </div>
           </div>
 
           <div v-if="isDesktop" class="app-topbar-action-group flex items-center gap-1 rounded-full px-1 py-1">
@@ -310,10 +343,7 @@ watch(nodeIdParam, (value) => {
         "
       >
         <div class="p-4" :class="isDesktop && isJobsWorkbench ? 'h-full min-h-0 flex flex-col' : ''">
-          <div
-            class="max-w-[88rem] mx-auto w-full"
-            :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0 flex flex-col' : ''"
-          >
+          <div class="max-w-[88rem] mx-auto w-full" :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0 flex flex-col' : ''">
             <InsecureHttpBanner v-if="system.insecureHttp" class="mb-4" />
             <div :class="isDesktop && isJobsWorkbench ? 'flex-1 min-h-0' : ''">
               <router-view />
@@ -326,37 +356,51 @@ watch(nodeIdParam, (value) => {
 
   <n-drawer v-if="!isDesktop" v-model:show="mobileMenuOpen" placement="left" :width="LAYOUT.mobileDrawerWidth">
     <n-drawer-content>
-      <n-card class="app-card mb-3" :bordered="false">
+      <div class="space-y-4">
         <div class="flex items-center justify-between">
           <AppLogo size="sm" />
           <n-tag v-if="versionTag" size="small" type="info" :bordered="false">{{ versionTag }}</n-tag>
         </div>
-      </n-card>
 
-      <n-card class="app-card mb-3" :bordered="false">
-        <div class="text-xs app-text-muted mb-2">{{ nodePickerLabel }}</div>
-        <n-select
-          v-model:value="selectedNodeId"
-          :options="nodeOptions"
-          filterable
-          @update:value="mobileMenuOpen = false"
+        <div class="space-y-2 rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-4">
+          <div class="text-xs app-text-muted">{{ scopePickerLabel }}</div>
+          <n-select
+            v-model:value="selectedScope"
+            :options="scopeOptions"
+            filterable
+            @update:value="mobileMenuOpen = false"
+          />
+          <div class="text-xs app-text-muted">{{ scopePickerHint }}</div>
+        </div>
+
+        <n-menu
+          :value="activePrimaryKey"
+          :options="primaryMenuOptions"
+          @update:value="
+            (key) => {
+              mobileMenuOpen = false
+              navigatePrimary(key)
+            }
+          "
         />
-        <div class="text-xs app-text-muted mt-2">{{ nodePickerHint }}</div>
-      </n-card>
 
-      <n-menu
-        :value="activeKey"
-        :options="menuOptions"
-        @update:value="
-          (key) => {
-            mobileMenuOpen = false
-            navigateMenu(key)
-          }
-        "
-      />
+        <div v-if="secondaryMenuOptions.length > 0">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.16em] app-text-muted">
+            {{ t('nav.context') }}
+          </div>
+          <n-menu
+            :value="activeSecondaryKey"
+            :options="secondaryMenuOptions"
+            @update:value="
+              (key) => {
+                mobileMenuOpen = false
+                navigateSecondary(key)
+              }
+            "
+          />
+        </div>
 
-      <div class="mt-4 border-t border-[color:var(--app-border)] pt-4 space-y-2">
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-2 border-t border-[color:var(--app-border)] pt-4">
           <n-button size="small" @click="mobileMenuOpen = false; openDocs()">{{ t('common.help') }}</n-button>
           <n-dropdown :options="languageOptions" trigger="click" @select="onSelectLanguage">
             <n-button size="small">{{ t('common.language') }}</n-button>

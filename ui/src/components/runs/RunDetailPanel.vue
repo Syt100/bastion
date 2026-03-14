@@ -18,7 +18,7 @@ import OperationModal, { type OperationModalExpose } from '@/components/jobs/Ope
 import { runStatusLabel } from '@/lib/runs'
 
 const props = defineProps<{
-  nodeId: string
+  nodeId?: string
   runId: string
 }>()
 
@@ -114,7 +114,7 @@ async function loadAll(): Promise<void> {
 }
 
 function openRestore(): void {
-  restoreModal.value?.open(props.runId, { defaultNodeId: props.nodeId })
+  restoreModal.value?.open(props.runId, { defaultNodeId: resolvedNodeId.value })
 }
 
 function openVerify(): void {
@@ -176,6 +176,7 @@ onBeforeUnmount(() => {
 
 const canRestore = computed(() => run.value?.status === 'success')
 const canVerify = computed(() => run.value?.status === 'success')
+const resolvedNodeId = computed(() => props.nodeId || run.value?.node_id || 'hub')
 const runCancelRequested = computed(() => run.value?.cancel_requested_at != null)
 const runCancelInProgress = computed(
   () => run.value?.status === 'running' && (runCancelRequested.value || cancelRunBusy.value),
@@ -206,7 +207,7 @@ function statusTagType(status: RunDetail['status']): 'success' | 'error' | 'warn
     <div class="flex items-start justify-between gap-3 flex-wrap">
       <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <NodeContextTag :node-id="props.nodeId" />
+          <NodeContextTag :node-id="resolvedNodeId" />
           <n-tag v-if="run?.status" data-testid="run-status-tag" size="small" :bordered="false" :type="statusTagType(run.status)">
             {{ runStatusText }}
           </n-tag>

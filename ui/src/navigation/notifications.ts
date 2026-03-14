@@ -23,7 +23,7 @@ export const NOTIFICATIONS_NAV_ITEMS: NotificationsNavItem[] = [
     key: 'channels',
     titleKey: 'settings.notifications.tabs.channels',
     descriptionKey: 'settings.notifications.overview.channelsDesc',
-    to: '/settings/notifications/channels',
+    to: '/integrations/notifications/channels',
     icon: OptionsOutline,
     order: 10,
   },
@@ -31,7 +31,7 @@ export const NOTIFICATIONS_NAV_ITEMS: NotificationsNavItem[] = [
     key: 'destinations',
     titleKey: 'settings.notifications.tabs.destinations',
     descriptionKey: 'settings.notifications.overview.destinationsDesc',
-    to: '/settings/notifications/destinations',
+    to: '/integrations/notifications/destinations',
     icon: PinOutline,
     order: 20,
   },
@@ -39,7 +39,7 @@ export const NOTIFICATIONS_NAV_ITEMS: NotificationsNavItem[] = [
     key: 'templates',
     titleKey: 'settings.notifications.tabs.templates',
     descriptionKey: 'settings.notifications.overview.templatesDesc',
-    to: '/settings/notifications/templates',
+    to: '/integrations/notifications/templates',
     icon: DocumentTextOutline,
     order: 30,
   },
@@ -47,7 +47,7 @@ export const NOTIFICATIONS_NAV_ITEMS: NotificationsNavItem[] = [
     key: 'queue',
     titleKey: 'settings.notifications.tabs.queue',
     descriptionKey: 'settings.notifications.overview.queueDesc',
-    to: '/settings/notifications/queue',
+    to: '/integrations/notifications/queue',
     icon: ListOutline,
     order: 40,
   },
@@ -56,4 +56,3 @@ export const NOTIFICATIONS_NAV_ITEMS: NotificationsNavItem[] = [
 export function getNotificationsNavItems(): NotificationsNavItem[] {
   return NOTIFICATIONS_NAV_ITEMS.slice().sort((a, b) => a.order - b.order)
 }
-

@@ -32,6 +32,7 @@ import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
+import { parseScopeQueryValue, scopeToNodeId } from '@/lib/scope'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -45,7 +46,16 @@ const secrets = useSecretsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 const copyToClipboard = createClipboardCopyAction(t, message)
 
-const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
+const nodeId = computed(() => {
+  if (typeof route.params.nodeId === 'string') return route.params.nodeId
+  const routeScope = parseScopeQueryValue(route.query.scope)
+  return scopeToNodeId(routeScope ?? ui.preferredScope) ?? 'hub'
+})
+const usingAllScopeFallback = computed(() => {
+  if (typeof route.params.nodeId === 'string') return false
+  const routeScope = parseScopeQueryValue(route.query.scope)
+  return (routeScope ?? ui.preferredScope) === 'all'
+})
 
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
@@ -244,7 +254,7 @@ async function createDistributeOperation(): Promise<void> {
     message.success(t('messages.bulkOperationCreated'))
     distributeOpen.value = false
     distributePreview.value = null
-    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+    await router.push({ path: '/system/bulk-operations', query: { open: opId } })
   } catch (error) {
     distributeError.value = formatToastError(t('errors.createBulkOperationFailed'), error, t)
   } finally {
@@ -356,6 +366,10 @@ watch(distributeOpen, (open) => {
 
 <template>
   <div class="space-y-6">
+    <n-alert v-if="usingAllScopeFallback" type="info" :bordered="false">
+      {{ t('integrations.storage.scopeFallback') }}
+    </n-alert>
+
     <n-card class="app-card" :bordered="false" :title="t('settings.webdav.title')">
       <template #header-extra>
         <n-button type="primary" size="small" @click="openCreate">{{ t('settings.webdav.new') }}</n-button>

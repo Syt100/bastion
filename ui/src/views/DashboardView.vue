@@ -84,11 +84,11 @@ function openRun(row: { run_id: string; node_id: string; job_id: string }): void
 }
 
 function openOfflineAgents(): void {
-  void router.push({ path: '/agents', query: { status: 'offline' } })
+  void router.push({ path: '/fleet', query: { status: 'offline' } })
 }
 
 function openNotificationFailures(): void {
-  void router.push({ path: '/settings/notifications/queue', query: { status: 'failed' } })
+  void router.push({ path: '/integrations/notifications/queue', query: { status: 'failed' } })
 }
 </script>
 

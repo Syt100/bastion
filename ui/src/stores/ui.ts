@@ -15,9 +15,11 @@ import {
   UI_BACKGROUND_STYLE_KEY,
   type UiBackgroundStyle,
 } from '@/theme/background'
+import { parseScopeValue, scopeFromNodeId, scopeToNodeId, type ScopeValue } from '@/lib/scope'
 
 const STORAGE_KEY = 'bastion.ui.darkMode'
 const PREFERRED_NODE_KEY = 'bastion.ui.preferredNodeId'
+const PREFERRED_SCOPE_KEY = 'bastion.ui.preferredScope'
 const THEME_KEY = 'bastion.ui.themeId'
 const JOBS_WORKSPACE_LAYOUT_KEY = 'bastion.ui.jobsWorkspace.layoutMode'
 const JOBS_WORKSPACE_LIST_VIEW_KEY = 'bastion.ui.jobsWorkspace.listView'
@@ -69,7 +71,16 @@ export const useUiStore = defineStore('ui', () => {
     })(),
   )
   const locale = ref<SupportedLocale>(resolveInitialLocale())
-  const preferredNodeId = ref<string>(localStorage.getItem(PREFERRED_NODE_KEY) || 'hub')
+  const storedPreferredNodeId = localStorage.getItem(PREFERRED_NODE_KEY)
+  const preferredNodeId = ref<string>(storedPreferredNodeId || 'hub')
+  const preferredScope = ref<ScopeValue>(
+    (() => {
+      const storedScope = parseScopeValue(localStorage.getItem(PREFERRED_SCOPE_KEY))
+      if (storedScope) return storedScope
+      if (storedPreferredNodeId) return scopeFromNodeId(storedPreferredNodeId)
+      return 'all'
+    })(),
+  )
   const jobsWorkspaceLayoutMode = ref<JobsWorkspaceLayoutMode>(
     (() => {
       const raw = localStorage.getItem(JOBS_WORKSPACE_LAYOUT_KEY)
@@ -132,10 +143,28 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(UI_BACKGROUND_STYLE_KEY, value)
   }
 
+  function persistPreferredNodeId(value: string): void {
+    preferredNodeId.value = value
+    localStorage.setItem(PREFERRED_NODE_KEY, value)
+  }
+
+  function persistPreferredScope(value: ScopeValue): void {
+    preferredScope.value = value
+    localStorage.setItem(PREFERRED_SCOPE_KEY, value)
+  }
+
   function setPreferredNodeId(value: string): void {
     const v = value.trim() || 'hub'
-    preferredNodeId.value = v
-    localStorage.setItem(PREFERRED_NODE_KEY, v)
+    persistPreferredNodeId(v)
+    persistPreferredScope(scopeFromNodeId(v))
+  }
+
+  function setPreferredScope(value: ScopeValue): void {
+    persistPreferredScope(value)
+    const nextNodeId = scopeToNodeId(value)
+    if (nextNodeId) {
+      persistPreferredNodeId(nextNodeId)
+    }
   }
 
   function setJobsWorkspaceLayoutMode(value: JobsWorkspaceLayoutMode): void {
@@ -160,6 +189,7 @@ export const useUiStore = defineStore('ui', () => {
     backgroundStyle,
     locale,
     preferredNodeId,
+    preferredScope,
     jobsWorkspaceLayoutMode,
     jobsWorkspaceListView,
     jobsWorkspaceSplitListWidthPx,
@@ -169,6 +199,7 @@ export const useUiStore = defineStore('ui', () => {
     setBackgroundStyle,
     setLocale,
     setPreferredNodeId,
+    setPreferredScope,
     setJobsWorkspaceLayoutMode,
     setJobsWorkspaceListView,
     setJobsWorkspaceSplitListWidthPx,

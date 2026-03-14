@@ -165,7 +165,7 @@ async function deploy(): Promise<void> {
     message.success(t('messages.bulkOperationCreated'))
     show.value = false
     preview.value = null
-    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+    await router.push({ path: '/system/bulk-operations', query: { open: opId } })
   } catch (e) {
     error.value = formatToastError(t('errors.createBulkOperationFailed'), e, t)
   } finally {

@@ -3,6 +3,7 @@ use axum::extract::Path;
 use axum::extract::Query;
 use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use tower_cookies::Cookies;
 
 use bastion_backup::restore;
@@ -25,6 +26,11 @@ fn invalid_kind_error(message: impl Into<String>) -> AppError {
 pub(super) struct RunResponse {
     id: String,
     job_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    job_name: Option<String>,
+    node_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node_name: Option<String>,
     status: runs_repo::RunStatus,
     started_at: i64,
     ended_at: Option<i64>,
@@ -40,22 +46,65 @@ pub(super) struct RunResponse {
     error: Option<String>,
 }
 
-impl From<runs_repo::Run> for RunResponse {
-    fn from(run: runs_repo::Run) -> Self {
-        Self {
-            id: run.id,
-            job_id: run.job_id,
-            status: run.status,
-            started_at: run.started_at,
-            ended_at: run.ended_at,
-            cancel_requested_at: run.cancel_requested_at,
-            cancel_requested_by_user_id: run.cancel_requested_by_user_id,
-            cancel_reason: run.cancel_reason,
-            progress: run.progress,
-            summary: run.summary,
-            error: run.error,
-        }
-    }
+async fn get_run_response(db: &sqlx::SqlitePool, run_id: &str) -> Result<Option<RunResponse>, AppError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          r.id AS id,
+          r.job_id AS job_id,
+          r.status AS status,
+          r.started_at AS started_at,
+          r.ended_at AS ended_at,
+          r.cancel_requested_at AS cancel_requested_at,
+          r.cancel_requested_by_user_id AS cancel_requested_by_user_id,
+          r.cancel_reason AS cancel_reason,
+          r.progress_json AS progress_json,
+          r.summary_json AS summary_json,
+          r.error AS error,
+          j.name AS job_name,
+          COALESCE(j.agent_id, 'hub') AS node_id,
+          a.name AS node_name
+        FROM runs r
+        JOIN jobs j ON j.id = r.job_id
+        LEFT JOIN agents a ON a.id = j.agent_id
+        WHERE r.id = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let status = row.get::<String, _>("status").parse::<runs_repo::RunStatus>()?;
+    let progress_json = row.get::<Option<String>, _>("progress_json");
+    let progress = progress_json
+        .map(|value| serde_json::from_str::<serde_json::Value>(&value))
+        .transpose()?;
+    let summary_json = row.get::<Option<String>, _>("summary_json");
+    let summary = summary_json
+        .map(|value| serde_json::from_str::<serde_json::Value>(&value))
+        .transpose()?;
+
+    Ok(Some(RunResponse {
+        id: row.get::<String, _>("id"),
+        job_id: row.get::<String, _>("job_id"),
+        job_name: row.get::<Option<String>, _>("job_name"),
+        node_id: row.get::<String, _>("node_id"),
+        node_name: row.get::<Option<String>, _>("node_name"),
+        status,
+        started_at: row.get::<i64, _>("started_at"),
+        ended_at: row.get::<Option<i64>, _>("ended_at"),
+        cancel_requested_at: row.get::<Option<i64>, _>("cancel_requested_at"),
+        cancel_requested_by_user_id: row.get::<Option<i64>, _>("cancel_requested_by_user_id"),
+        cancel_reason: row.get::<Option<String>, _>("cancel_reason"),
+        progress,
+        summary,
+        error: row.get::<Option<String>, _>("error"),
+    }))
 }
 
 pub(super) async fn get_run(
@@ -65,11 +114,11 @@ pub(super) async fn get_run(
 ) -> Result<Json<RunResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
-    let run = runs_repo::get_run(&state.db, &run_id)
+    let run = get_run_response(&state.db, &run_id)
         .await?
         .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
 
-    Ok(Json(run.into()))
+    Ok(Json(run))
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,7 +187,11 @@ pub(super) async fn cancel_run(
         .await;
     }
 
-    Ok(Json(run.into()))
+    let response = get_run_response(&state.db, &run.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("run_not_found", "Run not found"))?;
+
+    Ok(Json(response))
 }
 
 #[derive(Debug, Deserialize)]

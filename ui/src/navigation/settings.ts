@@ -7,6 +7,7 @@ export type SettingsNavItem = {
   titleKey: string
   descriptionKey?: string
   icon?: Component
+  domain: 'integrations' | 'system'
   showInOverview: boolean
   showInSidebar: boolean
   order: number
@@ -14,79 +15,78 @@ export type SettingsNavItem = {
 
 export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
-    key: 'overview',
-    to: '/settings',
-    titleKey: 'settings.menu.overview',
-    showInOverview: false,
-    showInSidebar: true,
-    order: 0,
-  },
-  {
     key: 'appearance',
-    to: '/settings/appearance',
+    to: '/system/appearance',
     titleKey: 'settings.menu.appearance',
     descriptionKey: 'settings.overview.appearanceDesc',
     icon: ColorPaletteOutline,
+    domain: 'system',
     showInOverview: true,
     showInSidebar: true,
     order: 5,
   },
   {
     key: 'storage',
-    to: '/settings/storage',
+    to: '/integrations/storage',
     titleKey: 'settings.menu.storage',
     descriptionKey: 'settings.overview.storageDesc',
     icon: CloudOutline,
+    domain: 'integrations',
     showInOverview: true,
     showInSidebar: true,
     order: 10,
   },
   {
     key: 'notifications',
-    to: '/settings/notifications',
+    to: '/integrations/notifications',
     titleKey: 'settings.menu.notifications',
     descriptionKey: 'settings.overview.notificationsDesc',
     icon: NotificationsOutline,
+    domain: 'integrations',
     showInOverview: true,
     showInSidebar: true,
     order: 20,
   },
   {
     key: 'maintenance',
-    to: '/settings/maintenance',
+    to: '/system/maintenance',
     titleKey: 'settings.menu.maintenance',
     descriptionKey: 'settings.overview.maintenanceDesc',
     icon: ConstructOutline,
+    domain: 'system',
     showInOverview: true,
     showInSidebar: true,
     order: 30,
   },
   {
     key: 'runtime-config',
-    to: '/settings/hub-runtime-config',
+    to: '/system/runtime',
     titleKey: 'settings.menu.runtimeConfig',
     descriptionKey: 'settings.overview.runtimeConfigDesc',
     icon: OptionsOutline,
+    domain: 'system',
     showInOverview: true,
     showInSidebar: true,
     order: 35,
   },
   {
     key: 'bulk-operations',
-    to: '/settings/bulk-operations',
+    to: '/system/bulk-operations',
     titleKey: 'settings.menu.bulkOperations',
     descriptionKey: 'settings.overview.bulkOperationsDesc',
     icon: ConstructOutline,
+    domain: 'system',
     showInOverview: true,
     showInSidebar: true,
     order: 37,
   },
   {
     key: 'about',
-    to: '/settings/about',
+    to: '/system/about',
     titleKey: 'settings.menu.about',
     descriptionKey: 'settings.overview.aboutDesc',
     icon: InformationCircleOutline,
+    domain: 'system',
     showInOverview: true,
     showInSidebar: true,
     order: 40,
@@ -137,4 +137,26 @@ export function getSettingsMenuRouteKeys(): string[] {
     keys.add(item.to)
   }
   return [...keys]
+}
+
+export function getIntegrationsSidebarItems(): SettingsSidebarItem[] {
+  return SETTINGS_NAV_ITEMS.filter((i) => i.showInSidebar && i.domain === 'integrations')
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((i) => ({
+      key: i.key,
+      titleKey: i.titleKey,
+      to: i.to,
+    }))
+}
+
+export function getSystemSidebarItems(): SettingsSidebarItem[] {
+  return SETTINGS_NAV_ITEMS.filter((i) => i.showInSidebar && i.domain === 'system')
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((i) => ({
+      key: i.key,
+      titleKey: i.titleKey,
+      to: i.to,
+    }))
 }

@@ -90,7 +90,35 @@ describe('useUiStore', () => {
 
     ui.setPreferredNodeId('agent1')
     expect(ui.preferredNodeId).toBe('agent1')
+    expect(ui.preferredScope).toBe('agent:agent1')
     expect(localStorage.getItem('bastion.ui.preferredNodeId')).toBe('agent1')
+    expect(localStorage.getItem('bastion.ui.preferredScope')).toBe('agent:agent1')
+  })
+
+  it('defaults preferred scope to all for a fresh install', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.preferredScope).toBe('all')
+  })
+
+  it('derives preferred scope from legacy stored node preference', () => {
+    stubMatchMedia(false)
+    localStorage.setItem('bastion.ui.preferredNodeId', 'agent7')
+    const ui = useUiStore()
+    expect(ui.preferredScope).toBe('agent:agent7')
+  })
+
+  it('persists preferred scope without overwriting the last concrete node when selecting all', () => {
+    stubMatchMedia(false)
+    const ui = useUiStore()
+    ui.setPreferredNodeId('agent2')
+
+    ui.setPreferredScope('all')
+
+    expect(ui.preferredScope).toBe('all')
+    expect(ui.preferredNodeId).toBe('agent2')
+    expect(localStorage.getItem('bastion.ui.preferredScope')).toBe('all')
+    expect(localStorage.getItem('bastion.ui.preferredNodeId')).toBe('agent2')
   })
 
   it('defaults jobs workspace layout mode to split when not stored', () => {

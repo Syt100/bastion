@@ -362,7 +362,7 @@ async function createBulkLabelsOperation(): Promise<void> {
 
     message.success(t('messages.bulkOperationCreated'))
     bulkLabelsModalOpen.value = false
-    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+    await router.push({ path: '/system/bulk-operations', query: { open: opId } })
   } catch (error) {
     message.error(formatToastError(t('errors.createBulkOperationFailed'), error, t))
   } finally {
@@ -404,7 +404,7 @@ async function createBulkSyncOperation(): Promise<void> {
 
     message.success(t('messages.bulkOperationCreated'))
     bulkSyncModalOpen.value = false
-    await router.push({ path: '/settings/bulk-operations', query: { open: opId } })
+    await router.push({ path: '/system/bulk-operations', query: { open: opId } })
   } catch (error) {
     message.error(formatToastError(t('errors.createBulkOperationFailed'), error, t))
   } finally {
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-6">
-    <PageHeader :title="t('agents.title')" :subtitle="t('agents.subtitle')">
+    <PageHeader :title="t('fleet.title')" :subtitle="t('fleet.subtitle')">
       <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>

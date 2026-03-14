@@ -22,7 +22,7 @@ vi.mock('naive-ui', async () => {
 })
 
 const routeApi = {
-  path: '/settings/notifications/channels',
+  path: '/integrations/notifications/channels',
 }
 const routerApi = {
   push: vi.fn(),
@@ -57,7 +57,7 @@ function stubMatchMedia(matches: boolean): void {
 describe('NotificationsShellView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    routeApi.path = '/settings/notifications/channels'
+    routeApi.path = '/integrations/notifications/channels'
     stubMatchMedia(true)
   })
 
@@ -74,7 +74,7 @@ describe('NotificationsShellView', () => {
   })
 
   it('hides desktop tabs on notifications index route', () => {
-    routeApi.path = '/settings/notifications'
+    routeApi.path = '/integrations/notifications'
     const wrapper = mount(NotificationsShellView, {
       global: {
         stubs: {
@@ -100,6 +100,6 @@ describe('NotificationsShellView', () => {
     tabs.vm.$emit('update:value', 'invalid')
 
     expect(routerApi.push).toHaveBeenCalledTimes(1)
-    expect(routerApi.push).toHaveBeenCalledWith('/settings/notifications/queue')
+    expect(routerApi.push).toHaveBeenCalledWith('/integrations/notifications/queue')
   })
 })

@@ -20,6 +20,11 @@ type MobileTopBarMeta = {
   backTo?: string | null
 }
 
+type ShellMeta = {
+  shellTitleKey?: string
+  shellSubtitleKey?: string
+}
+
 const mobileTopBarMeta = computed<MobileTopBarMeta>(() => {
   for (const record of [...route.matched].reverse()) {
     const raw = record.meta?.mobileTopBar as unknown
@@ -35,12 +40,22 @@ const mobileTopBarMeta = computed<MobileTopBarMeta>(() => {
 })
 
 const mobileTitle = computed(() => t(mobileTopBarMeta.value.titleKey))
+const shellMeta = computed<ShellMeta>(() => {
+  for (const record of [...route.matched].reverse()) {
+    const raw = record.meta as ShellMeta | undefined
+    if (!raw) continue
+    if (raw.shellTitleKey || raw.shellSubtitleKey) return raw
+  }
+  return { shellTitleKey: 'settings.title', shellSubtitleKey: 'settings.subtitle' }
+})
+const shellTitle = computed(() => t(shellMeta.value.shellTitleKey ?? 'settings.title'))
+const shellSubtitle = computed(() => t(shellMeta.value.shellSubtitleKey ?? 'settings.subtitle'))
 </script>
 
 <template>
   <div class="space-y-6">
     <MobileTopBar v-if="!isDesktop" :title="mobileTitle" :back-to="mobileTopBarMeta.backTo" />
-    <PageHeader v-else :title="t('settings.title')" :subtitle="t('settings.subtitle')">
+    <PageHeader v-else :title="shellTitle" :subtitle="shellSubtitle">
       <template v-if="nodeId" #prefix>
         <NodeContextTag :node-id="nodeId" />
       </template>
