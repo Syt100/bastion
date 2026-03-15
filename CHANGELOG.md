@@ -20,6 +20,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ### Changed
 - Changed Web UI heading copy across Operations Overview, Agent Management, Integrations, Jobs, and Runs to use more professional operator-facing titles/subtitles and remove terminal punctuation from heading text.
 - Changed zh-CN and en-US navigation/page labels to replace less professional control-plane terms with clearer operator-facing naming such as `运行总览` / `Operations Overview` and `客户端管理` / `Agent Management`.
+- Changed zh-CN and en-US operator copy to remove internal implementation wording, normalize workspace terminology, and use more precise action labels such as `查看` / `View` and `进入` / `Go to`.
 - Changed Operations Overview, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
 - Changed the Web UI shell to an operations-overview-first information architecture with top-level `Operations Overview`, `Jobs`, `Runs`, `Agent Management`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.

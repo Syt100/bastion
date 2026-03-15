@@ -93,14 +93,14 @@ const messages = {
     fleet: '客户端管理',
     integrations: '集成',
     system: '系统',
-    context: '上下文',
+    context: '范围',
     workspace: '工作区',
     scopePicker: {
       currentLabel: '当前范围',
-      preferredLabel: '偏好范围',
+      preferredLabel: '默认范围',
       hintCurrent: '切换范围会刷新当前集合视图。',
-      hintPreferred: '当页面没有固定范围时，默认使用这个范围。',
-      hintLegacy: '当前页面仍使用按节点划分的上下文。请选择 Hub 或某个客户端继续。',
+      hintPreferred: '当页面没有固定范围时，默认使用此范围。',
+      hintLegacy: '当前页面仅支持 Hub 或单个客户端范围。请选择 Hub 或某个客户端继续。',
       all: '全部系统',
       hub: 'Hub',
     },
@@ -148,7 +148,7 @@ const messages = {
         actions: '操作',
       },
       actions: {
-        open: '打开',
+        open: '查看',
       },
       preparingTable: '正在准备桌面表格...',
     },
@@ -166,7 +166,7 @@ const messages = {
   },
   commandCenter: {
     title: '运行总览',
-    subtitle: '统览当前范围内的备份风险、近期关键活动与恢复准备度',
+    subtitle: '统览当前范围内的备份风险、近期关键活动与恢复就绪度',
     range: {
       last24h: '24 小时',
       last7d: '7 天',
@@ -182,15 +182,15 @@ const messages = {
       metrics: {
         attention: '待处理',
         activity: '关键活动',
-        readiness: '恢复准备度',
+        readiness: '恢复就绪度',
       },
       priority: {
         attentionLabel: '需要复核',
         attentionBody: '当前范围内有 {count} 个待跟进事项，请优先查看下方待处理列表。',
         attentionQuiet: '当前范围内没有待立即跟进的事项。',
-        readinessHealthy: '当前范围内的活动任务已经具备最近备份与校验信号。',
-        readinessDegraded: '仍有活动任务缺少最近备份或校验信号，恢复准备度尚未完整。',
-        readinessEmpty: '当前范围内还没有活动任务上报状态，任务开始运行后会出现恢复准备度信号。',
+        readinessHealthy: '当前范围内的活动任务已具备最近备份与校验信号。',
+        readinessDegraded: '仍有活动任务缺少最近备份或校验信号，恢复就绪度仍不完整。',
+        readinessEmpty: '当前范围内还没有活动任务上报状态，任务开始运行后会出现恢复就绪信号。',
       },
     },
     sections: {
@@ -201,10 +201,10 @@ const messages = {
         title: '近期关键活动',
       },
       readiness: {
-        title: '恢复准备度',
+        title: '恢复就绪度',
       },
       watchlist: {
-        title: '观察列表',
+        title: '进行中事项',
       },
     },
     severity: {
@@ -213,16 +213,16 @@ const messages = {
       info: '信息',
     },
     actions: {
-      openRun: '打开运行',
-      openJobs: '打开任务',
-      openQueue: '打开队列',
-      openFleet: '打开客户端管理',
+      openRun: '查看运行',
+      openJobs: '查看任务',
+      openQueue: '查看队列',
+      openFleet: '进入客户端管理',
     },
     readiness: {
       none: '暂无信号',
       blockersTitle: '当前还缺什么',
       healthyNote: '当前范围内最近的备份与校验信号都已经具备。',
-      emptyNote: '当前范围内还没有活动任务，因此恢复准备度暂时没有可评估的信号。',
+      emptyNote: '当前范围内还没有活动任务，因此暂时没有可评估的恢复就绪信号。',
       coverage: '{covered}/{total} 个活动任务已覆盖',
       overall: {
         healthy: '健康',
@@ -239,7 +239,7 @@ const messages = {
     blockers: {
       missing_backup: {
         title: '还没有可用的成功备份',
-        summary: '至少要先有一次成功备份，恢复准备度才有基础信号。',
+        summary: '至少要先有一次成功备份，恢复就绪度才有基础信号。',
       },
       partial_backup_coverage: {
         title: '并不是每个任务都有成功备份',
@@ -258,8 +258,8 @@ const messages = {
         summary: '已经出现比最近一次成功校验更新的成功备份。',
       },
       section_unavailable: {
-        title: '恢复准备度暂时不可用',
-        summary: '服务器暂时无法汇总恢复准备度信号，请稍后重试。',
+        title: '恢复就绪度暂时不可用',
+        summary: '服务器暂时无法汇总恢复就绪信号，请稍后重试。',
       },
     },
     items: {
@@ -359,14 +359,14 @@ const messages = {
     empty: {
       attention: '这个范围里当前没有需要立刻处理的事项。',
       activity: '所选时间窗口内没有记录到值得关注的活动。',
-      watchlist: '没有运行中的任务、排队通知或正在进行的运维操作。',
+      watchlist: '没有运行中的任务、排队通知或进行中的运维操作。',
     },
   },
   fleet: {
     title: '客户端管理',
     subtitle: '管理已接入客户端、接入令牌与配置同步状态',
     columns: {
-      workload: '运维上下文',
+      workload: '任务负载',
     },
     workload: {
       jobs: '{count} 个关联任务',
@@ -388,7 +388,7 @@ const messages = {
     onboarding: {
       title: '接入引导',
       subtitle: '基于已配置的公共控制面地址生成接入命令',
-      runtimeAction: '打开运行时设置',
+      runtimeAction: '前往运行时设置',
       publicBaseUrl: '公共访问地址',
       publicBaseUrlMissing: '尚未配置',
       missingDescription: '请先在“系统 → 运行配置”中设置公共访问地址，再复制生产环境的接入命令。',
@@ -398,7 +398,7 @@ const messages = {
       subtitle: '查看单个客户端的健康状态、配置同步、最近活动与关联任务',
       createdAt: '接入时间',
       actionsTitle: '客户端操作',
-      actionsSubtitle: '使用服务端权威动作执行密钥轮换、吊销或立即同步',
+      actionsSubtitle: '使用服务端直接操作执行密钥轮换、吊销或立即同步',
       syncTitle: '配置同步',
       relatedJobsTitle: '关联任务',
       relatedJobsEmptyTitle: '该客户端尚未分配任务',
@@ -408,7 +408,7 @@ const messages = {
       activityEmptyTitle: '暂无最近活动',
       activityEmptyDescription: '当该客户端开始承接任务后，最近运行记录会显示在这里。',
       activityMeta: '状态：{status} · 开始：{startedAt} · 结束：{endedAt}',
-      openRun: '打开运行详情',
+      openRun: '查看运行详情',
     },
   },
   integrations: {
@@ -427,7 +427,7 @@ const messages = {
       distributionMeta: '{coverage_total} 个客户端覆盖 · {drifted_total} 个漂移 · {failed_total} 个失败',
     },
     storage: {
-      scopeFallback: '存储凭据仍然按节点管理。“全部系统”会先回退到 Hub，直到新的集成工作区支持完整范围视图。',
+      scopeFallback: '存储凭据仍按节点管理。“全部系统”当前会回退到 Hub，直到集成页面支持完整范围视图。',
       unused: '当前未被活动任务引用',
       usageCount: '被 {count} 个活动任务引用',
       noSignal: '暂无最近校验信号',
@@ -449,10 +449,10 @@ const messages = {
       failed: '下发失败',
       offline: '离线客户端',
       scopeTitle: '范围明细',
-      scopeSubtitle: '在同一页面查看各客户端的漂移情况并继续跟进',
+      scopeSubtitle: '在同一视图查看各客户端的漂移情况并继续跟进',
       scopeMeta: '{pending} 个待处理任务 · 最近尝试 {attemptedAt}',
-      openAgent: '打开客户端',
-      openStorage: '打开存储范围',
+      openAgent: '查看客户端',
+      openStorage: '查看存储范围',
       state: {
         covered: '已覆盖',
         drifted: '存在漂移',
@@ -462,13 +462,13 @@ const messages = {
         online: '在线',
         offline: '离线',
       },
-      openFleet: '打开客户端管理',
-      openBulkOperations: '打开批量操作',
+      openFleet: '进入客户端管理',
+      openBulkOperations: '进入批量操作',
     },
   },
   system: {
     title: '系统',
-    subtitle: '运行时、维护、外观和产品级配置',
+    subtitle: '运行时、维护、外观和全局配置',
     overview: {
       publicBaseUrl: '公共访问地址',
       publicBaseUrlMissing: '尚未配置',
@@ -488,16 +488,16 @@ const messages = {
   auth: {
     signIn: '登录',
     signInSubtitle: '登录以管理备份与恢复',
-    heroTitle: '在一个控制台里管理备份、恢复与客户端',
+    heroTitle: '在统一入口管理备份、恢复与客户端',
     heroBody: 'Bastion 将备份调度、客户端状态和失败排查集中到同一个入口，帮助你在真正需要恢复之前就发现问题。',
     heroHelp: '如果这是首次部署，先打开产品文档确认初始化、网络和 TLS 方案。',
     docsCta: '查看文档',
     heroCards: {
       jobsTitle: '备份任务',
-      jobsBody: '在统一工作台里配置计划、保留策略和目标端。',
+      jobsBody: '在统一工作区里配置计划、保留策略和目标端。',
       agentsTitle: '客户端状态',
       agentsBody: '快速查看哪些节点在线、已同步或需要处理。',
-      restoresTitle: '恢复准备度',
+      restoresTitle: '恢复就绪度',
       restoresBody: '先看最近运行与失败，再决定是否需要进入恢复排查。',
     },
     username: '用户名',
@@ -515,7 +515,7 @@ const messages = {
     subtitle: '管理已接入 Hub 的客户端',
     empty: {
       title: '暂无客户端',
-      description: '先接入第一个节点，让这里成为客户端控制台。',
+      description: '先接入第一个节点，让这里成为客户端管理入口。',
       guideTitle: '建议按以下顺序完成首次接入',
       steps: {
         createToken: '先创建一个接入令牌，用于目标节点首次绑定。',
@@ -679,21 +679,21 @@ const messages = {
     title: '备份任务',
     subtitle: '管理备份任务、计划与执行状态',
     landing: {
-      subtitle: '按所选范围打开任务工作区',
+      subtitle: '按所选范围进入任务工作区',
       kicker: '任务工作区',
       title: '按范围查看和操作备份任务',
-      body: '使用当前范围打开对应的任务工作区，在统一的操作界面中完成筛选、检查和任务操作。',
-      scope: '请求范围：{scope}',
-      node: '工作区节点：{node}',
-      allScopeHint: '请选择 Hub 或某个客户端以打开对应范围的任务工作区。',
-      openWorkspace: '打开工作区',
+      body: '使用当前范围进入对应的任务工作区，在统一界面中完成筛选、检查和任务操作。',
+      scope: '所选范围：{scope}',
+      node: '当前节点：{node}',
+      allScopeHint: '请选择 Hub 或某个客户端，以进入对应范围的任务工作区。',
+      openWorkspace: '进入工作区',
       backToCommandCenter: '返回运行总览',
     },
     workspace: {
       emptyTitle: '请选择一个任务继续',
       emptyDescription: '选择任务以查看配置、近期运行和当前操作状态。',
       actions: {
-        workspace: '工作台',
+        workspace: '工作区',
         splitView: '分栏',
         fullList: '仅列表',
         fullDetail: '仅详情',
@@ -722,7 +722,7 @@ const messages = {
         noRecentRuns: '暂无近期运行',
         warningsTitle: '告警',
         noWarnings: '当前没有活动告警',
-        openLatestRun: '打开最近运行',
+        openLatestRun: '查看最近运行',
         healthHealthy: '正常',
         healthWarning: '需要复核',
         healthCritical: '需要处理',
@@ -1624,7 +1624,7 @@ const messages = {
   },
   runs: {
     title: '运行记录',
-    subtitle: '按任务、节点与时间范围查看运行结果，并进入独立运行工作台排查问题',
+    subtitle: '按任务、节点与时间范围查看运行结果，并进入独立运行工作区排查问题',
     latestRun: '最近一次运行',
     neverRan: '从未运行',
     filters: {
@@ -1693,7 +1693,7 @@ const messages = {
     },
     detail: {
       pageTitle: '运行详情',
-      pageSubtitle: '在独立工作台中检查运行状态、诊断信息与相关操作',
+      pageSubtitle: '在独立运行工作区中检查运行状态、诊断信息与相关操作',
       backToRuns: '返回运行记录',
       overviewTitle: '概览',
       duration: '耗时',
@@ -1723,7 +1723,7 @@ const messages = {
       rawJson: '原始 JSON',
     },
     list: {
-      kicker: '全局运行工作台',
+      kicker: '全局运行工作区',
       title: '跨任务查看运行结果',
       subtitle: '当前显示 {scope} 范围内的运行，可直接进入独立运行详情',
       summary: '当前显示 {shown} / {total} 条 · 第 {page} 页',
@@ -1734,11 +1734,11 @@ const messages = {
     landing: {
       kicker: '近期执行',
       title: '通过稳定的顶层路由跟踪运行结果',
-      body: '这个页面已经切到新的路由模型。你可以按范围查看近期关键活动，并在不先进入某个任务的情况下直接打开运行详情。',
+      body: '当前页面已支持按范围查看近期关键活动，并可直接进入运行详情，无需先进入某个任务。',
       primaryTitle: '近期关键活动',
-      watchlistTitle: '仍在进行中',
+      watchlistTitle: '进行中事项',
       empty: '当前范围内没有匹配的运行或运维活动。',
-      watchlistEmpty: '当前没有运行中的任务、排队通知或活跃的运维工作流。',
+      watchlistEmpty: '当前没有运行中的任务、排队通知或进行中的运维操作。',
     },
     progress: {
       title: '进度',
@@ -1797,8 +1797,8 @@ const messages = {
       cancelConfirm: '确认要取消本次运行吗？',
       restore: '恢复',
       verify: '校验',
-      openRun: '打开运行',
-      openJob: '打开任务',
+      openRun: '查看运行',
+      openJob: '查看任务',
     },
   },
   runEvents: {

@@ -93,14 +93,14 @@ const messages = {
     fleet: 'Agent Management',
     integrations: 'Integrations',
     system: 'System',
-    context: 'Context',
+    context: 'Scope',
     workspace: 'Workspace',
     scopePicker: {
       currentLabel: 'Current scope',
-      preferredLabel: 'Preferred scope',
+      preferredLabel: 'Default scope',
       hintCurrent: 'Changing scope refreshes the current collection view.',
-      hintPreferred: 'Used as the default scope when a page does not pin its own scope.',
-      hintLegacy: 'This page still uses node-scoped context. Select Hub or a specific agent to continue.',
+      hintPreferred: 'Used when a page does not set its own scope.',
+      hintLegacy: 'This page only supports Hub or single-agent scope. Select the Hub or an agent to continue.',
       all: 'All systems',
       hub: 'Hub',
     },
@@ -148,7 +148,7 @@ const messages = {
         actions: 'Actions',
       },
       actions: {
-        open: 'Open',
+        open: 'View',
       },
       preparingTable: 'Preparing desktop table...',
     },
@@ -204,7 +204,7 @@ const messages = {
         title: 'Recovery readiness',
       },
       watchlist: {
-        title: 'Watchlist',
+        title: 'In progress',
       },
     },
     severity: {
@@ -213,10 +213,10 @@ const messages = {
       info: 'Info',
     },
     actions: {
-      openRun: 'Open run',
-      openJobs: 'Open jobs',
-      openQueue: 'Open queue',
-      openFleet: 'Open Agent Management',
+      openRun: 'View run',
+      openJobs: 'View jobs',
+      openQueue: 'View queue',
+      openFleet: 'Go to Agent Management',
     },
     readiness: {
       none: 'No signal yet',
@@ -359,14 +359,14 @@ const messages = {
     empty: {
       attention: 'Nothing currently needs immediate action in this scope.',
       activity: 'No notable activity was recorded in the selected time window.',
-      watchlist: 'No active runs, queued notifications, or in-flight operator tasks are waiting here.',
+      watchlist: 'No active runs, queued notifications, or in-progress operator tasks are waiting here.',
     },
   },
   fleet: {
     title: 'Agent Management',
     subtitle: 'Manage connected agents, enrollment, and configuration sync health',
     columns: {
-      workload: 'Operational context',
+      workload: 'Workload',
     },
     workload: {
       jobs: '{count} assigned jobs',
@@ -388,7 +388,7 @@ const messages = {
     onboarding: {
       title: 'Onboarding',
       subtitle: 'Generate enrollment commands from the configured public control-plane address',
-      runtimeAction: 'Open runtime settings',
+      runtimeAction: 'Go to runtime settings',
       publicBaseUrl: 'Public base URL',
       publicBaseUrlMissing: 'Not configured',
       missingDescription:
@@ -399,7 +399,7 @@ const messages = {
       subtitle: 'Review agent health, sync state, recent activity, and related jobs',
       createdAt: 'Registered at',
       actionsTitle: 'Agent actions',
-      actionsSubtitle: 'Use server-authoritative actions for key rotation, revocation, and immediate sync',
+      actionsSubtitle: 'Use direct server actions for key rotation, revocation, and immediate sync',
       syncTitle: 'Configuration sync',
       relatedJobsTitle: 'Related jobs',
       relatedJobsEmptyTitle: 'No jobs are assigned to this agent',
@@ -409,7 +409,7 @@ const messages = {
       activityEmptyTitle: 'No recent activity',
       activityEmptyDescription: 'Recent runs for this agent will appear here after work has been scheduled or executed.',
       activityMeta: 'Status: {status} · Started: {startedAt} · Ended: {endedAt}',
-      openRun: 'Open run',
+      openRun: 'View run details',
     },
   },
   integrations: {
@@ -430,7 +430,7 @@ const messages = {
     },
     storage: {
       scopeFallback:
-        'Storage secrets are managed per node. “All systems” falls back to the Hub until the scoped integrations workspace lands.',
+        'Storage secrets are still managed per node. “All systems” currently falls back to the Hub until Integrations supports a full scoped view.',
       unused: 'Not referenced by active jobs',
       usageCount: 'Referenced by {count} active jobs',
       noSignal: 'No recent validation signal',
@@ -452,10 +452,10 @@ const messages = {
       failed: 'Failed',
       offline: 'Offline agents',
       scopeTitle: 'Scope detail',
-      scopeSubtitle: 'Review per-agent drift and follow-up from one workspace',
+      scopeSubtitle: 'Review per-agent drift and follow-up from a single view',
       scopeMeta: '{pending} pending tasks · Last attempt {attemptedAt}',
-      openAgent: 'Open agent',
-      openStorage: 'Open storage scope',
+      openAgent: 'View agent',
+      openStorage: 'View storage scope',
       state: {
         covered: 'Covered',
         drifted: 'Drifted',
@@ -465,13 +465,13 @@ const messages = {
         online: 'Online',
         offline: 'Offline',
       },
-      openFleet: 'Open Agent Management',
-      openBulkOperations: 'Open bulk operations',
+      openFleet: 'Go to Agent Management',
+      openBulkOperations: 'Go to bulk operations',
     },
   },
   system: {
     title: 'System',
-    subtitle: 'Runtime, maintenance, appearance, and product-level configuration',
+    subtitle: 'Runtime, maintenance, appearance, and platform-wide settings',
     overview: {
       publicBaseUrl: 'Public base URL',
       publicBaseUrlMissing: 'Not configured',
@@ -681,14 +681,14 @@ const messages = {
   jobs: {
     title: 'Jobs',
     landing: {
-      subtitle: 'Open the Jobs workspace for the selected scope',
+      subtitle: 'Go to the Jobs workspace for the selected scope',
       kicker: 'Jobs workspace',
       title: 'Backup jobs by scope',
-      body: 'Use the selected scope to open the relevant Jobs workspace and continue with filtering, inspection, and job actions from one operational surface.',
-      scope: 'Requested scope: {scope}',
-      node: 'Workspace node: {node}',
-      allScopeHint: 'Select Hub or a specific agent to open a scoped Jobs workspace.',
-      openWorkspace: 'Open workspace',
+      body: 'Use the selected scope to enter the relevant Jobs workspace and continue with filtering, inspection, and job actions from one operational view.',
+      scope: 'Selected scope: {scope}',
+      node: 'Current node: {node}',
+      allScopeHint: 'Select Hub or a specific agent to enter a scoped Jobs workspace.',
+      openWorkspace: 'Go to workspace',
       backToCommandCenter: 'Back to Operations Overview',
     },
     subtitle: 'Manage backup jobs, schedules, and execution state',
@@ -704,7 +704,7 @@ const messages = {
         refreshList: 'Refresh list',
         refreshJob: 'Refresh job',
         select: 'Select',
-        openDetails: 'Open details',
+        openDetails: 'View details',
         backToList: 'Back to Jobs',
       },
       views: {
@@ -725,7 +725,7 @@ const messages = {
         noRecentRuns: 'No recent runs',
         warningsTitle: 'Warnings',
         noWarnings: 'No active warnings',
-        openLatestRun: 'Open latest run',
+        openLatestRun: 'View latest run',
         healthHealthy: 'Healthy',
         healthWarning: 'Needs review',
         healthCritical: 'Attention required',
@@ -1742,11 +1742,11 @@ const messages = {
     landing: {
       kicker: 'Recent execution',
       title: 'Track run outcomes from stable top-level routes',
-      body: 'This surface is already using the new route model. Use it to review recent critical activity by scope and jump into run details without navigating through a job first.',
+      body: 'Use this page to review recent critical activity by scope and jump into run details without opening a job first.',
       primaryTitle: 'Recent critical activity',
-      watchlistTitle: 'Still in flight',
+      watchlistTitle: 'In progress',
       empty: 'No recent run or operator activity matched this scope.',
-      watchlistEmpty: 'No running runs, queued notifications, or active operator workflows are waiting here.',
+      watchlistEmpty: 'No running runs, queued notifications, or in-progress operator tasks are waiting here.',
     },
     progress: {
       title: 'Progress',
@@ -1805,8 +1805,8 @@ const messages = {
       cancelConfirm: 'Cancel this run now?',
       restore: 'Restore',
       verify: 'Verify',
-      openRun: 'Open run',
-      openJob: 'Open job',
+      openRun: 'View run',
+      openJob: 'View job',
     },
   },
   runEvents: {
