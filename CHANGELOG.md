@@ -18,6 +18,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added authenticated Fleet / Integrations control-plane summary APIs plus a dedicated Fleet detail page, Integrations overview, System overview, and public-base-URL metadata endpoint for operator-facing command generation.
 
 ### Changed
+- Changed Web UI heading copy across Command Center, Fleet, Integrations, Jobs, and Runs to use more professional operator-facing titles/subtitles and remove terminal punctuation from heading text.
 - Changed Command Center, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
 - Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.

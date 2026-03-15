@@ -136,7 +136,7 @@ const messages = {
     },
     recent: {
       title: '最近运行',
-      subtitle: '先看最新备份活动，再决定是否需要深入查看趋势。',
+      subtitle: '先查看最新备份活动，再决定是否需要深入分析趋势',
       empty: '暂无运行记录',
       columns: {
         status: '状态',
@@ -166,7 +166,7 @@ const messages = {
   },
   commandCenter: {
     title: '指挥中心',
-    subtitle: '查看当前范围内的备份风险、近期关键活动与恢复准备度。',
+    subtitle: '统览当前范围内的备份风险、近期关键活动与恢复准备度',
     range: {
       last24h: '24 小时',
       last7d: '7 天',
@@ -174,7 +174,7 @@ const messages = {
     },
     hero: {
       kicker: '运行概览',
-      title: '查看当前运维状态。',
+      title: '当前运维状态',
       healthy: '当前没有待立即处理的事项。请继续确认最近备份和校验信号仍然覆盖该范围。',
       attention: '请优先处理失败运行、通知投递异常、离线客户端，以及缺失的恢复信号。',
       scope: '范围：{scope}',
@@ -364,7 +364,7 @@ const messages = {
   },
   fleet: {
     title: '客户端舰队',
-    subtitle: '管理已接入节点、接入令牌与配置同步状态。',
+    subtitle: '管理已接入客户端、接入令牌与配置同步状态',
     columns: {
       workload: '运维上下文',
     },
@@ -379,7 +379,7 @@ const messages = {
     },
     summary: {
       title: '舰队健康概览',
-      subtitle: '在同一屏幕中查看客户端连通性和配置分发状态。',
+      subtitle: '统一查看客户端连通性与配置分发状态',
       total: '已登记客户端',
       online: '在线',
       offline: '离线',
@@ -387,7 +387,7 @@ const messages = {
     },
     onboarding: {
       title: '接入引导',
-      subtitle: '基于已配置的公共控制面地址生成接入命令。',
+      subtitle: '基于已配置的公共控制面地址生成接入命令',
       runtimeAction: '打开运行时设置',
       publicBaseUrl: '公共访问地址',
       publicBaseUrlMissing: '尚未配置',
@@ -395,10 +395,10 @@ const messages = {
     },
     detail: {
       title: '舰队详情',
-      subtitle: '查看单个客户端的健康状态、配置同步、最近活动和关联任务。',
+      subtitle: '查看单个客户端的健康状态、配置同步、最近活动与关联任务',
       createdAt: '接入时间',
       actionsTitle: '客户端操作',
-      actionsSubtitle: '使用服务端权威动作执行密钥轮换、吊销或立即同步。',
+      actionsSubtitle: '使用服务端权威动作执行密钥轮换、吊销或立即同步',
       syncTitle: '配置同步',
       relatedJobsTitle: '关联任务',
       relatedJobsEmptyTitle: '该客户端尚未分配任务',
@@ -413,7 +413,7 @@ const messages = {
   },
   integrations: {
     title: '集成',
-    subtitle: '管理存储目标、通知投递以及相关连接凭据。',
+    subtitle: '管理存储目标、通知投递及相关连接凭据',
     states: {
       ready: '正常',
       empty: '为空',
@@ -421,7 +421,7 @@ const messages = {
     },
     overview: {
       title: '集成状态概览',
-      subtitle: '按运维域查看外部依赖状态，再进入具体管理页面。',
+      subtitle: '按运维域查看外部依赖状态，再进入具体管理页面',
       storageMeta: '{items_total} 个凭据 · {in_use_total} 个在用 · {invalid_total} 个需修正',
       notificationsMeta: '{destinations_total} 个目标 · {queue_backlog_total} 个排队/发送中 · {recent_failures_total} 个失败',
       distributionMeta: '{coverage_total} 个客户端覆盖 · {drifted_total} 个漂移 · {failed_total} 个失败',
@@ -443,13 +443,13 @@ const messages = {
     },
     distribution: {
       title: '分发',
-      subtitle: '跟踪配置及相关凭据是否已经在整个舰队中正确下发。',
+      subtitle: '跟踪配置及相关凭据是否已在整个舰队中正确下发',
       coverage: '覆盖客户端',
       drifted: '存在漂移',
       failed: '下发失败',
       offline: '离线客户端',
       scopeTitle: '范围明细',
-      scopeSubtitle: '在同一页面内查看每个客户端的漂移情况并继续跟进。',
+      scopeSubtitle: '在同一页面查看各客户端的漂移情况并继续跟进',
       scopeMeta: '{pending} 个待处理任务 · 最近尝试 {attemptedAt}',
       openAgent: '打开客户端',
       openStorage: '打开存储范围',
@@ -468,7 +468,7 @@ const messages = {
   },
   system: {
     title: '系统',
-    subtitle: '运行时、维护、外观和产品级配置。',
+    subtitle: '运行时、维护、外观和产品级配置',
     overview: {
       publicBaseUrl: '公共访问地址',
       publicBaseUrlMissing: '尚未配置',
@@ -677,11 +677,11 @@ const messages = {
   },
   jobs: {
     title: '备份任务',
-    subtitle: '管理备份任务、计划与执行状态。',
+    subtitle: '管理备份任务、计划与执行状态',
     landing: {
-      subtitle: '按所选范围打开任务工作区。',
+      subtitle: '按所选范围打开任务工作区',
       kicker: '任务工作区',
-      title: '按范围查看和操作备份任务。',
+      title: '按范围查看和操作备份任务',
       body: '使用当前范围打开对应的任务工作区，在统一的操作界面中完成筛选、检查和任务操作。',
       scope: '请求范围：{scope}',
       node: '工作区节点：{node}',
@@ -714,7 +714,7 @@ const messages = {
       },
       support: {
         healthTitle: '运行状态',
-        healthSubtitle: '汇总近期执行、下次计划和目标信息。',
+        healthSubtitle: '汇总近期执行、下次计划和目标信息',
         latestSuccess: '最近成功备份',
         nextRun: '下次计划运行',
         target: '目标',
@@ -868,9 +868,9 @@ const messages = {
     },
     editor: {
       createPageTitle: '创建任务',
-      createPageSubtitle: '在单一编排流程中定义数据源、目标、计划、控制项和通知。',
+      createPageSubtitle: '在单一编排流程中定义数据源、目标、计划、控制项和通知',
       editPageTitle: '编辑任务',
-      editPageSubtitle: '复核当前配置并以受控方式提交变更。',
+      editPageSubtitle: '复核当前配置并以受控方式提交变更',
       backToJobs: '返回任务列表',
       discardDraft: '丢弃草稿',
       draftStaleNotice: '检测到基于旧版本任务生成的草稿。恢复前请先确认差异。',
@@ -1624,7 +1624,7 @@ const messages = {
   },
   runs: {
     title: '运行记录',
-    subtitle: '按任务、节点与时间范围查看运行结果，并进入独立运行工作台排查问题。',
+    subtitle: '按任务、节点与时间范围查看运行结果，并进入独立运行工作台排查问题',
     latestRun: '最近一次运行',
     neverRan: '从未运行',
     filters: {
@@ -1693,7 +1693,7 @@ const messages = {
     },
     detail: {
       pageTitle: '运行详情',
-      pageSubtitle: '在独立工作台中检查运行状态、诊断信息与相关操作。',
+      pageSubtitle: '在独立工作台中检查运行状态、诊断信息与相关操作',
       backToRuns: '返回运行记录',
       overviewTitle: '概览',
       duration: '耗时',
@@ -1725,7 +1725,7 @@ const messages = {
     list: {
       kicker: '全局运行工作台',
       title: '跨任务查看运行结果',
-      subtitle: '当前显示 {scope} 范围内的运行，可直接进入独立运行详情。',
+      subtitle: '当前显示 {scope} 范围内的运行，可直接进入独立运行详情',
       summary: '当前显示 {shown} / {total} 条 · 第 {page} 页',
       emptyTitle: '当前筛选条件下没有运行记录',
       emptyDescription: '可尝试扩大时间范围或清除部分筛选条件。',
@@ -1733,7 +1733,7 @@ const messages = {
     },
     landing: {
       kicker: '近期执行',
-      title: '通过稳定的顶层路由跟踪运行结果。',
+      title: '通过稳定的顶层路由跟踪运行结果',
       body: '这个页面已经切到新的路由模型。你可以按范围查看近期关键活动，并在不先进入某个任务的情况下直接打开运行详情。',
       primaryTitle: '近期关键活动',
       watchlistTitle: '仍在进行中',

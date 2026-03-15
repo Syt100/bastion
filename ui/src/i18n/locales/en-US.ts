@@ -136,7 +136,7 @@ const messages = {
     },
     recent: {
       title: 'Recent runs',
-      subtitle: 'Open the latest backup activity before drilling into trends.',
+      subtitle: 'Review the latest backup activity before drilling into trends',
       empty: 'No runs yet',
       columns: {
         status: 'Status',
@@ -166,7 +166,7 @@ const messages = {
   },
   commandCenter: {
     title: 'Command Center',
-    subtitle: 'Review backup risk, recent critical activity, and recovery readiness for the selected scope.',
+    subtitle: 'Monitor backup risk, recent critical activity, and recovery readiness for the selected scope',
     range: {
       last24h: '24h',
       last7d: '7d',
@@ -174,7 +174,7 @@ const messages = {
     },
     hero: {
       kicker: 'Operations overview',
-      title: 'Review the current operational state.',
+      title: 'Current operational state',
       healthy: 'No urgent follow-up is open right now. Confirm that recent backup and verification signals still cover this scope.',
       attention: 'Investigate failures, delivery issues, offline agents, and missing recovery signals before they accumulate.',
       scope: 'Scope: {scope}',
@@ -364,7 +364,7 @@ const messages = {
   },
   fleet: {
     title: 'Fleet',
-    subtitle: 'Manage connected agents, enrollment, and config sync health.',
+    subtitle: 'Manage connected agents, enrollment, and configuration sync health',
     columns: {
       workload: 'Operational context',
     },
@@ -379,7 +379,7 @@ const messages = {
     },
     summary: {
       title: 'Fleet health',
-      subtitle: 'Monitor current agent reachability and config distribution at a glance.',
+      subtitle: 'Monitor agent reachability and configuration distribution at a glance',
       total: 'Registered agents',
       online: 'Online',
       offline: 'Offline',
@@ -387,7 +387,7 @@ const messages = {
     },
     onboarding: {
       title: 'Onboarding',
-      subtitle: 'Create enrollment commands from the configured public control-plane address.',
+      subtitle: 'Generate enrollment commands from the configured public control-plane address',
       runtimeAction: 'Open runtime settings',
       publicBaseUrl: 'Public base URL',
       publicBaseUrlMissing: 'Not configured',
@@ -396,10 +396,10 @@ const messages = {
     },
     detail: {
       title: 'Fleet detail',
-      subtitle: 'Review one agent’s health, sync state, recent activity, and related jobs.',
+      subtitle: 'Review agent health, sync state, recent activity, and related jobs',
       createdAt: 'Registered at',
       actionsTitle: 'Agent actions',
-      actionsSubtitle: 'Use server-authoritative actions for key rotation, revocation, and immediate sync.',
+      actionsSubtitle: 'Use server-authoritative actions for key rotation, revocation, and immediate sync',
       syncTitle: 'Configuration sync',
       relatedJobsTitle: 'Related jobs',
       relatedJobsEmptyTitle: 'No jobs are assigned to this agent',
@@ -414,7 +414,7 @@ const messages = {
   },
   integrations: {
     title: 'Integrations',
-    subtitle: 'Manage storage destinations, notification delivery, and supporting connection secrets.',
+    subtitle: 'Manage storage destinations, notification delivery, and supporting connection secrets',
     states: {
       ready: 'Ready',
       empty: 'Empty',
@@ -422,7 +422,7 @@ const messages = {
     },
     overview: {
       title: 'Integration status',
-      subtitle: 'Review external dependencies by operational domain before opening a detailed page.',
+      subtitle: 'Review external dependencies by operational domain before opening a detailed page',
       storageMeta: '{items_total} credentials · {in_use_total} in use · {invalid_total} need correction',
       notificationsMeta:
         '{destinations_total} destinations · {queue_backlog_total} queued/sending · {recent_failures_total} failed',
@@ -446,13 +446,13 @@ const messages = {
     },
     distribution: {
       title: 'Distribution',
-      subtitle: 'Track whether configuration and related secrets have been applied cleanly across the fleet.',
+      subtitle: 'Track whether configuration and related secrets have been applied cleanly across the fleet',
       coverage: 'Covered agents',
       drifted: 'Drifted',
       failed: 'Failed',
       offline: 'Offline agents',
       scopeTitle: 'Scope detail',
-      scopeSubtitle: 'Review per-agent drift and follow-up from the same surface.',
+      scopeSubtitle: 'Review per-agent drift and follow-up from one workspace',
       scopeMeta: '{pending} pending tasks · Last attempt {attemptedAt}',
       openAgent: 'Open agent',
       openStorage: 'Open storage scope',
@@ -471,7 +471,7 @@ const messages = {
   },
   system: {
     title: 'System',
-    subtitle: 'Runtime, maintenance, appearance, and product-level configuration.',
+    subtitle: 'Runtime, maintenance, appearance, and product-level configuration',
     overview: {
       publicBaseUrl: 'Public base URL',
       publicBaseUrlMissing: 'Not configured',
@@ -681,9 +681,9 @@ const messages = {
   jobs: {
     title: 'Jobs',
     landing: {
-      subtitle: 'Open the Jobs workspace for the selected scope.',
+      subtitle: 'Open the Jobs workspace for the selected scope',
       kicker: 'Jobs workspace',
-      title: 'Review and operate backup jobs by scope.',
+      title: 'Backup jobs by scope',
       body: 'Use the selected scope to open the relevant Jobs workspace and continue with filtering, inspection, and job actions from one operational surface.',
       scope: 'Requested scope: {scope}',
       node: 'Workspace node: {node}',
@@ -691,7 +691,7 @@ const messages = {
       openWorkspace: 'Open workspace',
       backToCommandCenter: 'Back to Command Center',
     },
-    subtitle: 'Manage backup jobs, schedules, and execution state.',
+    subtitle: 'Manage backup jobs, schedules, and execution state',
     workspace: {
       emptyTitle: 'Select a job to continue',
       emptyDescription: 'Choose a job to review configuration, recent activity, and operational status.',
@@ -717,7 +717,7 @@ const messages = {
       },
       support: {
         healthTitle: 'Operational status',
-        healthSubtitle: 'Recent execution, next schedule, and target summary.',
+        healthSubtitle: 'Recent execution, next schedule, and target summary',
         latestSuccess: 'Latest successful backup',
         nextRun: 'Next scheduled run',
         target: 'Target',
@@ -871,9 +871,9 @@ const messages = {
     },
     editor: {
       createPageTitle: 'Create job',
-      createPageSubtitle: 'Define source, target, schedule, controls, and notifications in a single authoring flow.',
+      createPageSubtitle: 'Define source, target, schedule, controls, and notifications in one authoring flow',
       editPageTitle: 'Edit job',
-      editPageSubtitle: 'Review the current configuration and apply controlled changes.',
+      editPageSubtitle: 'Review the current configuration and apply controlled changes',
       backToJobs: 'Back to Jobs',
       discardDraft: 'Discard draft',
       draftStaleNotice: 'A saved draft was created from an older job revision. Review it before resuming.',
@@ -1632,7 +1632,7 @@ const messages = {
   },
   runs: {
     title: 'Runs',
-    subtitle: 'Review run outcomes across jobs and open dedicated workspaces for investigation.',
+    subtitle: 'Review run outcomes across jobs and open dedicated workspaces for investigation',
     latestRun: 'Latest run',
     neverRan: 'Never ran',
     filters: {
@@ -1701,7 +1701,7 @@ const messages = {
     },
     detail: {
       pageTitle: 'Run detail',
-      pageSubtitle: 'Investigate run health, diagnostics, and related actions in a dedicated workspace.',
+      pageSubtitle: 'Investigate run health, diagnostics, and related actions in a dedicated workspace',
       backToRuns: 'Back to Runs',
       overviewTitle: 'Overview',
       duration: 'Duration',
@@ -1733,7 +1733,7 @@ const messages = {
     list: {
       kicker: 'Global run workspace',
       title: 'Investigate runs across jobs',
-      subtitle: 'Showing {scope} activity with server-side filters and direct links into dedicated run detail.',
+      subtitle: 'Showing {scope} activity with server-side filters and direct links into dedicated run detail',
       summary: 'Showing {shown} of {total} runs · page {page}',
       emptyTitle: 'No runs matched the current filters',
       emptyDescription: 'Try widening the time range or clearing one or more filters.',
@@ -1741,7 +1741,7 @@ const messages = {
     },
     landing: {
       kicker: 'Recent execution',
-      title: 'Track run outcomes from stable top-level routes.',
+      title: 'Track run outcomes from stable top-level routes',
       body: 'This surface is already using the new route model. Use it to review recent critical activity by scope and jump into run details without navigating through a job first.',
       primaryTitle: 'Recent critical activity',
       watchlistTitle: 'Still in flight',
