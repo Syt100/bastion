@@ -16,9 +16,9 @@ import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
-import { runStatusLabel } from '@/lib/runs'
+import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
 import { useJobDetailContext } from '@/lib/jobDetailContext'
-import { buildJobSectionPath, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
+import { buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -75,10 +75,14 @@ watch(
 function openRunDetail(runId: string): void {
   const jobId = ctx.jobId.value
   if (!jobId) return
-  void router.push({
-    path: `${buildJobSectionPath(jobId, 'history')}/runs/${encodeURIComponent(runId)}`,
-    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
-  })
+  const collection = readJobsCollectionState(route.query)
+  void router.push(
+    buildRunDetailLocation(runId, {
+      fromScope: collection.scope,
+      fromJob: jobId,
+      fromSection: 'history',
+    }),
+  )
 }
 
 async function openRunEvents(runId: string): Promise<void> {

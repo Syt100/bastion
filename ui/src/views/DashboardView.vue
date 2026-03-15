@@ -11,8 +11,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
-import { buildJobSectionPath } from '@/lib/jobsRoute'
-import { runStatusLabel } from '@/lib/runs'
+import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { scopeFromNodeId } from '@/lib/scope'
@@ -77,10 +76,13 @@ function nodeLabel(row: { node_id: string; node_name?: string | null }): string 
 }
 
 function openRun(row: { run_id: string; node_id: string; job_id: string }): void {
-  void router.push({
-    path: `${buildJobSectionPath(row.job_id, 'history')}/runs/${encodeURIComponent(row.run_id)}`,
-    query: { scope: scopeFromNodeId(row.node_id) },
-  })
+  void router.push(
+    buildRunDetailLocation(row.run_id, {
+      fromScope: scopeFromNodeId(row.node_id),
+      fromJob: row.job_id,
+      fromSection: 'history',
+    }),
+  )
 }
 
 function openOfflineAgents(): void {

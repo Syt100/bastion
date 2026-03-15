@@ -29,6 +29,7 @@ import {
   readJobsCollectionState,
   resolveJobsScope,
 } from '@/lib/jobsRoute'
+import { buildRunDetailLocation } from '@/lib/runs'
 import { scopeToNodeId } from '@/lib/scope'
 
 type SectionKey = 'overview' | 'history' | 'data'
@@ -230,12 +231,13 @@ function onSelectMore(key: string | number): void {
 function openRun(runId: string): void {
   const id = jobId.value
   if (!id) return
-  const section = activeSection.value
-  const path = `${buildJobSectionPath(id, section)}/runs/${encodeURIComponent(runId)}`
-  void router.push({
-    path,
-    query: buildJobsCollectionQuery(collectionState.value),
-  })
+  void router.push(
+    buildRunDetailLocation(runId, {
+      fromScope: collectionState.value.scope,
+      fromJob: id,
+      fromSection: activeSection.value,
+    }),
+  )
 }
 </script>
 

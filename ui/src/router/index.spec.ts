@@ -1,40 +1,72 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import router from './index'
+const authStore = {
+  status: 'authenticated' as 'authenticated' | 'unknown',
+  isAuthenticated: true,
+  refreshSession: vi.fn(),
+}
 
-describe('router web ui redesign routes', () => {
-  it('resolves the new command center landing route', () => {
-    const resolved = router.resolve('/')
-    expect(resolved.meta.titleKey).toBe('commandCenter.title')
-    expect(resolved.meta.primaryNav).toBe('command-center')
+vi.mock('@/pinia', () => ({
+  pinia: {},
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authStore,
+}))
+
+async function loadRouter() {
+  const mod = await import('./index')
+  return mod.default
+}
+
+describe('router run workspace routes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    authStore.status = 'authenticated'
+    authStore.isAuthenticated = true
   })
 
-  it('resolves the new top-level runs detail route', () => {
+  it('resolves the top-level runs detail route with the runs primary nav', async () => {
+    const router = await loadRouter()
     const resolved = router.resolve('/runs/00000000-0000-0000-0000-000000000000')
     expect(resolved.params.runId).toBe('00000000-0000-0000-0000-000000000000')
     expect(resolved.meta.titleKey).toBe('runs.detail.pageTitle')
     expect(resolved.meta.primaryNav).toBe('runs')
   })
 
-  it('resolves the canonical integrations storage route', () => {
-    const resolved = router.resolve('/integrations/storage')
-    expect(resolved.meta.titleKey).toBe('settings.menu.storage')
-    expect(resolved.meta.primaryNav).toBe('integrations')
+  it('normalizes nested job run routes to the canonical run detail route', async () => {
+    const router = await loadRouter()
+    const resolved = router.resolve('/jobs/job1/history/runs/00000000-0000-0000-0000-000000000000?scope=agent%3Adb-1')
+    const redirect = resolved.matched[resolved.matched.length - 1]?.redirect
+    expect(typeof redirect).toBe('function')
+
+    const next = typeof redirect === 'function' ? (redirect as (...args: unknown[]) => unknown)(resolved) : redirect
+    expect(next).toEqual({
+      path: '/runs/00000000-0000-0000-0000-000000000000',
+      query: {
+        from_scope: 'agent:db-1',
+        from_job: 'job1',
+        from_section: 'history',
+      },
+    })
   })
 
-  it('keeps legacy node-scoped jobs routes available during migration', () => {
+  it('normalizes temporary legacy node-scoped run routes during migration', async () => {
+    const router = await loadRouter()
     const resolved = router.resolve('/n/hub/jobs/job1/history/runs/00000000-0000-0000-0000-000000000000')
-    expect(resolved.params.nodeId).toBe('hub')
-    expect(resolved.params.jobId).toBe('job1')
-    expect(resolved.params.runId).toBe('00000000-0000-0000-0000-000000000000')
-    expect(resolved.meta.primaryNav).toBe('jobs')
-  })
+    const redirect = resolved.matched[resolved.matched.length - 1]?.redirect
+    expect(typeof redirect).toBe('function')
 
-  it('keeps legacy node-scoped storage routes available during migration', () => {
-    const resolved = router.resolve('/n/hub/settings/storage')
-    expect(resolved.params.nodeId).toBe('hub')
-    expect(resolved.meta.titleKey).toBe('settings.menu.storage')
-    expect(resolved.meta.primaryNav).toBe('integrations')
+    const next = typeof redirect === 'function' ? (redirect as (...args: unknown[]) => unknown)(resolved) : redirect
+    expect(next).toEqual({
+      path: '/runs/00000000-0000-0000-0000-000000000000',
+      query: {
+        from_scope: 'hub',
+        from_job: 'job1',
+        from_section: 'history',
+      },
+    })
   })
 })

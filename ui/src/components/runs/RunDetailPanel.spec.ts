@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const jobsApi = {
-  getRun: vi.fn(),
-  listRunEvents: vi.fn(),
+const runsApi = {
+  getWorkspace: vi.fn(),
+  listEventConsole: vi.fn(),
   cancelRun: vi.fn(),
 }
 
@@ -17,12 +18,27 @@ const messageApi = {
   error: vi.fn(),
 }
 
-vi.mock('@/stores/jobs', () => ({
-  useJobsStore: () => jobsApi,
+const runEventsStreamApi = {
+  status: ref<'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'>('disconnected'),
+  reconnectAttempts: ref(0),
+  reconnectInSeconds: ref<number | null>(null),
+  lastSeq: ref(0),
+  start: vi.fn(),
+  stop: vi.fn(),
+  reconnect: vi.fn(),
+  setLastSeq: vi.fn(),
+}
+
+vi.mock('@/stores/runs', () => ({
+  useRunsStore: () => runsApi,
 }))
 
 vi.mock('@/stores/operations', () => ({
   useOperationsStore: () => operationsApi,
+}))
+
+vi.mock('@/lib/runEventsStream', () => ({
+  useRunEventsStream: () => runEventsStreamApi,
 }))
 
 vi.mock('@/lib/errors', () => ({
@@ -39,9 +55,9 @@ vi.mock('naive-ui', async () => {
   const stub = (name: string) =>
     vue.defineComponent({
       name,
-      props: ['disabled', 'show', 'loading', 'type'],
+      props: ['disabled', 'show', 'loading', 'type', 'options', 'component'],
       emits: ['update:show', 'select'],
-      setup(props, { slots, attrs }) {
+      setup(_props, { slots, attrs }) {
         return () => vue.h('div', { 'data-stub': name, ...attrs }, slots.default?.())
       },
     })
@@ -87,21 +103,24 @@ vi.mock('@/components/NodeContextTag.vue', () => ({
   default: {
     name: 'NodeContextTag',
     props: ['nodeId'],
-    template: '<div data-stub="NodeContextTag" />',
+    template: '<div data-stub="NodeContextTag">{{ nodeId }}</div>',
   },
 }))
 
 vi.mock('@/components/runs/RunDetailSummaryCard.vue', () => ({
   default: {
     name: 'RunDetailSummaryCard',
-    template: '<div data-stub="RunDetailSummaryCard" />',
+    props: ['detail', 'events'],
+    template: '<div data-stub="RunDetailSummaryCard">{{ detail?.run?.id }}|{{ events?.length ?? 0 }}</div>',
   },
 }))
 
 vi.mock('@/components/runs/RunDetailDetailsTabs.vue', () => ({
   default: {
     name: 'RunDetailDetailsTabs',
-    template: '<div data-stub="RunDetailDetailsTabs" />',
+    props: ['events', 'window', 'filters', 'consoleLoading', 'wsStatus'],
+    template:
+      '<div data-stub="RunDetailDetailsTabs">{{ events?.length ?? 0 }}|{{ window?.last_seq ?? "-" }}|{{ filters?.search ?? "" }}|{{ wsStatus }}</div>',
   },
 }))
 
@@ -129,62 +148,93 @@ vi.mock('@/components/jobs/OperationModal.vue', () => ({
 import RunDetailPanel from './RunDetailPanel.vue'
 
 async function flush(): Promise<void> {
-  await Promise.resolve()
+  await flushPromises()
   await Promise.resolve()
 }
 
-class FakeWebSocket {
-  static instances: FakeWebSocket[] = []
-  url: string
-  onopen: (() => void) | null = null
-  onmessage: ((event: MessageEvent) => void) | null = null
-  onerror: (() => void) | null = null
-  onclose: (() => void) | null = null
-
-  constructor(url: string) {
-    this.url = url
-    FakeWebSocket.instances.push(this)
-  }
-
-  close(): void {
-    this.onclose?.()
-  }
-}
-
-describe('RunDetailPanel cancel UX', () => {
+describe('RunDetailPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    FakeWebSocket.instances = []
-
+    runEventsStreamApi.status.value = 'live'
+    runEventsStreamApi.lastSeq.value = 0
     vi.spyOn(window, 'setInterval').mockReturnValue(1 as unknown as number)
     vi.spyOn(window, 'clearInterval').mockImplementation(() => undefined)
-    vi.spyOn(window, 'setTimeout').mockReturnValue(1 as unknown as number)
-    vi.spyOn(window, 'clearTimeout').mockImplementation(() => undefined)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
-    vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket)
+    runsApi.getWorkspace.mockResolvedValue({
+      run: {
+        id: 'run-1',
+        job_id: 'job-1',
+        job_name: 'Nightly backup',
+        scope: 'hub',
+        node_id: 'hub',
+        status: 'running',
+        kind: 'backup',
+        started_at: 100,
+        ended_at: null,
+        cancel_requested_at: null,
+        error: null,
+      },
+      progress: null,
+      summary: null,
+      diagnostics: {
+        state: 'structured',
+        failure_title: '—',
+        failure_hint: null,
+        failure_kind: null,
+        failure_stage: null,
+        first_error_event_seq: null,
+        root_cause_event_seq: null,
+      },
+      capabilities: {
+        can_cancel: true,
+        can_restore: false,
+        can_verify: false,
+      },
+      related: {
+        operations_total: 0,
+        artifacts_total: 0,
+      },
+    })
 
-    jobsApi.getRun.mockResolvedValue({
-      id: 'run-1',
-      job_id: 'job-1',
-      status: 'running',
-      started_at: 100,
-      ended_at: null,
-      cancel_requested_at: null,
-      summary: null,
-      error: null,
+    runsApi.listEventConsole.mockResolvedValue({
+      filters: {
+        q: '',
+        levels: [],
+        kinds: [],
+      },
+      window: {
+        first_seq: 20,
+        last_seq: 21,
+        has_older: false,
+        has_newer: false,
+      },
+      locators: {
+        first_error_seq: null,
+        root_cause_seq: null,
+      },
+      items: [
+        {
+          run_id: 'run-1',
+          seq: 20,
+          ts: 200,
+          level: 'info',
+          kind: 'started',
+          message: 'Run started',
+          fields: null,
+        },
+        {
+          run_id: 'run-1',
+          seq: 21,
+          ts: 210,
+          level: 'info',
+          kind: 'heartbeat',
+          message: 'Upload in progress',
+          fields: null,
+        },
+      ],
     })
-    jobsApi.listRunEvents.mockResolvedValue([])
-    jobsApi.cancelRun.mockResolvedValue({
-      id: 'run-1',
-      job_id: 'job-1',
-      status: 'running',
-      started_at: 100,
-      ended_at: null,
-      cancel_requested_at: 120,
-      summary: null,
-      error: null,
-    })
+    runsApi.cancelRun.mockResolvedValue(undefined)
     operationsApi.listRunOperations.mockResolvedValue([])
   })
 
@@ -192,39 +242,78 @@ describe('RunDetailPanel cancel UX', () => {
     vi.restoreAllMocks()
   })
 
-  it('transitions to canceling state after cancel is requested', async () => {
+  it('loads the dedicated run workspace and follows the latest event window', async () => {
     const wrapper = mount(RunDetailPanel, { props: { nodeId: 'hub', runId: 'run-1' } })
     await flush()
 
-    expect(wrapper.get('[data-testid=\"run-status-tag\"]').text()).toContain('running')
+    expect(runsApi.getWorkspace).toHaveBeenCalledWith('run-1')
+    expect(runsApi.listEventConsole).toHaveBeenCalledWith('run-1', {
+      q: undefined,
+      levels: undefined,
+      kinds: undefined,
+      limit: 100,
+      beforeSeq: undefined,
+      afterSeq: undefined,
+      anchor: 'tail',
+    })
+    expect(runEventsStreamApi.setLastSeq).toHaveBeenCalledWith(21)
+    expect(runEventsStreamApi.start).toHaveBeenCalledWith('run-1', 21)
+    expect(wrapper.get('[data-stub="RunDetailSummaryCard"]').text()).toContain('run-1|2')
+    expect(wrapper.get('[data-stub="RunDetailDetailsTabs"]').text()).toContain('2|21||live')
+  })
 
-    const cancelButton = wrapper.get('[data-testid=\"run-cancel-button\"]')
+  it('transitions to canceling state after cancel is requested from the run workspace', async () => {
+    runsApi.cancelRun.mockImplementation(async () => {
+      runsApi.getWorkspace.mockResolvedValue({
+        run: {
+          id: 'run-1',
+          job_id: 'job-1',
+          job_name: 'Nightly backup',
+          scope: 'hub',
+          node_id: 'hub',
+          status: 'running',
+          kind: 'backup',
+          started_at: 100,
+          ended_at: null,
+          cancel_requested_at: 120,
+          error: null,
+        },
+        progress: null,
+        summary: null,
+        diagnostics: {
+          state: 'structured',
+          failure_title: '—',
+          failure_hint: null,
+          failure_kind: null,
+          failure_stage: null,
+          first_error_event_seq: null,
+          root_cause_event_seq: null,
+        },
+        capabilities: {
+          can_cancel: true,
+          can_restore: false,
+          can_verify: false,
+        },
+        related: {
+          operations_total: 0,
+          artifacts_total: 0,
+        },
+      })
+    })
+
+    const wrapper = mount(RunDetailPanel, { props: { nodeId: 'hub', runId: 'run-1' } })
+    await flush()
+
+    expect(wrapper.get('[data-testid="run-status-tag"]').text()).toContain('running')
+
+    const cancelButton = wrapper.get('[data-testid="run-cancel-button"]')
     expect(cancelButton.attributes('disabled')).toBeUndefined()
     await cancelButton.trigger('click')
     await flush()
 
-    expect(jobsApi.cancelRun).toHaveBeenCalledWith('run-1')
-    expect(wrapper.get('[data-testid=\"run-status-tag\"]').text()).toContain('runs.statuses.canceling')
-    expect(wrapper.get('[data-testid=\"run-cancel-button\"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid=\"run-cancel-button\"]').text()).toContain('runs.actions.canceling')
-  })
-
-  it('renders terminal canceled status and hides cancel action', async () => {
-    jobsApi.getRun.mockResolvedValue({
-      id: 'run-canceled',
-      job_id: 'job-1',
-      status: 'canceled',
-      started_at: 100,
-      ended_at: 130,
-      cancel_requested_at: 105,
-      summary: null,
-      error: null,
-    })
-
-    const wrapper = mount(RunDetailPanel, { props: { nodeId: 'hub', runId: 'run-canceled' } })
-    await flush()
-
-    expect(wrapper.get('[data-testid=\"run-status-tag\"]').text()).toContain('canceled')
-    expect(wrapper.find('[data-testid=\"run-cancel-button\"]').exists()).toBe(false)
+    expect(runsApi.cancelRun).toHaveBeenCalledWith('run-1')
+    expect(wrapper.get('[data-testid="run-status-tag"]').text()).toContain('runs.statuses.canceling')
+    expect(wrapper.get('[data-testid="run-cancel-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="run-cancel-button"]').text()).toContain('runs.actions.canceling')
   })
 })

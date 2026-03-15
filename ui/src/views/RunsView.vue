@@ -1,16 +1,28 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NEmpty, NSkeleton, NTag, useMessage } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
+import {
+  NButton,
+  NCard,
+  NInput,
+  NPagination,
+  NSelect,
+  NTag,
+  useMessage,
+} from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
+import AppEmptyState from '@/components/AppEmptyState.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { useCommandCenterStore, type CommandCenterItem, type CommandCenterRangePreset } from '@/stores/commandCenter'
+import ListPageScaffold from '@/components/list/ListPageScaffold.vue'
+import ListToolbar from '@/components/list/ListToolbar.vue'
 import { useUiStore } from '@/stores/ui'
+import { useRunsStore, type RunKind, type RunWorkspaceListItem } from '@/stores/runs'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { COMMAND_CENTER_RANGE_OPTIONS, parseCommandCenterRangePreset, resolveRouteScope } from '@/lib/commandCenter'
-import { formatCommandCenterScopeLabel, presentCommandCenterItem } from '@/lib/commandCenterPresentation'
+import { formatCommandCenterScopeLabel } from '@/lib/commandCenterPresentation'
+import { buildRunDetailLocation, runKindLabel, runStatusLabel } from '@/lib/runs'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -18,65 +30,171 @@ const router = useRouter()
 const message = useMessage()
 
 const ui = useUiStore()
-const commandCenter = useCommandCenterStore()
+const runsStore = useRunsStore()
+
+const loading = ref(false)
+const rows = ref<RunWorkspaceListItem[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const searchDraft = ref('')
 
 const effectiveScope = computed(() => resolveRouteScope(route, ui.preferredScope))
-const rangePreset = computed<CommandCenterRangePreset>(() => parseCommandCenterRangePreset(route.query.range))
-const snapshot = computed(() => commandCenter.snapshot)
-const primaryItems = computed(() => snapshot.value?.critical_activity.items ?? [])
-const secondaryItems = computed(() => snapshot.value?.watchlist.items ?? [])
-const showInitialSkeleton = computed(() => commandCenter.loading && !snapshot.value)
-const scopeLabel = computed(() => {
-  return formatCommandCenterScopeLabel(effectiveScope.value, t)
+const rangePreset = computed(() => parseCommandCenterRangePreset(route.query.range))
+const selectedStatus = computed(() => {
+  const value = Array.isArray(route.query.status) ? route.query.status[0] : route.query.status
+  return typeof value === 'string' && value.length > 0 ? value : 'all'
 })
+const selectedKind = computed(() => {
+  const value = Array.isArray(route.query.kind) ? route.query.kind[0] : route.query.kind
+  return typeof value === 'string' && value.length > 0 ? value : 'all'
+})
+const selectedQuery = computed(() => {
+  const value = Array.isArray(route.query.q) ? route.query.q[0] : route.query.q
+  return typeof value === 'string' ? value : ''
+})
+const selectedPage = computed(() => {
+  const value = Array.isArray(route.query.page) ? route.query.page[0] : route.query.page
+  const parsed = Number.parseInt(typeof value === 'string' ? value : '1', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+})
+const scopeLabel = computed(() => formatCommandCenterScopeLabel(String(effectiveScope.value), t))
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
-async function refresh(): Promise<void> {
-  try {
-    await commandCenter.refresh({
-      scope: effectiveScope.value,
-      range: rangePreset.value,
-    })
-  } catch (error) {
-    message.error(formatToastError(t('errors.fetchCommandCenterFailed'), error, t))
-  }
+watch(
+  selectedQuery,
+  (value) => {
+    searchDraft.value = value
+  },
+  { immediate: true },
+)
+
+const statusOptions = computed(() => [
+  { label: t('runs.filters.all'), value: 'all' },
+  { label: runStatusLabel(t, 'queued'), value: 'queued' },
+  { label: runStatusLabel(t, 'running'), value: 'running' },
+  { label: runStatusLabel(t, 'success'), value: 'success' },
+  { label: runStatusLabel(t, 'failed'), value: 'failed' },
+  { label: runStatusLabel(t, 'rejected'), value: 'rejected' },
+  { label: runStatusLabel(t, 'canceled'), value: 'canceled' },
+])
+
+const kindOptions = computed(() => [
+  { label: t('runs.filters.all'), value: 'all' },
+  { label: runKindLabel(t, 'backup'), value: 'backup' },
+  { label: runKindLabel(t, 'restore'), value: 'restore' },
+  { label: runKindLabel(t, 'verify'), value: 'verify' },
+  { label: runKindLabel(t, 'cleanup'), value: 'cleanup' },
+])
+
+function statusTagType(status: string): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'running' || status === 'queued' || status === 'rejected') return 'warning'
+  return 'default'
 }
 
-function setRange(value: CommandCenterRangePreset): void {
-  if (rangePreset.value === value) return
+function replaceQuery(patch: Record<string, string | undefined>): void {
+  const next: LocationQueryRaw = { ...route.query }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value == null || value === '') delete next[key]
+    else next[key] = value
+  }
+  void router.replace({ query: next })
+}
+
+function setRange(value: '24h' | '7d' | '30d'): void {
+  replaceQuery({
+    range: value === '24h' ? undefined : value,
+    page: undefined,
+  })
+}
+
+function setStatus(value: string): void {
+  replaceQuery({
+    status: value === 'all' ? undefined : value,
+    page: undefined,
+  })
+}
+
+function setKind(value: string): void {
+  replaceQuery({
+    kind: value === 'all' ? undefined : value,
+    page: undefined,
+  })
+}
+
+function applySearch(): void {
+  const next = searchDraft.value.trim()
+  replaceQuery({
+    q: next || undefined,
+    page: undefined,
+  })
+}
+
+function clearFilters(): void {
+  searchDraft.value = ''
   void router.replace({
     query: {
-      ...route.query,
-      range: value,
+      ...(route.query.scope ? { scope: route.query.scope } : {}),
+      ...(rangePreset.value !== '24h' ? { range: rangePreset.value } : {}),
     },
   })
 }
 
-function severityTagType(severity: CommandCenterItem['severity']): 'error' | 'warning' | 'info' | 'default' {
-  if (severity === 'critical') return 'error'
-  if (severity === 'warning') return 'warning'
-  return 'info'
+function goToPage(nextPage: number): void {
+  replaceQuery({
+    page: nextPage > 1 ? String(nextPage) : undefined,
+  })
 }
 
-function openHref(href: string): void {
-  void router.push(href)
+function openRun(row: RunWorkspaceListItem): void {
+  void router.push(
+    buildRunDetailLocation(row.id, {
+      fromScope: effectiveScope.value,
+      fromJob: row.job_id,
+      fromSection: 'history',
+    }),
+  )
 }
 
-function itemTitle(item: CommandCenterItem): string {
-  return presentCommandCenterItem(item, t).title
+function openJob(row: RunWorkspaceListItem): void {
+  void router.push({
+    path: `/jobs/${encodeURIComponent(row.job_id)}/history`,
+    query: { scope: effectiveScope.value },
+  })
 }
 
-function itemSummary(item: CommandCenterItem): string {
-  return presentCommandCenterItem(item, t).summary
+async function refresh(): Promise<void> {
+  loading.value = true
+  try {
+    const response = await runsStore.listWorkspace({
+      scope: effectiveScope.value,
+      status: selectedStatus.value === 'all' ? 'all' : (selectedStatus.value as never),
+      kind: selectedKind.value === 'all' ? 'all' : (selectedKind.value as RunKind),
+      range: rangePreset.value,
+      q: selectedQuery.value || undefined,
+      page: selectedPage.value,
+      pageSize: pageSize.value,
+    })
+    rows.value = response.items
+    total.value = response.total
+    page.value = response.page
+    pageSize.value = response.page_size
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchRunsFailed'), error, t))
+  } finally {
+    loading.value = false
+  }
 }
 
-function primaryActionLabel(item: CommandCenterItem): string {
-  return presentCommandCenterItem(item, t).primaryActionLabel
-}
-
-watch([effectiveScope, rangePreset], () => {
-  void refresh()
-}, { immediate: true })
+watch(
+  [effectiveScope, rangePreset, selectedStatus, selectedKind, selectedQuery, selectedPage],
+  () => {
+    void refresh()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -95,81 +213,149 @@ watch([effectiveScope, rangePreset], () => {
             {{ t(option.labelKey) }}
           </n-button>
         </div>
-        <n-button size="small" :loading="commandCenter.loading" @click="refresh">
+        <n-button size="small" :loading="loading" @click="refresh">
           {{ t('common.refresh') }}
         </n-button>
       </div>
     </PageHeader>
 
-    <n-card class="app-card console-panel" :bordered="false">
-      <div class="console-kicker">{{ t('runs.landing.kicker') }}</div>
-      <div class="mt-2 text-xl font-semibold">{{ t('runs.landing.title') }}</div>
-      <p class="mt-2 app-text-muted">
-        {{ t('runs.landing.body', { scope: scopeLabel }) }}
-      </p>
-    </n-card>
+    <ListPageScaffold>
+      <template #toolbar>
+        <ListToolbar embedded>
+          <template #search>
+            <n-input
+              v-model:value="searchDraft"
+              clearable
+              :placeholder="t('runs.filters.search')"
+              @keyup.enter="applySearch"
+              @clear="applySearch"
+            />
+          </template>
 
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(20rem,0.9fr)]">
-      <n-card class="app-card console-panel" :bordered="false" :title="t('runs.landing.primaryTitle')">
-        <div v-if="showInitialSkeleton" class="space-y-3">
-          <div v-for="index in 4" :key="index" class="console-item">
-            <n-skeleton text width="50%" />
-            <n-skeleton text :repeat="2" />
+          <template #filters>
+            <n-select
+              :value="selectedStatus"
+              :options="statusOptions"
+              :placeholder="t('runs.filters.status')"
+              class="min-w-[10rem]"
+              @update:value="setStatus"
+            />
+            <n-select
+              :value="selectedKind"
+              :options="kindOptions"
+              :placeholder="t('runs.filters.kind')"
+              class="min-w-[10rem]"
+              @update:value="setKind"
+            />
+            <n-button size="small" type="primary" @click="applySearch">
+              {{ t('common.search') }}
+            </n-button>
+          </template>
+
+          <template #actions>
+            <n-button size="small" quaternary @click="clearFilters">
+              {{ t('common.clear') }}
+            </n-button>
+          </template>
+        </ListToolbar>
+      </template>
+
+      <template #content>
+        <n-card class="app-card console-panel" :bordered="false">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div class="console-kicker">{{ t('runs.list.kicker') }}</div>
+              <div class="mt-1 text-base font-semibold">{{ t('runs.list.title') }}</div>
+              <p class="mt-1 app-text-muted">
+                {{ t('runs.list.subtitle', { scope: scopeLabel }) }}
+              </p>
+            </div>
+            <div class="text-sm app-text-muted">
+              {{ t('runs.list.summary', { shown: rows.length, total, page }) }}
+            </div>
           </div>
-        </div>
 
-        <div v-else-if="primaryItems.length === 0" class="py-4">
-          <n-empty :description="t('runs.landing.empty')" />
-        </div>
+          <AppEmptyState
+            v-if="loading && rows.length === 0"
+            class="mt-4"
+            :title="t('common.loading')"
+            loading
+            variant="inset"
+          />
 
-        <div v-else class="space-y-3">
-          <article v-for="item in primaryItems" :key="item.id" class="console-item">
-            <div class="min-w-0">
-              <div class="flex items-start gap-2 flex-wrap">
-                <div class="console-item-title">{{ itemTitle(item) }}</div>
-                <n-tag size="small" :bordered="false" :type="severityTagType(item.severity)">
-                  {{ t(`commandCenter.severity.${item.severity}`) }}
-                </n-tag>
+          <AppEmptyState
+            v-else-if="!loading && rows.length === 0"
+            class="mt-4"
+            :title="t('runs.list.emptyTitle')"
+            :description="t('runs.list.emptyDescription')"
+            variant="inset"
+          />
+
+          <div v-else class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <article
+              v-for="row in rows"
+              :key="row.id"
+              class="rounded-2xl app-border-subtle app-motion-soft p-4 md:p-5"
+              :style="{ background: 'var(--app-surface-1)' }"
+            >
+              <div class="flex items-start justify-between gap-3 flex-wrap">
+                <div class="min-w-0 space-y-2">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      class="text-left text-base font-semibold hover:underline"
+                      @click="openRun(row)"
+                    >
+                      {{ row.job_name }}
+                    </button>
+                    <n-tag size="small" :bordered="false" :type="statusTagType(row.status)">
+                      {{ runStatusLabel(t, row.status) }}
+                    </n-tag>
+                    <n-tag size="small" :bordered="false">
+                      {{ runKindLabel(t, row.kind) }}
+                    </n-tag>
+                  </div>
+
+                  <div class="flex items-center gap-2 flex-wrap text-xs app-text-muted">
+                    <span>{{ formatCommandCenterScopeLabel(String(row.scope), t) }}</span>
+                    <span>·</span>
+                    <span class="font-mono">{{ row.id }}</span>
+                  </div>
+
+                  <p class="text-sm">
+                    {{ row.failure_title || row.error || t('runs.list.noFailureSummary') }}
+                  </p>
+
+                  <div class="grid grid-cols-1 gap-1 text-sm app-text-muted sm:grid-cols-2">
+                    <div>{{ t('runs.columns.startedAt') }}: <span class="font-mono tabular-nums">{{ formatUnixSeconds(row.started_at) }}</span></div>
+                    <div>{{ t('runs.columns.endedAt') }}: <span class="font-mono tabular-nums">{{ formatUnixSeconds(row.ended_at) }}</span></div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                  <n-button size="small" type="primary" @click="openRun(row)">
+                    {{ t('runs.actions.openRun') }}
+                  </n-button>
+                  <n-button size="small" quaternary @click="openJob(row)">
+                    {{ t('runs.actions.openJob') }}
+                  </n-button>
+                </div>
               </div>
-              <p class="console-item-summary">{{ itemSummary(item) }}</p>
-              <div class="console-item-meta">
-                <span>{{ formatUnixSeconds(item.occurred_at) }}</span>
-                <span>{{ formatCommandCenterScopeLabel(item.scope, t) }}</span>
-              </div>
-            </div>
+            </article>
+          </div>
+        </n-card>
+      </template>
 
-            <n-button size="small" tertiary @click="openHref(item.primary_action.href)">
-              {{ primaryActionLabel(item) }}
-            </n-button>
-          </article>
+      <template #footer>
+        <div v-if="total > pageSize" class="flex justify-end">
+          <n-pagination
+            :page="page"
+            :page-size="pageSize"
+            :item-count="total"
+            @update:page="goToPage"
+          />
         </div>
-      </n-card>
-
-      <n-card class="app-card console-panel console-rail-panel" :bordered="false" :title="t('runs.landing.watchlistTitle')">
-        <div v-if="showInitialSkeleton" class="space-y-3">
-          <n-skeleton text :repeat="3" />
-        </div>
-
-        <div v-else-if="secondaryItems.length === 0" class="py-4">
-          <n-empty :description="t('runs.landing.watchlistEmpty')" />
-        </div>
-
-        <div v-else class="space-y-3">
-          <article v-for="item in secondaryItems" :key="item.id" class="console-item console-item-compact">
-            <div class="min-w-0">
-              <div class="console-item-title">{{ itemTitle(item) }}</div>
-              <p class="console-item-summary">{{ itemSummary(item) }}</p>
-              <div class="console-item-meta">
-                <span>{{ formatUnixSeconds(item.occurred_at) }}</span>
-              </div>
-            </div>
-
-            <n-button size="small" quaternary @click="openHref(item.primary_action.href)">
-              {{ primaryActionLabel(item) }}
-            </n-button>
-          </article>
-        </div>
-      </n-card>
-    </div>
+      </template>
+    </ListPageScaffold>
   </div>
 </template>

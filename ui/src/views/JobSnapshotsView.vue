@@ -28,6 +28,7 @@ import AppModalShell from '@/components/AppModalShell.vue'
 import ListToolbar from '@/components/list/ListToolbar.vue'
 import SelectionToolbar from '@/components/list/SelectionToolbar.vue'
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
+import { buildRunDetailLocation } from '@/lib/runs'
 import ListFilterSelectField from '@/components/list/ListFilterSelectField.vue'
 import ListActiveFiltersRow from '@/components/list/ListActiveFiltersRow.vue'
 import {
@@ -104,10 +105,14 @@ const ignoreReason = ref('')
 function openRunDetail(runId: string): void {
   const job = jobId.value
   if (!job) return
-  void router.push({
-    path: `${buildJobSectionPath(job, 'data')}/runs/${encodeURIComponent(runId)}`,
-    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
-  })
+  const collection = readJobsCollectionState(route.query)
+  void router.push(
+    buildRunDetailLocation(runId, {
+      fromScope: collection.scope,
+      fromJob: job,
+      fromSection: 'data',
+    }),
+  )
 }
 
 function goBackToJobs(): void {

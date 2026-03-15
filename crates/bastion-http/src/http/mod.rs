@@ -358,9 +358,12 @@ pub fn router(state: AppState) -> Router {
             "/api/jobs/{id}/snapshots/{run_id}/delete/ignore",
             post(jobs::ignore_job_snapshot_delete_task),
         )
+        .route("/api/runs", get(runs::list_runs_workspace))
         .route("/api/runs/{id}", get(runs::get_run))
+        .route("/api/runs/{id}/workspace", get(runs::get_run_workspace))
         .route("/api/runs/{id}/cancel", post(runs::cancel_run))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
+        .route("/api/runs/{id}/event-console", get(runs::list_run_event_console))
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
         .route(
@@ -478,6 +481,9 @@ mod operations_tests;
 
 #[cfg(test)]
 mod runs_tests;
+
+#[cfg(test)]
+mod runs_workspace_tests;
 
 #[cfg(test)]
 mod jobs_runs_tests;

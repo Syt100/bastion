@@ -89,6 +89,22 @@ function legacyNodeScopeRedirect(nodeId: string) {
   }
 }
 
+function firstQueryString(value: unknown): string | null {
+  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null
+  return typeof value === 'string' ? value : null
+}
+
+function legacyRunRedirect(nodeId: string, jobId: string, section: 'overview' | 'history' | 'data', runId: string) {
+  return {
+    path: `/runs/${encodeURIComponent(runId)}`,
+    query: {
+      from_scope: scopeFromNodeId(nodeId),
+      from_job: jobId,
+      from_section: section,
+    },
+  }
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -147,7 +163,18 @@ const router = createRouter({
                     primaryNav: 'jobs',
                     scopeMode: 'collection',
                   }),
-                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                  children: [{
+                    path: 'runs/:runId',
+                    redirect: (to) => ({
+                      path: `/runs/${encodeURIComponent(String(to.params.runId))}`,
+                      query: {
+                        ...(firstQueryString(to.query.scope) ? { from_scope: firstQueryString(to.query.scope) } : {}),
+                        from_job: String(to.params.jobId),
+                        from_section: 'overview',
+                      },
+                    }),
+                    meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }),
+                  }],
                 },
                 {
                   path: 'history',
@@ -156,7 +183,18 @@ const router = createRouter({
                     primaryNav: 'jobs',
                     scopeMode: 'collection',
                   }),
-                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                  children: [{
+                    path: 'runs/:runId',
+                    redirect: (to) => ({
+                      path: `/runs/${encodeURIComponent(String(to.params.runId))}`,
+                      query: {
+                        ...(firstQueryString(to.query.scope) ? { from_scope: firstQueryString(to.query.scope) } : {}),
+                        from_job: String(to.params.jobId),
+                        from_section: 'history',
+                      },
+                    }),
+                    meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }),
+                  }],
                 },
                 {
                   path: 'data',
@@ -165,7 +203,18 @@ const router = createRouter({
                     primaryNav: 'jobs',
                     scopeMode: 'collection',
                   }),
-                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                  children: [{
+                    path: 'runs/:runId',
+                    redirect: (to) => ({
+                      path: `/runs/${encodeURIComponent(String(to.params.runId))}`,
+                      query: {
+                        ...(firstQueryString(to.query.scope) ? { from_scope: firstQueryString(to.query.scope) } : {}),
+                        from_job: String(to.params.jobId),
+                        from_section: 'data',
+                      },
+                    }),
+                    meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }),
+                  }],
                 },
               ],
             },
@@ -421,10 +470,11 @@ const router = createRouter({
                 scopeMode: 'legacy-node',
               }),
               redirect: (to) =>
-                buildLegacyJobsRedirectLocation(
+                legacyRunRedirect(
                   String(to.params.nodeId),
-                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/overview/runs/${encodeURIComponent(String(to.params.runId))}`,
-                  to.query,
+                  String(to.params.jobId),
+                  'overview',
+                  String(to.params.runId),
                 ),
             },
             {
@@ -434,10 +484,11 @@ const router = createRouter({
                 scopeMode: 'legacy-node',
               }),
               redirect: (to) =>
-                buildLegacyJobsRedirectLocation(
+                legacyRunRedirect(
                   String(to.params.nodeId),
-                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/history/runs/${encodeURIComponent(String(to.params.runId))}`,
-                  to.query,
+                  String(to.params.jobId),
+                  'history',
+                  String(to.params.runId),
                 ),
             },
             {
@@ -447,10 +498,11 @@ const router = createRouter({
                 scopeMode: 'legacy-node',
               }),
               redirect: (to) =>
-                buildLegacyJobsRedirectLocation(
+                legacyRunRedirect(
                   String(to.params.nodeId),
-                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/data/runs/${encodeURIComponent(String(to.params.runId))}`,
-                  to.query,
+                  String(to.params.jobId),
+                  'data',
+                  String(to.params.runId),
                 ),
             },
             {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, ref } from 'vue'
+import { computed, h, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -8,21 +8,19 @@ import {
   NInput,
   NSelect,
   NSpace,
-  NTabs,
   NTabPane,
+  NTabs,
   NTag,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
-import { MQ } from '@/lib/breakpoints'
 import { copyText } from '@/lib/clipboard'
+import { MQ } from '@/lib/breakpoints'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { useMediaQuery } from '@/lib/media'
 import {
-  filterRunEvents,
-  findFirstEventSeq,
   runEventLevelTagType,
   uniqueRunEventKinds,
   RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS,
@@ -32,20 +30,43 @@ import { parseRunSummary } from '@/lib/run_summary'
 import { operationKindLabel, operationStatusLabel } from '@/lib/operations'
 import RunEventDetailDialog from '@/components/runs/RunEventDetailDialog.vue'
 import { useUiStore } from '@/stores/ui'
-import type { RunEvent } from '@/stores/jobs'
+import type { RunEvent } from '@/stores/runs'
 import type { Operation } from '@/stores/operations'
 
 type WsStatus = 'disconnected' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
 const props = defineProps<{
-  runId?: string | null | undefined
+  runId: string
   events: RunEvent[]
+  consoleLoading: boolean
+  window: {
+    first_seq?: number | null
+    last_seq?: number | null
+    has_older: boolean
+    has_newer: boolean
+  } | null
+  locators: {
+    first_error_seq?: number | null
+    root_cause_seq?: number | null
+  } | null
+  filters: {
+    search: string
+    level: string | null
+    kind: string | null
+  }
   ops: Operation[]
   wsStatus: WsStatus
   summary: unknown | null
 }>()
 
 const emit = defineEmits<{
+  (e: 'update:search', value: string): void
+  (e: 'update:level', value: string | null): void
+  (e: 'update:kind', value: string | null): void
+  (e: 'load-older'): void
+  (e: 'load-newer'): void
+  (e: 'jump-latest'): void
+  (e: 'jump-first-error'): void
   (e: 'open-operation', opId: string): void
   (e: 'reconnect'): void
 }>()
@@ -53,26 +74,13 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const message = useMessage()
 const ui = useUiStore()
-const isDesktop = useMediaQuery(MQ.mdUp)
-
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
+const isDesktop = useMediaQuery(MQ.mdUp)
 
 const detailTab = ref<'events' | 'operations' | 'summary'>('events')
 
-const searchQuery = ref<string>('')
-const levelFilter = ref<string | null>(null)
-const kindFilter = ref<string | null>(null)
-
 const kindOptions = computed(() =>
   uniqueRunEventKinds(props.events).map((k) => ({ label: k, value: k })),
-)
-
-const filteredEvents = computed(() =>
-  filterRunEvents(props.events, {
-    query: searchQuery.value,
-    level: levelFilter.value,
-    kind: kindFilter.value,
-  }),
 )
 
 function opStatusTagType(status: Operation['status']): 'success' | 'error' | 'warning' | 'default' {
@@ -114,17 +122,7 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
     title: t('runs.columns.status'),
     key: 'status',
     render: (row) =>
-      h(NTag, { type: opStatusTagType(row.status) }, { default: () => operationStatusLabel(t, row.status) }),
-  },
-  {
-    title: t('bulk.columns.progress'),
-    key: 'progress',
-    render: (row) => {
-      const p = row.progress
-      if (!p || typeof p !== 'object') return '-'
-      const stage = (p as { stage?: unknown }).stage
-      return typeof stage === 'string' ? stage : '-'
-    },
+      h(NTag, { type: opStatusTagType(row.status), bordered: false }, { default: () => operationStatusLabel(t, row.status) }),
   },
   {
     title: t('operations.startedAt'),
@@ -154,103 +152,21 @@ const opColumns = computed<DataTableColumns<Operation>>(() => [
 
 const parsedSummary = computed(() => parseRunSummary(props.summary))
 const targetTypeLabel = computed(() => runTargetTypeLabel(t, parsedSummary.value.targetType))
-
-const filesystemSnapshot = computed(() => parsedSummary.value.filesystemSnapshot)
-
 const consistencyReport = computed(() => parsedSummary.value.consistency)
-const hasConsistencyWarnings = computed(() => (consistencyReport.value?.total ?? 0) > 0)
 
-const CONSISTENCY_SAMPLE_MAX = 10
-const consistencySamples = computed(() => {
-  const c = consistencyReport.value
-  if (!c) return []
-  return c.sample.slice(0, CONSISTENCY_SAMPLE_MAX)
-})
-const consistencySampleMore = computed(() => {
-  const c = consistencyReport.value
-  if (!c) return false
-  return c.sampleTruncated || c.sample.length > CONSISTENCY_SAMPLE_MAX
-})
-
-function consistencyReasonLabel(reason: string): string {
-  const key = `runs.consistency.reasons.${reason}`
-  const translated = t(key)
-  return translated === key ? reason : translated
-}
-
-function snapshotModeLabel(mode: string): string {
-  const key = `runs.snapshot.modes.${mode}`
-  const translated = t(key)
-  return translated === key ? mode : translated
-}
-
-function snapshotStatusLabel(status: string): string {
-  const key = `runs.snapshot.statuses.${status}`
-  const translated = t(key)
-  return translated === key ? status : translated
-}
-
-const eventsListEl = ref<HTMLDivElement | null>(null)
-
-function scrollToSeq(seq: number): void {
-  const root = eventsListEl.value
-  if (!root) return
-  const el = root.querySelector<HTMLElement>(`[data-event-seq=\"${seq}\"]`)
-  if (!el) return
-  if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
-}
-
-function jumpToFirstError(): void {
-  const seq = findFirstEventSeq(filteredEvents.value, (e) => e.level === 'error')
-  if (seq != null) scrollToSeq(seq)
-}
-
-function jumpToFirstWarn(): void {
-  const seq = findFirstEventSeq(filteredEvents.value, (e) => e.level === 'warn' || e.level === 'warning')
-  if (seq != null) scrollToSeq(seq)
-}
-
-function jumpToLatest(): void {
-  const list = filteredEvents.value
-  const last = list.length > 0 ? list[list.length - 1] : null
-  if (last) scrollToSeq(last.seq)
-}
-
-function exportFilteredEvents(): void {
-  const runId = props.runId?.trim() || 'run'
-  const filename = `${runId}-events.json`
-  const payload = JSON.stringify(filteredEvents.value, null, 2)
-
-  const blob = new Blob([payload], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-const eventDetailShow = ref<boolean>(false)
+const eventDetailShow = ref(false)
 const eventDetail = ref<RunEvent | null>(null)
 const eventDetailHeaderMetaFields = RUN_EVENT_DETAIL_HEADER_META_FIELDS_WITH_IDENTIFIERS
 
-function openEventDetails(e: RunEvent): void {
-  eventDetail.value = e
+function openEventDetails(event: RunEvent): void {
+  eventDetail.value = event
   eventDetailShow.value = true
 }
 
-async function copyEventJson(e: RunEvent): Promise<void> {
-  const ok = await copyText(formatJson(e))
+async function copyEventJson(event: RunEvent): Promise<void> {
+  const ok = await copyText(formatJson(event))
   if (ok) message.success(t('messages.copied'))
   else message.error(t('errors.copyFailed'))
-}
-
-async function viewConsistencyEvents(): Promise<void> {
-  detailTab.value = 'events'
-  kindFilter.value = 'source_consistency'
-  await nextTick()
-  const seq = findFirstEventSeq(props.events, (e) => e.kind === 'source_consistency')
-  if (seq != null) scrollToSeq(seq)
 }
 </script>
 
@@ -265,12 +181,14 @@ async function viewConsistencyEvents(): Promise<void> {
           </div>
         </template>
 
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap min-w-0">
             <n-tag size="small" :type="wsStatusTagType(wsStatus)" :bordered="false">
               {{ t(`runEvents.ws.${wsStatus}`) }}
             </n-tag>
-            <span class="text-xs app-text-muted">{{ filteredEvents.length }} / {{ events.length }} events</span>
+            <span class="text-xs app-text-muted">
+              {{ t('runs.detail.eventWindow', { first: window?.first_seq ?? '-', last: window?.last_seq ?? '-' }) }}
+            </span>
             <n-button
               v-if="wsStatus === 'disconnected' || wsStatus === 'error'"
               size="tiny"
@@ -280,75 +198,105 @@ async function viewConsistencyEvents(): Promise<void> {
               {{ t('runEvents.actions.reconnect') }}
             </n-button>
           </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <n-button
+              size="tiny"
+              quaternary
+              :disabled="consoleLoading || !locators?.first_error_seq"
+              @click="emit('jump-first-error')"
+            >
+              {{ t('runEvents.actions.firstError') }}
+            </n-button>
+            <n-button size="tiny" quaternary :disabled="consoleLoading" @click="emit('jump-latest')">
+              {{ t('runEvents.actions.latest') }}
+            </n-button>
+          </div>
         </div>
 
         <div class="mt-3 flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-          <n-input v-model:value="searchQuery" size="small" clearable :placeholder="t('common.search')" class="w-full md:flex-1 md:min-w-[8rem] md:w-0" />
-
+          <n-input
+            :value="filters.search"
+            size="small"
+            clearable
+            :placeholder="t('runs.filters.search')"
+            class="w-full md:flex-1 md:min-w-[10rem] md:w-0"
+            @update:value="(value) => emit('update:search', value)"
+          />
           <div class="grid grid-cols-2 gap-2 w-full md:flex md:items-center md:gap-2 md:w-auto">
-            <n-select v-model:value="levelFilter" size="small" clearable :placeholder="t('runEvents.filters.level')" :options="[
-              { label: 'error', value: 'error' },
-              { label: 'warn', value: 'warn' },
-              { label: 'info', value: 'info' },
-            ]" class="w-full md:w-auto md:grow-0 md:shrink md:basis-[9rem] md:min-w-[7rem]" />
             <n-select
-              v-model:value="kindFilter"
+              :value="filters.level"
+              size="small"
+              clearable
+              :placeholder="t('runEvents.filters.level')"
+              :options="[
+                { label: 'error', value: 'error' },
+                { label: 'warn', value: 'warn' },
+                { label: 'info', value: 'info' },
+              ]"
+              class="w-full md:w-[9rem]"
+              @update:value="(value) => emit('update:level', value)"
+            />
+            <n-select
+              :value="filters.kind"
               size="small"
               clearable
               filterable
               :placeholder="t('runEvents.filters.kind')"
               :options="kindOptions"
-              :consistent-menu-width="false"
-              class="w-full md:w-auto md:grow-0 md:shrink md:basis-[9rem] md:min-w-[7rem]"
+              class="w-full md:w-[11rem]"
+              @update:value="(value) => emit('update:kind', value)"
             />
           </div>
+        </div>
 
-          <div class="grid grid-cols-4 gap-2 w-full md:flex md:flex-nowrap md:items-center md:gap-2 md:w-auto">
-            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'error') == null" @click="jumpToFirstError">
-              {{ t('runEvents.actions.firstError') }}
+        <div class="mt-3 flex items-center justify-between gap-2 flex-wrap">
+          <div class="text-xs app-text-muted">{{ consoleLoading ? t('common.loading') : t('common.ready') }}</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <n-button size="tiny" quaternary :disabled="consoleLoading || !window?.has_older" @click="emit('load-older')">
+              {{ t('runs.detail.loadOlderEvents') }}
             </n-button>
-            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="findFirstEventSeq(filteredEvents, (e) => e.level === 'warn' || e.level === 'warning') == null" @click="jumpToFirstWarn">
-              {{ t('runEvents.actions.firstWarn') }}
-            </n-button>
-            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="filteredEvents.length === 0" @click="jumpToLatest">
-              {{ t('runEvents.actions.latest') }}
-            </n-button>
-            <n-button class="w-full md:w-auto whitespace-nowrap" size="small" quaternary :disabled="filteredEvents.length === 0" @click="exportFilteredEvents">
-              {{ t('runEvents.actions.export') }}
+            <n-button size="tiny" quaternary :disabled="consoleLoading || !window?.has_newer" @click="emit('load-newer')">
+              {{ t('runs.detail.loadNewerEvents') }}
             </n-button>
           </div>
         </div>
 
-        <div v-if="filteredEvents.length === 0" class="mt-3 text-sm app-text-muted">{{ t('common.noData') }}</div>
+        <div v-if="events.length === 0" class="mt-3 text-sm app-text-muted">{{ t('runEvents.noEvents') }}</div>
 
         <div
           v-else
           data-testid="run-detail-events-list"
           class="mt-3 max-h-[60vh] overflow-auto rounded-md app-border-subtle app-divide-y"
-          ref="eventsListEl"
         >
-          <button
-            v-for="item in filteredEvents"
+          <div
+            v-for="item in events"
             :key="item.seq"
-            type="button"
             :data-event-seq="item.seq"
-            class="w-full text-left px-3 py-2 flex items-center gap-2 transition hover:bg-[var(--app-hover)]"
-            @click="openEventDetails(item)"
+            class="w-full px-3 py-2 flex items-start gap-2"
           >
             <span class="shrink-0 font-mono tabular-nums text-xs app-text-muted whitespace-nowrap" :title="formatUnixSeconds(item.ts)">
               {{ formatUnixSeconds(item.ts) }}
             </span>
-            <n-tag class="shrink-0 w-16 inline-flex justify-center" size="tiny" :type="runEventLevelTagType(item.level)" :bordered="false">
-              <span class="block w-full truncate text-center">{{ item.level }}</span>
+
+            <n-tag size="small" :bordered="false" :type="runEventLevelTagType(item.level)">
+              {{ item.level }}
             </n-tag>
-            <span class="min-w-0 flex-1 truncate text-sm" :title="item.message">{{ item.message }}</span>
-            <span v-if="item.kind && item.kind !== item.message" class="shrink-0 max-w-[12rem] truncate text-xs app-text-muted font-mono">
-              {{ item.kind }}
-            </span>
-            <n-button v-if="item.fields" size="tiny" quaternary @click.stop="openEventDetails(item)">
-              {{ t('runEvents.actions.details') }}
-            </n-button>
-          </button>
+
+            <div class="min-w-0 flex-1">
+              <div class="text-sm break-words">{{ item.message }}</div>
+              <div class="text-xs app-text-muted mt-1">{{ item.kind }} · #{{ item.seq }}</div>
+            </div>
+
+            <div class="flex items-center gap-1">
+              <n-button size="tiny" quaternary @click="copyEventJson(item)">
+                {{ t('common.copy') }}
+              </n-button>
+              <n-button size="tiny" @click="openEventDetails(item)">
+                {{ t('runEvents.actions.details') }}
+              </n-button>
+            </div>
+          </div>
         </div>
       </n-tab-pane>
 
@@ -360,35 +308,44 @@ async function viewConsistencyEvents(): Promise<void> {
           </div>
         </template>
 
-        <div v-if="ops.length === 0" class="text-sm app-text-muted py-2" data-testid="run-detail-operations-empty">
+        <div v-if="ops.length === 0" class="text-sm app-text-muted">
           {{ t('runs.detail.noOperations') }}
         </div>
-        <n-data-table v-else :columns="opColumns" :data="ops" size="small" :bordered="false" data-testid="run-detail-operations-table" />
+        <n-data-table
+          v-else
+          size="small"
+          :columns="opColumns"
+          :data="ops"
+          :pagination="false"
+          class="app-data-table"
+        />
       </n-tab-pane>
 
-      <n-tab-pane name="summary" :disabled="!summary">
+      <n-tab-pane name="summary">
         <template #tab>
-          <span>{{ t('runs.detail.summaryTitle') }}</span>
+          <div class="flex items-center gap-2">
+            <span>{{ t('runs.detail.summaryTitle') }}</span>
+          </div>
         </template>
 
-        <div v-if="!summary" class="text-sm app-text-muted py-2">{{ t('common.noData') }}</div>
-        <div v-else data-testid="run-detail-summary">
-          <div class="flex items-center justify-between gap-3 mb-3">
-            <div class="text-sm app-text-muted">{{ t('runs.detail.summaryHelp') }}</div>
-            <n-button size="small" quaternary @click="copySummaryJson">{{ t('common.copy') }}</n-button>
+        <div class="space-y-4">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div class="text-sm font-medium">{{ t('runs.detail.summaryTitle') }}</div>
+              <div class="text-sm app-text-muted">{{ t('runs.detail.summaryHelp') }}</div>
+            </div>
+            <n-button size="small" quaternary :disabled="summary == null" @click="copySummaryJson">
+              {{ t('common.copy') }}
+            </n-button>
           </div>
 
-          <div
-            class="grid grid-cols-1 gap-3"
-            :class="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir || filesystemSnapshot ? 'md:grid-cols-2' : 'md:grid-cols-1'"
-          >
-            <div class="rounded app-border-subtle p-3">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="rounded-xl app-panel-inset p-4">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryHighlights') }}</div>
-              <div class="text-xs app-text-muted space-y-1">
-                <div v-if="parsedSummary.targetType || parsedSummary.targetLocation">
+              <div class="space-y-1 text-sm">
+                <div>
                   {{ t('runs.detail.target') }}:
-                  <span class="font-mono tabular-nums">{{ targetTypeLabel }}</span>
-                  <span v-if="parsedSummary.targetLocation" class="font-mono tabular-nums"> · {{ parsedSummary.targetLocation }}</span>
+                  <span class="font-medium">{{ targetTypeLabel }}</span>
                 </div>
                 <div v-if="parsedSummary.entriesCount != null">{{ t('runs.detail.entries', { count: parsedSummary.entriesCount }) }}</div>
                 <div v-if="parsedSummary.partsCount != null">{{ t('runs.detail.parts', { count: parsedSummary.partsCount }) }}</div>
@@ -397,24 +354,16 @@ async function viewConsistencyEvents(): Promise<void> {
               </div>
             </div>
 
-            <div v-if="parsedSummary.sqlitePath || parsedSummary.sqliteSnapshotName || parsedSummary.vaultwardenDataDir || filesystemSnapshot" class="rounded app-border-subtle p-3">
+            <div class="rounded-xl app-panel-inset p-4">
               <div class="text-sm font-medium mb-2">{{ t('runs.detail.summaryDetails') }}</div>
-              <div class="text-xs app-text-muted space-y-1">
-                <div v-if="filesystemSnapshot" class="space-y-0.5">
-                  <div>
-                    {{ t('runs.detail.fsSnapshot') }}:
-                    <span class="font-mono tabular-nums">{{ snapshotStatusLabel(filesystemSnapshot.status) }}</span>
-                    <span class="app-text-muted"> · {{ snapshotModeLabel(filesystemSnapshot.mode) }}</span>
-                    <span v-if="filesystemSnapshot.provider" class="font-mono tabular-nums">
-                      · {{ filesystemSnapshot.provider }}
-                    </span>
-                  </div>
-                  <div v-if="filesystemSnapshot.reason" class="truncate" :title="filesystemSnapshot.reason">
-                    {{ filesystemSnapshot.reason }}
-                  </div>
+              <div class="space-y-1 text-sm">
+                <div v-if="parsedSummary.targetLocation">
+                  <span class="app-text-muted">{{ t('runs.detail.target') }}:</span>
+                  <span class="font-mono tabular-nums break-all">{{ parsedSummary.targetLocation }}</span>
                 </div>
                 <div v-if="parsedSummary.sqlitePath">
-                  {{ t('runs.detail.sqlitePath') }}: <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
+                  {{ t('runs.detail.sqlitePath') }}:
+                  <span class="font-mono tabular-nums">{{ parsedSummary.sqlitePath }}</span>
                 </div>
                 <div v-if="parsedSummary.sqliteSnapshotName">
                   {{ t('runs.detail.sqliteSnapshot') }}:
@@ -426,94 +375,49 @@ async function viewConsistencyEvents(): Promise<void> {
                 </div>
               </div>
             </div>
+          </div>
 
-            <div v-if="hasConsistencyWarnings" class="rounded app-border-subtle p-3" data-testid="run-detail-consistency">
-              <div class="flex items-start justify-between gap-3 mb-2">
-                <div class="min-w-0">
-                  <div class="text-sm font-medium">{{ t('runs.consistency.title') }}</div>
-                  <div class="text-xs app-text-muted">{{ t('runs.consistency.help') }}</div>
-                </div>
-                <n-button size="small" quaternary @click="viewConsistencyEvents">
-                  {{ t('runs.consistency.viewEvents') }}
-                </n-button>
+          <div v-if="consistencyReport" data-testid="run-detail-consistency" class="rounded-xl app-panel-inset p-4 space-y-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-medium">{{ t('runs.consistency.title') }}</div>
+                <div class="text-xs app-text-muted">{{ t('runs.consistency.help') }}</div>
               </div>
+              <n-button size="small" quaternary @click="emit('jump-first-error')">
+                {{ t('runs.consistency.viewEvents') }}
+              </n-button>
+            </div>
 
-              <div v-if="consistencyReport" class="flex flex-wrap items-center gap-2">
-                <n-tag size="small" type="warning" :bordered="false">
-                  {{ t('runs.badges.sourceChanged', { count: consistencyReport.total }) }}
-                </n-tag>
-                <n-tag size="small" :bordered="false">
-                  {{ t('runs.consistency.changed', { count: consistencyReport.changedTotal }) }}
-                </n-tag>
-                <n-tag size="small" :bordered="false">
-                  {{ t('runs.consistency.replaced', { count: consistencyReport.replacedTotal }) }}
-                </n-tag>
-                <n-tag size="small" :bordered="false">
-                  {{ t('runs.consistency.deleted', { count: consistencyReport.deletedTotal }) }}
-                </n-tag>
-                <n-tag size="small" :bordered="false">
-                  {{ t('runs.consistency.readError', { count: consistencyReport.readErrorTotal }) }}
-                </n-tag>
-              </div>
-
-              <div v-if="consistencySamples.length > 0" class="mt-3">
-                <div class="text-sm font-medium mb-2">{{ t('runs.consistency.samples') }}</div>
-                <div class="space-y-1 text-xs app-text-muted">
-                  <div v-for="item in consistencySamples" :key="item.path" class="flex items-start gap-2">
-                    <span class="shrink-0 app-text-muted">-</span>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-start justify-between gap-2">
-                        <span class="min-w-0 flex-1 font-mono break-all">{{ item.path }}</span>
-                        <n-tag size="tiny" :bordered="false" class="shrink-0">
-                          {{ consistencyReasonLabel(item.reason) }}
-                        </n-tag>
-                      </div>
-                      <div v-if="item.error" class="mt-0.5 truncate" :title="item.error">{{ item.error }}</div>
-
-                      <details v-if="item.before || item.afterHandle || item.afterPath" class="mt-1 rounded app-border-subtle p-2">
-                        <summary class="cursor-pointer select-none text-xs app-text-muted">
-                          {{ t('runs.consistency.evidence') }}
-                        </summary>
-                        <div class="mt-2">
-                          <n-code
-                            :code="formatJson({ before: item.before, after_handle: item.afterHandle, after_path: item.afterPath })"
-                            language="json"
-                          />
-                        </div>
-                      </details>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="consistencySampleMore" class="mt-2 text-xs app-text-muted">
-                  {{ t('runs.consistency.sampleTruncated', { count: CONSISTENCY_SAMPLE_MAX }) }}
-                </div>
-              </div>
+            <div class="flex flex-wrap gap-2">
+              <n-tag size="small" :bordered="false" type="warning">
+                {{ t('runs.badges.sourceChanged', { count: consistencyReport.total }) }}
+              </n-tag>
+              <n-tag size="small" :bordered="false">{{ t('runs.consistency.changed', { count: consistencyReport.changedTotal }) }}</n-tag>
+              <n-tag size="small" :bordered="false">{{ t('runs.consistency.replaced', { count: consistencyReport.replacedTotal }) }}</n-tag>
+              <n-tag size="small" :bordered="false">{{ t('runs.consistency.deleted', { count: consistencyReport.deletedTotal }) }}</n-tag>
+              <n-tag size="small" :bordered="false">{{ t('runs.consistency.readError', { count: consistencyReport.readErrorTotal }) }}</n-tag>
             </div>
           </div>
 
-          <details class="mt-3 rounded app-border-subtle p-3">
-            <summary class="cursor-pointer select-none text-sm font-medium">
-              {{ t('runs.detail.rawJson') }}
-            </summary>
-            <div class="mt-3">
-              <n-code :code="formatJson(summary)" language="json" />
-            </div>
-          </details>
+          <n-code
+            v-if="summary != null"
+            :code="formatJson(summary)"
+            language="json"
+            show-line-numbers
+            word-wrap
+            class="max-h-[24rem] overflow-auto"
+          />
         </div>
       </n-tab-pane>
     </n-tabs>
-  </n-card>
 
-  <RunEventDetailDialog
-    v-model:show="eventDetailShow"
-    :event="eventDetail"
-    :is-desktop="isDesktop"
-    :title="t('runEvents.details.title')"
-    :close-label="t('common.close')"
-    :header-meta-fields="eventDetailHeaderMetaFields"
-  >
-    <template #header-actions="{ event }">
-      <n-button size="tiny" quaternary @click="copyEventJson(event)">{{ t('common.copy') }}</n-button>
-    </template>
-  </RunEventDetailDialog>
+    <RunEventDetailDialog
+      v-model:show="eventDetailShow"
+      :event="eventDetail"
+      :is-desktop="isDesktop"
+      :header-meta-fields="eventDetailHeaderMetaFields"
+      :title="t('runEvents.details.title')"
+      :close-label="t('common.close')"
+    />
+  </n-card>
 </template>

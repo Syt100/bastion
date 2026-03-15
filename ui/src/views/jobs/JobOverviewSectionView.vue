@@ -10,8 +10,8 @@ import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
-import { runStatusLabel } from '@/lib/runs'
-import { buildJobSectionPath, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
+import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
+import { buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -142,10 +142,14 @@ function openLatestRun(): void {
   const id = ctx.jobId.value
   const r = latestRun.value
   if (!id || !r) return
-  void router.push({
-    path: `${buildJobSectionPath(id, 'overview')}/runs/${encodeURIComponent(r.id)}`,
-    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
-  })
+  const collection = readJobsCollectionState(route.query)
+  void router.push(
+    buildRunDetailLocation(r.id, {
+      fromScope: collection.scope,
+      fromJob: id,
+      fromSection: 'overview',
+    }),
+  )
 }
 </script>
 

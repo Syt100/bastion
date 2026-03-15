@@ -14,6 +14,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 - Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
 - Added workspace-oriented Jobs APIs (`/api/jobs/workspace`, `/api/jobs/{id}/workspace`) and a full-page create/edit flow with draft resume, live configuration summary, and review-stage risk signals.
+- Added first-class Runs workspace APIs (`/api/runs`, `/api/runs/{id}/workspace`, `/api/runs/{id}/event-console`) with structured diagnostics, cross-job filtering, and server-driven event windows.
 
 ### Changed
 - Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
@@ -46,6 +47,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Jobs workspace split-layout resize logic to a dedicated composable and added direct modal regression specs (editor/deploy/runs/restore/verify) to reduce maintenance risk during future UI refactors.
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
+- Changed Runs from a placeholder landing surface into a dedicated operator workspace with filterable global triage, canonical `/runs/:id` routes, summary-first diagnostics, and mobile-friendly event inspection.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).
 - Changed run/maintenance/notification failure events to emit a unified `error_envelope` contract (schema version, stable code/kind, retriable metadata, i18n keys, transport protocol details, and context payloads) while keeping legacy fields for compatibility.
 - Changed Run Events UI to render envelope-first localized diagnostics with graceful fallback, protocol-specific detail rows (HTTP/SFTP/provider fields), and async-operation/partial-failure panels.
