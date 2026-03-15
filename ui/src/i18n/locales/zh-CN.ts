@@ -87,10 +87,10 @@ const messages = {
   },
   nav: {
     dashboard: '概览',
-    commandCenter: '指挥中心',
+    commandCenter: '运行总览',
     jobs: '备份任务',
     runs: '运行记录',
-    fleet: '客户端舰队',
+    fleet: '客户端管理',
     integrations: '集成',
     system: '系统',
     context: '上下文',
@@ -165,7 +165,7 @@ const messages = {
     },
   },
   commandCenter: {
-    title: '指挥中心',
+    title: '运行总览',
     subtitle: '统览当前范围内的备份风险、近期关键活动与恢复准备度',
     range: {
       last24h: '24 小时',
@@ -216,7 +216,7 @@ const messages = {
       openRun: '打开运行',
       openJobs: '打开任务',
       openQueue: '打开队列',
-      openFleet: '打开舰队',
+      openFleet: '打开客户端管理',
     },
     readiness: {
       none: '暂无信号',
@@ -363,7 +363,7 @@ const messages = {
     },
   },
   fleet: {
-    title: '客户端舰队',
+    title: '客户端管理',
     subtitle: '管理已接入客户端、接入令牌与配置同步状态',
     columns: {
       workload: '运维上下文',
@@ -378,7 +378,7 @@ const messages = {
       pendingTasks: '待处理任务',
     },
     summary: {
-      title: '舰队健康概览',
+      title: '客户端健康概览',
       subtitle: '统一查看客户端连通性与配置分发状态',
       total: '已登记客户端',
       online: '在线',
@@ -394,7 +394,7 @@ const messages = {
       missingDescription: '请先在“系统 → 运行配置”中设置公共访问地址，再复制生产环境的接入命令。',
     },
     detail: {
-      title: '舰队详情',
+      title: '客户端详情',
       subtitle: '查看单个客户端的健康状态、配置同步、最近活动与关联任务',
       createdAt: '接入时间',
       actionsTitle: '客户端操作',
@@ -443,7 +443,7 @@ const messages = {
     },
     distribution: {
       title: '分发',
-      subtitle: '跟踪配置及相关凭据是否已在整个舰队中正确下发',
+      subtitle: '跟踪配置及相关凭据是否已在所有客户端中正确下发',
       coverage: '覆盖客户端',
       drifted: '存在漂移',
       failed: '下发失败',
@@ -462,7 +462,7 @@ const messages = {
         online: '在线',
         offline: '离线',
       },
-      openFleet: '打开舰队',
+      openFleet: '打开客户端管理',
       openBulkOperations: '打开批量操作',
     },
   },
@@ -687,7 +687,7 @@ const messages = {
       node: '工作区节点：{node}',
       allScopeHint: '请选择 Hub 或某个客户端以打开对应范围的任务工作区。',
       openWorkspace: '打开工作区',
-      backToCommandCenter: '返回指挥中心',
+      backToCommandCenter: '返回运行总览',
     },
     workspace: {
       emptyTitle: '请选择一个任务继续',
@@ -1216,7 +1216,7 @@ const messages = {
       appearanceDesc: '主题配色与外观',
       storageDesc: '配置远程存储凭据与相关设置',
       notificationsDesc: '配置通知渠道、目的地、模板与队列',
-      distributionDesc: '查看面向舰队的配置覆盖、漂移与失败状态',
+      distributionDesc: '查看面向客户端的配置覆盖、漂移与失败状态',
       maintenanceDesc: '运维与维护工具',
       runtimeConfigDesc: '查看并配置 Hub 的运行策略与日志（需重启生效）',
       bulkOperationsDesc: '查看与管理跨客户端的批量操作',
@@ -2353,7 +2353,7 @@ const messages = {
     fetchJobsFailed: '获取任务列表失败',
     fetchJobFailed: '获取任务失败',
     fetchDashboardFailed: '加载概览失败',
-    fetchCommandCenterFailed: '加载指挥中心失败',
+    fetchCommandCenterFailed: '加载运行总览失败',
     saveJobFailed: '保存任务失败',
     deleteJobFailed: '删除任务失败',
     archiveJobFailed: '归档任务失败',
