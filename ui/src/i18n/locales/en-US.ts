@@ -87,10 +87,10 @@ const messages = {
   },
   nav: {
     dashboard: 'Dashboard',
-    commandCenter: 'Command Center',
+    commandCenter: 'Operations Overview',
     jobs: 'Jobs',
     runs: 'Runs',
-    fleet: 'Fleet',
+    fleet: 'Agent Management',
     integrations: 'Integrations',
     system: 'System',
     context: 'Context',
@@ -165,7 +165,7 @@ const messages = {
     },
   },
   commandCenter: {
-    title: 'Command Center',
+    title: 'Operations Overview',
     subtitle: 'Monitor backup risk, recent critical activity, and recovery readiness for the selected scope',
     range: {
       last24h: '24h',
@@ -216,7 +216,7 @@ const messages = {
       openRun: 'Open run',
       openJobs: 'Open jobs',
       openQueue: 'Open queue',
-      openFleet: 'Open fleet',
+      openFleet: 'Open Agent Management',
     },
     readiness: {
       none: 'No signal yet',
@@ -363,7 +363,7 @@ const messages = {
     },
   },
   fleet: {
-    title: 'Fleet',
+    title: 'Agent Management',
     subtitle: 'Manage connected agents, enrollment, and configuration sync health',
     columns: {
       workload: 'Operational context',
@@ -378,7 +378,7 @@ const messages = {
       pendingTasks: 'Pending tasks',
     },
     summary: {
-      title: 'Fleet health',
+      title: 'Agent Health Overview',
       subtitle: 'Monitor agent reachability and configuration distribution at a glance',
       total: 'Registered agents',
       online: 'Online',
@@ -395,7 +395,7 @@ const messages = {
         'Configure a public base URL in System → Runtime before copying production enrollment commands.',
     },
     detail: {
-      title: 'Fleet detail',
+      title: 'Agent Detail',
       subtitle: 'Review agent health, sync state, recent activity, and related jobs',
       createdAt: 'Registered at',
       actionsTitle: 'Agent actions',
@@ -446,7 +446,7 @@ const messages = {
     },
     distribution: {
       title: 'Distribution',
-      subtitle: 'Track whether configuration and related secrets have been applied cleanly across the fleet',
+      subtitle: 'Track whether configuration and related secrets have been applied cleanly across managed agents',
       coverage: 'Covered agents',
       drifted: 'Drifted',
       failed: 'Failed',
@@ -465,7 +465,7 @@ const messages = {
         online: 'Online',
         offline: 'Offline',
       },
-      openFleet: 'Open Fleet',
+      openFleet: 'Open Agent Management',
       openBulkOperations: 'Open bulk operations',
     },
   },
@@ -689,7 +689,7 @@ const messages = {
       node: 'Workspace node: {node}',
       allScopeHint: 'Select Hub or a specific agent to open a scoped Jobs workspace.',
       openWorkspace: 'Open workspace',
-      backToCommandCenter: 'Back to Command Center',
+      backToCommandCenter: 'Back to Operations Overview',
     },
     subtitle: 'Manage backup jobs, schedules, and execution state',
     workspace: {
@@ -1223,7 +1223,7 @@ const messages = {
       appearanceDesc: 'Theme presets and color appearance',
       storageDesc: 'Manage remote storage credentials and related settings',
       notificationsDesc: 'Manage channels, destinations, templates, and queue',
-      distributionDesc: 'Review fleet-wide configuration coverage, drift, and failures',
+      distributionDesc: 'Review configuration coverage, drift, and failures across managed agents',
       maintenanceDesc: 'Operational tools for maintenance tasks',
       runtimeConfigDesc: 'Manage Hub runtime policy and logging (restart required)',
       bulkOperationsDesc: 'Track and control bulk operations across agents',
@@ -2362,7 +2362,7 @@ const messages = {
     fetchJobsFailed: 'Could not load jobs',
     fetchJobFailed: 'Could not load job',
     fetchDashboardFailed: 'Could not load dashboard',
-    fetchCommandCenterFailed: 'Could not load Command Center',
+    fetchCommandCenterFailed: 'Could not load Operations Overview',
     saveJobFailed: 'Could not save job',
     deleteJobFailed: 'Could not delete job',
     archiveJobFailed: 'Could not archive job',

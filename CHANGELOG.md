@@ -8,20 +8,20 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 ## [Unreleased]
 
 ### Added
-- Added an aggregated Command Center API (`/api/command-center`) and new Command Center / Runs landing views that surface attention items, critical activity, and recovery-readiness signals from one scope-aware response.
+- Added an aggregated Operations Overview API (`/api/command-center`) and new Operations Overview / Runs landing views that surface attention items, critical activity, and recovery-readiness signals from one scope-aware response.
 - Added optional notifications queue cursor pagination (`cursor` request + `next_cursor` response) to keep queued-results browsing stable under concurrent state changes.
 - Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 - Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
 - Added workspace-oriented Jobs APIs (`/api/jobs/workspace`, `/api/jobs/{id}/workspace`) and a full-page create/edit flow with draft resume, live configuration summary, and review-stage risk signals.
 - Added first-class Runs workspace APIs (`/api/runs`, `/api/runs/{id}/workspace`, `/api/runs/{id}/event-console`) with structured diagnostics, cross-job filtering, and server-driven event windows.
-- Added authenticated Fleet / Integrations control-plane summary APIs plus a dedicated Fleet detail page, Integrations overview, System overview, and public-base-URL metadata endpoint for operator-facing command generation.
+- Added authenticated Agent Management / Integrations control-plane summary APIs plus a dedicated Agent Detail page, Integrations overview, System overview, and public-base-URL metadata endpoint for operator-facing command generation.
 
 ### Changed
-- Changed Web UI heading copy across Command Center, Fleet, Integrations, Jobs, and Runs to use more professional operator-facing titles/subtitles and remove terminal punctuation from heading text.
-- Changed Chinese navigation and page labels to replace less professional terms such as `指挥中心` / `客户端舰队` with clearer operator-facing naming.
-- Changed Command Center, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
-- Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
+- Changed Web UI heading copy across Operations Overview, Agent Management, Integrations, Jobs, and Runs to use more professional operator-facing titles/subtitles and remove terminal punctuation from heading text.
+- Changed zh-CN and en-US navigation/page labels to replace less professional control-plane terms with clearer operator-facing naming such as `运行总览` / `Operations Overview` and `客户端管理` / `Agent Management`.
+- Changed Operations Overview, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
+- Changed the Web UI shell to an operations-overview-first information architecture with top-level `Operations Overview`, `Jobs`, `Runs`, `Agent Management`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.
 - Changed Agents and auth entry surfaces to add guided onboarding/trust copy, stronger empty-state actions, and clearer login context for first-time operators.
 - Changed list-oriented Web UI pages (Jobs/Agents/Notifications Queue) to use a shared scaffold pattern with consistent toolbar/content/footer regions.
@@ -52,7 +52,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed Runs from a placeholder landing surface into a dedicated operator workspace with filterable global triage, canonical `/runs/:id` routes, summary-first diagnostics, and mobile-friendly event inspection.
-- Changed Fleet onboarding and runtime configuration so enrollment commands use an explicit configured public base URL, surface setup-required guidance when that URL is missing, and route legacy Agents / Settings entry points into canonical Fleet / Integrations / System surfaces.
+- Changed Agent Management onboarding and runtime configuration so enrollment commands use an explicit configured public base URL, surface setup-required guidance when that URL is missing, and route legacy Agents / Settings entry points into canonical Agent Management / Integrations / System surfaces.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).
 - Changed run/maintenance/notification failure events to emit a unified `error_envelope` contract (schema version, stable code/kind, retriable metadata, i18n keys, transport protocol details, and context payloads) while keeping legacy fields for compatibility.
 - Changed Run Events UI to render envelope-first localized diagnostics with graceful fallback, protocol-specific detail rows (HTTP/SFTP/provider fields), and async-operation/partial-failure panels.
@@ -75,7 +75,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
-- Fixed Fleet and Integrations spec-conformance gaps by moving the Fleet collection view to the aggregated `/api/fleet` response, adding per-scope distribution detail plus direct follow-up actions, and surfacing storage credential usage/health context in Integrations.
+- Fixed Agent Management and Integrations spec-conformance gaps by moving the Agent Management collection view to the aggregated `/api/fleet` response, adding per-scope distribution detail plus direct follow-up actions, and surfacing storage credential usage/health context in Integrations.
 - Fixed Jobs detail run summaries/support panes to replace raw failure codes like `run_failed` with operator-facing error text.
 - Fixed Jobs workspace list rows to keep full-size actions while reducing left-side chrome and aligning second-line node/schedule metadata with the latest-run time in narrower panes.
 - Fixed task create/edit dialog height regression by enforcing viewport bounds at modal-container layer (instead of content-layer sizing), so long forms stay inside modal scrolling bounds.
