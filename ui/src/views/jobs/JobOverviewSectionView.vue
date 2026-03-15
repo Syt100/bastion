@@ -10,7 +10,7 @@ import { useJobsStore, type RunListItem } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
-import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
+import { buildRunDetailLocation, runErrorLabel, runStatusLabel } from '@/lib/runs'
 import { buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
@@ -180,7 +180,7 @@ function openLatestRun(): void {
                   {{ latestRun ? formatUnixSeconds(latestRun.started_at) : '-' }}
                 </div>
               </div>
-              <div v-if="latestRun?.error" class="mt-1 text-xs text-[var(--app-danger)] truncate">{{ latestRun.error }}</div>
+              <div v-if="latestRun?.error" class="mt-1 text-xs text-[var(--app-danger)] truncate">{{ runErrorLabel(t, latestRun.error) }}</div>
             </div>
 
             <n-button

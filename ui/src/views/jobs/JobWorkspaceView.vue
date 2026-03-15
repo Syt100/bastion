@@ -13,8 +13,9 @@ import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/Job
 import JobWorkspaceSupportPane from '@/components/jobs/JobWorkspaceSupportPane.vue'
 import RunDetailPanel from '@/components/runs/RunDetailPanel.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
-import { useJobsStore, type JobDetail, type JobWorkspaceDetail } from '@/stores/jobs'
+import { useJobsStore, type JobDetail, type JobWorkspaceDetail, type RunStatus } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
+import { formatCommandCenterScopeLabel } from '@/lib/commandCenterPresentation'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -29,7 +30,7 @@ import {
   readJobsCollectionState,
   resolveJobsScope,
 } from '@/lib/jobsRoute'
-import { buildRunDetailLocation } from '@/lib/runs'
+import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
 import { scopeToNodeId } from '@/lib/scope'
 
 type SectionKey = 'overview' | 'history' | 'data'
@@ -49,6 +50,43 @@ const runId = computed(() => (typeof route.params.runId === 'string' ? route.par
 const collectionState = computed(() => readJobsCollectionState(route.query, resolveJobsScope(route, ui.preferredScope)))
 const scopeNodeId = computed(() => scopeToNodeId(collectionState.value.scope))
 const jobsListPath = computed(() => router.resolve(buildJobsCollectionLocation(collectionState.value)).fullPath)
+const scopeLabel = computed(() => formatCommandCenterScopeLabel(collectionState.value.scope, t))
+const latestRunId = computed(() => job.value?.latest_run_id ?? workspace.value?.recent_runs[0]?.id ?? null)
+const selectedSavedViewLabel = computed<string | null>(() => {
+  const viewId = collectionState.value.view
+  if (!viewId) return null
+  if (viewId === 'failed-recently') return t('jobs.savedViews.builtins.failedRecently')
+  if (viewId === 'manual-jobs') return t('jobs.savedViews.builtins.manualJobs')
+  if (viewId === 'archived') return t('jobs.savedViews.builtins.archived')
+  return ui.jobsSavedViews.find((item) => item.id === viewId)?.name ?? viewId
+})
+const collectionContextTags = computed<Array<{ key: string; label: string }>>(() => {
+  const tags: Array<{ key: string; label: string }> = [
+    { key: 'scope', label: t('jobs.detail.context.scope', { scope: scopeLabel.value }) },
+  ]
+  if (selectedSavedViewLabel.value) {
+    tags.push({ key: 'view', label: t('jobs.detail.context.view', { name: selectedSavedViewLabel.value }) })
+  }
+  if (collectionState.value.q) {
+    tags.push({ key: 'search', label: `${t('common.search')}: ${collectionState.value.q}` })
+  }
+  if (collectionState.value.status !== 'all') {
+    const statusLabel = collectionState.value.status === 'never'
+      ? t('runs.neverRan')
+      : runStatusLabel(t, collectionState.value.status as RunStatus)
+    tags.push({ key: 'status', label: `${t('runs.columns.status')}: ${statusLabel}` })
+  }
+  if (collectionState.value.schedule !== 'all') {
+    const scheduleLabel = collectionState.value.schedule === 'manual'
+      ? t('jobs.scheduleMode.manual')
+      : t('jobs.workspace.filters.scheduled')
+    tags.push({ key: 'schedule', label: `${t('jobs.columns.schedule')}: ${scheduleLabel}` })
+  }
+  if (collectionState.value.includeArchived) {
+    tags.push({ key: 'archived', label: t('jobs.showArchived') })
+  }
+  return tags
+})
 
 const loading = ref<boolean>(false)
 const job = ref<JobDetail | null>(null)
@@ -239,6 +277,26 @@ function openRun(runId: string): void {
     }),
   )
 }
+
+function latestRunStatusTagType(state: JobWorkspaceDetail['readiness']['state'] | null | undefined): 'success' | 'warning' | 'error' | 'default' {
+  if (state === 'healthy') return 'success'
+  if (state === 'warning') return 'warning'
+  if (state === 'critical') return 'error'
+  return 'default'
+}
+
+function latestRunStatusLabel(state: JobWorkspaceDetail['readiness']['state'] | null | undefined): string {
+  if (state === 'healthy') return t('jobs.workspace.support.healthHealthy')
+  if (state === 'warning') return t('jobs.workspace.support.healthWarning')
+  if (state === 'critical') return t('jobs.workspace.support.healthCritical')
+  return t('jobs.archived')
+}
+
+function openLatestRun(): void {
+  const id = latestRunId.value
+  if (!id) return
+  openRun(id)
+}
 </script>
 
 <template>
@@ -298,6 +356,9 @@ function openRun(runId: string): void {
       <n-button :disabled="!!job.archived_at" @click="openEdit">
         {{ t('common.edit') }}
       </n-button>
+      <n-button v-if="latestRunId" @click="openLatestRun">
+        {{ t('jobs.workspace.support.openLatestRun') }}
+      </n-button>
       <n-button :loading="loading" @click="refresh">
         {{ t('jobs.workspace.actions.refreshJob') }}
       </n-button>
@@ -306,11 +367,36 @@ function openRun(runId: string): void {
       </n-button>
     </div>
 
-    <n-card class="app-card" :bordered="false">
+    <div v-if="job" class="flex items-center gap-2 flex-wrap" data-testid="job-workspace-context-row">
+      <n-button size="small" quaternary @click="void router.push(jobsListPath)">
+        {{ t('jobs.workspace.actions.backToList') }}
+      </n-button>
+      <n-tag
+        v-for="tag in collectionContextTags"
+        :key="tag.key"
+        size="small"
+        :bordered="false"
+      >
+        {{ tag.label }}
+      </n-tag>
+    </div>
+
+    <n-card class="app-card" :bordered="false" data-testid="job-workspace-object-header">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
+          <div class="text-xs uppercase tracking-[0.16em] app-text-muted">
+            {{ t('jobs.detail.kicker') }}
+          </div>
           <div class="flex items-center gap-2 min-w-0">
             <div class="text-lg font-semibold truncate">{{ job?.name ?? t('jobs.detail.title') }}</div>
+            <n-tag
+              v-if="workspace"
+              size="small"
+              :bordered="false"
+              :type="latestRunStatusTagType(workspace.readiness.state)"
+            >
+              {{ latestRunStatusLabel(workspace.readiness.state) }}
+            </n-tag>
             <n-tag v-if="job?.archived_at" size="small" :bordered="false" type="warning">{{ t('jobs.archived') }}</n-tag>
           </div>
           <div class="mt-1 flex flex-wrap items-center gap-2 text-sm app-text-muted">
@@ -321,6 +407,11 @@ function openRun(runId: string): void {
         </div>
 
         <div v-if="isDesktop" class="flex items-center gap-2 flex-wrap justify-end">
+          <n-button size="small" type="primary" :disabled="!!job?.archived_at" @click="runNow">{{ t('jobs.actions.runNow') }}</n-button>
+          <n-button size="small" :disabled="!!job?.archived_at" @click="openEdit">{{ t('common.edit') }}</n-button>
+          <n-button v-if="latestRunId" size="small" @click="openLatestRun">
+            {{ t('jobs.workspace.support.openLatestRun') }}
+          </n-button>
           <n-button
             size="small"
             :loading="loading"
@@ -330,12 +421,7 @@ function openRun(runId: string): void {
           >
             {{ t('jobs.workspace.actions.refreshJob') }}
           </n-button>
-          <n-button size="small" type="primary" :disabled="!!job?.archived_at" @click="runNow">{{ t('jobs.actions.runNow') }}</n-button>
-
-          <template v-if="isDesktop">
-            <n-button size="small" :disabled="!!job?.archived_at" @click="openEdit">{{ t('common.edit') }}</n-button>
-            <n-button size="small" :disabled="!!job?.archived_at" @click="openDeploy">{{ t('jobs.actions.deploy') }}</n-button>
-          </template>
+          <n-button size="small" :disabled="!!job?.archived_at" @click="openDeploy">{{ t('jobs.actions.deploy') }}</n-button>
 
           <n-dropdown trigger="click" :options="moreOptions" @select="onSelectMore">
             <n-button size="small" quaternary>

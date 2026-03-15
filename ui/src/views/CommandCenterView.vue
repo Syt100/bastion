@@ -35,11 +35,25 @@ const showInitialSkeleton = computed(() => commandCenter.loading && !snapshot.va
 const totalAttention = computed(() => attentionItems.value.length)
 const totalCriticalActivity = computed(() => criticalItems.value.length)
 const totalWatchlist = computed(() => watchlistItems.value.length)
+const scopeLabel = computed(() => formatScopeLabel(snapshot.value?.scope.effective ?? effectiveScope.value))
+const generatedAtLabel = computed(() => (snapshot.value ? formatUnixSeconds(snapshot.value.generated_at) : '—'))
+const readinessOverall = computed(() => readiness.value?.overall ?? 'empty')
 const healthTone = computed(() => {
   if (readiness.value?.overall === 'healthy' && totalAttention.value === 0) return 'success'
   if (readiness.value?.overall === 'empty') return 'default'
   return 'warning'
 })
+const attentionTone = computed(() => (totalAttention.value > 0 ? 'warning' : 'success'))
+const readinessSummary = computed(() => {
+  if (readinessOverall.value === 'healthy') return t('commandCenter.hero.priority.readinessHealthy')
+  if (readinessOverall.value === 'degraded') return t('commandCenter.hero.priority.readinessDegraded')
+  return t('commandCenter.hero.priority.readinessEmpty')
+})
+const attentionSummary = computed(() => (
+  totalAttention.value > 0
+    ? t('commandCenter.hero.priority.attentionBody', { count: totalAttention.value })
+    : t('commandCenter.hero.priority.attentionQuiet')
+))
 
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
@@ -135,11 +149,11 @@ watch([effectiveScope, rangePreset], () => {
       </div>
     </PageHeader>
 
-    <section class="console-hero app-card">
-      <div class="console-kicker">{{ t('commandCenter.hero.kicker') }}</div>
-      <div class="mt-3 flex items-start justify-between gap-6 flex-wrap">
-        <div class="max-w-3xl">
-          <div class="console-hero-title">{{ t('commandCenter.hero.title') }}</div>
+    <section class="console-hero app-card space-y-4" data-testid="command-center-hero">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="min-w-0 max-w-3xl">
+          <div class="console-kicker">{{ t('commandCenter.hero.kicker') }}</div>
+          <div class="mt-2 console-hero-title">{{ t('commandCenter.hero.title') }}</div>
           <p class="console-hero-copy">
             {{
               readiness?.overall === 'healthy' && totalAttention === 0
@@ -149,41 +163,98 @@ watch([effectiveScope, rangePreset], () => {
           </p>
         </div>
 
-        <div class="console-hero-metrics">
-          <div class="console-hero-metric">
-            <span class="console-hero-metric-label">{{ t('commandCenter.hero.metrics.attention') }}</span>
-            <span class="console-hero-metric-value">
-              <n-skeleton v-if="showInitialSkeleton" text width="2rem" />
-              <template v-else>{{ totalAttention }}</template>
-            </span>
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+          <n-tag size="small" :bordered="false">
+            {{ t('commandCenter.hero.scope', { scope: scopeLabel }) }}
+          </n-tag>
+          <n-tag size="small" :bordered="false">
+            {{ t('commandCenter.hero.generatedAt', { time: generatedAtLabel }) }}
+          </n-tag>
+        </div>
+      </div>
+
+      <div class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]" data-testid="command-center-priority-grid">
+        <div
+          class="rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface-muted)] p-4 space-y-3"
+          data-testid="command-center-priority-attention"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">{{ t('commandCenter.sections.attention.title') }}</div>
+              <div class="mt-1 text-2xl font-semibold tabular-nums">
+                <n-skeleton v-if="showInitialSkeleton" text width="3rem" />
+                <template v-else>{{ totalAttention }}</template>
+              </div>
+            </div>
+            <n-tag :type="attentionTone" :bordered="false">
+              {{ totalAttention > 0 ? t('commandCenter.hero.priority.attentionLabel') : t('common.ready') }}
+            </n-tag>
           </div>
-          <div class="console-hero-metric">
-            <span class="console-hero-metric-label">{{ t('commandCenter.hero.metrics.activity') }}</span>
-            <span class="console-hero-metric-value">
-              <n-skeleton v-if="showInitialSkeleton" text width="2rem" />
-              <template v-else>{{ totalCriticalActivity }}</template>
-            </span>
+          <p class="text-sm leading-6 app-text-muted">
+            {{ attentionSummary }}
+          </p>
+        </div>
+
+        <div
+          class="rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface-muted)] p-4 space-y-3"
+          data-testid="command-center-priority-readiness"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">{{ t('commandCenter.sections.readiness.title') }}</div>
+              <div class="mt-1 text-lg font-semibold">
+                <n-skeleton v-if="showInitialSkeleton" text width="6rem" />
+                <template v-else>{{ t(`commandCenter.readiness.overall.${readinessOverall}`) }}</template>
+              </div>
+            </div>
+            <n-tag :type="healthTone" :bordered="false">
+              {{ t(`commandCenter.readiness.overall.${readinessOverall}`) }}
+            </n-tag>
           </div>
-          <div class="console-hero-metric">
-            <span class="console-hero-metric-label">{{ t('commandCenter.hero.metrics.readiness') }}</span>
-            <span class="console-hero-metric-value">
-              <n-skeleton v-if="showInitialSkeleton" text width="4rem" />
-              <template v-else>{{ t(`commandCenter.readiness.overall.${readiness?.overall ?? 'empty'}`) }}</template>
-            </span>
+
+          <p class="text-sm leading-6 app-text-muted">
+            {{ readinessSummary }}
+          </p>
+
+          <div class="grid gap-2 text-xs sm:grid-cols-2">
+            <div class="rounded-xl bg-[var(--app-bg)] px-3 py-2 app-text-muted">
+              <div class="font-medium text-[var(--app-text)]">{{ t('commandCenter.readiness.backup.title') }}</div>
+              <div class="mt-1">
+                {{ t('commandCenter.readiness.coverage', { covered: readiness?.backup.covered_jobs ?? 0, total: readiness?.backup.active_jobs ?? 0 }) }}
+              </div>
+            </div>
+            <div class="rounded-xl bg-[var(--app-bg)] px-3 py-2 app-text-muted">
+              <div class="font-medium text-[var(--app-text)]">{{ t('commandCenter.readiness.verify.title') }}</div>
+              <div class="mt-1">
+                {{ t('commandCenter.readiness.coverage', { covered: readiness?.verify.covered_jobs ?? 0, total: readiness?.verify.active_jobs ?? 0 }) }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="mt-4 flex items-center gap-2 flex-wrap">
-        <n-tag :type="healthTone" :bordered="false">
-          {{ t(`commandCenter.readiness.overall.${readiness?.overall ?? 'empty'}`) }}
-        </n-tag>
-        <n-tag size="small" :bordered="false">
-          {{ t('commandCenter.hero.scope', { scope: formatScopeLabel(snapshot?.scope.effective ?? effectiveScope) }) }}
-        </n-tag>
-        <n-tag size="small" :bordered="false">
-          {{ t('commandCenter.hero.generatedAt', { time: snapshot ? formatUnixSeconds(snapshot.generated_at) : '—' }) }}
-        </n-tag>
+      <div class="grid gap-2 sm:grid-cols-3" data-testid="command-center-metrics">
+        <div class="rounded-xl border border-[color:var(--app-border)] bg-[var(--app-bg)] px-3 py-2">
+          <div class="text-xs uppercase tracking-[0.12em] app-text-muted">{{ t('commandCenter.hero.metrics.attention') }}</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums">
+            <n-skeleton v-if="showInitialSkeleton" text width="2rem" />
+            <template v-else>{{ totalAttention }}</template>
+          </div>
+        </div>
+        <div class="rounded-xl border border-[color:var(--app-border)] bg-[var(--app-bg)] px-3 py-2">
+          <div class="text-xs uppercase tracking-[0.12em] app-text-muted">{{ t('commandCenter.hero.metrics.activity') }}</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums">
+            <n-skeleton v-if="showInitialSkeleton" text width="2rem" />
+            <template v-else>{{ totalCriticalActivity }}</template>
+          </div>
+        </div>
+        <div class="rounded-xl border border-[color:var(--app-border)] bg-[var(--app-bg)] px-3 py-2">
+          <div class="text-xs uppercase tracking-[0.12em] app-text-muted">{{ t('commandCenter.hero.metrics.readiness') }}</div>
+          <div class="mt-1 text-lg font-semibold">
+            <n-skeleton v-if="showInitialSkeleton" text width="4rem" />
+            <template v-else>{{ t(`commandCenter.readiness.overall.${readinessOverall}`) }}</template>
+          </div>
+        </div>
       </div>
     </section>
 

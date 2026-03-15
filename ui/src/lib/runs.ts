@@ -34,6 +34,16 @@ export function runFailureStageLabel(t: TranslateFn, stage: string | null | unde
   return v === key ? stage : v
 }
 
+export function runErrorLabel(t: TranslateFn, error: string | null | undefined): string | null {
+  const value = error?.trim()
+  if (!value) return null
+  const key = `runs.errorHints.${value}`
+  const translated = t(key)
+  if (translated !== key) return translated
+  if (/^[a-z0-9_]+$/.test(value)) return t('runs.errorHints.generic')
+  return value
+}
+
 export function buildRunDetailLocation(
   runId: string,
   options: {

@@ -199,11 +199,28 @@ function mountEditor() {
   })
 }
 
+function stubMatchMedia(matches: boolean): void {
+  vi.stubGlobal(
+    'matchMedia',
+    ((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia,
+  )
+}
+
 import JobEditorRouteView from './JobEditorRouteView.vue'
 
 describe('JobEditorRouteView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubMatchMedia(true)
     resetRoute({ path: '/jobs/new', fullPath: '/jobs/new?scope=hub', query: { scope: 'hub' } })
     localStorage.clear()
     jobsApi.getJob.mockReset()
@@ -308,6 +325,27 @@ describe('JobEditorRouteView', () => {
 
     expect(vm.step).toBe(3)
     expect(vm.form.name).toBe('Draft job')
+  })
+
+  it('uses compact mobile step navigation and keeps summaries collapsed by default', async () => {
+    stubMatchMedia(false)
+
+    const wrapper = mountEditor()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="job-editor-mobile-progress"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="job-editor-summary-body"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="job-editor-risks-body"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="job-editor-mobile-step-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="job-editor-mobile-step-list"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="job-editor-toggle-summary"]').trigger('click')
+    expect(wrapper.find('[data-testid="job-editor-summary-body"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="job-editor-toggle-risks"]').trigger('click')
+    expect(wrapper.find('[data-testid="job-editor-risks-body"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="job-editor-mobile-action-warning"]').exists()).toBe(true)
   })
 
   it('saves from review, clears the draft, and returns to the Jobs collection context', async () => {

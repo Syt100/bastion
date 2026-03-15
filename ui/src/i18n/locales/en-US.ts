@@ -166,23 +166,31 @@ const messages = {
   },
   commandCenter: {
     title: 'Command Center',
-    subtitle: 'Triage backup risk, critical activity, and recovery confidence from one surface.',
+    subtitle: 'Review backup risk, recent critical activity, and recovery readiness for the selected scope.',
     range: {
       last24h: '24h',
       last7d: '7d',
       last30d: '30d',
     },
     hero: {
-      kicker: 'Operational posture',
-      title: 'Lead with the failures, not the counters.',
-      healthy: 'No urgent items are competing for attention right now. Use the rails to confirm that backups and verification signals still look recent enough.',
-      attention: 'Review failed runs, offline agents, delivery failures, and incomplete recovery signals from this consolidated operations view.',
+      kicker: 'Operations overview',
+      title: 'Review the current operational state.',
+      healthy: 'No urgent follow-up is open right now. Confirm that recent backup and verification signals still cover this scope.',
+      attention: 'Investigate failures, delivery issues, offline agents, and missing recovery signals before they accumulate.',
       scope: 'Scope: {scope}',
       generatedAt: 'Generated {time}',
       metrics: {
         attention: 'Attention',
         activity: 'Activity',
         readiness: 'Readiness',
+      },
+      priority: {
+        attentionLabel: 'Needs review',
+        attentionBody: '{count} open items require follow-up in this scope. Start with the attention list below.',
+        attentionQuiet: 'No urgent follow-up items are open in this scope.',
+        readinessHealthy: 'Recent backup and verification signals are present for the active jobs in this scope.',
+        readinessDegraded: 'One or more active jobs still need a recent backup or verification signal before recovery confidence is complete.',
+        readinessEmpty: 'No active jobs are reporting in this scope yet. Readiness signals will appear after jobs start running.',
       },
     },
     sections: {
@@ -594,6 +602,7 @@ const messages = {
         refreshJob: 'Refresh job',
         select: 'Select',
         openDetails: 'Open details',
+        backToList: 'Back to Jobs',
       },
       views: {
         list: 'List',
@@ -677,6 +686,11 @@ const messages = {
     detail: {
       title: 'Job',
       subtitle: 'Job details',
+      kicker: 'Job detail',
+      context: {
+        scope: 'Scope: {scope}',
+        view: 'View: {name}',
+      },
       tabs: {
         runs: 'Runs',
         snapshots: 'Snapshots',
@@ -763,8 +777,18 @@ const messages = {
       draftResumeNotice: 'A saved draft is available for this editing session.',
       resumeDraft: 'Resume draft',
       keepLive: 'Use live configuration',
+      progressLabel: 'Editing progress',
+      changeStep: 'Change step',
+      hideSteps: 'Hide steps',
       summaryTitle: 'Configuration summary',
+      showSummary: 'Show summary',
+      hideSummary: 'Hide summary',
       risksTitle: 'Risk summary',
+      showRisks: 'Show risks',
+      hideRisks: 'Hide risks',
+      risksPeek: '{count} items require review',
+      risksPeekNone: 'No immediate risks detected',
+      actionWarningTitle: 'Review these items before continuing',
       summary: {
         node: 'Node',
         type: 'Job type',
@@ -1519,6 +1543,12 @@ const messages = {
       failed: 'Failed',
       rejected: 'Rejected',
       canceled: 'Canceled',
+    },
+    errorHints: {
+      run_failed: 'The latest run did not complete successfully.',
+      run_rejected: 'The latest run was rejected before execution.',
+      run_canceled: 'The latest run was canceled before completion.',
+      generic: 'The latest run reported an execution error.',
     },
     badges: {
       offline: 'Offline',

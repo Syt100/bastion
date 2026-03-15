@@ -23,8 +23,10 @@ import { useJobsStore } from '@/stores/jobs'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSecretsStore } from '@/stores/secrets'
 import { useSystemStore } from '@/stores/system'
+import { MQ } from '@/lib/breakpoints'
 import { formatToastError, resolveApiFieldErrors, toApiErrorInfo } from '@/lib/errors'
 import { buildJobsCollectionLocation, readJobsCollectionState, resolveJobsScope } from '@/lib/jobsRoute'
+import { useMediaQuery } from '@/lib/media'
 import { scopeToNodeId } from '@/lib/scope'
 
 type EditorMode = 'create' | 'edit'
@@ -45,6 +47,7 @@ const { t } = useI18n()
 const message = useMessage()
 const route = useRoute()
 const router = useRouter()
+const isDesktop = useMediaQuery(MQ.mdUp)
 
 const jobs = useJobsStore()
 const agents = useAgentsStore()
@@ -68,6 +71,9 @@ const baseJobUpdatedAt = ref<number | null>(null)
 const lockedNodeId = ref<'hub' | string | null>(null)
 const pendingDraft = ref<DraftEnvelope | null>(null)
 const pageBody = ref<HTMLElement | null>(null)
+const mobileStepsExpanded = ref<boolean>(false)
+const mobileSummaryExpanded = ref<boolean>(false)
+const mobileRisksExpanded = ref<boolean>(false)
 
 const form = reactive<JobEditorForm>(createInitialJobEditorForm())
 const fieldErrors = reactive<Record<JobEditorField, string | null>>(createInitialJobEditorFieldErrors())
@@ -521,6 +527,24 @@ const summaryRows = computed(() => [
   { label: t('jobs.editor.summary.schedule'), value: form.schedule.trim() || t('jobs.scheduleMode.manual') },
   { label: t('jobs.editor.summary.notifications'), value: form.notifyMode === 'inherit' ? t('jobs.notifications.inherit') : t('jobs.notifications.custom') },
 ])
+const editorSteps = computed(() => [
+  { index: 1, label: t('jobs.steps.basics'), help: '' },
+  { index: 2, label: t('jobs.steps.source'), help: t('jobs.steps.sourceHelp') },
+  { index: 3, label: t('jobs.steps.target'), help: '' },
+  { index: 4, label: t('jobs.steps.scheduleRetention'), help: '' },
+  { index: 5, label: t('jobs.steps.security'), help: '' },
+  { index: 6, label: t('jobs.steps.notifications'), help: t('jobs.steps.notificationsHelp') },
+  { index: 7, label: t('jobs.steps.review'), help: t('jobs.steps.reviewHelp') },
+])
+const currentEditorStep = computed(() => editorSteps.value.find((item) => item.index === step.value) ?? editorSteps.value[0]!)
+const stepProgressPercent = computed(() => Math.round((step.value / ROUTE_EDITOR_TOTAL_STEPS) * 100))
+const summaryPeekText = computed(() => (
+  [summaryRows.value[0]?.value, summaryRows.value[1]?.value, summaryRows.value[2]?.value]
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 2)
+    .join(' · ')
+))
 
 const riskRows = computed(() => {
   const rows: Array<{ key: string; type: 'warning' | 'error' | 'info' }> = []
@@ -536,6 +560,13 @@ const riskRows = computed(() => {
   if (rows.length === 0) rows.push({ key: 'none', type: 'info' })
   return rows
 })
+const riskRowsNeedingAttention = computed(() => riskRows.value.filter((risk) => risk.key !== 'none'))
+const mobileActionWarnings = computed(() => riskRows.value.filter((risk) => risk.type !== 'info').slice(0, 2))
+const riskPeekText = computed(() => (
+  riskRowsNeedingAttention.value.length > 0
+    ? t('jobs.editor.risksPeek', { count: riskRowsNeedingAttention.value.length })
+    : t('jobs.editor.risksPeekNone')
+))
 
 async function save(): Promise<void> {
   const ok = await validateUpTo(ROUTE_EDITOR_LAST_INPUT_STEP)
@@ -577,6 +608,11 @@ async function save(): Promise<void> {
   }
 }
 
+async function jumpToStepFromMobile(target: number): Promise<void> {
+  await goToStep(target)
+  mobileStepsExpanded.value = false
+}
+
 watch(
   form,
   () => {
@@ -587,8 +623,19 @@ watch(
 )
 
 watch(step, () => {
+  if (!isDesktop.value) {
+    mobileStepsExpanded.value = false
+  }
   if (loading.value) return
   persistDraft()
+})
+
+watch(isDesktop, (desktop) => {
+  if (desktop) {
+    mobileStepsExpanded.value = false
+    mobileSummaryExpanded.value = false
+    mobileRisksExpanded.value = false
+  }
 })
 
 watch(
@@ -649,7 +696,7 @@ watch(
           </div>
 
           <template v-else>
-            <n-steps :current="step" size="small" @update:current="(value) => void goToStep(value)">
+            <n-steps v-if="isDesktop" :current="step" size="small" @update:current="(value) => void goToStep(value)">
               <n-step :title="t('jobs.steps.basics')" />
               <n-step :title="t('jobs.steps.source')" />
               <n-step :title="t('jobs.steps.target')" />
@@ -658,6 +705,63 @@ watch(
               <n-step :title="t('jobs.steps.notifications')" />
               <n-step :title="t('jobs.steps.review')" />
             </n-steps>
+
+            <div v-else class="space-y-3" data-testid="job-editor-mobile-progress">
+              <button
+                type="button"
+                class="w-full rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface-muted)] px-4 py-3 text-left"
+                data-testid="job-editor-mobile-progress-toggle"
+                @click="mobileStepsExpanded = !mobileStepsExpanded"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-xs uppercase tracking-[0.14em] app-text-muted">
+                      {{ t('jobs.editor.progressLabel') }}
+                    </div>
+                    <div class="mt-1 text-base font-semibold">
+                      {{ currentEditorStep.label }}
+                    </div>
+                  </div>
+                  <n-tag size="small" :bordered="false">
+                    {{ t('common.stepOf', { current: step, total: ROUTE_EDITOR_TOTAL_STEPS }) }}
+                  </n-tag>
+                </div>
+
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-[var(--app-border)]">
+                  <div
+                    class="h-full rounded-full bg-[var(--app-primary)]"
+                    :style="{ width: `${stepProgressPercent}%` }"
+                  />
+                </div>
+              </button>
+
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm app-text-muted">
+                  {{ currentEditorStep.help }}
+                </div>
+                <n-button
+                  size="small"
+                  quaternary
+                  data-testid="job-editor-mobile-step-toggle"
+                  @click="mobileStepsExpanded = !mobileStepsExpanded"
+                >
+                  {{ mobileStepsExpanded ? t('jobs.editor.hideSteps') : t('jobs.editor.changeStep') }}
+                </n-button>
+              </div>
+
+              <div v-if="mobileStepsExpanded" class="grid gap-2" data-testid="job-editor-mobile-step-list">
+                <n-button
+                  v-for="item in editorSteps"
+                  :key="item.index"
+                  size="small"
+                  :type="item.index === step ? 'primary' : 'default'"
+                  :secondary="item.index !== step"
+                  @click="void jumpToStepFromMobile(item.index)"
+                >
+                  {{ t('common.stepOf', { current: item.index, total: ROUTE_EDITOR_TOTAL_STEPS }) }} · {{ item.label }}
+                </n-button>
+              </div>
+            </div>
 
             <n-form label-placement="top">
               <JobEditorStepBasicsOnly
@@ -738,21 +842,45 @@ watch(
               />
             </n-form>
 
-            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--app-border)] pt-4">
-              <div class="text-sm app-text-muted">{{ t('common.stepOf', { current: step, total: ROUTE_EDITOR_TOTAL_STEPS }) }}</div>
-              <div class="flex flex-wrap items-center gap-2">
-                <n-button @click="void router.push(backToJobs)">
-                  {{ t('common.cancel') }}
-                </n-button>
-                <n-button v-if="step > 1" @click="prevStep">
-                  {{ t('common.back') }}
-                </n-button>
-                <n-button v-if="step < ROUTE_EDITOR_TOTAL_STEPS" type="primary" :disabled="saving" @click="void nextStep()">
-                  {{ t('common.next') }}
-                </n-button>
-                <n-button v-else type="primary" :loading="saving" @click="void save()">
-                  {{ t('common.save') }}
-                </n-button>
+            <div class="space-y-3 border-t border-[color:var(--app-border)] pt-4">
+              <n-alert
+                v-if="!isDesktop && mobileActionWarnings.length"
+                :type="mobileActionWarnings.some((risk) => risk.type === 'error') ? 'error' : 'warning'"
+                :bordered="false"
+                data-testid="job-editor-mobile-action-warning"
+              >
+                <div class="space-y-2">
+                  <div class="font-medium">{{ t('jobs.editor.actionWarningTitle') }}</div>
+                  <div class="flex flex-wrap gap-2">
+                    <n-tag
+                      v-for="risk in mobileActionWarnings"
+                      :key="risk.key"
+                      size="small"
+                      :bordered="false"
+                      :type="risk.type === 'error' ? 'error' : 'warning'"
+                    >
+                      {{ t(`jobs.editor.riskLabels.${risk.key}`) }}
+                    </n-tag>
+                  </div>
+                </div>
+              </n-alert>
+
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm app-text-muted">{{ t('common.stepOf', { current: step, total: ROUTE_EDITOR_TOTAL_STEPS }) }}</div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <n-button @click="void router.push(backToJobs)">
+                    {{ t('common.cancel') }}
+                  </n-button>
+                  <n-button v-if="step > 1" @click="prevStep">
+                    {{ t('common.back') }}
+                  </n-button>
+                  <n-button v-if="step < ROUTE_EDITOR_TOTAL_STEPS" type="primary" :disabled="saving" @click="void nextStep()">
+                    {{ t('common.next') }}
+                  </n-button>
+                  <n-button v-else type="primary" :loading="saving" @click="void save()">
+                    {{ t('common.save') }}
+                  </n-button>
+                </div>
               </div>
             </div>
           </template>
@@ -761,8 +889,24 @@ watch(
 
       <div class="space-y-4">
         <n-card class="app-card" :bordered="false">
-          <div class="text-sm font-medium">{{ t('jobs.editor.summaryTitle') }}</div>
-          <div class="mt-3 space-y-2 text-sm">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">{{ t('jobs.editor.summaryTitle') }}</div>
+              <div v-if="!isDesktop && summaryPeekText" class="mt-1 text-xs app-text-muted">
+                {{ summaryPeekText }}
+              </div>
+            </div>
+            <n-button
+              v-if="!isDesktop"
+              size="small"
+              quaternary
+              data-testid="job-editor-toggle-summary"
+              @click="mobileSummaryExpanded = !mobileSummaryExpanded"
+            >
+              {{ mobileSummaryExpanded ? t('jobs.editor.hideSummary') : t('jobs.editor.showSummary') }}
+            </n-button>
+          </div>
+          <div v-if="isDesktop || mobileSummaryExpanded" class="mt-3 space-y-2 text-sm" data-testid="job-editor-summary-body">
             <div v-for="row in summaryRows" :key="row.label" class="flex items-start justify-between gap-3">
               <span class="app-text-muted">{{ row.label }}</span>
               <span class="text-right break-all">{{ row.value || '-' }}</span>
@@ -771,8 +915,24 @@ watch(
         </n-card>
 
         <n-card class="app-card" :bordered="false">
-          <div class="text-sm font-medium">{{ t('jobs.editor.risksTitle') }}</div>
-          <div class="mt-3 flex flex-wrap gap-2">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">{{ t('jobs.editor.risksTitle') }}</div>
+              <div v-if="!isDesktop" class="mt-1 text-xs app-text-muted">
+                {{ riskPeekText }}
+              </div>
+            </div>
+            <n-button
+              v-if="!isDesktop"
+              size="small"
+              quaternary
+              data-testid="job-editor-toggle-risks"
+              @click="mobileRisksExpanded = !mobileRisksExpanded"
+            >
+              {{ mobileRisksExpanded ? t('jobs.editor.hideRisks') : t('jobs.editor.showRisks') }}
+            </n-button>
+          </div>
+          <div v-if="isDesktop || mobileRisksExpanded" class="mt-3 flex flex-wrap gap-2" data-testid="job-editor-risks-body">
             <n-tag
               v-for="risk in riskRows"
               :key="risk.key"

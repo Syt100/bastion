@@ -166,23 +166,31 @@ const messages = {
   },
   commandCenter: {
     title: '指挥中心',
-    subtitle: '把备份风险、关键活动和恢复信心放到同一个操作面板里。',
+    subtitle: '查看当前范围内的备份风险、近期关键活动与恢复准备度。',
     range: {
       last24h: '24 小时',
       last7d: '7 天',
       last30d: '30 天',
     },
     hero: {
-      kicker: '运行态势',
-      title: '先处理风险，再看计数。',
-      healthy: '当前没有紧急事项在争抢注意力。接下来重点确认最近备份和校验信号是否仍然足够新。',
-      attention: '在这个统一视图中查看失败运行、离线客户端、通知投递失败，以及恢复准备度中缺失的关键信号。',
+      kicker: '运行概览',
+      title: '查看当前运维状态。',
+      healthy: '当前没有待立即处理的事项。请继续确认最近备份和校验信号仍然覆盖该范围。',
+      attention: '请优先处理失败运行、通知投递异常、离线客户端，以及缺失的恢复信号。',
       scope: '范围：{scope}',
       generatedAt: '生成时间 {time}',
       metrics: {
         attention: '待处理',
         activity: '关键活动',
         readiness: '恢复准备度',
+      },
+      priority: {
+        attentionLabel: '需要复核',
+        attentionBody: '当前范围内有 {count} 个待跟进事项，请优先查看下方待处理列表。',
+        attentionQuiet: '当前范围内没有待立即跟进的事项。',
+        readinessHealthy: '当前范围内的活动任务已经具备最近备份与校验信号。',
+        readinessDegraded: '仍有活动任务缺少最近备份或校验信号，恢复准备度尚未完整。',
+        readinessEmpty: '当前范围内还没有活动任务上报状态，任务开始运行后会出现恢复准备度信号。',
       },
     },
     sections: {
@@ -593,6 +601,7 @@ const messages = {
         refreshJob: '刷新任务',
         select: '选择',
         openDetails: '查看详情',
+        backToList: '返回任务列表',
       },
       views: {
         list: '列表',
@@ -676,6 +685,11 @@ const messages = {
     detail: {
       title: '任务',
       subtitle: '任务详情',
+      kicker: '任务详情',
+      context: {
+        scope: '范围：{scope}',
+        view: '视图：{name}',
+      },
       tabs: {
         runs: '运行记录',
         snapshots: '快照',
@@ -762,8 +776,18 @@ const messages = {
       draftResumeNotice: '当前编辑会话存在可恢复的草稿。',
       resumeDraft: '恢复草稿',
       keepLive: '使用线上配置',
+      progressLabel: '编辑进度',
+      changeStep: '切换步骤',
+      hideSteps: '收起步骤',
       summaryTitle: '配置摘要',
+      showSummary: '展开摘要',
+      hideSummary: '收起摘要',
       risksTitle: '风险摘要',
+      showRisks: '展开风险',
+      hideRisks: '收起风险',
+      risksPeek: '有 {count} 项需要复核',
+      risksPeekNone: '当前未发现明显风险',
+      actionWarningTitle: '继续前请先确认以下事项',
       summary: {
         node: '执行节点',
         type: '任务类型',
@@ -1514,6 +1538,12 @@ const messages = {
       failed: '失败',
       rejected: '已拒绝',
       canceled: '已取消',
+    },
+    errorHints: {
+      run_failed: '最近一次运行未成功完成。',
+      run_rejected: '最近一次运行在执行前被拒绝。',
+      run_canceled: '最近一次运行在完成前已取消。',
+      generic: '最近一次运行上报了执行错误。',
     },
     badges: {
       offline: '离线',

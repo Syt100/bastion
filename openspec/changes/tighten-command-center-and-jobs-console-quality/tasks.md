@@ -5,20 +5,20 @@
 
 ## 2. Command Center Quality Tightening
 
-- [ ] 2.1 Replace slogan-like command-center headings, subtitles, healthy states, and caution copy with professional operator-facing wording
-- [ ] 2.2 Tighten first-screen hierarchy so attention/readiness sections outrank neutral counters and support metadata
+- [x] 2.1 Replace slogan-like command-center headings, subtitles, healthy states, and caution copy with professional operator-facing wording
+- [x] 2.2 Tighten first-screen hierarchy so attention/readiness sections outrank neutral counters and support metadata
 
 ## 3. Jobs Workspace Quality Tightening
 
-- [ ] 3.1 Make dedicated job detail views object-first by reducing collection-toolbar dominance and emphasizing object actions/context
-- [ ] 3.2 Strengthen job row/card primary-open affordances and touch-friendly action presentation on desktop and mobile
+- [x] 3.1 Make dedicated job detail views object-first by reducing collection-toolbar dominance and emphasizing object actions/context
+- [x] 3.2 Strengthen job row/card primary-open affordances and touch-friendly action presentation on desktop and mobile
 
 ## 4. Mobile Editor Quality Tightening
 
-- [ ] 4.1 Replace compressed horizontal mobile step navigation with a compact current-step progress pattern
-- [ ] 4.2 Collapse configuration and risk summaries on mobile so primary inputs/actions stay in the first viewport while keeping blocking warnings visible
+- [x] 4.1 Replace compressed horizontal mobile step navigation with a compact current-step progress pattern
+- [x] 4.2 Collapse configuration and risk summaries on mobile so primary inputs/actions stay in the first viewport while keeping blocking warnings visible
 
 ## 5. Validation
 
-- [ ] 5.1 Add or update UI tests for command-center hierarchy, job-detail framing, and mobile editor navigation/summary behavior
-- [ ] 5.2 Run targeted UI verification and broader regression checks for the affected operational pages
+- [x] 5.1 Add or update UI tests for command-center hierarchy, job-detail framing, and mobile editor navigation/summary behavior
+- [x] 5.2 Run targeted UI verification and broader regression checks for the affected operational pages

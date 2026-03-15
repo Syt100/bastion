@@ -17,6 +17,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added first-class Runs workspace APIs (`/api/runs`, `/api/runs/{id}/workspace`, `/api/runs/{id}/event-console`) with structured diagnostics, cross-job filtering, and server-driven event windows.
 
 ### Changed
+- Changed Command Center, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
 - Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
 - Changed the Web UI first-screen flow so the dashboard prioritizes recent activity before trend detail, the mobile shell groups global actions inside navigation, and the Jobs workspace uses a simpler primary view toggle.
 - Changed Agents and auth entry surfaces to add guided onboarding/trust copy, stronger empty-state actions, and clearer login context for first-time operators.
@@ -70,6 +71,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
+- Fixed Jobs detail run summaries/support panes to replace raw failure codes like `run_failed` with operator-facing error text.
 - Fixed Jobs workspace list rows to keep full-size actions while reducing left-side chrome and aligning second-line node/schedule metadata with the latest-run time in narrower panes.
 - Fixed task create/edit dialog height regression by enforcing viewport bounds at modal-container layer (instead of content-layer sizing), so long forms stay inside modal scrolling bounds.
 - Fixed path-picker open/refresh jank by staging initial refresh to the next task and removing redundant open-time table-height re-measure chaining.

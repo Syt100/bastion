@@ -96,7 +96,16 @@ const emit = defineEmits<{
       </div>
 
       <div class="job-row-side shrink-0 flex flex-col items-end gap-1 text-right">
-        <div class="job-row-actions flex items-center justify-end gap-1" @click.stop>
+        <div class="job-row-actions flex items-center justify-end gap-1 flex-wrap" @click.stop>
+          <n-button
+            data-testid="job-row-open-button"
+            size="small"
+            :type="mobile ? 'primary' : 'default'"
+            class="app-motion-soft app-pressable"
+            @click="emit('main-click')"
+          >
+            {{ openDetailsLabel }}
+          </n-button>
           <n-button
             :data-testid="runNowTestId"
             size="small"
@@ -111,6 +120,7 @@ const emit = defineEmits<{
             <template #icon>
               <AppIcon :component="PlayOutline" size="sm" tone="primary" />
             </template>
+            {{ runNowLabel }}
           </n-button>
           <OverflowActionsButton
             size="small"

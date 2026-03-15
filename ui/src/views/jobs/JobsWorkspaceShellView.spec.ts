@@ -371,6 +371,27 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(wrapper.find('[data-testid="jobs-list-scroll"]').exists()).toBe(true)
   })
 
+  it('uses compact collection context when a desktop job detail route is active', () => {
+    routeApi.path = '/jobs/job1/overview'
+    routeApi.params = { jobId: 'job1' }
+
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: pageHeaderStub,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-stub="PageHeader"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="jobs-collection-compact-context"]').exists()).toBe(true)
+  })
+
   it('keeps workspace list full width until a job is selected', () => {
     routeApi.path = '/jobs'
     routeApi.params = {}
@@ -516,6 +537,31 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
 
     expect(jobsStore.runNow).toHaveBeenCalledWith('job1')
     expect(routerApi.push).not.toHaveBeenCalled()
+  })
+
+  it('renders an explicit primary open action for job rows', async () => {
+    const wrapper = mount(JobsWorkspaceShellView, {
+      global: {
+        stubs: {
+          PageHeader: pageHeaderStub,
+          NodeContextTag: true,
+          AppEmptyState: true,
+          ListToolbar: true,
+          JobEditorModal: true,
+          'router-view': true,
+        },
+      },
+    })
+
+    const openButton = wrapper.find('[data-testid="job-row-open-button"]')
+    expect(openButton.exists()).toBe(true)
+
+    await openButton.trigger('click')
+
+    expect(routerApi.push).toHaveBeenCalledWith({
+      path: '/jobs/job1/overview',
+      query: {},
+    })
   })
 
   it('clicking a job row still opens detail navigation', async () => {

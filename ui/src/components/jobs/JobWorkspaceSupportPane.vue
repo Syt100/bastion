@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
-import { runStatusLabel } from '@/lib/runs'
+import { runErrorLabel, runStatusLabel } from '@/lib/runs'
 import type { JobWorkspaceDetail } from '@/stores/jobs'
 
 const props = defineProps<{
@@ -107,7 +107,7 @@ const readinessLabel = computed(() => {
               </span>
             </div>
             <div class="mt-1 text-xs break-all" :class="run.error ? 'text-[var(--app-danger)]' : 'app-text-muted'">
-              {{ run.error || run.id }}
+              {{ runErrorLabel(t, run.error) || run.id }}
             </div>
           </button>
         </div>

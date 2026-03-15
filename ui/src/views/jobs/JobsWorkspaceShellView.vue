@@ -92,6 +92,7 @@ const selectedSavedViewId = ref<string | null>(collectionState.value.view)
 const saveViewOpen = ref<boolean>(false)
 const saveViewBusy = ref<boolean>(false)
 const saveViewName = ref<string>('')
+const showWorkspacePageHeader = computed<boolean>(() => !isDesktop.value || !selectedJobId.value)
 
 const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   if (!isDesktop.value) return 'split'
@@ -182,6 +183,11 @@ const builtInSavedViews = computed<JobsSavedView[]>(() => [
   },
 ])
 const savedViews = computed<JobsSavedView[]>(() => [...builtInSavedViews.value, ...ui.jobsSavedViews])
+const selectedSavedViewLabel = computed<string | null>(() => {
+  const id = selectedSavedViewId.value
+  if (!id) return null
+  return savedViews.value.find((view) => view.id === id)?.name ?? null
+})
 const savedViewOptions = computed(() =>
   savedViews.value.map((view) => ({
     label: view.name,
@@ -760,7 +766,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex flex-col gap-6 h-full min-h-0">
     <PageHeader
-      v-if="isDesktop || !selectedJobId"
+      v-if="showWorkspacePageHeader"
       :title="t('jobs.title')"
       :subtitle="t('jobs.subtitle')"
     >
@@ -806,6 +812,32 @@ onBeforeUnmount(() => {
       </n-button>
       <n-button type="primary" @click="openCreate">{{ t('jobs.actions.create') }}</n-button>
     </PageHeader>
+
+    <div
+      v-else
+      class="flex items-center justify-between gap-3 flex-wrap"
+      data-testid="jobs-collection-compact-context"
+    >
+      <div class="flex items-center gap-2 flex-wrap text-sm app-text-muted">
+        <n-tag size="small" :bordered="false">{{ t('jobs.title') }}</n-tag>
+        <NodeContextTag v-if="scopeNodeId" :node-id="scopeNodeId" />
+        <n-tag v-else size="small" :bordered="false">
+          {{ t('nav.scopePicker.all') }}
+        </n-tag>
+        <n-tag v-if="selectedSavedViewLabel" size="small" :bordered="false">
+          {{ selectedSavedViewLabel }}
+        </n-tag>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <n-button size="small" @click="refresh">
+          {{ t('jobs.workspace.actions.refreshList') }}
+        </n-button>
+        <n-button size="small" @click="openCreate">
+          {{ t('jobs.actions.create') }}
+        </n-button>
+      </div>
+    </div>
 
     <template v-if="isDesktop">
       <div ref="splitGridEl" class="grid grid-cols-1 gap-4 flex-1 min-h-0" :style="gridStyle">

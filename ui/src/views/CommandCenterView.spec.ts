@@ -102,9 +102,11 @@ describe('CommandCenterView', () => {
   })
 
   it('refreshes on mount and renders attention plus readiness blockers', async () => {
-    mount(CommandCenterView)
+    const wrapper = mount(CommandCenterView)
 
     expect(commandCenterStore.refresh).toHaveBeenCalledWith({ scope: 'all', range: '24h' })
+    expect(wrapper.find('[data-testid="command-center-priority-grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="command-center-metrics"]').exists()).toBe(true)
   })
 
   it('navigates through item actions', async () => {
