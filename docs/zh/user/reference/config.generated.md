@@ -27,6 +27,7 @@
 | `BASTION_LOG_KEEP_FILES` | `--log-keep-files` | bastion | `30` | 保留多少个轮转日志文件（默认：30，0 表示不清理）。 |
 | `BASTION_LOG_ROTATION` | `--log-rotation` | bastion | `daily` | `--log-file` 的日志轮转策略（默认：daily）。 |
 | `BASTION_PORT` | `--port` | bastion | `9876` | 绑定端口（默认：9876）。 |
+| `BASTION_PUBLIC_BASE_URL` | `--public-base-url` | bastion | — | 用于运维命令和链接的公开 Hub 基础 URL。 示例：`https://backup.example.com`、`https://backup.example.com/bastion`。 |
 | `BASTION_RUN_RETENTION_DAYS` | `--run-retention-days` | bastion | `180` | 运行记录保留天数（默认：180）。 |
 | `BASTION_TRUSTED_PROXIES` | `--trusted-proxy` | bastion | — | 允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。 可多次指定：`--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`。 |
 

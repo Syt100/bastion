@@ -16,6 +16,7 @@ export function useAgentsColumns(options: {
   configSyncStatusLabel: (status: AgentListItem['config_sync_status']) => string
   formatUnixSeconds: (value: number | null) => string
   syncNowLoading: Ref<string | null>
+  openAgentWorkspace: (agentId: string) => void
   openAgentJobs: (agentId: string) => void
   syncConfigNow: (agentId: string) => Promise<void>
   agentOverflowOptions: (row: AgentListItem) => DropdownOption[]
@@ -31,6 +32,7 @@ export function useAgentsColumns(options: {
     configSyncStatusLabel,
     formatUnixSeconds,
     syncNowLoading,
+    openAgentWorkspace,
     openAgentJobs,
     syncConfigNow,
     agentOverflowOptions,
@@ -42,7 +44,16 @@ export function useAgentsColumns(options: {
     {
       title: t('agents.columns.name'),
       key: 'name',
-      render: (row) => row.name ?? '-',
+      render: (row) =>
+        h(
+          NButton,
+          {
+            text: true,
+            type: 'primary',
+            onClick: () => openAgentWorkspace(row.id),
+          },
+          { default: () => row.name ?? row.id },
+        ),
     },
     {
       title: t('agents.columns.id'),

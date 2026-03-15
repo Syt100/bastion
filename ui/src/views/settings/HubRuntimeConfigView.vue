@@ -38,6 +38,7 @@ const fieldErrors = reactive<{
   hub_timezone?: string
   run_retention_days?: string
   incomplete_cleanup_days?: string
+  public_base_url?: string
   log_rotation?: string
 }>({})
 
@@ -45,6 +46,7 @@ const form = reactive<{
   hub_timezone: string
   run_retention_days: number | null
   incomplete_cleanup_days: number | null
+  public_base_url: string
   log_filter: string
   log_file: string
   log_rotation: string | null
@@ -58,6 +60,7 @@ const form = reactive<{
   hub_timezone: '',
   run_retention_days: null,
   incomplete_cleanup_days: null,
+  public_base_url: '',
   log_filter: '',
   log_file: '',
   log_rotation: null,
@@ -115,6 +118,7 @@ function clearErrors(): void {
   fieldErrors.hub_timezone = undefined
   fieldErrors.run_retention_days = undefined
   fieldErrors.incomplete_cleanup_days = undefined
+  fieldErrors.public_base_url = undefined
   fieldErrors.log_rotation = undefined
 }
 
@@ -123,6 +127,7 @@ function applySavedToForm(saved: HubRuntimeConfigGetResponse['saved']): void {
   form.run_retention_days = typeof saved.run_retention_days === 'number' ? saved.run_retention_days : null
   form.incomplete_cleanup_days =
     typeof saved.incomplete_cleanup_days === 'number' ? saved.incomplete_cleanup_days : null
+  form.public_base_url = saved.public_base_url ?? ''
   form.log_filter = saved.log_filter ?? ''
   form.log_file = saved.log_file ?? ''
   form.log_rotation = saved.log_rotation ?? null
@@ -192,6 +197,7 @@ async function save(): Promise<void> {
       hub_timezone: form.hub_timezone.trim() ? form.hub_timezone.trim() : null,
       run_retention_days: form.run_retention_days,
       incomplete_cleanup_days: form.incomplete_cleanup_days,
+      public_base_url: form.public_base_url.trim() ? form.public_base_url.trim() : null,
       log_filter: form.log_filter.trim() ? form.log_filter.trim() : null,
       log_file: form.log_file.trim() ? form.log_file.trim() : null,
       log_rotation: form.log_rotation,
@@ -215,6 +221,7 @@ async function save(): Promise<void> {
     fieldErrors.hub_timezone = mapped.hub_timezone
     fieldErrors.run_retention_days = mapped.run_retention_days
     fieldErrors.incomplete_cleanup_days = mapped.incomplete_cleanup_days
+    fieldErrors.public_base_url = mapped.public_base_url
     fieldErrors.log_rotation = mapped.log_rotation
 
     message.error(formatToastError(t('errors.saveHubRuntimeConfigFailed'), error, t))
@@ -377,6 +384,36 @@ onMounted(refresh)
                 </div>
               </n-form-item>
             </div>
+
+            <n-form-item
+              :label="t('settings.hubRuntimeConfig.fields.publicBaseUrl')"
+              :validation-status="fieldErrors.public_base_url ? 'error' : undefined"
+              :feedback="fieldErrors.public_base_url"
+            >
+              <div class="space-y-1 w-full">
+                <n-input
+                  v-model:value="form.public_base_url"
+                  :disabled="!data.fields.public_base_url.editable"
+                  :placeholder="t('settings.hubRuntimeConfig.fields.publicBaseUrlPlaceholder')"
+                />
+                <div class="text-xs app-text-muted">
+                  {{
+                    renderMeta(
+                      data.fields.public_base_url,
+                      isPendingOptionalString(data.saved.public_base_url, data.effective.public_base_url),
+                    )
+                  }}
+                  <span class="ml-1">·</span>
+                  <span class="ml-1">
+                    {{ t('settings.hubRuntimeConfig.meta.effective') }}:
+                    {{ data.effective.public_base_url || t('settings.hubRuntimeConfig.publicBaseUrlUnset') }}
+                  </span>
+                </div>
+                <div class="text-xs app-text-muted">
+                  {{ t('settings.hubRuntimeConfig.publicBaseUrlHelp') }}
+                </div>
+              </div>
+            </n-form-item>
           </n-form>
         </div>
 

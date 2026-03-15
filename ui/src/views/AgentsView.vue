@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  NAlert,
   NButton,
   NCard,
   NCheckbox,
@@ -22,6 +23,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentListStatusFilter, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
+import { useControlPlaneStore, type PublicMetadataResponse } from '@/stores/controlPlane'
+import { useFleetStore, type FleetListResponse } from '@/stores/fleet'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import AppModalShell from '@/components/AppModalShell.vue'
@@ -41,7 +44,6 @@ import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
 import { buildJobsCollectionLocation } from '@/lib/jobsRoute'
-import { nodeStoragePath } from '@/lib/nodeRoute'
 import { scopeFromNodeId } from '@/lib/scope'
 import {
   buildListRangeSummary,
@@ -67,6 +69,8 @@ const router = useRouter()
 const ui = useUiStore()
 const agents = useAgentsStore()
 const bulkOps = useBulkOperationsStore()
+const controlPlane = useControlPlaneStore()
+const fleetWorkspace = useFleetStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 const copyWithFeedback = createClipboardCopyAction(t, message)
 
@@ -75,10 +79,27 @@ const tokenCreating = ref<boolean>(false)
 const tokenResult = ref<EnrollmentToken | null>(null)
 const ttlSeconds = ref<number>(60 * 60)
 const remainingUses = ref<number | null>(null)
-const hubUrl = computed(() => window.location.origin)
+const publicMetadata = ref<PublicMetadataResponse | null>(null)
+const publicMetadataLoading = ref<boolean>(false)
+const fleetOverview = ref<FleetListResponse | null>(null)
+const fleetOverviewLoading = ref<boolean>(false)
+const hubUrl = computed(() => publicMetadata.value?.public_base_url?.trim() || '')
+const commandGenerationReady = computed(() => !!publicMetadata.value?.command_generation_ready && hubUrl.value.length > 0)
 const enrollCommand = computed(() => {
-  if (!tokenResult.value) return null
+  if (!tokenResult.value || !commandGenerationReady.value) return null
   return `bastion agent --hub-url ${hubUrl.value} --enroll-token ${tokenResult.value.token} --name "<friendly-name>"`
+})
+const onboardingCommandPreview = computed(() =>
+  commandGenerationReady.value ? t('agents.empty.commandExample', { hubUrl: hubUrl.value }) : null,
+)
+const fleetSummaryCards = computed(() => {
+  const summary = fleetOverview.value?.summary
+  return [
+    { key: 'total', label: t('fleet.summary.total'), value: summary?.total ?? 0 },
+    { key: 'online', label: t('fleet.summary.online'), value: summary?.online ?? 0 },
+    { key: 'offline', label: t('fleet.summary.offline'), value: summary?.offline ?? 0 },
+    { key: 'drifted', label: t('fleet.summary.drifted'), value: summary?.drifted ?? 0 },
+  ]
 })
 
 const rotateModalOpen = ref<boolean>(false)
@@ -209,6 +230,32 @@ async function refresh(): Promise<void> {
   }
 }
 
+async function refreshPublicMetadata(): Promise<void> {
+  publicMetadataLoading.value = true
+  try {
+    publicMetadata.value = await controlPlane.getPublicMetadata()
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchHubRuntimeConfigFailed'), error, t))
+  } finally {
+    publicMetadataLoading.value = false
+  }
+}
+
+async function refreshFleetOverview(): Promise<void> {
+  fleetOverviewLoading.value = true
+  try {
+    fleetOverview.value = await fleetWorkspace.list()
+  } catch (error) {
+    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
+  } finally {
+    fleetOverviewLoading.value = false
+  }
+}
+
+async function refreshPage(): Promise<void> {
+  await Promise.allSettled([refreshLabelIndex(), refresh(), refreshPublicMetadata(), refreshFleetOverview()])
+}
+
 async function refreshLabelIndex(): Promise<void> {
   labelIndexLoading.value = true
   try {
@@ -225,6 +272,7 @@ function openTokenModal(): void {
   ttlSeconds.value = 60 * 60
   remainingUses.value = null
   tokenModalOpen.value = true
+  void refreshPublicMetadata()
 }
 
 async function createToken(): Promise<void> {
@@ -250,8 +298,21 @@ function openAgentJobs(agentId: string): void {
   void router.push(buildJobsCollectionLocation({ scope: scopeFromNodeId(agentId) }))
 }
 
+function openAgentWorkspace(agentId: string): void {
+  void router.push(`/fleet/${encodeURIComponent(agentId)}`)
+}
+
 function openAgentStorage(agentId: string): void {
-  void router.push(nodeStoragePath(agentId))
+  void router.push({
+    path: '/integrations/storage',
+    query: {
+      scope: scopeFromNodeId(agentId),
+    },
+  })
+}
+
+function openRuntimeConfig(): void {
+  void router.push('/system/runtime')
 }
 
 async function revokeAgent(agentId: string): Promise<void> {
@@ -530,6 +591,7 @@ const { columns } = useAgentsColumns({
   configSyncStatusLabel,
   formatUnixSeconds,
   syncNowLoading,
+  openAgentWorkspace,
   openAgentJobs,
   syncConfigNow,
   agentOverflowOptions,
@@ -581,7 +643,7 @@ watch(confirmOpen, (open) => {
 })
 
 onMounted(() => {
-  void Promise.allSettled([refreshLabelIndex(), refresh()])
+  void refreshPage()
 })
 
 onBeforeUnmount(() => {
@@ -592,9 +654,68 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('fleet.title')" :subtitle="t('fleet.subtitle')">
-      <n-button @click="refresh">{{ t('common.refresh') }}</n-button>
+      <n-button :loading="agents.loading || fleetOverviewLoading || publicMetadataLoading" @click="refreshPage">
+        {{ t('common.refresh') }}
+      </n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
     </PageHeader>
+
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+      <n-card class="app-card" :bordered="false">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <div class="text-sm font-semibold">{{ t('fleet.summary.title') }}</div>
+            <div class="app-meta-text mt-1">{{ t('fleet.summary.subtitle') }}</div>
+          </div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div
+            v-for="card in fleetSummaryCards"
+            :key="card.key"
+            class="rounded-2xl app-panel-inset px-4 py-3"
+          >
+            <div class="app-meta-text">{{ card.label }}</div>
+            <div class="mt-2 text-2xl font-semibold">{{ card.value }}</div>
+          </div>
+        </div>
+      </n-card>
+
+      <n-card class="app-card" :bordered="false">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold">{{ t('fleet.onboarding.title') }}</div>
+            <div class="app-meta-text mt-1">{{ t('fleet.onboarding.subtitle') }}</div>
+          </div>
+          <n-button quaternary size="small" @click="openRuntimeConfig">
+            {{ t('fleet.onboarding.runtimeAction') }}
+          </n-button>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          <div class="rounded-2xl app-panel-inset px-4 py-3">
+            <div class="app-meta-text">{{ t('fleet.onboarding.publicBaseUrl') }}</div>
+            <div class="mt-2 font-medium break-all">
+              {{ commandGenerationReady ? hubUrl : t('fleet.onboarding.publicBaseUrlMissing') }}
+            </div>
+          </div>
+
+          <n-alert
+            v-if="!commandGenerationReady"
+            type="warning"
+            :bordered="false"
+          >
+            {{ t('fleet.onboarding.missingDescription') }}
+          </n-alert>
+
+          <div
+            v-else
+            class="rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-4 py-3 font-mono text-xs break-all"
+          >
+            {{ onboardingCommandPreview }}
+          </div>
+        </div>
+      </n-card>
+    </div>
 
     <ListPageScaffold>
       <template #selection>
@@ -704,12 +825,21 @@ onBeforeUnmount(() => {
                     <span>{{ t('agents.empty.steps.verifyOnline') }}</span>
                   </li>
                 </ol>
-                <div class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all">
-                  {{ t('agents.empty.commandExample', { hubUrl }) }}
+                <n-alert v-if="!commandGenerationReady" type="warning" :bordered="false">
+                  {{ t('fleet.onboarding.missingDescription') }}
+                </n-alert>
+                <div
+                  v-else
+                  class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all"
+                >
+                  {{ onboardingCommandPreview }}
                 </div>
                 <div class="flex items-center justify-center gap-2">
                   <n-button type="primary" size="small" @click="openTokenModal">
                     {{ t('agents.newToken') }}
+                  </n-button>
+                  <n-button v-if="!commandGenerationReady" size="small" @click="openRuntimeConfig">
+                    {{ t('fleet.onboarding.runtimeAction') }}
                   </n-button>
                 </div>
               </div>
@@ -735,7 +865,13 @@ onBeforeUnmount(() => {
                       :checked="selectedAgentIds.includes(agent.id)"
                       @update:checked="(v) => setAgentSelected(agent.id, v)"
                     />
-                    <div class="font-semibold truncate">{{ agent.name ?? '-' }}</div>
+                    <button
+                      type="button"
+                      class="min-w-0 truncate text-left font-semibold text-[color:var(--app-primary)]"
+                      @click="openAgentWorkspace(agent.id)"
+                    >
+                      {{ agent.name ?? agent.id }}
+                    </button>
                   </div>
                   <div class="flex flex-wrap justify-end gap-1">
                     <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
@@ -826,12 +962,21 @@ onBeforeUnmount(() => {
                     <span>{{ t('agents.empty.steps.verifyOnline') }}</span>
                   </li>
                 </ol>
-                <div class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all">
-                  {{ t('agents.empty.commandExample', { hubUrl }) }}
+                <n-alert v-if="!commandGenerationReady" type="warning" :bordered="false">
+                  {{ t('fleet.onboarding.missingDescription') }}
+                </n-alert>
+                <div
+                  v-else
+                  class="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] px-3 py-2 font-mono text-xs break-all"
+                >
+                  {{ onboardingCommandPreview }}
                 </div>
                 <div class="flex items-center justify-center gap-2">
                   <n-button type="primary" size="small" @click="openTokenModal">
                     {{ t('agents.newToken') }}
+                  </n-button>
+                  <n-button v-if="!commandGenerationReady" size="small" @click="openRuntimeConfig">
+                    {{ t('fleet.onboarding.runtimeAction') }}
                   </n-button>
                 </div>
               </div>
@@ -916,6 +1061,10 @@ onBeforeUnmount(() => {
       <div v-if="tokenResult" class="space-y-2">
         <div class="text-sm app-text-muted">{{ t('agents.tokenModal.help') }}</div>
 
+        <n-alert v-if="!enrollCommand" type="warning" :bordered="false">
+          {{ t('fleet.onboarding.missingDescription') }}
+        </n-alert>
+
         <n-form label-placement="top">
           <n-form-item :label="t('agents.tokenModal.token')">
             <n-input :value="tokenResult.token" readonly />
@@ -936,6 +1085,7 @@ onBeforeUnmount(() => {
         <n-space>
           <n-button @click="copyToClipboard(tokenResult.token)">{{ t('agents.actions.copyToken') }}</n-button>
           <n-button v-if="enrollCommand" @click="copyToClipboard(enrollCommand)">{{ t('agents.actions.copyCommand') }}</n-button>
+          <n-button v-else @click="openRuntimeConfig">{{ t('fleet.onboarding.runtimeAction') }}</n-button>
         </n-space>
       </div>
 

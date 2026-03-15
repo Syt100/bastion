@@ -84,6 +84,13 @@
           
           [env: BASTION_HUB_TIMEZONE=]
 
+      --public-base-url <PUBLIC_BASE_URL>
+          用于运维命令和链接的公开 Hub 基础 URL。
+          
+          示例：`https://backup.example.com`、`https://backup.example.com/bastion`。
+          
+          [env: BASTION_PUBLIC_BASE_URL=]
+
       --trusted-proxy [<TRUSTED_PROXIES>...]
           允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。
           

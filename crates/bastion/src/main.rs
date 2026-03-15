@@ -20,7 +20,7 @@ use bastion_engine::run_events_bus::RunEventsBus;
 use bastion_engine::{agent_manager, bulk_operations, maintenance, notifications, scheduler};
 use bastion_http::{
     AppState, ConfigValueSource, HubRuntimeConfigMeta, HubRuntimeConfigSources,
-    HubRuntimeLoggingEffective,
+    HubRuntimeLoggingEffective, normalize_public_base_url,
 };
 use bastion_storage::hub_runtime_config_repo;
 
@@ -307,6 +307,7 @@ async fn run_config_command(
                 "hub_timezone": config.hub_timezone,
                 "run_retention_days": config.run_retention_days,
                 "incomplete_cleanup_days": config.incomplete_cleanup_days,
+                "public_base_url": meta.public_base_url,
                 "logging": {
                     "filter": meta.logging.filter,
                     "file": meta.logging.file,
@@ -326,6 +327,7 @@ async fn run_config_command(
                 "hub_timezone": meta.sources.hub_timezone,
                 "run_retention_days": meta.sources.run_retention_days,
                 "incomplete_cleanup_days": meta.sources.incomplete_cleanup_days,
+                "public_base_url": meta.sources.public_base_url,
                 "log_filter": meta.sources.log_filter,
                 "log_file": meta.sources.log_file,
                 "log_rotation": meta.sources.log_rotation,
@@ -386,6 +388,11 @@ async fn run_config_command(
         "- incomplete_cleanup_days: {} ({})",
         config.incomplete_cleanup_days,
         source_label(meta.sources.incomplete_cleanup_days)
+    );
+    println!(
+        "- public_base_url: {} ({})",
+        meta.public_base_url.as_deref().unwrap_or("(unset)"),
+        source_label(meta.sources.public_base_url)
     );
     println!(
         "- logging.filter: {} ({})",
@@ -679,6 +686,7 @@ fn resolve_hub_runtime_config_meta(
         hub_timezone: map_value_source(matches.value_source("hub_timezone")),
         run_retention_days: map_value_source(matches.value_source("run_retention_days")),
         incomplete_cleanup_days: map_value_source(matches.value_source("incomplete_cleanup_days")),
+        public_base_url: map_value_source(matches.value_source("public_base_url")),
         ..HubRuntimeConfigSources::default()
     };
 
@@ -705,6 +713,24 @@ fn resolve_hub_runtime_config_meta(
     {
         config.incomplete_cleanup_days = days;
         sources.incomplete_cleanup_days = ConfigValueSource::Db;
+    }
+
+    let mut effective_public_base_url = None;
+    if sources.public_base_url != ConfigValueSource::Default {
+        effective_public_base_url = normalize_public_base_url(
+            matches
+                .get_one::<String>("public_base_url")
+                .map(String::as_str),
+        )
+        .ok()
+        .flatten();
+    } else if let Some(saved_public_base_url) =
+        normalize_public_base_url(saved.public_base_url.as_deref())
+            .ok()
+            .flatten()
+    {
+        effective_public_base_url = Some(saved_public_base_url);
+        sources.public_base_url = ConfigValueSource::Db;
     }
 
     let (effective_log_filter, log_filter_source) = resolve_log_filter(
@@ -763,6 +789,7 @@ fn resolve_hub_runtime_config_meta(
         HubRuntimeConfigMeta {
             sources,
             logging: runtime_logging,
+            public_base_url: effective_public_base_url,
         },
         effective_logging_args,
     )
@@ -1019,6 +1046,7 @@ mod tests {
             hub_timezone: Some("Asia/Shanghai".to_string()),
             run_retention_days: Some(30),
             incomplete_cleanup_days: Some(2),
+            public_base_url: Some("https://backup.example.com/bastion/".to_string()),
             log_filter: Some("debug,bastion=trace".to_string()),
             log_file: Some("/tmp/bastion.log".to_string()),
             log_rotation: Some("hourly".to_string()),
@@ -1041,10 +1069,15 @@ mod tests {
         assert_eq!(meta.sources.hub_timezone, ConfigValueSource::Db);
         assert_eq!(meta.sources.run_retention_days, ConfigValueSource::Db);
         assert_eq!(meta.sources.incomplete_cleanup_days, ConfigValueSource::Db);
+        assert_eq!(meta.sources.public_base_url, ConfigValueSource::Db);
         assert_eq!(meta.sources.log_filter, ConfigValueSource::Db);
         assert_eq!(meta.sources.log_file, ConfigValueSource::Db);
         assert_eq!(meta.sources.log_rotation, ConfigValueSource::Db);
         assert_eq!(meta.sources.log_keep_files, ConfigValueSource::Db);
+        assert_eq!(
+            meta.public_base_url.as_deref(),
+            Some("https://backup.example.com/bastion")
+        );
         assert_eq!(meta.logging.filter, "debug,bastion=trace");
         assert_eq!(meta.logging.file.as_deref(), Some("/tmp/bastion.log"));
         assert_eq!(meta.logging.rotation, "hourly");
@@ -1078,6 +1111,8 @@ mod tests {
             "91",
             "--incomplete-cleanup-days",
             "0",
+            "--public-base-url",
+            "https://ops.example.com/root/",
             "--log",
             "warn,bastion=info",
             "--log-file",
@@ -1092,6 +1127,7 @@ mod tests {
             hub_timezone: Some("Asia/Shanghai".to_string()),
             run_retention_days: Some(30),
             incomplete_cleanup_days: Some(2),
+            public_base_url: Some("https://backup.example.com/bastion".to_string()),
             log_filter: Some("debug,bastion=trace".to_string()),
             log_file: Some("/tmp/old.log".to_string()),
             log_rotation: Some("hourly".to_string()),
@@ -1113,10 +1149,15 @@ mod tests {
         assert_eq!(meta.sources.hub_timezone, ConfigValueSource::Cli);
         assert_eq!(meta.sources.run_retention_days, ConfigValueSource::Cli);
         assert_eq!(meta.sources.incomplete_cleanup_days, ConfigValueSource::Cli);
+        assert_eq!(meta.sources.public_base_url, ConfigValueSource::Cli);
         assert_eq!(meta.sources.log_filter, ConfigValueSource::Cli);
         assert_eq!(meta.sources.log_file, ConfigValueSource::Cli);
         assert_eq!(meta.sources.log_rotation, ConfigValueSource::Cli);
         assert_eq!(meta.sources.log_keep_files, ConfigValueSource::Cli);
+        assert_eq!(
+            meta.public_base_url.as_deref(),
+            Some("https://ops.example.com/root")
+        );
         assert_eq!(meta.logging.filter, "warn,bastion=info");
         assert_eq!(meta.logging.file.as_deref(), Some("/tmp/current.log"));
         assert_eq!(meta.logging.rotation, "never");
@@ -1177,6 +1218,25 @@ mod tests {
             effective_logging.log.as_deref(),
             Some("trace,bastion=debug")
         );
+    }
+
+    #[test]
+    fn resolve_hub_runtime_config_meta_leaves_public_base_url_absent_when_unset() {
+        let dir = TempDir::new().expect("tempdir");
+        let data_dir = dir.path().display().to_string();
+        let (matches, cli) = parse_cli_from(&["bastion", "--data-dir", &data_dir]);
+        let mut config = cli.hub.into_config().expect("config");
+
+        let (meta, _effective_logging) = resolve_hub_runtime_config_meta(
+            &mut config,
+            &matches,
+            &hub_runtime_config_repo::HubRuntimeConfig::default(),
+            cli.logging,
+            &RuntimeEnv::default(),
+        );
+
+        assert_eq!(meta.sources.public_base_url, ConfigValueSource::Default);
+        assert!(meta.public_base_url.is_none());
     }
 
     #[test]

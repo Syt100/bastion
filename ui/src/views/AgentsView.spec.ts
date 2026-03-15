@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import { createNaiveButtonStub, createNaiveInputStub, createNaiveStub } from '@/test-utils/naiveUiStubs'
 import type { AgentListItem } from '@/stores/agents'
+import type { FleetListResponse } from '@/stores/fleet'
 
 const messageApi = {
   error: vi.fn(),
@@ -22,12 +23,28 @@ const agentsApi = {
   createEnrollmentToken: vi.fn(),
 }
 
+const controlPlaneApi = {
+  getPublicMetadata: vi.fn(),
+}
+
+const fleetApi = {
+  list: vi.fn(),
+}
+
 vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsApi,
 }))
 
 vi.mock('@/stores/bulkOperations', () => ({
   useBulkOperationsStore: () => ({ create: vi.fn() }),
+}))
+
+vi.mock('@/stores/controlPlane', () => ({
+  useControlPlaneStore: () => controlPlaneApi,
+}))
+
+vi.mock('@/stores/fleet', () => ({
+  useFleetStore: () => fleetApi,
 }))
 
 vi.mock('@/stores/ui', () => ({
@@ -97,6 +114,7 @@ vi.mock('naive-ui', async () => {
     })
 
   return {
+    NAlert: stub('NAlert'),
     NButton: createNaiveButtonStub(),
     NCard: stub('NCard'),
     NCheckbox: stub('NCheckbox'),
@@ -127,6 +145,16 @@ describe('AgentsView enrollment token modal', () => {
     agentsApi.items = []
     agentsApi.total = 0
     agentsApi.createEnrollmentToken.mockResolvedValue({ token: 'tok1', expires_at: 1234 })
+    controlPlaneApi.getPublicMetadata.mockResolvedValue({
+      public_base_url: 'https://backup.example.com',
+      source: 'db',
+      command_generation_ready: true,
+    })
+    fleetApi.list.mockResolvedValue({
+      summary: { total: 0, online: 0, offline: 0, revoked: 0, drifted: 0 },
+      onboarding: { public_base_url: 'https://backup.example.com', command_generation_ready: true },
+      items: [],
+    } satisfies FleetListResponse)
   })
 
   it('shows pagination when the filtered list is large', async () => {
@@ -177,6 +205,7 @@ describe('AgentsView enrollment token modal', () => {
     expect(command).not.toBeNull()
     expect(command!).toContain('--hub-url')
     expect(command!).toContain('--enroll-token tok1')
+    expect(command!).toContain('https://backup.example.com')
   })
 
   it('renders mobile progressive disclosure affordance for secondary metadata', async () => {
@@ -220,6 +249,25 @@ describe('AgentsView enrollment token modal', () => {
 
     expect(wrapper.text()).toContain('agents.empty.guideTitle')
     expect(wrapper.text()).toContain('agents.empty.steps.createToken')
-    expect(wrapper.text()).toContain('agents.empty.commandExample')
+    expect(wrapper.text()).toContain('https://backup.example.com')
+  })
+
+  it('shows setup guidance instead of defaulting to browser origin when public base url is absent', async () => {
+    controlPlaneApi.getPublicMetadata.mockResolvedValue({
+      public_base_url: null,
+      source: 'default',
+      command_generation_ready: false,
+    })
+    fleetApi.list.mockResolvedValue({
+      summary: { total: 0, online: 0, offline: 0, revoked: 0, drifted: 0 },
+      onboarding: { public_base_url: null, command_generation_ready: false },
+      items: [],
+    } satisfies FleetListResponse)
+
+    const wrapper = mount(AgentsView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('fleet.onboarding.missingDescription')
+    expect(wrapper.text()).not.toContain('agents.empty.commandExample')
   })
 })

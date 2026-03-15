@@ -3,6 +3,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 const AppShell = () => import('@/layouts/AppShell.vue')
 const AgentsView = () => import('@/views/AgentsView.vue')
 const CommandCenterView = () => import('@/views/CommandCenterView.vue')
+const FleetAgentDetailView = () => import('@/views/FleetAgentDetailView.vue')
+const IntegrationsIndexView = () => import('@/views/integrations/IntegrationsIndexView.vue')
+const DistributionView = () => import('@/views/integrations/DistributionView.vue')
 const JobEditorRouteView = () => import('@/views/jobs/JobEditorRouteView.vue')
 const JobsWorkspaceShellView = () => import('@/views/jobs/JobsWorkspaceShellView.vue')
 const JobWorkspaceView = () => import('@/views/jobs/JobWorkspaceView.vue')
@@ -26,6 +29,7 @@ const MaintenanceCleanupView = () => import('@/views/settings/maintenance/Mainte
 const RunDetailRouteView = () => import('@/views/RunDetailRouteView.vue')
 const RunsView = () => import('@/views/RunsView.vue')
 const SetupView = () => import('@/views/SetupView.vue')
+const SystemIndexView = () => import('@/views/system/SystemIndexView.vue')
 
 import { pinia } from '@/pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -243,11 +247,26 @@ const router = createRouter({
           }),
         },
         {
+          path: 'fleet/:agentId',
+          component: FleetAgentDetailView,
+          meta: routeMeta('fleet.detail.title', {
+            primaryNav: 'fleet',
+            scopeMode: 'none',
+          }),
+        },
+        {
           path: 'integrations',
           component: SettingsShellView,
           meta: routeMeta('integrations.title', integrationsShellMeta),
           children: [
-            { path: '', redirect: '/integrations/storage' },
+            {
+              path: '',
+              component: IntegrationsIndexView,
+              meta: mobileMeta('integrations.title', null, {
+                ...integrationsShellMeta,
+                scopeMode: 'none',
+              }),
+            },
             {
               path: 'storage',
               component: SettingsStorageView,
@@ -313,6 +332,15 @@ const router = createRouter({
                 },
               ],
             },
+            {
+              path: 'distribution',
+              component: DistributionView,
+              meta: mobileMeta('settings.menu.distribution', null, {
+                ...integrationsShellMeta,
+                secondaryNav: 'distribution',
+                scopeMode: 'none',
+              }),
+            },
           ],
         },
         {
@@ -320,7 +348,14 @@ const router = createRouter({
           component: SettingsShellView,
           meta: routeMeta('system.title', systemShellMeta),
           children: [
-            { path: '', redirect: '/system/runtime' },
+            {
+              path: '',
+              component: SystemIndexView,
+              meta: mobileMeta('system.title', null, {
+                ...systemShellMeta,
+                scopeMode: 'none',
+              }),
+            },
             {
               path: 'runtime',
               component: HubRuntimeConfigView,
@@ -379,8 +414,16 @@ const router = createRouter({
           redirect: (to) => ({ path: '/fleet', query: to.query, hash: to.hash }),
         },
         {
+          path: 'agents/:agentId',
+          redirect: (to) => ({
+            path: `/fleet/${encodeURIComponent(String(to.params.agentId))}`,
+            query: to.query,
+            hash: to.hash,
+          }),
+        },
+        {
           path: 'settings',
-          redirect: (to) => ({ path: '/integrations/storage', query: to.query, hash: to.hash }),
+          redirect: (to) => ({ path: '/system', query: to.query, hash: to.hash }),
         },
         {
           path: 'settings/storage',
@@ -514,21 +557,25 @@ const router = createRouter({
             },
             {
               path: 'settings',
-              component: SettingsShellView,
-              meta: routeMeta('integrations.title', {
-                ...integrationsShellMeta,
-              }),
-              children: [
-                {
-                  path: 'storage',
-                  component: SettingsStorageView,
-                  meta: mobileMeta('settings.menu.storage', null, {
-                    ...integrationsShellMeta,
-                    secondaryNav: 'storage',
-                    scopeMode: 'legacy-node',
-                  }),
+              redirect: (to) => ({
+                path: '/integrations/storage',
+                query: {
+                  ...to.query,
+                  scope: scopeFromNodeId(String(to.params.nodeId)),
                 },
-              ],
+                hash: to.hash,
+              }),
+            },
+            {
+              path: 'settings/storage',
+              redirect: (to) => ({
+                path: '/integrations/storage',
+                query: {
+                  ...to.query,
+                  scope: scopeFromNodeId(String(to.params.nodeId)),
+                },
+                hash: to.hash,
+              }),
             },
           ],
         },

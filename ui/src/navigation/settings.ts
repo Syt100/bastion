@@ -48,6 +48,17 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     order: 20,
   },
   {
+    key: 'distribution',
+    to: '/integrations/distribution',
+    titleKey: 'settings.menu.distribution',
+    descriptionKey: 'settings.overview.distributionDesc',
+    icon: ConstructOutline,
+    domain: 'integrations',
+    showInOverview: true,
+    showInSidebar: true,
+    order: 25,
+  },
+  {
     key: 'maintenance',
     to: '/system/maintenance',
     titleKey: 'settings.menu.maintenance',
@@ -102,16 +113,7 @@ export type SettingsOverviewItem = {
 }
 
 export function getSettingsOverviewItems(): SettingsOverviewItem[] {
-  return SETTINGS_NAV_ITEMS.filter((i) => i.showInOverview)
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((i) => ({
-      key: i.key,
-      titleKey: i.titleKey,
-      descriptionKey: i.descriptionKey ?? i.titleKey,
-      to: i.to,
-      icon: i.icon ?? CloudOutline,
-    }))
+  return getSettingsOverviewItemsForDomain()
 }
 
 export type SettingsSidebarItem = {
@@ -158,5 +160,20 @@ export function getSystemSidebarItems(): SettingsSidebarItem[] {
       key: i.key,
       titleKey: i.titleKey,
       to: i.to,
+    }))
+}
+
+export function getSettingsOverviewItemsForDomain(
+  domain?: SettingsNavItem['domain'],
+): SettingsOverviewItem[] {
+  return SETTINGS_NAV_ITEMS.filter((i) => i.showInOverview && (!domain || i.domain === domain))
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((i) => ({
+      key: i.key,
+      titleKey: i.titleKey,
+      descriptionKey: i.descriptionKey ?? i.titleKey,
+      to: i.to,
+      icon: i.icon ?? CloudOutline,
     }))
 }

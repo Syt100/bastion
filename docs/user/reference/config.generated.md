@@ -27,6 +27,7 @@ Root `bastion` flags apply to subcommands unless a subcommand defines its own ov
 | `BASTION_LOG_KEEP_FILES` | `--log-keep-files` | bastion | `30` | How many rotated log files to keep (default: 30, 0 disables pruning) |
 | `BASTION_LOG_ROTATION` | `--log-rotation` | bastion | `daily` | Log rotation for `--log-file` (default: daily) |
 | `BASTION_PORT` | `--port` | bastion | `9876` | Bind port (default: 9876) |
+| `BASTION_PUBLIC_BASE_URL` | `--public-base-url` | bastion | — | Public Hub base URL used in operator-facing commands and links. Examples: `https://backup.example.com`, `https://backup.example.com/bastion`. |
 | `BASTION_RUN_RETENTION_DAYS` | `--run-retention-days` | bastion | `180` | Run history retention in days (default: 180) |
 | `BASTION_TRUSTED_PROXIES` | `--trusted-proxy` | bastion | — | Trusted proxy IPs/CIDRs that are allowed to set X-Forwarded-* headers. Can be specified multiple times: `--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`. |
 

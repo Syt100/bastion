@@ -9,6 +9,7 @@ export type HubRuntimeConfig = {
   hub_timezone?: string | null
   run_retention_days?: number | null
   incomplete_cleanup_days?: number | null
+  public_base_url?: string | null
   log_filter?: string | null
   log_file?: string | null
   log_rotation?: string | null
@@ -41,6 +42,7 @@ export type HubRuntimeConfigFieldsMeta = {
   hub_timezone: HubRuntimeConfigFieldMeta
   run_retention_days: HubRuntimeConfigFieldMeta
   incomplete_cleanup_days: HubRuntimeConfigFieldMeta
+  public_base_url: HubRuntimeConfigFieldMeta
 
   log_filter: HubRuntimeConfigFieldMeta
   log_file: HubRuntimeConfigFieldMeta
@@ -59,6 +61,7 @@ export type HubRuntimeConfigEffective = {
   hub_timezone: string
   run_retention_days: number
   incomplete_cleanup_days: number
+  public_base_url?: string | null
 
   log_filter: string
   log_file?: string | null

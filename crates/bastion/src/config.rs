@@ -6,6 +6,7 @@ use std::{
 use bastion_config::Config;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use ipnet::IpNet;
+use url::Url;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -128,6 +129,12 @@ pub struct HubArgs {
     /// Examples: `UTC`, `Asia/Shanghai`, `America/Los_Angeles`.
     #[arg(long, env = "BASTION_HUB_TIMEZONE")]
     pub hub_timezone: Option<String>,
+
+    /// Public Hub base URL used in operator-facing commands and links.
+    ///
+    /// Examples: `https://backup.example.com`, `https://backup.example.com/bastion`.
+    #[arg(long, env = "BASTION_PUBLIC_BASE_URL")]
+    pub public_base_url: Option<String>,
 
     /// Trusted proxy IPs/CIDRs that are allowed to set X-Forwarded-* headers.
     ///
@@ -271,6 +278,10 @@ impl HubArgs {
             }
         };
 
+        if let Some(public_base_url) = self.public_base_url.as_deref() {
+            validate_public_base_url(public_base_url)?;
+        }
+
         let mut trusted_proxies = self.trusted_proxies;
         if trusted_proxies.is_empty() {
             trusted_proxies.push("127.0.0.1/32".parse()?);
@@ -290,6 +301,25 @@ impl HubArgs {
     }
 }
 
+fn validate_public_base_url(value: &str) -> Result<(), anyhow::Error> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("public_base_url must be non-empty");
+    }
+    let parsed = Url::parse(trimmed).map_err(|_| anyhow::anyhow!("invalid public_base_url"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => anyhow::bail!("public_base_url must use http or https"),
+    }
+    if parsed.host().is_none() {
+        anyhow::bail!("public_base_url must include a host");
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        anyhow::bail!("public_base_url must not include query or fragment");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,6 +334,7 @@ mod tests {
             run_retention_days: 180,
             incomplete_cleanup_days: 7,
             hub_timezone: None,
+            public_base_url: None,
             trusted_proxies: Vec::new(),
         }
     }
@@ -361,6 +392,22 @@ mod tests {
         args.hub_timezone = Some("Not/AZone".to_string());
         let err = args.into_config().expect_err("expected error");
         assert!(err.to_string().contains("invalid hub_timezone"));
+        Ok(())
+    }
+
+    #[test]
+    fn into_config_rejects_invalid_public_base_url() -> Result<(), anyhow::Error> {
+        let dir = tempfile::TempDir::new()?;
+
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.public_base_url = Some("ftp://backup.example.com".to_string());
+        let err = args.into_config().expect_err("expected error");
+        assert!(err.to_string().contains("public_base_url"));
+
+        let mut args = base_hub_args(dir.path().to_path_buf());
+        args.public_base_url = Some("https://backup.example.com/path?bad=1".to_string());
+        let err = args.into_config().expect_err("expected error");
+        assert!(err.to_string().contains("public_base_url"));
         Ok(())
     }
 

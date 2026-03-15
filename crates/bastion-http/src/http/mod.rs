@@ -22,10 +22,13 @@ mod agents;
 mod auth;
 mod bulk_operations;
 mod command_center;
+mod control_plane;
 mod dashboard;
 mod docs;
 mod error;
+mod fleet;
 mod fs;
+mod integrations;
 mod jobs;
 mod list_paging;
 mod maintenance;
@@ -63,6 +66,7 @@ pub struct HubRuntimeConfigSources {
     pub hub_timezone: ConfigValueSource,
     pub run_retention_days: ConfigValueSource,
     pub incomplete_cleanup_days: ConfigValueSource,
+    pub public_base_url: ConfigValueSource,
 
     pub log_filter: ConfigValueSource,
     pub log_file: ConfigValueSource,
@@ -82,6 +86,7 @@ pub struct HubRuntimeLoggingEffective {
 pub struct HubRuntimeConfigMeta {
     pub sources: HubRuntimeConfigSources,
     pub logging: HubRuntimeLoggingEffective,
+    pub public_base_url: Option<String>,
 }
 
 impl Default for HubRuntimeConfigSources {
@@ -96,6 +101,7 @@ impl Default for HubRuntimeConfigSources {
             hub_timezone: ConfigValueSource::Default,
             run_retention_days: ConfigValueSource::Default,
             incomplete_cleanup_days: ConfigValueSource::Default,
+            public_base_url: ConfigValueSource::Default,
             log_filter: ConfigValueSource::Default,
             log_file: ConfigValueSource::Default,
             log_rotation: ConfigValueSource::Default,
@@ -173,6 +179,42 @@ async fn system_status(state: axum::extract::State<AppState>) -> Json<SystemStat
     })
 }
 
+pub fn normalize_public_base_url(value: Option<&str>) -> Result<Option<String>, String> {
+    use url::{Host, Url};
+
+    let Some(raw) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+
+    let parsed = Url::parse(raw).map_err(|_| "invalid_format".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return Err("unsupported_scheme".to_string()),
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err("query_or_fragment_not_allowed".to_string());
+    }
+    let host = match parsed.host() {
+        Some(Host::Domain(domain)) => domain.to_string(),
+        Some(Host::Ipv4(addr)) => addr.to_string(),
+        Some(Host::Ipv6(addr)) => format!("[{addr}]"),
+        None => return Err("missing_host".to_string()),
+    };
+
+    let mut normalized = format!("{}://{}", parsed.scheme(), host);
+    if let Some(port) = parsed.port() {
+        normalized.push(':');
+        normalized.push_str(&port.to_string());
+    }
+
+    let path = parsed.path().trim_end_matches('/');
+    if !path.is_empty() && path != "/" {
+        normalized.push_str(path);
+    }
+
+    Ok(Some(normalized))
+}
+
 pub fn router(state: AppState) -> Router {
     const API_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
     const AGENT_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
@@ -198,10 +240,20 @@ pub fn router(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/ready", get(ready))
         .route("/api/system", get(system_status))
+        .route(
+            "/api/control-plane/public-metadata",
+            get(control_plane::get_public_metadata),
+        )
         .route("/api/dashboard/overview", get(dashboard::get_overview))
         .route(
             "/api/command-center",
             get(command_center::get_command_center),
+        )
+        .route("/api/fleet", get(fleet::list_fleet))
+        .route("/api/fleet/{id}", get(fleet::get_fleet_agent))
+        .route(
+            "/api/integrations",
+            get(integrations::get_integrations_summary),
         )
         .route(
             "/api/settings/hub-runtime-config",
@@ -514,3 +566,6 @@ mod command_center_tests;
 
 #[cfg(test)]
 mod auth_tests;
+
+#[cfg(test)]
+mod control_plane_fleet_integrations_tests;

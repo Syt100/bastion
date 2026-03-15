@@ -15,6 +15,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
 - Added workspace-oriented Jobs APIs (`/api/jobs/workspace`, `/api/jobs/{id}/workspace`) and a full-page create/edit flow with draft resume, live configuration summary, and review-stage risk signals.
 - Added first-class Runs workspace APIs (`/api/runs`, `/api/runs/{id}/workspace`, `/api/runs/{id}/event-console`) with structured diagnostics, cross-job filtering, and server-driven event windows.
+- Added authenticated Fleet / Integrations control-plane summary APIs plus a dedicated Fleet detail page, Integrations overview, System overview, and public-base-URL metadata endpoint for operator-facing command generation.
 
 ### Changed
 - Changed Command Center, Jobs detail, and the mobile Jobs editor to use more professional operator-facing copy, stronger first-screen action hierarchy, object-first detail framing, and compact mobile progress/summary patterns.
@@ -49,6 +50,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed snapshot listing API and Web UI pagination to use opaque keyset cursors (`next_cursor`) so pagination stays stable during concurrent snapshot status changes.
 - Changed run/operation lifecycle handling to support graceful cancellation (`canceling` → `canceled`) with idempotent cancel requests and race-safe terminalization.
 - Changed Runs from a placeholder landing surface into a dedicated operator workspace with filterable global triage, canonical `/runs/:id` routes, summary-first diagnostics, and mobile-friendly event inspection.
+- Changed Fleet onboarding and runtime configuration so enrollment commands use an explicit configured public base URL, surface setup-required guidance when that URL is missing, and route legacy Agents / Settings entry points into canonical Fleet / Integrations / System surfaces.
 - Changed failed run events and Run Events UI to expose structured transport diagnostics (error code/kind/chain, retry/part/HTTP context, and operator hints).
 - Changed run/maintenance/notification failure events to emit a unified `error_envelope` contract (schema version, stable code/kind, retriable metadata, i18n keys, transport protocol details, and context payloads) while keeping legacy fields for compatibility.
 - Changed Run Events UI to render envelope-first localized diagnostics with graceful fallback, protocol-specific detail rows (HTTP/SFTP/provider fields), and async-operation/partial-failure panels.

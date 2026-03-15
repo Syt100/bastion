@@ -15,6 +15,8 @@ pub struct HubRuntimeConfig {
     pub run_retention_days: Option<i64>,
     #[serde(default)]
     pub incomplete_cleanup_days: Option<i64>,
+    #[serde(default)]
+    pub public_base_url: Option<String>,
 
     #[serde(default)]
     pub log_filter: Option<String>,
@@ -63,6 +65,7 @@ mod tests {
             hub_timezone: Some("Asia/Shanghai".to_string()),
             run_retention_days: Some(30),
             incomplete_cleanup_days: Some(7),
+            public_base_url: Some("https://backup.example.com/bastion".to_string()),
             log_filter: Some("info".to_string()),
             log_file: Some("/tmp/bastion.log".to_string()),
             log_rotation: Some("daily".to_string()),
@@ -81,6 +84,10 @@ mod tests {
         assert_eq!(loaded.hub_timezone.as_deref(), Some("Asia/Shanghai"));
         assert_eq!(loaded.run_retention_days, Some(30));
         assert_eq!(loaded.incomplete_cleanup_days, Some(7));
+        assert_eq!(
+            loaded.public_base_url.as_deref(),
+            Some("https://backup.example.com/bastion")
+        );
         assert_eq!(loaded.log_filter.as_deref(), Some("info"));
         assert_eq!(loaded.log_file.as_deref(), Some("/tmp/bastion.log"));
         assert_eq!(loaded.log_rotation.as_deref(), Some("daily"));

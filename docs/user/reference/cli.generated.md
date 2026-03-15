@@ -90,6 +90,13 @@ Options:
           
           [env: BASTION_HUB_TIMEZONE=]
 
+      --public-base-url <PUBLIC_BASE_URL>
+          Public Hub base URL used in operator-facing commands and links.
+          
+          Examples: `https://backup.example.com`, `https://backup.example.com/bastion`.
+          
+          [env: BASTION_PUBLIC_BASE_URL=]
+
       --trusted-proxy [<TRUSTED_PROXIES>...]
           Trusted proxy IPs/CIDRs that are allowed to set X-Forwarded-* headers.
           

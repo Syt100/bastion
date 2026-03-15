@@ -43,7 +43,7 @@ describe('SettingsIndexView', () => {
   it('navigates to settings pages', async () => {
     const wrapper = mount(SettingsIndexView)
     const buttons = wrapper.findAll('button')
-    expect(buttons.length).toBe(7)
+    expect(buttons.length).toBe(8)
 
     await buttons[0]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/system/appearance')
@@ -55,15 +55,18 @@ describe('SettingsIndexView', () => {
     expect(routerApi.push).toHaveBeenCalledWith('/integrations/notifications')
 
     await buttons[3]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/system/maintenance')
+    expect(routerApi.push).toHaveBeenCalledWith('/integrations/distribution')
 
     await buttons[4]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/system/runtime')
+    expect(routerApi.push).toHaveBeenCalledWith('/system/maintenance')
 
     await buttons[5]!.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/system/bulk-operations')
+    expect(routerApi.push).toHaveBeenCalledWith('/system/runtime')
 
     await buttons[6]!.trigger('click')
+    expect(routerApi.push).toHaveBeenCalledWith('/system/bulk-operations')
+
+    await buttons[7]!.trigger('click')
     expect(routerApi.push).toHaveBeenCalledWith('/system/about')
   })
 })

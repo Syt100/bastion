@@ -18,6 +18,8 @@
   "bastion.arg.incomplete_cleanup_days.help": "清理超过 N 天的未完成运行（默认：7，0 表示禁用）。",
   "bastion.arg.hub_timezone.help": "Hub 时区（IANA），用作默认的计划任务时区（默认：本机系统时区）。",
   "bastion.arg.hub_timezone.long_help": "Hub 时区（IANA），用作默认的计划任务时区（默认：本机系统时区）。\n\n示例：`UTC`、`Asia/Shanghai`、`America/Los_Angeles`。",
+  "bastion.arg.public_base_url.help": "用于运维命令和链接的公开 Hub 基础 URL。",
+  "bastion.arg.public_base_url.long_help": "用于运维命令和链接的公开 Hub 基础 URL。\n\n示例：`https://backup.example.com`、`https://backup.example.com/bastion`。",
   "bastion.arg.trusted_proxies.help": "允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。",
   "bastion.arg.trusted_proxies.long_help": "允许设置 X-Forwarded-* 头的受信任代理 IP/CIDR。\n\n可多次指定：`--trusted-proxy 127.0.0.1/32 --trusted-proxy ::1/128`。",
 

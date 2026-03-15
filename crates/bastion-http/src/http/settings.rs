@@ -7,7 +7,7 @@ use tower_cookies::Cookies;
 use bastion_storage::hub_runtime_config_repo;
 
 use super::shared::{require_csrf, require_session};
-use super::{AppError, AppState, ConfigValueSource};
+use super::{AppError, AppState, ConfigValueSource, normalize_public_base_url};
 
 #[derive(Debug, Serialize)]
 pub(in crate::http) struct HubRuntimeConfigFieldMeta {
@@ -28,6 +28,7 @@ pub(in crate::http) struct HubRuntimeConfigFieldsMeta {
     hub_timezone: HubRuntimeConfigFieldMeta,
     run_retention_days: HubRuntimeConfigFieldMeta,
     incomplete_cleanup_days: HubRuntimeConfigFieldMeta,
+    public_base_url: HubRuntimeConfigFieldMeta,
 
     log_filter: HubRuntimeConfigFieldMeta,
     log_file: HubRuntimeConfigFieldMeta,
@@ -47,6 +48,7 @@ pub(in crate::http) struct HubRuntimeConfigEffective {
     hub_timezone: String,
     run_retention_days: i64,
     incomplete_cleanup_days: i64,
+    public_base_url: Option<String>,
 
     log_filter: String,
     log_file: Option<String>,
@@ -131,6 +133,11 @@ pub(in crate::http) async fn get_hub_runtime_config(
             source: sources.incomplete_cleanup_days,
             editable: editable_policy_field(sources.incomplete_cleanup_days),
         },
+        public_base_url: HubRuntimeConfigFieldMeta {
+            env: "BASTION_PUBLIC_BASE_URL",
+            source: sources.public_base_url,
+            editable: editable_policy_field(sources.public_base_url),
+        },
         log_filter: HubRuntimeConfigFieldMeta {
             env: "BASTION_LOG / RUST_LOG",
             source: sources.log_filter,
@@ -172,6 +179,7 @@ pub(in crate::http) async fn get_hub_runtime_config(
         hub_timezone: state.config.hub_timezone.clone(),
         run_retention_days: state.config.run_retention_days,
         incomplete_cleanup_days: state.config.incomplete_cleanup_days,
+        public_base_url: state.hub_runtime_config.public_base_url.clone(),
         log_filter: state.hub_runtime_config.logging.filter.clone(),
         log_file: state.hub_runtime_config.logging.file.clone(),
         log_rotation: state.hub_runtime_config.logging.rotation.clone(),
@@ -335,6 +343,24 @@ pub(in crate::http) async fn put_hub_runtime_config(
     }
 
     req.hub_timezone = validate_timezone(req.hub_timezone.as_deref())?;
+    req.public_base_url =
+        normalize_public_base_url(req.public_base_url.as_deref()).map_err(|reason| {
+            let (reason, message) = match reason.as_str() {
+                "unsupported_scheme" => (
+                    "unsupported_scheme",
+                    "public_base_url must use http or https",
+                ),
+                "query_or_fragment_not_allowed" => (
+                    "query_or_fragment_not_allowed",
+                    "public_base_url must not include query or fragment",
+                ),
+                "missing_host" => ("missing_host", "public_base_url must include a host"),
+                _ => ("invalid_format", "Invalid public base URL"),
+            };
+            AppError::bad_request("invalid_public_base_url", message)
+                .with_reason(reason)
+                .with_field("public_base_url")
+        })?;
     req.log_filter = normalize_optional_string(req.log_filter.as_deref());
     req.log_file = normalize_optional_string(req.log_file.as_deref());
     req.log_rotation = normalize_rotation(req.log_rotation.as_deref())?;

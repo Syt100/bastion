@@ -69,4 +69,32 @@ describe('router run workspace routes', () => {
       },
     })
   })
+
+  it('normalizes legacy agents routes to canonical fleet detail routes', async () => {
+    const router = await loadRouter()
+    const resolved = router.resolve('/agents/edge-a')
+    const redirect = resolved.matched[resolved.matched.length - 1]?.redirect
+    expect(typeof redirect).toBe('function')
+
+    const next = typeof redirect === 'function' ? (redirect as (...args: unknown[]) => unknown)(resolved) : redirect
+    expect(next).toEqual({
+      path: '/fleet/edge-a',
+      query: {},
+      hash: '',
+    })
+  })
+
+  it('normalizes legacy settings root to the canonical system surface', async () => {
+    const router = await loadRouter()
+    const resolved = router.resolve('/settings')
+    const redirect = resolved.matched[resolved.matched.length - 1]?.redirect
+    expect(typeof redirect).toBe('function')
+
+    const next = typeof redirect === 'function' ? (redirect as (...args: unknown[]) => unknown)(resolved) : redirect
+    expect(next).toEqual({
+      path: '/system',
+      query: {},
+      hash: '',
+    })
+  })
 })
