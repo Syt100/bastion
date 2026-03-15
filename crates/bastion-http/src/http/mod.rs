@@ -256,6 +256,14 @@ pub fn router(state: AppState) -> Router {
             get(integrations::get_integrations_summary),
         )
         .route(
+            "/api/integrations/storage",
+            get(integrations::get_storage_details),
+        )
+        .route(
+            "/api/integrations/distribution",
+            get(integrations::get_distribution_details),
+        )
+        .route(
             "/api/settings/hub-runtime-config",
             get(settings::get_hub_runtime_config).put(settings::put_hub_runtime_config),
         )

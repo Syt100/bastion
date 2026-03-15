@@ -413,24 +413,37 @@ async fn fleet_endpoints_return_summary_and_agent_detail() {
 
     let client = reqwest::Client::new();
     let list_resp = client
-        .get(format!("{}/api/fleet", base_url(addr)))
+        .get(format!(
+            "{}/api/fleet?status=online&q=edge-b&page=1&page_size=1",
+            base_url(addr)
+        ))
         .header("cookie", format!("bastion_session={}", session.id))
         .send()
         .await
         .expect("fleet list");
     assert_eq!(list_resp.status(), StatusCode::OK);
     let list_body = list_resp.json::<serde_json::Value>().await.expect("json");
-    assert_eq!(list_body["summary"]["total"].as_i64(), Some(3));
-    assert_eq!(list_body["summary"]["online"].as_i64(), Some(2));
-    assert_eq!(list_body["summary"]["revoked"].as_i64(), Some(1));
+    assert_eq!(list_body["summary"]["total"].as_i64(), Some(1));
+    assert_eq!(list_body["summary"]["online"].as_i64(), Some(1));
     assert_eq!(list_body["summary"]["drifted"].as_i64(), Some(1));
+    assert_eq!(list_body["page"].as_i64(), Some(1));
+    assert_eq!(list_body["page_size"].as_i64(), Some(1));
+    assert_eq!(list_body["total"].as_i64(), Some(1));
     assert_eq!(
         list_body["onboarding"]["public_base_url"].as_str(),
         Some("https://backup.example.com")
     );
     assert_eq!(
         list_body["items"].as_array().map(|items| items.len()),
-        Some(3)
+        Some(1)
+    );
+    assert_eq!(
+        list_body["items"][0]["assigned_jobs_total"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        list_body["items"][0]["pending_tasks_total"].as_i64(),
+        Some(1)
     );
 
     let detail_resp = client
@@ -587,6 +600,151 @@ async fn integrations_summary_reports_empty_and_degraded_domains() {
     );
     assert_eq!(
         degraded_body["distribution"]["summary"]["failed_total"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        degraded_body["distribution"]["summary"]["offline_total"].as_i64(),
+        Some(0)
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn integrations_detail_endpoints_expose_storage_usage_and_distribution_scope_context() {
+    let temp = TempDir::new().expect("tempdir");
+    let pool = db::init(temp.path()).await.expect("db init");
+    let session = seed_admin_session(&pool).await;
+    let config = test_config(&temp);
+    let secrets = Arc::new(SecretsCrypto::load_or_create(&config.data_dir).expect("secrets"));
+
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    insert_agent(
+        &pool,
+        InsertAgent {
+            agent_id: "edge-a",
+            name: "Edge A",
+            last_seen_at: Some(now),
+            revoked_at: None,
+            desired_snapshot_id: Some("cfg-2"),
+            applied_snapshot_id: Some("cfg-1"),
+            last_config_sync_error_kind: Some("send_failed"),
+        },
+    )
+    .await;
+    insert_agent(
+        &pool,
+        InsertAgent {
+            agent_id: "edge-b",
+            name: "Edge B",
+            last_seen_at: None,
+            revoked_at: None,
+            desired_snapshot_id: Some("cfg-3"),
+            applied_snapshot_id: Some("cfg-2"),
+            last_config_sync_error_kind: None,
+        },
+    )
+    .await;
+
+    secrets_repo::upsert_secret(&pool, &secrets, "edge-a", "webdav", "edge-dav", br#"{}"#)
+        .await
+        .expect("edge secret");
+
+    insert_job(
+        &pool,
+        "job-edge-dav",
+        Some("edge-a"),
+        "Edge WebDAV",
+        r#"{"v":1,"type":"filesystem","source":{"root":"/data"},"target":{"type":"webdav","base_url":"https://dav.example.com","secret_name":"edge-dav"}}"#,
+    )
+    .await;
+    insert_job(
+        &pool,
+        "job-edge-missing",
+        Some("edge-a"),
+        "Edge Missing Credential",
+        r#"{"v":1,"type":"filesystem","source":{"root":"/warehouse"},"target":{"type":"webdav","base_url":"https://dav.example.com","secret_name":"missing-edge-dav"}}"#,
+    )
+    .await;
+    insert_run(&pool, "run-edge-dav", "job-edge-dav", "failed").await;
+    sqlx::query(
+        "INSERT INTO agent_tasks (id, agent_id, run_id, status, payload_json, created_at, updated_at) VALUES (?, ?, ?, 'queued', '{}', ?, ?)",
+    )
+    .bind("task-edge-a")
+    .bind("edge-a")
+    .bind("run-edge-dav")
+    .bind(50i64)
+    .bind(50i64)
+    .execute(&pool)
+    .await
+    .expect("task");
+
+    let app = super::router(app_state(config, pool.clone(), secrets, Default::default()));
+
+    let (listener, addr) = start_test_server().await;
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve");
+    });
+
+    let client = reqwest::Client::new();
+    let storage_resp = client
+        .get(format!(
+            "{}/api/integrations/storage?node_id=edge-a",
+            base_url(addr)
+        ))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("storage details");
+    assert_eq!(storage_resp.status(), StatusCode::OK);
+    let storage_body = storage_resp
+        .json::<serde_json::Value>()
+        .await
+        .expect("json");
+    assert_eq!(storage_body["node_id"].as_str(), Some("edge-a"));
+    assert_eq!(storage_body["summary"]["items_total"].as_i64(), Some(1));
+    assert_eq!(storage_body["summary"]["invalid_total"].as_i64(), Some(1));
+    assert_eq!(storage_body["items"][0]["name"].as_str(), Some("edge-dav"));
+    assert_eq!(storage_body["items"][0]["usage_total"].as_i64(), Some(1));
+    assert_eq!(
+        storage_body["items"][0]["usage"][0]["job_name"].as_str(),
+        Some("Edge WebDAV")
+    );
+    assert_eq!(
+        storage_body["items"][0]["health"]["state"].as_str(),
+        Some("attention")
+    );
+
+    let distribution_resp = client
+        .get(format!("{}/api/integrations/distribution", base_url(addr)))
+        .header("cookie", format!("bastion_session={}", session.id))
+        .send()
+        .await
+        .expect("distribution details");
+    assert_eq!(distribution_resp.status(), StatusCode::OK);
+    let distribution_body = distribution_resp
+        .json::<serde_json::Value>()
+        .await
+        .expect("json");
+    assert_eq!(
+        distribution_body["summary"]["coverage_total"].as_i64(),
+        Some(2)
+    );
+    assert_eq!(
+        distribution_body["summary"]["offline_total"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        distribution_body["items"][0]["distribution_state"].as_str(),
+        Some("failed")
+    );
+    assert_eq!(
+        distribution_body["items"][0]["pending_tasks_total"].as_i64(),
         Some(1)
     );
 

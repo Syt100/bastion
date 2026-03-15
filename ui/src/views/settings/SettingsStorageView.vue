@@ -23,7 +23,8 @@ import { useI18n } from 'vue-i18n'
 
 import { useAgentsStore, type AgentsLabelsMode } from '@/stores/agents'
 import { useBulkOperationsStore, type WebdavDistributePreviewItem, type WebdavDistributePreviewResponse } from '@/stores/bulkOperations'
-import { useSecretsStore, type SecretListItem } from '@/stores/secrets'
+import { useIntegrationsStore, type StorageIntegrationItem } from '@/stores/integrations'
+import { useSecretsStore } from '@/stores/secrets'
 import { useUiStore } from '@/stores/ui'
 import AppModalShell from '@/components/AppModalShell.vue'
 import { MODAL_WIDTH } from '@/lib/modal'
@@ -42,6 +43,7 @@ const router = useRouter()
 const ui = useUiStore()
 const agents = useAgentsStore()
 const bulkOps = useBulkOperationsStore()
+const integrations = useIntegrationsStore()
 const secrets = useSecretsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 const copyToClipboard = createClipboardCopyAction(t, message)
@@ -56,6 +58,9 @@ const usingAllScopeFallback = computed(() => {
   const routeScope = parseScopeQueryValue(route.query.scope)
   return (routeScope ?? ui.preferredScope) === 'all'
 })
+const storageLoading = ref<boolean>(false)
+const storageItems = ref<StorageIntegrationItem[]>([])
+const storageSummary = ref<{ items_total: number; in_use_total: number; invalid_total: number } | null>(null)
 
 const editorOpen = ref<boolean>(false)
 const editorLoading = ref<boolean>(false)
@@ -100,10 +105,15 @@ function parseNodeIds(raw: string): string[] {
 }
 
 async function refresh(): Promise<void> {
+  storageLoading.value = true
   try {
-    await secrets.refreshWebdav(nodeId.value)
+    const response = await integrations.getStorage(nodeId.value)
+    storageItems.value = response.items
+    storageSummary.value = response.summary
   } catch (error) {
     message.error(formatToastError(t('errors.fetchWebdavSecretsFailed'), error, t))
+  } finally {
+    storageLoading.value = false
   }
 }
 
@@ -294,8 +304,53 @@ const previewColumns = computed<DataTableColumns<WebdavDistributePreviewItem>>((
   },
 ])
 
-const columns = computed<DataTableColumns<SecretListItem>>(() => [
+function renderUsageSummary(row: StorageIntegrationItem): string {
+  if (row.usage_total === 0) return t('integrations.storage.unused')
+  return t('integrations.storage.usageCount', { count: row.usage_total })
+}
+
+function healthTagType(state: StorageIntegrationItem['health']['state']): 'default' | 'success' | 'warning' | 'info' {
+  if (state === 'healthy') return 'success'
+  if (state === 'attention') return 'warning'
+  if (state === 'progressing') return 'info'
+  return 'default'
+}
+
+const columns = computed<DataTableColumns<StorageIntegrationItem>>(() => [
   { title: t('settings.webdav.columns.name'), key: 'name' },
+  {
+    title: t('settings.webdav.columns.usage'),
+    key: 'usage',
+    render: (row) =>
+      h('div', { class: 'space-y-1 text-sm' }, [
+        h('div', { class: 'font-medium' }, renderUsageSummary(row)),
+        ...(row.usage.slice(0, 2).map((usage) =>
+          h('div', { class: 'app-meta-text' }, `${usage.job_name} · ${usage.latest_run_status ?? t('integrations.storage.noSignal')}`),
+        )),
+      ]),
+  },
+  {
+    title: t('settings.webdav.columns.health'),
+    key: 'health',
+    render: (row) =>
+      h('div', { class: 'space-y-1 text-sm' }, [
+        h(
+          NTag,
+          { size: 'small', type: healthTagType(row.health.state) },
+          { default: () => t(`integrations.storage.health.${row.health.state}`) },
+        ),
+        h(
+          'div',
+          { class: 'app-meta-text' },
+          row.health.latest_run_at
+            ? t('integrations.storage.latestSignalAt', {
+                status: row.health.latest_run_status ?? t('integrations.storage.noSignal'),
+                time: formatUnixSeconds(row.health.latest_run_at),
+              })
+            : t('integrations.storage.noSignal'),
+        ),
+      ]),
+  },
   {
     title: t('settings.webdav.columns.updatedAt'),
     key: 'updated_at',
@@ -376,21 +431,55 @@ watch(distributeOpen, (open) => {
         <n-button size="small" @click="refresh">{{ t('common.refresh') }}</n-button>
       </template>
 
+      <n-alert
+        v-if="storageSummary && storageSummary.invalid_total > 0"
+        type="warning"
+        :bordered="false"
+        class="mb-4"
+      >
+        {{ t('integrations.storage.invalidSummary', { count: storageSummary.invalid_total }) }}
+      </n-alert>
+
       <div v-if="!isDesktop" class="space-y-2">
         <div
-          v-if="!secrets.loadingWebdav && secrets.webdav.length === 0"
+          v-if="!storageLoading && storageItems.length === 0"
           class="app-help-text px-1 py-2"
         >
           {{ t('common.noData') }}
         </div>
         <div
-          v-for="row in secrets.webdav"
+          v-for="row in storageItems"
           :key="row.name"
           class="p-3 rounded-lg app-border-subtle app-glass-soft"
         >
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-medium">{{ row.name }}</div>
+              <div class="text-xs app-text-muted mt-1">{{ renderUsageSummary(row) }}</div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <n-tag size="small" :type="healthTagType(row.health.state)">
+                  {{ t(`integrations.storage.health.${row.health.state}`) }}
+                </n-tag>
+                <span class="text-xs app-text-muted">
+                  {{
+                    row.health.latest_run_at
+                      ? t('integrations.storage.latestSignalAt', {
+                          status: row.health.latest_run_status ?? t('integrations.storage.noSignal'),
+                          time: formatUnixSeconds(row.health.latest_run_at),
+                        })
+                      : t('integrations.storage.noSignal')
+                  }}
+                </span>
+              </div>
+              <div v-if="row.usage.length > 0" class="mt-2 space-y-1">
+                <div
+                  v-for="usage in row.usage.slice(0, 2)"
+                  :key="usage.job_id"
+                  class="text-xs app-text-muted"
+                >
+                  {{ usage.job_name }} · {{ usage.latest_run_status ?? t('integrations.storage.noSignal') }}
+                </div>
+              </div>
               <div class="text-xs app-text-muted mt-1">{{ formatUnixSeconds(row.updated_at) }}</div>
             </div>
             <n-space size="small">
@@ -413,7 +502,7 @@ watch(distributeOpen, (open) => {
       </div>
 
       <div v-else class="overflow-x-auto">
-        <n-data-table :loading="secrets.loadingWebdav" :columns="columns" :data="secrets.webdav" />
+        <n-data-table :loading="storageLoading" :columns="columns" :data="storageItems" />
       </div>
     </n-card>
 

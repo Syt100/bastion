@@ -365,6 +365,18 @@ const messages = {
   fleet: {
     title: '客户端舰队',
     subtitle: '管理已接入节点、接入令牌与配置同步状态。',
+    columns: {
+      workload: '运维上下文',
+    },
+    workload: {
+      jobs: '{count} 个关联任务',
+      pendingTasks: '{count} 个待处理任务',
+      compact: '{jobs} 个任务 · {pending} 个待处理任务',
+    },
+    mobile: {
+      jobs: '关联任务',
+      pendingTasks: '待处理任务',
+    },
     summary: {
       title: '舰队健康概览',
       subtitle: '在同一屏幕中查看客户端连通性和配置分发状态。',
@@ -416,6 +428,18 @@ const messages = {
     },
     storage: {
       scopeFallback: '存储凭据仍然按节点管理。“全部系统”会先回退到 Hub，直到新的集成工作区支持完整范围视图。',
+      unused: '当前未被活动任务引用',
+      usageCount: '被 {count} 个活动任务引用',
+      noSignal: '暂无最近校验信号',
+      latestSignalAt: '最近信号：{status} · {time}',
+      invalidSummary: '当前范围内仍有 {count} 个活动任务引用需要修正凭据。',
+      health: {
+        healthy: '健康',
+        attention: '需关注',
+        progressing: '处理中',
+        configured: '已配置',
+        unused: '未使用',
+      },
     },
     distribution: {
       title: '分发',
@@ -423,6 +447,21 @@ const messages = {
       coverage: '覆盖客户端',
       drifted: '存在漂移',
       failed: '下发失败',
+      offline: '离线客户端',
+      scopeTitle: '范围明细',
+      scopeSubtitle: '在同一页面内查看每个客户端的漂移情况并继续跟进。',
+      scopeMeta: '{pending} 个待处理任务 · 最近尝试 {attemptedAt}',
+      openAgent: '打开客户端',
+      openStorage: '打开存储范围',
+      state: {
+        covered: '已覆盖',
+        drifted: '存在漂移',
+        failed: '失败',
+      },
+      connection: {
+        online: '在线',
+        offline: '离线',
+      },
       openFleet: '打开舰队',
       openBulkOperations: '打开批量操作',
     },
@@ -1389,6 +1428,8 @@ const messages = {
       },
       columns: {
         name: '名称',
+        usage: '使用位置',
+        health: '健康状态',
         updatedAt: '更新时间',
         actions: '操作',
       },

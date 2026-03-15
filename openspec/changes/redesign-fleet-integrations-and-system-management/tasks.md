@@ -24,3 +24,5 @@
 
 - [x] 5.1 Add or update UI tests for fleet onboarding, fleet detail, integrations grouping, and system route behavior
 - [x] 5.2 Run targeted backend and UI tests plus broader verification for navigation and generated-command correctness
+- [x] 5.3 Close the remaining spec-conformance gaps for aggregated Fleet list data, storage usage and health context, and distribution scope detail
+- [x] 5.4 Re-run strict OpenSpec validation plus regression and CI verification after the conformance fixes land

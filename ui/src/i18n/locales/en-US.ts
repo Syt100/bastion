@@ -365,6 +365,18 @@ const messages = {
   fleet: {
     title: 'Fleet',
     subtitle: 'Manage connected agents, enrollment, and config sync health.',
+    columns: {
+      workload: 'Operational context',
+    },
+    workload: {
+      jobs: '{count} assigned jobs',
+      pendingTasks: '{count} pending tasks',
+      compact: '{jobs} jobs · {pending} pending tasks',
+    },
+    mobile: {
+      jobs: 'Assigned jobs',
+      pendingTasks: 'Pending tasks',
+    },
     summary: {
       title: 'Fleet health',
       subtitle: 'Monitor current agent reachability and config distribution at a glance.',
@@ -419,6 +431,18 @@ const messages = {
     storage: {
       scopeFallback:
         'Storage secrets are managed per node. “All systems” falls back to the Hub until the scoped integrations workspace lands.',
+      unused: 'Not referenced by active jobs',
+      usageCount: 'Referenced by {count} active jobs',
+      noSignal: 'No recent validation signal',
+      latestSignalAt: 'Latest signal: {status} · {time}',
+      invalidSummary: '{count} active job references in this scope still require credential correction.',
+      health: {
+        healthy: 'Healthy',
+        attention: 'Needs attention',
+        progressing: 'In progress',
+        configured: 'Configured',
+        unused: 'Unused',
+      },
     },
     distribution: {
       title: 'Distribution',
@@ -426,6 +450,21 @@ const messages = {
       coverage: 'Covered agents',
       drifted: 'Drifted',
       failed: 'Failed',
+      offline: 'Offline agents',
+      scopeTitle: 'Scope detail',
+      scopeSubtitle: 'Review per-agent drift and follow-up from the same surface.',
+      scopeMeta: '{pending} pending tasks · Last attempt {attemptedAt}',
+      openAgent: 'Open agent',
+      openStorage: 'Open storage scope',
+      state: {
+        covered: 'Covered',
+        drifted: 'Drifted',
+        failed: 'Failed',
+      },
+      connection: {
+        online: 'Online',
+        offline: 'Offline',
+      },
       openFleet: 'Open Fleet',
       openBulkOperations: 'Open bulk operations',
     },
@@ -1397,6 +1436,8 @@ const messages = {
       },
       columns: {
         name: 'Name',
+        usage: 'Used by',
+        health: 'Health',
         updatedAt: 'Updated',
         actions: 'Actions',
       },

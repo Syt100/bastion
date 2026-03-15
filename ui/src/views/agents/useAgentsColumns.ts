@@ -2,7 +2,7 @@ import { computed, h, type ComputedRef, type Ref } from 'vue'
 import { NButton, NSpace, NTag, type DataTableColumns, type DropdownOption } from 'naive-ui'
 
 import OverflowActionsButton from '@/components/list/OverflowActionsButton.vue'
-import type { AgentListItem } from '@/stores/agents'
+import type { FleetListItem } from '@/stores/fleet'
 
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -11,17 +11,17 @@ export function useAgentsColumns(options: {
   isDesktop: Ref<boolean>
   shortId: (value: string) => string
   copyToClipboard: (value: string) => Promise<void>
-  configSyncStatusTagType: (status: AgentListItem['config_sync_status']) => 'default' | 'success' | 'warning' | 'error'
-  configSyncTitle: (row: AgentListItem) => string
-  configSyncStatusLabel: (status: AgentListItem['config_sync_status']) => string
+  configSyncStatusTagType: (status: FleetListItem['config_sync']['state']) => 'default' | 'success' | 'warning' | 'error'
+  configSyncTitle: (row: FleetListItem) => string
+  configSyncStatusLabel: (status: FleetListItem['config_sync']['state']) => string
   formatUnixSeconds: (value: number | null) => string
   syncNowLoading: Ref<string | null>
   openAgentWorkspace: (agentId: string) => void
   openAgentJobs: (agentId: string) => void
   syncConfigNow: (agentId: string) => Promise<void>
-  agentOverflowOptions: (row: AgentListItem) => DropdownOption[]
-  onSelectAgentOverflow: (row: AgentListItem, key: string | number) => void
-}): { columns: ComputedRef<DataTableColumns<AgentListItem>> } {
+  agentOverflowOptions: (row: FleetListItem) => DropdownOption[]
+  onSelectAgentOverflow: (row: FleetListItem, key: string | number) => void
+}): { columns: ComputedRef<DataTableColumns<FleetListItem>> } {
   const {
     t,
     isDesktop,
@@ -39,7 +39,7 @@ export function useAgentsColumns(options: {
     onSelectAgentOverflow,
   } = options
 
-  const columns = computed<DataTableColumns<AgentListItem>>(() => [
+  const columns = computed<DataTableColumns<FleetListItem>>(() => [
     ...(isDesktop.value ? [{ type: 'selection' as const }] : []),
     {
       title: t('agents.columns.name'),
@@ -84,29 +84,38 @@ export function useAgentsColumns(options: {
       title: t('agents.columns.status'),
       key: 'status',
       render: (row) => {
-        const conn = row.revoked
+        const conn = row.status === 'revoked'
           ? h(NTag, { type: 'error', size: 'small' }, { default: () => t('agents.status.revoked') })
-          : row.online
+          : row.status === 'online'
             ? h(NTag, { type: 'success', size: 'small' }, { default: () => t('agents.status.online') })
             : h(NTag, { size: 'small' }, { default: () => t('agents.status.offline') })
 
         const cfg = h(
           NTag,
           {
-            type: configSyncStatusTagType(row.config_sync_status),
+            type: configSyncStatusTagType(row.config_sync.state),
             size: 'small',
             title: configSyncTitle(row),
           },
-          { default: () => configSyncStatusLabel(row.config_sync_status) },
+          { default: () => configSyncStatusLabel(row.config_sync.state) },
         )
 
         return h('div', { class: 'flex flex-wrap gap-1' }, [conn, cfg])
       },
     },
     {
+      title: t('fleet.columns.workload'),
+      key: 'workload',
+      render: (row) =>
+        h('div', { class: 'space-y-1 text-sm' }, [
+          h('div', { class: 'font-medium' }, t('fleet.workload.jobs', { count: row.assigned_jobs_total })),
+          h('div', { class: 'app-meta-text' }, t('fleet.workload.pendingTasks', { count: row.pending_tasks_total })),
+        ]),
+    },
+    {
       title: t('agents.columns.lastSeen'),
       key: 'last_seen_at',
-      render: (row) => formatUnixSeconds(row.last_seen_at),
+      render: (row) => formatUnixSeconds(row.last_seen_at ?? null),
     },
     {
       title: t('agents.columns.actions'),
@@ -128,7 +137,7 @@ export function useAgentsColumns(options: {
                   tertiary: true,
                   size: 'small',
                   loading: syncNowLoading.value === row.id,
-                  disabled: row.revoked,
+                  disabled: row.status === 'revoked',
                   onClick: () => syncConfigNow(row.id),
                 },
                 { default: () => t('agents.actions.syncNow') },

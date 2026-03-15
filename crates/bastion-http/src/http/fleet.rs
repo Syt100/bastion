@@ -1,9 +1,10 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use serde::Serialize;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 use tower_cookies::Cookies;
 
+use super::agents::{LabelsMode, normalize_labels, parse_labels_mode};
 use super::shared::require_session;
 use super::{AppError, AppState};
 use bastion_storage::agent_labels_repo;
@@ -28,6 +29,7 @@ struct FleetConfigSyncSummary {
     state: String,
     last_error_kind: Option<String>,
     last_error: Option<String>,
+    last_attempt_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +49,130 @@ pub(in crate::http) struct FleetListResponse {
     summary: FleetSummary,
     onboarding: FleetOnboarding,
     items: Vec<FleetListItem>,
+    page: i64,
+    page_size: i64,
+    total: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FleetStatusFilter {
+    All,
+    Online,
+    Offline,
+    Revoked,
+}
+
+fn invalid_page_size_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page_size", message)
+        .with_reason(reason)
+        .with_field("page_size")
+}
+
+fn invalid_page_error(reason: &'static str, message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_page", message)
+        .with_reason(reason)
+        .with_field("page")
+}
+
+fn invalid_status_error(message: impl Into<String>) -> AppError {
+    AppError::bad_request("invalid_status", message)
+        .with_reason("unsupported_value")
+        .with_field("status")
+}
+
+fn parse_status_filter(value: Option<&str>) -> Result<FleetStatusFilter, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("all");
+
+    match value {
+        "all" => Ok(FleetStatusFilter::All),
+        "online" => Ok(FleetStatusFilter::Online),
+        "offline" => Ok(FleetStatusFilter::Offline),
+        "revoked" => Ok(FleetStatusFilter::Revoked),
+        _ => Err(invalid_status_error("Invalid status")),
+    }
+}
+
+fn normalize_search_query(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn push_fleet_list_filters(
+    qb: &mut QueryBuilder<sqlx::Sqlite>,
+    labels: &[String],
+    mode: LabelsMode,
+    status: FleetStatusFilter,
+    online_cutoff: i64,
+    search: Option<&str>,
+) {
+    let mut has_where = false;
+    let mut push_next = |qb: &mut QueryBuilder<sqlx::Sqlite>| {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+    };
+
+    if !labels.is_empty() {
+        push_next(qb);
+        qb.push("a.id IN (");
+        match mode {
+            LabelsMode::And => {
+                qb.push("SELECT al2.agent_id FROM agent_labels al2 WHERE al2.label IN (");
+                let mut separated = qb.separated(", ");
+                for label in labels {
+                    separated.push_bind(label.clone());
+                }
+                separated.push_unseparated(")");
+                qb.push(" GROUP BY al2.agent_id HAVING COUNT(DISTINCT al2.label) = ");
+                qb.push_bind(labels.len() as i64);
+            }
+            LabelsMode::Or => {
+                qb.push("SELECT DISTINCT al2.agent_id FROM agent_labels al2 WHERE al2.label IN (");
+                let mut separated = qb.separated(", ");
+                for label in labels {
+                    separated.push_bind(label.clone());
+                }
+                separated.push_unseparated(")");
+            }
+        }
+        qb.push(")");
+    }
+
+    match status {
+        FleetStatusFilter::All => {}
+        FleetStatusFilter::Revoked => {
+            push_next(qb);
+            qb.push("a.revoked_at IS NOT NULL");
+        }
+        FleetStatusFilter::Online => {
+            push_next(qb);
+            qb.push("a.revoked_at IS NULL AND a.last_seen_at IS NOT NULL AND a.last_seen_at >= ");
+            qb.push_bind(online_cutoff);
+        }
+        FleetStatusFilter::Offline => {
+            push_next(qb);
+            qb.push("a.revoked_at IS NULL AND (a.last_seen_at IS NULL OR a.last_seen_at < ");
+            qb.push_bind(online_cutoff);
+            qb.push(")");
+        }
+    }
+
+    if let Some(search) = search {
+        let pattern = format!("%{}%", search.to_lowercase());
+        push_next(qb);
+        qb.push("(LOWER(COALESCE(a.name, '')) LIKE ");
+        qb.push_bind(pattern.clone());
+        qb.push(" OR LOWER(a.id) LIKE ");
+        qb.push_bind(pattern);
+        qb.push(")");
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -148,104 +274,214 @@ fn fleet_status(revoked: bool, online: bool) -> &'static str {
 pub(in crate::http) async fn list_fleet(
     state: State<AppState>,
     cookies: Cookies,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<FleetListResponse>, AppError> {
     let _session = require_session(&state, &cookies).await?;
 
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
-    let rows = sqlx::query(
-        r#"
-        SELECT
-          a.id,
-          a.name,
-          a.created_at,
-          a.revoked_at,
-          a.last_seen_at,
-          a.desired_config_snapshot_id,
-          a.applied_config_snapshot_id,
-          a.last_config_sync_error_kind,
-          a.last_config_sync_error,
-          COALESCE(job_counts.total, 0) AS assigned_jobs_total,
-          COALESCE(task_counts.total, 0) AS pending_tasks_total,
-          al.label
-        FROM agents a
-        LEFT JOIN agent_labels al ON al.agent_id = a.id
-        LEFT JOIN (
-          SELECT agent_id, COUNT(*) AS total
-          FROM jobs
-          WHERE archived_at IS NULL AND agent_id IS NOT NULL
-          GROUP BY agent_id
-        ) AS job_counts ON job_counts.agent_id = a.id
-        LEFT JOIN (
-          SELECT agent_id, COUNT(*) AS total
-          FROM agent_tasks
-          WHERE completed_at IS NULL
-          GROUP BY agent_id
-        ) AS task_counts ON task_counts.agent_id = a.id
-        ORDER BY a.created_at DESC, a.id ASC, al.label ASC
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let online_cutoff = now.saturating_sub(60);
 
-    let mut items = Vec::new();
-    let mut current_id: Option<String> = None;
-    let mut summary = FleetSummary {
-        total: 0,
-        online: 0,
-        offline: 0,
-        revoked: 0,
-        drifted: 0,
+    let mut labels = Vec::new();
+    let mut labels_mode: Option<String> = None;
+    let mut status: Option<String> = None;
+    let mut search: Option<String> = None;
+    let mut page: Option<i64> = None;
+    let mut page_size: Option<i64> = None;
+
+    if let Some(raw) = raw {
+        for (key, value) in url::form_urlencoded::parse(raw.as_bytes()) {
+            match key.as_ref() {
+                "labels" | "labels[]" => labels.push(value.into_owned()),
+                "labels_mode" => labels_mode = Some(value.into_owned()),
+                "status" => status = Some(value.into_owned()),
+                "q" => search = Some(value.into_owned()),
+                "page" => {
+                    let parsed = value
+                        .parse::<i64>()
+                        .map_err(|_| invalid_page_error("invalid_format", "Invalid page"))?;
+                    page = Some(parsed);
+                }
+                "page_size" => {
+                    let parsed = value.parse::<i64>().map_err(|_| {
+                        invalid_page_size_error("invalid_format", "Invalid page_size")
+                    })?;
+                    page_size = Some(parsed);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let labels = normalize_labels(labels)?;
+    let labels_mode = parse_labels_mode(labels_mode.as_deref())?;
+    let status = parse_status_filter(status.as_deref())?;
+    let search = normalize_search_query(search);
+
+    let mut summary_qb = QueryBuilder::new(
+        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN a.revoked_at IS NULL AND a.last_seen_at IS NOT NULL AND a.last_seen_at >= ",
+    );
+    summary_qb.push_bind(online_cutoff);
+    summary_qb.push(
+        " THEN 1 ELSE 0 END), 0) AS online, COALESCE(SUM(CASE WHEN a.revoked_at IS NULL AND (a.last_seen_at IS NULL OR a.last_seen_at < ",
+    );
+    summary_qb.push_bind(online_cutoff);
+    summary_qb.push(
+        ") THEN 1 ELSE 0 END), 0) AS offline, COALESCE(SUM(CASE WHEN a.revoked_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS revoked, COALESCE(SUM(CASE WHEN a.revoked_at IS NULL AND a.last_seen_at IS NOT NULL AND a.last_seen_at >= ",
+    );
+    summary_qb.push_bind(online_cutoff);
+    summary_qb.push(
+        " AND (a.last_config_sync_error_kind IS NOT NULL OR a.desired_config_snapshot_id IS NULL OR COALESCE(a.applied_config_snapshot_id, '') != a.desired_config_snapshot_id) THEN 1 ELSE 0 END), 0) AS drifted FROM agents a",
+    );
+    push_fleet_list_filters(
+        &mut summary_qb,
+        &labels,
+        labels_mode,
+        status,
+        online_cutoff,
+        search.as_deref(),
+    );
+    let summary_row = summary_qb.build().fetch_one(&state.db).await?;
+    let summary = FleetSummary {
+        total: summary_row.get::<i64, _>("total"),
+        online: summary_row.get::<i64, _>("online"),
+        offline: summary_row.get::<i64, _>("offline"),
+        revoked: summary_row.get::<i64, _>("revoked"),
+        drifted: summary_row.get::<i64, _>("drifted"),
+    };
+    let total = summary.total;
+
+    let pagination_requested = page.is_some() || page_size.is_some();
+    let page = page.unwrap_or(1);
+    if page < 1 {
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
+    }
+
+    let page_size = if pagination_requested {
+        let page_size = page_size.unwrap_or(20);
+        if page_size < 1 {
+            return Err(
+                invalid_page_size_error("must_be_positive", "Invalid page_size")
+                    .with_param("min", 1),
+            );
+        }
+        page_size.clamp(1, 100)
+    } else {
+        summary.total
     };
 
-    for row in rows {
-        let id = row.get::<String, _>("id");
-        let is_new = current_id.as_deref() != Some(id.as_str());
-        if is_new {
-            let revoked = row.get::<Option<i64>, _>("revoked_at").is_some();
-            let last_seen_at = row.get::<Option<i64>, _>("last_seen_at");
-            let online = agent_online(revoked, last_seen_at, now);
-            let desired_snapshot_id = row.get::<Option<String>, _>("desired_config_snapshot_id");
-            let applied_snapshot_id = row.get::<Option<String>, _>("applied_config_snapshot_id");
-            let last_error_kind = row.get::<Option<String>, _>("last_config_sync_error_kind");
-            let last_error = row.get::<Option<String>, _>("last_config_sync_error");
-            let sync_state = config_sync_state(
-                online,
-                desired_snapshot_id.as_deref(),
-                applied_snapshot_id.as_deref(),
-                last_error_kind.as_deref(),
-            );
+    let mut ids_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("SELECT a.id FROM agents a");
+    push_fleet_list_filters(
+        &mut ids_qb,
+        &labels,
+        labels_mode,
+        status,
+        online_cutoff,
+        search.as_deref(),
+    );
+    ids_qb.push(" ORDER BY a.created_at DESC, a.id ASC");
 
-            summary.total += 1;
-            match fleet_status(revoked, online) {
-                "revoked" => summary.revoked += 1,
-                "online" => summary.online += 1,
-                _ => summary.offline += 1,
-            }
-            if sync_state == "pending" || sync_state == "error" {
-                summary.drifted += 1;
-            }
+    if pagination_requested {
+        let offset = (page - 1).saturating_mul(page_size);
+        ids_qb.push(" LIMIT ");
+        ids_qb.push_bind(page_size);
+        ids_qb.push(" OFFSET ");
+        ids_qb.push_bind(offset);
+    }
 
-            items.push(FleetListItem {
-                id: id.clone(),
-                name: row.get::<Option<String>, _>("name"),
-                status: fleet_status(revoked, online).to_string(),
-                last_seen_at,
-                labels: Vec::new(),
-                config_sync: FleetConfigSyncSummary {
-                    state: sync_state.to_string(),
-                    last_error_kind,
-                    last_error,
-                },
-                assigned_jobs_total: row.get::<i64, _>("assigned_jobs_total"),
-                pending_tasks_total: row.get::<i64, _>("pending_tasks_total"),
-            });
-            current_id = Some(id);
+    let id_rows = ids_qb.build().fetch_all(&state.db).await?;
+    let ids: Vec<String> = id_rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("id"))
+        .collect();
+
+    let mut items = Vec::new();
+    if !ids.is_empty() {
+        let mut rows_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+            r#"
+            SELECT
+              a.id,
+              a.name,
+              a.created_at,
+              a.revoked_at,
+              a.last_seen_at,
+              a.desired_config_snapshot_id,
+              a.applied_config_snapshot_id,
+              a.last_config_sync_attempt_at,
+              a.last_config_sync_error_kind,
+              a.last_config_sync_error,
+              COALESCE(job_counts.total, 0) AS assigned_jobs_total,
+              COALESCE(task_counts.total, 0) AS pending_tasks_total,
+              al.label
+            FROM agents a
+            LEFT JOIN agent_labels al ON al.agent_id = a.id
+            LEFT JOIN (
+              SELECT agent_id, COUNT(*) AS total
+              FROM jobs
+              WHERE archived_at IS NULL AND agent_id IS NOT NULL
+              GROUP BY agent_id
+            ) AS job_counts ON job_counts.agent_id = a.id
+            LEFT JOIN (
+              SELECT agent_id, COUNT(*) AS total
+              FROM agent_tasks
+              WHERE completed_at IS NULL
+              GROUP BY agent_id
+            ) AS task_counts ON task_counts.agent_id = a.id
+            WHERE a.id IN (
+            "#,
+        );
+        let mut separated = rows_qb.separated(", ");
+        for id in &ids {
+            separated.push_bind(id);
         }
+        separated.push_unseparated(")");
+        rows_qb.push(" ORDER BY a.created_at DESC, a.id ASC, al.label ASC");
 
-        if let Some(label) = row.get::<Option<String>, _>("label")
-            && let Some(last) = items.last_mut()
-        {
-            last.labels.push(label);
+        let rows = rows_qb.build().fetch_all(&state.db).await?;
+        let mut current_id: Option<String> = None;
+
+        for row in rows {
+            let id = row.get::<String, _>("id");
+            let is_new = current_id.as_deref() != Some(id.as_str());
+            if is_new {
+                let revoked = row.get::<Option<i64>, _>("revoked_at").is_some();
+                let last_seen_at = row.get::<Option<i64>, _>("last_seen_at");
+                let online = agent_online(revoked, last_seen_at, now);
+                let desired_snapshot_id =
+                    row.get::<Option<String>, _>("desired_config_snapshot_id");
+                let applied_snapshot_id =
+                    row.get::<Option<String>, _>("applied_config_snapshot_id");
+                let last_error_kind = row.get::<Option<String>, _>("last_config_sync_error_kind");
+                let last_error = row.get::<Option<String>, _>("last_config_sync_error");
+                let sync_state = config_sync_state(
+                    online,
+                    desired_snapshot_id.as_deref(),
+                    applied_snapshot_id.as_deref(),
+                    last_error_kind.as_deref(),
+                );
+
+                items.push(FleetListItem {
+                    id: id.clone(),
+                    name: row.get::<Option<String>, _>("name"),
+                    status: fleet_status(revoked, online).to_string(),
+                    last_seen_at,
+                    labels: Vec::new(),
+                    config_sync: FleetConfigSyncSummary {
+                        state: sync_state.to_string(),
+                        last_error_kind,
+                        last_error,
+                        last_attempt_at: row.get::<Option<i64>, _>("last_config_sync_attempt_at"),
+                    },
+                    assigned_jobs_total: row.get::<i64, _>("assigned_jobs_total"),
+                    pending_tasks_total: row.get::<i64, _>("pending_tasks_total"),
+                });
+                current_id = Some(id);
+            }
+
+            if let Some(label) = row.get::<Option<String>, _>("label")
+                && let Some(last) = items.last_mut()
+            {
+                last.labels.push(label);
+            }
         }
     }
 
@@ -256,6 +492,13 @@ pub(in crate::http) async fn list_fleet(
             command_generation_ready: state.hub_runtime_config.public_base_url.is_some(),
         },
         items,
+        page: if pagination_requested { page } else { 1 },
+        page_size: if pagination_requested {
+            page_size
+        } else {
+            total
+        },
+        total,
     }))
 }
 

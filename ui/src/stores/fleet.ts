@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 
 import { apiFetch } from '@/lib/api'
+import { appendPaginationParams, appendQueryArrayParam, appendQueryTextParam, buildQuerySuffix } from '@/lib/listQuery'
+
+export type FleetListStatusFilter = 'all' | 'online' | 'offline' | 'revoked'
+export type FleetLabelsMode = 'and' | 'or'
 
 export type FleetSummary = {
   total: number
@@ -19,6 +23,7 @@ export type FleetConfigSync = {
   state: 'synced' | 'pending' | 'error' | 'offline'
   last_error_kind?: string | null
   last_error?: string | null
+  last_attempt_at?: number | null
 }
 
 export type FleetListItem = {
@@ -36,6 +41,18 @@ export type FleetListResponse = {
   summary: FleetSummary
   onboarding: FleetOnboarding
   items: FleetListItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export type FleetListFilters = {
+  labels?: string[]
+  labelsMode?: FleetLabelsMode
+  status?: FleetListStatusFilter
+  q?: string
+  page?: number
+  pageSize?: number
 }
 
 export type FleetAgentSummary = {
@@ -90,8 +107,15 @@ export type FleetAgentDetailResponse = {
 }
 
 export const useFleetStore = defineStore('fleet', () => {
-  async function list(signal?: AbortSignal): Promise<FleetListResponse> {
-    return await apiFetch<FleetListResponse>('/api/fleet', { signal })
+  async function list(filters?: FleetListFilters, signal?: AbortSignal): Promise<FleetListResponse> {
+    const q = new URLSearchParams()
+    appendQueryArrayParam(q, 'labels[]', filters?.labels)
+    appendQueryTextParam(q, 'labels_mode', filters?.labelsMode)
+    if (filters?.status && filters.status !== 'all') q.set('status', filters.status)
+    appendQueryTextParam(q, 'q', filters?.q)
+    appendPaginationParams(q, { page: filters?.page, pageSize: filters?.pageSize })
+
+    return await apiFetch<FleetListResponse>('/api/fleet' + buildQuerySuffix(q), { signal })
   }
 
   async function get(agentId: string, signal?: AbortSignal): Promise<FleetAgentDetailResponse> {

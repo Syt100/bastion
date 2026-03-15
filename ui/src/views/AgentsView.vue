@@ -21,10 +21,10 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useAgentsStore, type AgentDetail, type AgentListItem, type AgentListStatusFilter, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
+import { useAgentsStore, type AgentDetail, type AgentsLabelsMode, type EnrollmentToken } from '@/stores/agents'
 import { useBulkOperationsStore, type BulkSelectorRequest } from '@/stores/bulkOperations'
 import { useControlPlaneStore, type PublicMetadataResponse } from '@/stores/controlPlane'
-import { useFleetStore, type FleetListResponse } from '@/stores/fleet'
+import { useFleetStore, type FleetListItem, type FleetListResponse, type FleetListStatusFilter } from '@/stores/fleet'
 import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/PageHeader.vue'
 import AppModalShell from '@/components/AppModalShell.vue'
@@ -108,7 +108,7 @@ const rotateResult = ref<{ agent_id: string; agent_key: string } | null>(null)
 const confirmOpen = ref<boolean>(false)
 const confirmBusy = ref<boolean>(false)
 const confirmKind = ref<'rotate_key' | 'revoke'>('revoke')
-const confirmAgent = ref<AgentListItem | null>(null)
+const confirmAgent = ref<FleetListItem | null>(null)
 
 const labelIndexLoading = ref<boolean>(false)
 const labelIndex = ref<{ label: string; count: number }[]>([])
@@ -117,7 +117,7 @@ const labelsMode = ref<AgentsLabelsMode>('and')
 const selectedAgentIds = ref<string[]>([])
 
 const searchText = ref<string>('')
-const statusFilter = ref<AgentListStatusFilter>('all')
+const statusFilter = ref<FleetListStatusFilter>('all')
 const STATUS_QUERY_VALUES = ['all', 'online', 'offline', 'revoked'] as const
 
 function applyRouteFilters(): void {
@@ -128,7 +128,7 @@ applyRouteFilters()
 
 const labelsModalOpen = ref<boolean>(false)
 const labelsSaving = ref<boolean>(false)
-const labelsAgent = ref<AgentListItem | null>(null)
+const labelsAgent = ref<FleetListItem | null>(null)
 const labelsValue = ref<string[]>([])
 
 const bulkLabelsModalOpen = ref<boolean>(false)
@@ -167,11 +167,13 @@ const statusOptions = computed(() => [
   { label: t('agents.status.offline'), value: 'offline' },
   { label: t('agents.status.revoked'), value: 'revoked' },
 ])
+const fleetItems = computed(() => fleetOverview.value?.items ?? [])
+const fleetTotal = computed(() => fleetOverview.value?.total ?? 0)
 
 const agentsPage = ref<number>(1)
 const agentsPageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
 const agentsPageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
-const agentsRangeSummary = computed(() => buildListRangeSummary(agents.total, agentsPage.value, agentsPageSize.value))
+const agentsRangeSummary = computed(() => buildListRangeSummary(fleetTotal.value, agentsPage.value, agentsPageSize.value))
 const agentsPaginationLabel = computed(() => t('common.paginationRange', agentsRangeSummary.value))
 
 const {
@@ -199,7 +201,7 @@ const {
   }),
 ])
 
-const listBaseEmpty = computed<boolean>(() => agents.total === 0 && !hasActiveFilters.value)
+const listBaseEmpty = computed<boolean>(() => fleetTotal.value === 0 && !hasActiveFilters.value)
 const hasScopedBulkActions = computed<boolean>(() => selectedAgentIds.value.length === 0 && selectedLabels.value.length > 0)
 
 function clearFilters(): void {
@@ -215,9 +217,10 @@ function resetToFirstPageAndRefresh(): void {
   }
 }
 
-async function refresh(): Promise<void> {
+async function refreshFleetOverview(): Promise<void> {
+  fleetOverviewLoading.value = true
   try {
-    await agents.refresh({
+    fleetOverview.value = await fleetWorkspace.list({
       labels: selectedLabels.value,
       labelsMode: labelsMode.value,
       status: statusFilter.value,
@@ -227,6 +230,8 @@ async function refresh(): Promise<void> {
     })
   } catch (error) {
     message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
+  } finally {
+    fleetOverviewLoading.value = false
   }
 }
 
@@ -241,19 +246,8 @@ async function refreshPublicMetadata(): Promise<void> {
   }
 }
 
-async function refreshFleetOverview(): Promise<void> {
-  fleetOverviewLoading.value = true
-  try {
-    fleetOverview.value = await fleetWorkspace.list()
-  } catch (error) {
-    message.error(formatToastError(t('errors.fetchAgentsFailed'), error, t))
-  } finally {
-    fleetOverviewLoading.value = false
-  }
-}
-
 async function refreshPage(): Promise<void> {
-  await Promise.allSettled([refreshLabelIndex(), refresh(), refreshPublicMetadata(), refreshFleetOverview()])
+  await Promise.allSettled([refreshLabelIndex(), refreshPublicMetadata(), refreshFleetOverview()])
 }
 
 async function refreshLabelIndex(): Promise<void> {
@@ -318,7 +312,7 @@ function openRuntimeConfig(): void {
 async function revokeAgent(agentId: string): Promise<void> {
   try {
     await agents.revokeAgent(agentId)
-    await refresh()
+    await refreshFleetOverview()
     message.success(t('messages.agentRevoked'))
   } catch (error) {
     message.error(formatToastError(t('errors.revokeAgentFailed'), error, t))
@@ -343,7 +337,7 @@ const confirmBody = computed(() =>
   confirmKind.value === 'rotate_key' ? t('agents.rotateConfirm') : t('agents.revokeConfirm'),
 )
 
-function openConfirm(kind: 'rotate_key' | 'revoke', agent: AgentListItem): void {
+function openConfirm(kind: 'rotate_key' | 'revoke', agent: FleetListItem): void {
   confirmKind.value = kind
   confirmAgent.value = agent
   confirmOpen.value = true
@@ -366,7 +360,7 @@ async function confirmDangerAction(): Promise<void> {
   }
 }
 
-function openLabelsModal(agent: AgentListItem): void {
+function openLabelsModal(agent: FleetListItem): void {
   labelsAgent.value = agent
   labelsValue.value = [...(agent.labels ?? [])]
   labelsModalOpen.value = true
@@ -475,12 +469,12 @@ async function createBulkSyncOperation(): Promise<void> {
   }
 }
 
-function configSyncStatusLabel(status: AgentListItem['config_sync_status']): string {
+function configSyncStatusLabel(status: FleetListItem['config_sync']['state']): string {
   return t(`agents.configSyncStatus.${status}`)
 }
 
 function configSyncStatusTagType(
-  status: AgentListItem['config_sync_status'],
+  status: FleetListItem['config_sync']['state'],
 ): 'default' | 'success' | 'warning' | 'error' {
   if (status === 'synced') return 'success'
   if (status === 'pending') return 'warning'
@@ -488,11 +482,10 @@ function configSyncStatusTagType(
   return 'default'
 }
 
-function configSyncTitle(row: AgentListItem): string {
-  const desired = row.desired_config_snapshot_id ?? '-'
-  const applied = row.applied_config_snapshot_id ?? '-'
-  const err = row.last_config_sync_error ?? '-'
-  return `desired: ${desired}\napplied: ${applied}\nerror: ${err}`
+function configSyncTitle(row: FleetListItem): string {
+  const attempt = formatUnixSeconds(row.config_sync.last_attempt_at ?? null)
+  const err = row.config_sync.last_error ?? '-'
+  return `Last attempt: ${attempt}\nError: ${err}`
 }
 
 async function openAgentDetail(agentId: string): Promise<void> {
@@ -524,7 +517,7 @@ async function syncConfigNow(agentId: string): Promise<void> {
     } else {
       message.success(t('messages.syncConfigSent'))
     }
-    await refresh()
+    await refreshFleetOverview()
     if (detail.value?.id === agentId) {
       detail.value = await agents.getAgent(agentId)
     }
@@ -542,7 +535,7 @@ async function saveAgentLabels(): Promise<void> {
   try {
     await agents.setAgentLabels(labelsAgent.value.id, labelsValue.value)
     await refreshLabelIndex()
-    await refresh()
+    await refreshFleetOverview()
     message.success(t('messages.agentLabelsUpdated'))
     labelsModalOpen.value = false
   } catch (error) {
@@ -552,7 +545,7 @@ async function saveAgentLabels(): Promise<void> {
   }
 }
 
-function agentOverflowOptions(row: AgentListItem): DropdownOption[] {
+function agentOverflowOptions(row: FleetListItem): DropdownOption[] {
   return [
     { label: t('agents.actions.storage'), key: 'storage' },
     { label: t('agents.actions.details'), key: 'details' },
@@ -561,19 +554,19 @@ function agentOverflowOptions(row: AgentListItem): DropdownOption[] {
     {
       label: t('agents.actions.rotateKey'),
       key: 'rotate_key',
-      disabled: row.revoked,
+      disabled: row.status === 'revoked',
       props: { style: 'color: var(--app-warning);' },
     },
     {
       label: t('agents.actions.revoke'),
       key: 'revoke',
-      disabled: row.revoked,
+      disabled: row.status === 'revoked',
       props: { style: 'color: var(--app-danger);' },
     },
   ]
 }
 
-function onSelectAgentOverflow(row: AgentListItem, key: string | number): void {
+function onSelectAgentOverflow(row: FleetListItem, key: string | number): void {
   if (key === 'storage') return openAgentStorage(row.id)
   if (key === 'details') return void openAgentDetail(row.id)
   if (key === 'labels') return openLabelsModal(row)
@@ -600,7 +593,7 @@ const { columns } = useAgentsColumns({
 
 const debouncedRefresh = createDebouncedTask(
   () => {
-    void refresh()
+    void refreshFleetOverview()
   },
   LIST_QUERY_DEBOUNCE_MS,
 )
@@ -612,14 +605,14 @@ function scheduleRefresh(): void {
 watch([selectedLabels, labelsMode], resetToFirstPageAndRefresh, { deep: true })
 watch([searchText, statusFilter], resetToFirstPageAndRefresh)
 watch(agentsPage, () => {
-  void refresh()
+  void refreshFleetOverview()
 })
 watch(agentsPageSize, () => {
   if (agentsPage.value !== 1) {
     agentsPage.value = 1
     return
   }
-  void refresh()
+  void refreshFleetOverview()
 })
 watch(
   () => route.query.status,
@@ -654,7 +647,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('fleet.title')" :subtitle="t('fleet.subtitle')">
-      <n-button :loading="agents.loading || fleetOverviewLoading || publicMetadataLoading" @click="refreshPage">
+      <n-button :loading="fleetOverviewLoading || publicMetadataLoading" @click="refreshPage">
         {{ t('common.refresh') }}
       </n-button>
       <n-button type="primary" @click="openTokenModal">{{ t('agents.newToken') }}</n-button>
@@ -800,8 +793,8 @@ onBeforeUnmount(() => {
 
         <div v-if="!isDesktop" class="space-y-3">
           <ListStatePresenter
-            :loading="agents.loading"
-            :item-count="agents.items.length"
+            :loading="fleetOverviewLoading"
+            :item-count="fleetItems.length"
             :base-empty="listBaseEmpty"
             :loading-title="t('common.loading')"
             :base-empty-title="t('agents.empty.title')"
@@ -852,7 +845,7 @@ onBeforeUnmount(() => {
             </template>
 
             <n-card
-              v-for="agent in agents.items"
+              v-for="agent in fleetItems"
               :key="agent.id"
               size="small"
               class="app-card app-motion-soft"
@@ -874,15 +867,15 @@ onBeforeUnmount(() => {
                     </button>
                   </div>
                   <div class="flex flex-wrap justify-end gap-1">
-                    <n-tag v-if="agent.revoked" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
-                    <n-tag v-else-if="agent.online" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
+                    <n-tag v-if="agent.status === 'revoked'" type="error" size="small">{{ t('agents.status.revoked') }}</n-tag>
+                    <n-tag v-else-if="agent.status === 'online'" type="success" size="small">{{ t('agents.status.online') }}</n-tag>
                     <n-tag v-else size="small">{{ t('agents.status.offline') }}</n-tag>
                     <n-tag
-                      :type="configSyncStatusTagType(agent.config_sync_status)"
+                      :type="configSyncStatusTagType(agent.config_sync.state)"
                       size="small"
                       :title="configSyncTitle(agent)"
                     >
-                      {{ configSyncStatusLabel(agent.config_sync_status) }}
+                      {{ configSyncStatusLabel(agent.config_sync.state) }}
                     </n-tag>
                   </div>
                 </div>
@@ -890,8 +883,14 @@ onBeforeUnmount(() => {
 
               <div class="text-sm space-y-2">
                 <div class="flex items-center justify-between gap-3">
+                  <div class="app-filter-label">{{ t('fleet.columns.workload') }}</div>
+                  <div class="text-right">
+                    {{ t('fleet.workload.compact', { jobs: agent.assigned_jobs_total, pending: agent.pending_tasks_total }) }}
+                  </div>
+                </div>
+                <div class="flex items-center justify-between gap-3">
                   <div class="app-filter-label">{{ t('agents.columns.lastSeen') }}</div>
-                  <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at) }}</div>
+                  <div class="text-right">{{ formatUnixSeconds(agent.last_seen_at ?? null) }}</div>
                 </div>
 
                 <details class="rounded app-panel-inset px-3 py-2">
@@ -901,6 +900,14 @@ onBeforeUnmount(() => {
                   <div class="mt-2 space-y-2">
                     <div v-if="agent.labels?.length" class="flex flex-wrap gap-1">
                       <n-tag v-for="label in agent.labels" :key="label" size="small">{{ label }}</n-tag>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="app-filter-label">{{ t('fleet.mobile.jobs') }}</div>
+                      <div>{{ t('fleet.workload.jobs', { count: agent.assigned_jobs_total }) }}</div>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="app-filter-label">{{ t('fleet.mobile.pendingTasks') }}</div>
+                      <div>{{ t('fleet.workload.pendingTasks', { count: agent.pending_tasks_total }) }}</div>
                     </div>
                     <div class="flex items-center justify-between gap-3">
                       <div class="app-filter-label">{{ t('agents.columns.id') }}</div>
@@ -920,7 +927,7 @@ onBeforeUnmount(() => {
                     size="small"
                     tertiary
                     :loading="syncNowLoading === agent.id"
-                    :disabled="agent.revoked"
+                    :disabled="agent.status === 'revoked'"
                     @click="syncConfigNow(agent.id)"
                   >
                     {{ t('agents.actions.syncNow') }}
@@ -937,8 +944,8 @@ onBeforeUnmount(() => {
 
         <div v-else>
           <ListStatePresenter
-            :loading="agents.loading"
-            :item-count="agents.items.length"
+            :loading="fleetOverviewLoading"
+            :item-count="fleetItems.length"
             :base-empty="listBaseEmpty"
             :loading-title="t('common.loading')"
             :base-empty-title="t('agents.empty.title')"
@@ -994,9 +1001,9 @@ onBeforeUnmount(() => {
                   v-model:checked-row-keys="selectedAgentIds"
                   class="app-list-table"
                   :row-key="(row) => row.id"
-                  :loading="agents.loading"
+                  :loading="fleetOverviewLoading"
                   :columns="columns"
-                  :data="agents.items"
+                  :data="fleetItems"
                 />
               </div>
             </n-card>
@@ -1006,12 +1013,12 @@ onBeforeUnmount(() => {
 
       <template #footer>
         <AppPagination
-          v-if="agents.total > agentsPageSize"
+          v-if="fleetTotal > agentsPageSize"
           :page="agentsPage"
           :page-size="agentsPageSize"
-          :item-count="agents.total"
+          :item-count="fleetTotal"
           :page-sizes="agentsPageSizeOptions"
-          :loading="agents.loading"
+          :loading="fleetOverviewLoading"
           :total-label="agentsPaginationLabel"
           @update:page="(value) => (agentsPage = value)"
           @update:page-size="(value) => (agentsPageSize = value)"

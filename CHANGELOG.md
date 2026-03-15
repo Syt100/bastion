@@ -73,6 +73,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - _No user-facing changes yet._
 
 ### Fixed
+- Fixed Fleet and Integrations spec-conformance gaps by moving the Fleet collection view to the aggregated `/api/fleet` response, adding per-scope distribution detail plus direct follow-up actions, and surfacing storage credential usage/health context in Integrations.
 - Fixed Jobs detail run summaries/support panes to replace raw failure codes like `run_failed` with operator-facing error text.
 - Fixed Jobs workspace list rows to keep full-size actions while reducing left-side chrome and aligning second-line node/schedule metadata with the latest-run time in narrower panes.
 - Fixed task create/edit dialog height regression by enforcing viewport bounds at modal-container layer (instead of content-layer sizing), so long forms stay inside modal scrolling bounds.
