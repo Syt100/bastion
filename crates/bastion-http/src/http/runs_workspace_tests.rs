@@ -282,13 +282,22 @@ async fn get_run_workspace_returns_structured_diagnostics() {
     assert_eq!(body["run"]["id"].as_str(), Some(run.id.as_str()));
     assert_eq!(body["run"]["kind"].as_str(), Some("backup"));
     assert_eq!(body["diagnostics"]["state"].as_str(), Some("structured"));
-    assert_eq!(body["diagnostics"]["failure_kind"].as_str(), Some("transport"));
-    assert_eq!(body["diagnostics"]["failure_stage"].as_str(), Some("upload"));
+    assert_eq!(
+        body["diagnostics"]["failure_kind"].as_str(),
+        Some("transport")
+    );
+    assert_eq!(
+        body["diagnostics"]["failure_stage"].as_str(),
+        Some("upload")
+    );
     assert_eq!(
         body["diagnostics"]["failure_title"].as_str(),
         Some("WebDAV upload failed")
     );
-    assert_eq!(body["diagnostics"]["first_error_event_seq"].as_i64(), Some(2));
+    assert_eq!(
+        body["diagnostics"]["first_error_event_seq"].as_i64(),
+        Some(2)
+    );
     assert_eq!(body["capabilities"]["can_restore"].as_bool(), Some(false));
     assert_eq!(body["capabilities"]["can_cancel"].as_bool(), Some(false));
 

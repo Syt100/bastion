@@ -32,8 +32,6 @@ import { useAuthStore } from '@/stores/auth'
 import { buildLegacyJobsRedirectLocation } from '@/lib/jobsRoute'
 import { scopeFromNodeId } from '@/lib/scope'
 
-const EmptyView = { render: () => null }
-
 type ShellScopeMode = 'collection' | 'detail' | 'none' | 'legacy-node'
 
 function routeMeta(

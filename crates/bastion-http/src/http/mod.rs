@@ -363,7 +363,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/runs/{id}/workspace", get(runs::get_run_workspace))
         .route("/api/runs/{id}/cancel", post(runs::cancel_run))
         .route("/api/runs/{id}/events", get(jobs::list_run_events))
-        .route("/api/runs/{id}/event-console", get(runs::list_run_event_console))
+        .route(
+            "/api/runs/{id}/event-console",
+            get(runs::list_run_event_console),
+        )
         .route("/api/runs/{id}/events/ws", get(jobs::run_events_ws))
         .route("/api/runs/{id}/entries", get(runs::list_run_entries))
         .route(

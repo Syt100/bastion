@@ -148,8 +148,12 @@ describe('JobOverviewSectionView run summary', () => {
     await open.trigger('click')
 
     expect(routerApi.push).toHaveBeenCalledWith({
-      path: '/jobs/job1/overview/runs/run1',
-      query: {},
+      path: '/runs/run1',
+      query: {
+        from_scope: 'all',
+        from_job: 'job1',
+        from_section: 'overview',
+      },
     })
   })
 

@@ -18,7 +18,7 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { buildRunDetailLocation, runStatusLabel } from '@/lib/runs'
 import { useJobDetailContext } from '@/lib/jobDetailContext'
-import { buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
+import { readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
 const message = useMessage()

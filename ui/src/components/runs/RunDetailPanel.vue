@@ -124,7 +124,6 @@ async function loadEventConsole(): Promise<void> {
 }
 
 async function loadAll(): Promise<void> {
-  const id = props.runId
   loading.value = true
   detail.value = null
   ops.value = []

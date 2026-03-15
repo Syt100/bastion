@@ -4,8 +4,8 @@ use axum::extract::Query;
 use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row};
-use tower_cookies::Cookies;
 use time::OffsetDateTime;
+use tower_cookies::Cookies;
 
 use bastion_backup::restore;
 use bastion_core::agent_protocol::{HubToAgentMessageV1, PROTOCOL_VERSION};
@@ -841,12 +841,11 @@ pub(super) async fn get_run_workspace(
     .fetch_one(&state.db)
     .await?;
 
-    let artifacts_total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM run_artifacts WHERE run_id = ?",
-    )
-    .bind(&run_id)
-    .fetch_one(&state.db)
-    .await?;
+    let artifacts_total =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM run_artifacts WHERE run_id = ?")
+            .bind(&run_id)
+            .fetch_one(&state.db)
+            .await?;
 
     let capabilities = RunWorkspaceCapabilities {
         can_cancel: run.status.is_cancelable() && run.cancel_requested_at.is_none(),
@@ -908,14 +907,18 @@ pub(super) async fn list_run_event_console(
     let limit = match query.limit {
         None => 100,
         Some(value) if value <= 0 => {
-            return Err(AppError::bad_request("invalid_limit", "limit must be positive")
-                .with_reason("invalid_value")
-                .with_field("limit"));
+            return Err(
+                AppError::bad_request("invalid_limit", "limit must be positive")
+                    .with_reason("invalid_value")
+                    .with_field("limit"),
+            );
         }
         Some(value) if value > 200 => {
-            return Err(AppError::bad_request("invalid_limit", "limit must not exceed 200")
-                .with_reason("too_large")
-                .with_field("limit"));
+            return Err(
+                AppError::bad_request("invalid_limit", "limit must not exceed 200")
+                    .with_reason("too_large")
+                    .with_field("limit"),
+            );
         }
         Some(value) => value,
     };
@@ -929,7 +932,8 @@ pub(super) async fn list_run_event_console(
         RunEventAnchor::Seq(seq) => Some(seq),
     };
 
-    let descending = query.before_seq.is_some() || (query.after_seq.is_none() && anchor_seq.is_none());
+    let descending =
+        query.before_seq.is_some() || (query.after_seq.is_none() && anchor_seq.is_none());
     let mut qb: QueryBuilder<'_, sqlx::Sqlite> = QueryBuilder::new(
         "SELECT run_id, seq, ts, level, kind, message, fields_json FROM run_events",
     );
@@ -984,8 +988,7 @@ pub(super) async fn list_run_event_console(
     let last_seq = items.last().map(|item| item.seq);
 
     let has_older = if let Some(first_seq) = first_seq {
-        let mut qb: QueryBuilder<'_, sqlx::Sqlite> =
-            QueryBuilder::new("SELECT 1 FROM run_events");
+        let mut qb: QueryBuilder<'_, sqlx::Sqlite> = QueryBuilder::new("SELECT 1 FROM run_events");
         apply_run_event_filters(&mut qb, &run_id, q.as_deref(), &levels, &kinds);
         qb.push(" AND seq < ");
         qb.push_bind(first_seq);
@@ -996,8 +999,7 @@ pub(super) async fn list_run_event_console(
     };
 
     let has_newer = if let Some(last_seq) = last_seq {
-        let mut qb: QueryBuilder<'_, sqlx::Sqlite> =
-            QueryBuilder::new("SELECT 1 FROM run_events");
+        let mut qb: QueryBuilder<'_, sqlx::Sqlite> = QueryBuilder::new("SELECT 1 FROM run_events");
         apply_run_event_filters(&mut qb, &run_id, q.as_deref(), &levels, &kinds);
         qb.push(" AND seq > ");
         qb.push_bind(last_seq);

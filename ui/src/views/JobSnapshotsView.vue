@@ -51,7 +51,7 @@ import {
   type PreferredEventDiagnostic,
 } from '@/lib/eventDiagnostics'
 import { formatBytes } from '@/lib/format'
-import { buildJobSectionPath, buildJobsCollectionLocation, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
+import { buildJobsCollectionLocation, readJobsCollectionState } from '@/lib/jobsRoute'
 import { useLatestRequest } from '@/lib/latest'
 import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
 

@@ -11,7 +11,7 @@ import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { buildRunDetailLocation, runErrorLabel, runStatusLabel } from '@/lib/runs'
-import { buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
+import { readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
 const route = useRoute()
