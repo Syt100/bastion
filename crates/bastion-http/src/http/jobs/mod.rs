@@ -6,7 +6,9 @@ mod validation;
 mod ws;
 
 pub(super) use crud::{archive_job, unarchive_job};
-pub(super) use crud::{create_job, delete_job, get_job, list_jobs, update_job};
+pub(super) use crud::{
+    create_job, delete_job, get_job, get_job_workspace, list_jobs, list_jobs_workspace, update_job,
+};
 pub(super) use retention::{
     apply_job_retention, get_job_retention, preview_job_retention, put_job_retention,
 };

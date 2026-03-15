@@ -13,6 +13,12 @@ const jobsApi = {
   listRuns: vi.fn(),
 }
 
+const routeApi = {
+  path: '/jobs/job1/overview',
+  query: {} as Record<string, unknown>,
+  hash: '',
+}
+
 const routerApi = {
   push: vi.fn(),
 }
@@ -81,6 +87,7 @@ vi.mock('@/stores/ui', () => ({
 }))
 
 vi.mock('vue-router', () => ({
+  useRoute: () => routeApi,
   useRouter: () => routerApi,
 }))
 
@@ -102,6 +109,7 @@ function provideJobContext(overrides?: Partial<JobDetailContext>): Record<symbol
       archived_at: null,
       spec: { v: 1, type: 'filesystem' },
     }),
+    workspace: ref(null),
     loading: ref(false),
     refresh: vi.fn().mockResolvedValue(undefined),
   }
@@ -139,7 +147,10 @@ describe('JobOverviewSectionView run summary', () => {
     expect(open.exists()).toBe(true)
     await open.trigger('click')
 
-    expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/job1/overview/runs/run1')
+    expect(routerApi.push).toHaveBeenCalledWith({
+      path: '/jobs/job1/overview/runs/run1',
+      query: {},
+    })
   })
 
   it('renders config metadata cards and removes quick links', async () => {

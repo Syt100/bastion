@@ -9,11 +9,11 @@ import NodeContextTag from '@/components/NodeContextTag.vue'
 import MobileTopBar from '@/components/MobileTopBar.vue'
 import AppEmptyState from '@/components/AppEmptyState.vue'
 import AppModalShell from '@/components/AppModalShell.vue'
-import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
 import JobDeployModal, { type JobDeployModalExpose } from '@/components/jobs/JobDeployModal.vue'
+import JobWorkspaceSupportPane from '@/components/jobs/JobWorkspaceSupportPane.vue'
 import RunDetailPanel from '@/components/runs/RunDetailPanel.vue'
 import ScrollShadowPane from '@/components/scroll/ScrollShadowPane.vue'
-import { useJobsStore, type JobDetail } from '@/stores/jobs'
+import { useJobsStore, type JobDetail, type JobWorkspaceDetail } from '@/stores/jobs'
 import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
@@ -21,7 +21,15 @@ import { MODAL_WIDTH } from '@/lib/modal'
 import { MQ } from '@/lib/breakpoints'
 import { useMediaQuery } from '@/lib/media'
 import { JOB_DETAIL_CONTEXT } from '@/lib/jobDetailContext'
-import { nodeJobsPath, nodeScopedPath } from '@/lib/nodeRoute'
+import {
+  buildJobEditorLocation,
+  buildJobSectionPath,
+  buildJobsCollectionLocation,
+  buildJobsCollectionQuery,
+  readJobsCollectionState,
+  resolveJobsScope,
+} from '@/lib/jobsRoute'
+import { scopeToNodeId } from '@/lib/scope'
 
 type SectionKey = 'overview' | 'history' | 'data'
 
@@ -35,21 +43,26 @@ const jobs = useJobsStore()
 const isDesktop = useMediaQuery(MQ.mdUp)
 const { formatUnixSeconds } = useUnixSecondsFormatter(computed(() => ui.locale))
 
-const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 const jobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
 const runId = computed(() => (typeof route.params.runId === 'string' ? route.params.runId : null))
-const jobsListPath = computed(() => nodeJobsPath(nodeId.value))
+const collectionState = computed(() => readJobsCollectionState(route.query, resolveJobsScope(route, ui.preferredScope)))
+const scopeNodeId = computed(() => scopeToNodeId(collectionState.value.scope))
+const jobsListPath = computed(() => router.resolve(buildJobsCollectionLocation(collectionState.value)).fullPath)
 
 const loading = ref<boolean>(false)
 const job = ref<JobDetail | null>(null)
+const workspace = ref<JobWorkspaceDetail | null>(null)
+const nodeId = computed(() => job.value?.agent_id ?? scopeNodeId.value ?? 'hub')
 
 async function refresh(): Promise<void> {
   const id = jobId.value
   if (!id) return
   loading.value = true
   try {
-    job.value = await jobs.getJob(id)
+    workspace.value = await jobs.getJobWorkspace(id)
+    job.value = workspace.value.job
   } catch (error) {
+    workspace.value = null
     job.value = null
     message.error(formatToastError(t('errors.fetchJobFailed'), error, t))
   } finally {
@@ -59,7 +72,7 @@ async function refresh(): Promise<void> {
 
 watch(jobId, () => void refresh(), { immediate: true })
 
-provide(JOB_DETAIL_CONTEXT, { nodeId, jobId, job, loading, refresh })
+provide(JOB_DETAIL_CONTEXT, { nodeId, jobId, job, workspace, loading, refresh })
 
 const activeSection = computed<SectionKey>(() => {
   const p = route.path
@@ -73,7 +86,10 @@ function goSection(key: unknown): void {
   if (key !== 'overview' && key !== 'history' && key !== 'data') return
   const id = jobId.value
   if (!id) return
-  void router.push(nodeScopedPath(nodeId.value, `jobs/${encodeURIComponent(id)}/${key}`))
+  void router.push({
+    path: buildJobSectionPath(id, key),
+    query: buildJobsCollectionQuery(collectionState.value),
+  })
 }
 
 function closeRunDrawer(): void {
@@ -105,13 +121,12 @@ async function runNow(): Promise<void> {
   }
 }
 
-const editorModal = ref<JobEditorModalExpose | null>(null)
 const deployModal = ref<JobDeployModalExpose | null>(null)
 
 async function openEdit(): Promise<void> {
   const id = jobId.value
   if (!id) return
-  await editorModal.value?.openEdit(id, { nodeId: nodeId.value })
+  await router.push(buildJobEditorLocation('edit', { jobId: id, collection: collectionState.value }))
 }
 
 async function openDeploy(): Promise<void> {
@@ -211,6 +226,17 @@ function onSelectMore(key: string | number): void {
   if (key === 'archive') return openArchiveOrDelete()
   if (key === 'delete') return openArchiveOrDelete()
 }
+
+function openRun(runId: string): void {
+  const id = jobId.value
+  if (!id) return
+  const section = activeSection.value
+  const path = `${buildJobSectionPath(id, section)}/runs/${encodeURIComponent(runId)}`
+  void router.push({
+    path,
+    query: buildJobsCollectionQuery(collectionState.value),
+  })
+}
 </script>
 
 <template>
@@ -263,6 +289,21 @@ function onSelectMore(key: string | number): void {
       </template>
     </MobileTopBar>
 
+    <div v-if="!isDesktop && job" class="grid grid-cols-2 gap-2">
+      <n-button type="primary" :disabled="!!job.archived_at" @click="runNow">
+        {{ t('jobs.actions.runNow') }}
+      </n-button>
+      <n-button :disabled="!!job.archived_at" @click="openEdit">
+        {{ t('common.edit') }}
+      </n-button>
+      <n-button :loading="loading" @click="refresh">
+        {{ t('jobs.workspace.actions.refreshJob') }}
+      </n-button>
+      <n-button :disabled="!!job.archived_at" @click="openDeploy">
+        {{ t('jobs.actions.deploy') }}
+      </n-button>
+    </div>
+
     <n-card class="app-card" :bordered="false">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
@@ -307,31 +348,45 @@ function onSelectMore(key: string | number): void {
 
     </n-card>
 
-    <n-card class="app-card" :class="isDesktop ? 'flex-1 min-h-0 flex flex-col' : ''" :bordered="false">
-      <div class="app-tabs-embedded">
-        <n-tabs :value="activeSection" type="line" size="small" :pane-style="{ display: 'none' }" @update:value="goSection">
-          <n-tab-pane name="overview" :tab="t('jobs.workspace.sections.overview')" />
-          <n-tab-pane name="history" :tab="t('jobs.workspace.sections.history')" />
-          <n-tab-pane name="data" :tab="t('jobs.workspace.sections.data')" />
-        </n-tabs>
-      </div>
+    <div :class="isDesktop ? 'grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]' : 'space-y-4'">
+      <n-card class="app-card" :class="isDesktop ? 'min-h-0 flex flex-col' : ''" :bordered="false">
+        <div class="app-tabs-embedded">
+          <n-tabs :value="activeSection" type="line" size="small" :pane-style="{ display: 'none' }" @update:value="goSection">
+            <n-tab-pane name="overview" :tab="t('jobs.workspace.sections.overview')" />
+            <n-tab-pane name="history" :tab="t('jobs.workspace.sections.history')" />
+            <n-tab-pane name="data" :tab="t('jobs.workspace.sections.data')" />
+          </n-tabs>
+        </div>
 
-      <ScrollShadowPane
-        v-if="isDesktop"
-        wrapper-class="flex-1 min-h-0"
-        class="app-embedded-card-stack app-tab-shell-body"
-        data-testid="job-section-scroll"
-        shadow-from="var(--app-surface)"
-      >
-        <router-view v-if="jobId" />
-        <AppEmptyState v-else :title="t('common.noData')" />
-      </ScrollShadowPane>
+        <ScrollShadowPane
+          v-if="isDesktop"
+          wrapper-class="flex-1 min-h-0"
+          class="app-embedded-card-stack app-tab-shell-body"
+          data-testid="job-section-scroll"
+          shadow-from="var(--app-surface)"
+        >
+          <router-view v-if="jobId" />
+          <AppEmptyState v-else :title="t('common.noData')" />
+        </ScrollShadowPane>
 
-      <div v-else class="app-embedded-card-stack app-tab-shell-body">
-        <router-view v-if="jobId" />
-        <AppEmptyState v-else :title="t('common.noData')" />
+        <div v-else class="app-embedded-card-stack app-tab-shell-body">
+          <router-view v-if="jobId" />
+          <AppEmptyState v-else :title="t('common.noData')" />
+        </div>
+      </n-card>
+
+      <div :class="isDesktop ? 'min-h-0' : ''">
+        <ScrollShadowPane
+          v-if="isDesktop"
+          wrapper-class="h-full min-h-0"
+          class="pr-1"
+          shadow-from="var(--app-bg)"
+        >
+          <JobWorkspaceSupportPane :workspace="workspace" :loading="loading" @open-run="openRun" />
+        </ScrollShadowPane>
+        <JobWorkspaceSupportPane v-else :workspace="workspace" :loading="loading" @open-run="openRun" />
       </div>
-    </n-card>
+    </div>
 
     <AppModalShell
       v-model:show="inspectOpen"
@@ -342,7 +397,6 @@ function onSelectMore(key: string | number): void {
       <n-code :code="jobJson" language="json" class="text-xs" />
     </AppModalShell>
 
-    <JobEditorModal ref="editorModal" @saved="refresh" />
     <JobDeployModal ref="deployModal" />
 
     <AppModalShell

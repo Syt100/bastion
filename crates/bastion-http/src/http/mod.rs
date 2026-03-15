@@ -297,12 +297,14 @@ pub fn router(state: AppState) -> Router {
             post(bulk_operations::retry_bulk_operation_failed),
         )
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::create_job))
+        .route("/api/jobs/workspace", get(jobs::list_jobs_workspace))
         .route(
             "/api/jobs/{id}",
             get(jobs::get_job)
                 .put(jobs::update_job)
                 .delete(jobs::delete_job),
         )
+        .route("/api/jobs/{id}/workspace", get(jobs::get_job_workspace))
         .route("/api/jobs/{id}/archive", post(jobs::archive_job))
         .route("/api/jobs/{id}/unarchive", post(jobs::unarchive_job))
         .route("/api/jobs/{id}/run", post(jobs::trigger_job_run))
@@ -491,6 +493,9 @@ mod retention_tests;
 
 #[cfg(test)]
 mod jobs_list_tests;
+
+#[cfg(test)]
+mod jobs_workspace_tests;
 
 #[cfg(test)]
 mod dashboard_tests;

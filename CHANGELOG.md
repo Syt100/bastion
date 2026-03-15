@@ -13,6 +13,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Added cancel actions for queued/running runs and running restore/verify operations in the Web UI.
 - Added WebDAV upload tuning controls (`request_timeout_secs`, `connect_timeout_secs`, `max_put_attempts`) in job spec/API/UI to better match unstable or high-latency networks.
 - Added generated config/environment reference pages (EN + zh-CN) so operators can inspect CLI-backed and env-only runtime knobs without scanning the full CLI help tree.
+- Added workspace-oriented Jobs APIs (`/api/jobs/workspace`, `/api/jobs/{id}/workspace`) and a full-page create/edit flow with draft resume, live configuration summary, and review-stage risk signals.
 
 ### Changed
 - Changed the Web UI shell to a Command Center-first information architecture with top-level `Command Center`, `Jobs`, `Runs`, `Fleet`, `Integrations`, and `System` navigation, persisted scope selection, and temporary aliases for legacy node-scoped entry points.
@@ -58,6 +59,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Changed Web UI dependency baseline via grouped non-major upgrades (including Vue 3.5.29, Vite 7.3.1, Tailwind CSS 4.2.1, and Vitest 4.0.18).
 - Changed Rust dependency baseline via grouped non-major upgrades (including Tokio 1.49, UUID 1.21, Chrono 0.4.44, Clap 4.5.60, and Tempfile 3.26).
 - Changed XML/runtime dependency baselines by upgrading `roxmltree` to 0.21.1 and `windows-service` to 0.8.0.
+- Changed Jobs navigation to a canonical top-level route family (`/jobs`, `/jobs/new`, `/jobs/:jobId/...`) with persistent filter context, browser-persisted saved views, responsive three-pane desktop inspection, and dedicated mobile list/detail flows.
 
 ### Deprecated
 - _No user-facing changes yet._
@@ -80,6 +82,7 @@ and this project follows [Semantic Versioning](https://semver.org/) while in pre
 - Fixed cleanup/artifact-delete run events to include actionable `hint` fields, and localized the Run Events detail hint label for zh/en UI.
 - Fixed run event detail dialogs (both the run-detail page and run-events modal) to use a shared envelope-first renderer, cap content height, and wrap long JSON/error payload lines so diagnostics no longer overflow modal bounds.
 - Fixed run event detail readability by adding a summary → key diagnostics → context evidence layout, exposing run/request identifiers in the header, adding one-click copy for key diagnostics/target URL, and using progressive disclosure for long values, `error_chain`, and raw JSON sections.
+- Fixed Jobs editor review submission to validate every authoring step before saving, preventing incomplete draft state from bypassing the final save path.
 
 ### Security
 - Remediated the open `glib` dependency alert path (`GHSA-wrw7-89jp-8q8g`) by switching Windows tray integration to a Windows-only tray crate.

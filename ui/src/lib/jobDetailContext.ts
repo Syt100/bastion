@@ -1,11 +1,12 @@
 import { inject, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 
-import type { JobDetail } from '@/stores/jobs'
+import type { JobDetail, JobWorkspaceDetail } from '@/stores/jobs'
 
 export type JobDetailContext = {
   nodeId: ComputedRef<string>
   jobId: ComputedRef<string | null>
   job: Ref<JobDetail | null>
+  workspace: Ref<JobWorkspaceDetail | null>
   loading: Ref<boolean>
   refresh: () => Promise<void>
 }
@@ -17,4 +18,3 @@ export function useJobDetailContext(): JobDetailContext {
   if (!ctx) throw new Error('JobDetailContext is not available')
   return ctx
 }
-

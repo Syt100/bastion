@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NCheckbox, NDataTable, NInput, NRadioButton, NRadioGroup, useMessage, type DropdownOption } from 'naive-ui'
+import { NButton, NCard, NCheckbox, NDataTable, NInput, NRadioButton, NRadioGroup, NSelect, NTag, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 import PageHeader from '@/components/PageHeader.vue'
@@ -19,7 +19,7 @@ import PickerFiltersPopoverDrawer from '@/components/pickers/PickerFiltersPopove
 import JobsListRowItem from './JobsListRowItem.vue'
 import { useJobsStore, type JobListItem, type RunStatus } from '@/stores/jobs'
 import { useAgentsStore } from '@/stores/agents'
-import { useUiStore, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
+import { useUiStore, type JobsSavedView, type JobsWorkspaceLayoutMode, type JobsWorkspaceListView } from '@/stores/ui'
 import { useMediaQuery } from '@/lib/media'
 import { MQ } from '@/lib/breakpoints'
 import { formatUnixSecondsMdHm, formatUnixSecondsYmdHm, formatUnixSecondsYmdHms } from '@/lib/datetime'
@@ -33,8 +33,15 @@ import {
   LIST_QUERY_DEBOUNCE_MS,
 } from '@/lib/listUi'
 import { runStatusLabel } from '@/lib/runs'
-import { nodeScopedPath } from '@/lib/nodeRoute'
-import JobEditorModal, { type JobEditorModalExpose } from '@/components/jobs/JobEditorModal.vue'
+import {
+  buildJobEditorLocation,
+  buildJobSectionLocation,
+  buildJobsCollectionLocation,
+  buildJobsCollectionQuery,
+  readJobsCollectionState,
+  resolveJobsScope,
+} from '@/lib/jobsRoute'
+import { scopeToNodeId, type ScopeValue } from '@/lib/scope'
 import JobsFiltersPanel from './JobsFiltersPanel.vue'
 import { useJobsFilters } from './useJobsFilters'
 import { useJobsTableColumns } from './useJobsTableColumns'
@@ -51,16 +58,17 @@ const ui = useUiStore()
 const jobs = useJobsStore()
 const agents = useAgentsStore()
 
-const nodeId = computed(() => (typeof route.params.nodeId === 'string' ? route.params.nodeId : 'hub'))
 const selectedJobId = computed(() => (typeof route.params.jobId === 'string' ? route.params.jobId : null))
-
-const editorModal = ref<JobEditorModalExpose | null>(null)
+const collectionState = computed(() => readJobsCollectionState(route.query, resolveJobsScope(route, ui.preferredScope)))
+const activeScope = computed<ScopeValue>(() => collectionState.value.scope)
+const scopeNodeId = computed(() => scopeToNodeId(activeScope.value))
+const routeQuerySyncing = ref<boolean>(false)
 
 const filtersPopoverOpen = ref<boolean>(false)
 const filtersDrawerOpen = ref<boolean>(false)
 
-const jobsPage = ref<number>(1)
-const jobsPageSize = ref<number>(DEFAULT_LIST_PAGE_SIZE)
+const jobsPage = ref<number>(collectionState.value.page)
+const jobsPageSize = ref<number>(collectionState.value.pageSize || DEFAULT_LIST_PAGE_SIZE)
 const jobsPageSizeOptions = [...LIST_PAGE_SIZE_OPTIONS]
 
 const {
@@ -80,6 +88,10 @@ const {
 } = useJobsFilters(t)
 
 applyRouteQuery(route.query as Record<string, unknown>)
+const selectedSavedViewId = ref<string | null>(collectionState.value.view)
+const saveViewOpen = ref<boolean>(false)
+const saveViewBusy = ref<boolean>(false)
+const saveViewName = ref<string>('')
 
 const layoutMode = computed<JobsWorkspaceLayoutMode>(() => {
   if (!isDesktop.value) return 'split'
@@ -131,6 +143,181 @@ const jobsPaginationLabel = computed(() => t('common.paginationRange', jobsRange
 const jobsResultsLabel = computed(() => t('jobs.workspace.filters.resultsCount', { visible: jobsVisibleCount.value, filtered: jobs.total }))
 
 const listBaseEmpty = computed<boolean>(() => jobs.total === 0 && !hasActiveFilters.value)
+const builtInSavedViews = computed<JobsSavedView[]>(() => [
+  {
+    id: 'failed-recently',
+    name: t('jobs.savedViews.builtins.failedRecently'),
+    scope: 'all',
+    q: '',
+    status: 'failed',
+    schedule: 'all',
+    includeArchived: false,
+    sort: 'updated_desc',
+    createdAt: 0,
+    updatedAt: 0,
+  },
+  {
+    id: 'manual-jobs',
+    name: t('jobs.savedViews.builtins.manualJobs'),
+    scope: 'all',
+    q: '',
+    status: 'all',
+    schedule: 'manual',
+    includeArchived: false,
+    sort: 'name_asc',
+    createdAt: 0,
+    updatedAt: 0,
+  },
+  {
+    id: 'archived',
+    name: t('jobs.savedViews.builtins.archived'),
+    scope: 'all',
+    q: '',
+    status: 'all',
+    schedule: 'all',
+    includeArchived: true,
+    sort: 'updated_desc',
+    createdAt: 0,
+    updatedAt: 0,
+  },
+])
+const savedViews = computed<JobsSavedView[]>(() => [...builtInSavedViews.value, ...ui.jobsSavedViews])
+const savedViewOptions = computed(() =>
+  savedViews.value.map((view) => ({
+    label: view.name,
+    value: view.id,
+  })),
+)
+
+function routeQuerySignature(query: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.keys(query)
+      .sort()
+      .map((key) => [key, query[key]]),
+  )
+}
+
+function currentCollectionQuery(): Record<string, string> {
+  return buildJobsCollectionQuery({
+    scope: activeScope.value,
+    q: searchText.value.trim(),
+    status: latestStatusFilter.value,
+    schedule: scheduleFilter.value,
+    includeArchived: showArchived.value,
+    sort: sortKey.value,
+    page: jobsPage.value,
+    pageSize: jobsPageSize.value,
+    view: selectedSavedViewId.value,
+  }) as Record<string, string>
+}
+
+function syncRouteQuery(): void {
+  const nextQuery = currentCollectionQuery()
+  if (routeQuerySignature(route.query as Record<string, unknown>) === routeQuerySignature(nextQuery)) {
+    return
+  }
+
+  routeQuerySyncing.value = true
+  void router
+    .replace({
+      path: route.path,
+      query: nextQuery,
+      hash: route.hash,
+    })
+    .finally(() => {
+      routeQuerySyncing.value = false
+    })
+}
+
+function matchesSavedView(viewId: string | null): boolean {
+  if (!viewId) return false
+  const view = savedViews.value.find((item) => item.id === viewId)
+  if (!view) return false
+  return (
+    view.scope === activeScope.value &&
+    view.q === searchText.value.trim() &&
+    view.status === latestStatusFilter.value &&
+    view.schedule === scheduleFilter.value &&
+    view.includeArchived === showArchived.value &&
+    view.sort === sortKey.value
+  )
+}
+
+function applySavedView(viewId: string | null): void {
+  const view = savedViews.value.find((item) => item.id === viewId)
+  if (!view) {
+    selectedSavedViewId.value = null
+    syncRouteQuery()
+    return
+  }
+
+  selectedSavedViewId.value = view.id
+  searchText.value = view.q
+  latestStatusFilter.value = view.status as typeof latestStatusFilter.value
+  scheduleFilter.value = view.schedule as typeof scheduleFilter.value
+  showArchived.value = view.includeArchived
+  sortKey.value = view.sort as typeof sortKey.value
+  jobsPage.value = 1
+  void router.replace(buildJobsCollectionLocation({
+    scope: view.scope,
+    q: view.q,
+    status: view.status,
+    schedule: view.schedule,
+    includeArchived: view.includeArchived,
+    sort: view.sort,
+    view: view.id,
+    page: 1,
+    pageSize: jobsPageSize.value,
+  }))
+}
+
+function openSaveView(): void {
+  saveViewName.value = ''
+  saveViewOpen.value = true
+}
+
+function slugifyViewName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function deleteSelectedSavedView(): void {
+  const id = selectedSavedViewId.value
+  if (!id) return
+  if (builtInSavedViews.value.some((item) => item.id === id)) {
+    selectedSavedViewId.value = null
+    syncRouteQuery()
+    return
+  }
+  ui.deleteJobsSavedView(id)
+  selectedSavedViewId.value = null
+  syncRouteQuery()
+}
+
+async function saveCurrentView(): Promise<void> {
+  const name = saveViewName.value.trim()
+  if (!name) return
+  saveViewBusy.value = true
+  const baseId = slugifyViewName(name) || `jobs-view-${Date.now()}`
+  const id = ui.jobsSavedViews.some((item) => item.id === baseId) ? `${baseId}-${Date.now()}` : baseId
+  ui.upsertJobsSavedView({
+    id,
+    name,
+    scope: activeScope.value,
+    q: searchText.value.trim(),
+    status: latestStatusFilter.value,
+    schedule: scheduleFilter.value,
+    includeArchived: showArchived.value,
+    sort: sortKey.value,
+  })
+  selectedSavedViewId.value = id
+  saveViewBusy.value = false
+  saveViewOpen.value = false
+  syncRouteQuery()
+}
 
 const selectedJobIds = ref<string[]>([])
 const selectedJobArchived = ref<Record<string, boolean>>({})
@@ -321,7 +508,7 @@ async function refresh(): Promise<void> {
   try {
     await jobs.refresh({
       includeArchived: showArchived.value,
-      nodeId: nodeId.value,
+      scope: activeScope.value,
       q: searchText.value,
       latestStatus: latestStatusFilter.value,
       scheduleMode: scheduleFilter.value,
@@ -348,17 +535,21 @@ function scheduleRefresh(): void {
 function resetToFirstPageAndRefresh(): void {
   const pageChanged = jobsPage.value !== 1
   jobsPage.value = 1
+  if (selectedSavedViewId.value && !matchesSavedView(selectedSavedViewId.value)) {
+    selectedSavedViewId.value = null
+  }
+  syncRouteQuery()
   if (!pageChanged) {
     scheduleRefresh()
   }
 }
 
 function openCreate(): void {
-  editorModal.value?.openCreate({ nodeId: nodeId.value })
+  void router.push(buildJobEditorLocation('create', { collection: collectionState.value }))
 }
 
 async function openEdit(jobId: string): Promise<void> {
-  await editorModal.value?.openEdit(jobId, { nodeId: nodeId.value })
+  await router.push(buildJobEditorLocation('edit', { jobId, collection: collectionState.value }))
 }
 
 async function runNow(jobId: string): Promise<void> {
@@ -379,7 +570,17 @@ function isRowRunNowBusy(jobId: string): boolean {
 }
 
 function openJob(jobId: string): void {
-  void router.push(nodeScopedPath(nodeId.value, `jobs/${encodeURIComponent(jobId)}/overview`))
+  void router.push(buildJobSectionLocation(jobId, 'overview', {
+    scope: activeScope.value,
+    q: searchText.value.trim(),
+    status: latestStatusFilter.value,
+    schedule: scheduleFilter.value,
+    includeArchived: showArchived.value,
+    sort: sortKey.value,
+    page: jobsPage.value,
+    pageSize: jobsPageSize.value,
+    view: selectedSavedViewId.value,
+  }))
 }
 
 function onJobRowClick(jobId: string): void {
@@ -505,15 +706,22 @@ watch(layoutMode, () => {
 
 watch([searchText, sortKey, latestStatusFilter, scheduleFilter, showArchived], resetToFirstPageAndRefresh)
 watch(
-  () => [route.query.q, route.query.archived, route.query.status, route.query.schedule, route.query.sort],
+  () => [route.query.scope, route.query.q, route.query.archived, route.query.status, route.query.schedule, route.query.sort, route.query.page, route.query.page_size, route.query.view],
   () => {
+    if (routeQuerySyncing.value) return
     applyRouteQuery(route.query as Record<string, unknown>)
+    const nextState = readJobsCollectionState(route.query, resolveJobsScope(route, ui.preferredScope))
+    jobsPage.value = nextState.page
+    jobsPageSize.value = nextState.pageSize || DEFAULT_LIST_PAGE_SIZE
+    selectedSavedViewId.value = nextState.view
   },
 )
 watch(jobsPage, () => {
+  syncRouteQuery()
   void refresh()
 })
 watch(jobsPageSize, () => {
+  syncRouteQuery()
   if (jobsPage.value !== 1) {
     jobsPage.value = 1
     return
@@ -521,15 +729,25 @@ watch(jobsPageSize, () => {
   void refresh()
 })
 
-watch(nodeId, () => {
+watch(activeScope, () => {
   const pageChanged = jobsPage.value !== 1
   jobsPage.value = 1
   clearSelectedJobs()
   listSelectMode.value = false
   bulkConfirmOpen.value = false
   bulkConfirmKind.value = null
+  if (selectedSavedViewId.value && !matchesSavedView(selectedSavedViewId.value)) {
+    selectedSavedViewId.value = null
+  }
+  syncRouteQuery()
   if (!pageChanged) {
     void refresh()
+  }
+})
+
+watch([searchText, latestStatusFilter, scheduleFilter, showArchived, sortKey, activeScope], () => {
+  if (selectedSavedViewId.value && !matchesSavedView(selectedSavedViewId.value)) {
+    selectedSavedViewId.value = null
   }
 })
 
@@ -547,14 +765,40 @@ onBeforeUnmount(() => {
       :subtitle="t('jobs.subtitle')"
     >
       <template #titleSuffix>
-        <NodeContextTag :node-id="nodeId" />
+        <NodeContextTag v-if="scopeNodeId" :node-id="scopeNodeId" />
+        <n-tag v-else size="small" :bordered="false">
+          {{ t('nav.scopePicker.all') }}
+        </n-tag>
       </template>
 
       <template v-if="isDesktop">
-        <n-radio-group v-model:value="jobsPrimaryViewModel" size="small" class="shrink-0">
-          <n-radio-button value="workspace">{{ t('jobs.workspace.actions.workspace') }}</n-radio-button>
-          <n-radio-button value="table">{{ t('jobs.workspace.views.table') }}</n-radio-button>
-        </n-radio-group>
+        <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <n-select
+            :value="selectedSavedViewId"
+            size="small"
+            clearable
+            filterable
+            class="w-52"
+            :placeholder="t('jobs.savedViews.placeholder')"
+            :options="savedViewOptions"
+            @update:value="(value) => applySavedView(typeof value === 'string' ? value : null)"
+          />
+          <n-button size="small" tertiary @click="openSaveView">
+            {{ t('jobs.savedViews.saveCurrent') }}
+          </n-button>
+          <n-button
+            size="small"
+            tertiary
+            :disabled="!selectedSavedViewId"
+            @click="deleteSelectedSavedView"
+          >
+            {{ t('jobs.savedViews.clearSelected') }}
+          </n-button>
+          <n-radio-group v-model:value="jobsPrimaryViewModel" size="small" class="shrink-0">
+            <n-radio-button value="workspace">{{ t('jobs.workspace.actions.workspace') }}</n-radio-button>
+            <n-radio-button value="table">{{ t('jobs.workspace.views.table') }}</n-radio-button>
+          </n-radio-group>
+        </div>
       </template>
 
       <n-button :title="t('jobs.workspace.actions.refreshList')" :aria-label="t('jobs.workspace.actions.refreshList')" @click="refresh">
@@ -873,6 +1117,22 @@ onBeforeUnmount(() => {
               @clear="clearFilters"
             />
 
+            <div class="mb-3 flex items-center gap-2">
+              <n-select
+                :value="selectedSavedViewId"
+                size="small"
+                clearable
+                filterable
+                class="flex-1"
+                :placeholder="t('jobs.savedViews.placeholder')"
+                :options="savedViewOptions"
+                @update:value="(value) => applySavedView(typeof value === 'string' ? value : null)"
+              />
+              <n-button size="small" tertiary @click="openSaveView">
+                {{ t('jobs.savedViews.saveCurrentShort') }}
+              </n-button>
+            </div>
+
             <ListStatePresenter
               :loading="jobs.loading"
               :item-count="jobs.items.length"
@@ -944,7 +1204,32 @@ onBeforeUnmount(() => {
       <router-view v-else />
     </template>
 
-    <JobEditorModal ref="editorModal" @saved="refresh" />
+    <AppModalShell
+      v-model:show="saveViewOpen"
+      :width="isDesktop ? '420px' : '92vw'"
+      :title="t('jobs.savedViews.saveDialogTitle')"
+    >
+      <div class="space-y-3">
+        <div class="text-sm app-text-muted">{{ t('jobs.savedViews.saveDialogBody') }}</div>
+        <n-input
+          v-model:value="saveViewName"
+          :placeholder="t('jobs.savedViews.namePlaceholder')"
+          @keyup.enter="void saveCurrentView()"
+        />
+      </div>
+
+      <template #footer>
+        <n-button :disabled="saveViewBusy" @click="saveViewOpen = false">{{ t('common.cancel') }}</n-button>
+        <n-button
+          type="primary"
+          :loading="saveViewBusy"
+          :disabled="!saveViewName.trim()"
+          @click="void saveCurrentView()"
+        >
+          {{ t('jobs.savedViews.saveAction') }}
+        </n-button>
+      </template>
+    </AppModalShell>
 
     <AppModalShell
       v-model:show="bulkConfirmOpen"

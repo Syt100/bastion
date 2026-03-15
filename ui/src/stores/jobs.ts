@@ -10,6 +10,7 @@ import {
   appendQueryTextParam,
   buildQuerySuffix,
 } from '@/lib/listQuery'
+import { scopeFromNodeId, type ScopeValue } from '@/lib/scope'
 import { ensureCsrfToken } from '@/stores/csrf'
 
 export type OverlapPolicy = 'reject' | 'queue'
@@ -30,6 +31,13 @@ export type JobListItem = {
   latest_run_status?: RunStatus | null
   latest_run_started_at?: number | null
   latest_run_ended_at?: number | null
+  scope?: ScopeValue
+  latest_success_at?: number | null
+  latest_failure_at?: number | null
+  next_run_at?: number | null
+  health?: 'healthy' | 'warning' | 'critical' | 'archived'
+  warnings?: string[]
+  capabilities?: JobActionCapabilities | null
 }
 
 export type JobsListSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc'
@@ -43,8 +51,57 @@ export type JobsListResponse = {
   total: number
 }
 
+export type JobActionCapabilities = {
+  can_run_now: boolean
+  can_edit: boolean
+  can_archive: boolean
+  can_unarchive: boolean
+  can_delete: boolean
+  can_deploy: boolean
+}
+
+export type JobsWorkspaceListResponse = {
+  scope: {
+    requested: ScopeValue
+    effective: ScopeValue
+  }
+  filters: {
+    q: string
+    latest_status: JobsListLatestStatusFilter
+    schedule_mode: JobsListScheduleMode
+    include_archived: boolean
+    sort: JobsListSort
+  }
+  items: JobListItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
 export type JobDetail = JobListItem & {
   spec: { v: 1; type: JobType } & Record<string, unknown>
+}
+
+export type JobWorkspaceDetail = {
+  job: JobDetail
+  summary: {
+    latest_success_at: number | null
+    latest_failure_at: number | null
+    latest_run_status: RunStatus | null
+    latest_run_started_at: number | null
+    latest_run_ended_at: number | null
+    next_run_at: number | null
+    target_label: string | null
+    target_type: string | null
+    schedule_label: string | null
+  }
+  readiness: {
+    state: 'healthy' | 'warning' | 'critical' | 'archived'
+    last_success_at: number | null
+  }
+  recent_runs: RunListItem[]
+  warnings: string[]
+  capabilities: JobActionCapabilities
 }
 
 export type CreateOrUpdateJobRequest = {
@@ -216,6 +273,7 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function refresh(params?: {
     includeArchived?: boolean
+    scope?: ScopeValue
     nodeId?: string
     q?: string
     latestStatus?: JobsListLatestStatusFilter
@@ -229,14 +287,15 @@ export const useJobsStore = defineStore('jobs', () => {
     try {
       const q = new URLSearchParams()
       appendQueryBooleanParam(q, 'include_archived', params?.includeArchived)
-      appendQueryTextParam(q, 'node_id', params?.nodeId)
+      const scope = params?.scope ?? (params?.nodeId ? scopeFromNodeId(params.nodeId) : undefined)
+      appendQueryTextParam(q, 'scope', scope)
       appendQueryTextParam(q, 'q', params?.q)
       if (params?.latestStatus && params.latestStatus !== 'all') q.set('latest_status', params.latestStatus)
       if (params?.scheduleMode && params.scheduleMode !== 'all') q.set('schedule_mode', params.scheduleMode)
       if (params?.sort) q.set('sort', params.sort)
       appendPaginationParams(q, { page: params?.page, pageSize: params?.pageSize })
       const suffix = buildQuerySuffix(q)
-      const response = await apiFetch<JobsListResponse>('/api/jobs' + suffix, {
+      const response = await apiFetch<JobsWorkspaceListResponse>('/api/jobs/workspace' + suffix, {
         signal: current.signal,
       })
       if (current.isStale() || current.signal.aborted) return
@@ -257,6 +316,10 @@ export const useJobsStore = defineStore('jobs', () => {
 
   async function getJob(jobId: string): Promise<JobDetail> {
     return await apiFetch<JobDetail>(`/api/jobs/${encodeURIComponent(jobId)}`)
+  }
+
+  async function getJobWorkspace(jobId: string): Promise<JobWorkspaceDetail> {
+    return await apiFetch<JobWorkspaceDetail>(`/api/jobs/${encodeURIComponent(jobId)}/workspace`)
   }
 
   async function createJob(payload: CreateOrUpdateJobRequest): Promise<JobDetail> {
@@ -496,6 +559,7 @@ export const useJobsStore = defineStore('jobs', () => {
     pageSize,
     refresh,
     getJob,
+    getJobWorkspace,
     createJob,
     updateJob,
     deleteJob,

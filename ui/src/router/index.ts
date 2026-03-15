@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const AppShell = () => import('@/layouts/AppShell.vue')
 const AgentsView = () => import('@/views/AgentsView.vue')
 const CommandCenterView = () => import('@/views/CommandCenterView.vue')
-const JobsLandingView = () => import('@/views/JobsLandingView.vue')
+const JobEditorRouteView = () => import('@/views/jobs/JobEditorRouteView.vue')
 const JobsWorkspaceShellView = () => import('@/views/jobs/JobsWorkspaceShellView.vue')
 const JobWorkspaceView = () => import('@/views/jobs/JobWorkspaceView.vue')
 const JobOverviewSectionView = () => import('@/views/jobs/JobOverviewSectionView.vue')
@@ -29,6 +29,7 @@ const SetupView = () => import('@/views/SetupView.vue')
 
 import { pinia } from '@/pinia'
 import { useAuthStore } from '@/stores/auth'
+import { buildLegacyJobsRedirectLocation } from '@/lib/jobsRoute'
 import { scopeFromNodeId } from '@/lib/scope'
 
 const EmptyView = { render: () => null }
@@ -107,12 +108,68 @@ const router = createRouter({
           }),
         },
         {
+          path: 'jobs/new',
+          component: JobEditorRouteView,
+          meta: routeMeta('jobs.editor.createPageTitle', {
+            primaryNav: 'jobs',
+            scopeMode: 'none',
+          }),
+        },
+        {
+          path: 'jobs/:jobId/edit',
+          component: JobEditorRouteView,
+          meta: routeMeta('jobs.editor.editPageTitle', {
+            primaryNav: 'jobs',
+            scopeMode: 'none',
+          }),
+        },
+        {
           path: 'jobs',
-          component: JobsLandingView,
+          component: JobsWorkspaceShellView,
           meta: routeMeta('jobs.title', {
             primaryNav: 'jobs',
             scopeMode: 'collection',
           }),
+          children: [
+            {
+              path: ':jobId',
+              component: JobWorkspaceView,
+              meta: routeMeta('jobs.detail.title', {
+                primaryNav: 'jobs',
+                scopeMode: 'collection',
+              }),
+              children: [
+                { path: '', redirect: 'overview' },
+                {
+                  path: 'overview',
+                  component: JobOverviewSectionView,
+                  meta: routeMeta('jobs.workspace.sections.overview', {
+                    primaryNav: 'jobs',
+                    scopeMode: 'collection',
+                  }),
+                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                },
+                {
+                  path: 'history',
+                  component: JobHistorySectionView,
+                  meta: routeMeta('jobs.workspace.sections.history', {
+                    primaryNav: 'jobs',
+                    scopeMode: 'collection',
+                  }),
+                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                },
+                {
+                  path: 'data',
+                  component: JobDataSectionView,
+                  meta: routeMeta('jobs.workspace.sections.data', {
+                    primaryNav: 'jobs',
+                    scopeMode: 'collection',
+                  }),
+                  children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'collection' }) }],
+                },
+              ],
+            },
+          ],
         },
         {
           path: 'runs',
@@ -328,51 +385,82 @@ const router = createRouter({
             },
             {
               path: 'jobs',
-              component: JobsWorkspaceShellView,
-              meta: routeMeta('jobs.title', {
+              redirect: (to) => buildLegacyJobsRedirectLocation(String(to.params.nodeId), '/jobs', to.query),
+            },
+            {
+              path: 'jobs/:jobId',
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/overview`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/overview',
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/overview`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/history',
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/history`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/overview/runs/:runId',
+              meta: routeMeta('runs.title', {
                 primaryNav: 'jobs',
                 scopeMode: 'legacy-node',
               }),
-              children: [
-                {
-                  path: ':jobId',
-                  component: JobWorkspaceView,
-                  meta: routeMeta('jobs.detail.title', {
-                    primaryNav: 'jobs',
-                    scopeMode: 'legacy-node',
-                  }),
-                  children: [
-                    { path: '', redirect: 'overview' },
-                    {
-                      path: 'overview',
-                      component: JobOverviewSectionView,
-                      meta: routeMeta('jobs.workspace.sections.overview', {
-                        primaryNav: 'jobs',
-                        scopeMode: 'legacy-node',
-                      }),
-                      children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'legacy-node' }) }],
-                    },
-                    {
-                      path: 'history',
-                      component: JobHistorySectionView,
-                      meta: routeMeta('jobs.workspace.sections.history', {
-                        primaryNav: 'jobs',
-                        scopeMode: 'legacy-node',
-                      }),
-                      children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'legacy-node' }) }],
-                    },
-                    {
-                      path: 'data',
-                      component: JobDataSectionView,
-                      meta: routeMeta('jobs.workspace.sections.data', {
-                        primaryNav: 'jobs',
-                        scopeMode: 'legacy-node',
-                      }),
-                      children: [{ path: 'runs/:runId', component: EmptyView, meta: routeMeta('runs.title', { primaryNav: 'jobs', scopeMode: 'legacy-node' }) }],
-                    },
-                  ],
-                },
-              ],
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/overview/runs/${encodeURIComponent(String(to.params.runId))}`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/history/runs/:runId',
+              meta: routeMeta('runs.title', {
+                primaryNav: 'jobs',
+                scopeMode: 'legacy-node',
+              }),
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/history/runs/${encodeURIComponent(String(to.params.runId))}`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/data/runs/:runId',
+              meta: routeMeta('runs.title', {
+                primaryNav: 'jobs',
+                scopeMode: 'legacy-node',
+              }),
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/data/runs/${encodeURIComponent(String(to.params.runId))}`,
+                  to.query,
+                ),
+            },
+            {
+              path: 'jobs/:jobId/data',
+              redirect: (to) =>
+                buildLegacyJobsRedirectLocation(
+                  String(to.params.nodeId),
+                  `/jobs/${encodeURIComponent(String(to.params.jobId))}/data`,
+                  to.query,
+                ),
             },
             {
               path: 'settings',

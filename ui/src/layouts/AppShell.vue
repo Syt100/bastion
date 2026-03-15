@@ -183,7 +183,7 @@ const currentPrimaryLabel = computed(() => {
 })
 
 const isJobsWorkbench = computed(
-  () => isDesktop.value && currentPrimaryNav.value === 'jobs' && isNodeScopedPath(route.path),
+  () => isDesktop.value && currentPrimaryNav.value === 'jobs' && (route.path.startsWith('/jobs') || isNodeScopedPath(route.path)),
 )
 
 function navigatePrimary(key: unknown): void {

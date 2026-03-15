@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NCard, NSpin, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -11,9 +11,10 @@ import { useUiStore } from '@/stores/ui'
 import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
-import { nodeScopedPath } from '@/lib/nodeRoute'
+import { buildJobSectionPath, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const message = useMessage()
 
@@ -141,7 +142,10 @@ function openLatestRun(): void {
   const id = ctx.jobId.value
   const r = latestRun.value
   if (!id || !r) return
-  void router.push(nodeScopedPath(ctx.nodeId.value, `jobs/${encodeURIComponent(id)}/overview/runs/${encodeURIComponent(r.id)}`))
+  void router.push({
+    path: `${buildJobSectionPath(id, 'overview')}/runs/${encodeURIComponent(r.id)}`,
+    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
+  })
 }
 </script>
 

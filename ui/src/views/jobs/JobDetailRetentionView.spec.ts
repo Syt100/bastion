@@ -87,6 +87,7 @@ function provideJobContext(): Record<symbol, JobDetailContext> {
       nodeId: computed(() => 'hub'),
       jobId: computed(() => 'job1'),
       job: ref(null),
+      workspace: ref(null),
       loading: ref(false),
       refresh: vi.fn().mockResolvedValue(undefined),
     },
@@ -120,4 +121,3 @@ describe('JobDetailRetentionView toolbar placement', () => {
     expect(wrapper.find('[data-testid="job-retention-save"]').exists()).toBe(true)
   })
 })
-

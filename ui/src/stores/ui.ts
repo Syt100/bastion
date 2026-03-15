@@ -24,6 +24,7 @@ const THEME_KEY = 'bastion.ui.themeId'
 const JOBS_WORKSPACE_LAYOUT_KEY = 'bastion.ui.jobsWorkspace.layoutMode'
 const JOBS_WORKSPACE_LIST_VIEW_KEY = 'bastion.ui.jobsWorkspace.listView'
 const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_KEY = 'bastion.ui.jobsWorkspace.splitListWidthPx'
+const JOBS_SAVED_VIEWS_KEY = 'bastion.ui.jobsWorkspace.savedViews'
 
 const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_DEFAULT_PX = 360
 const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MIN_PX = 280
@@ -31,6 +32,18 @@ const JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MAX_PX = 640
 
 export type JobsWorkspaceLayoutMode = 'split' | 'list' | 'detail'
 export type JobsWorkspaceListView = 'list' | 'table'
+export type JobsSavedView = {
+  id: string
+  name: string
+  scope: ScopeValue
+  q: string
+  status: string
+  schedule: string
+  includeArchived: boolean
+  sort: string
+  createdAt: number
+  updatedAt: number
+}
 
 function isJobsWorkspaceLayoutMode(value: string | null): value is JobsWorkspaceLayoutMode {
   return value === 'split' || value === 'list' || value === 'detail'
@@ -48,6 +61,37 @@ function parseStoredInt(value: string | null): number | null {
   if (!value) return null
   const n = Number.parseInt(value, 10)
   return Number.isFinite(n) ? n : null
+}
+
+function parseJobsSavedViews(value: string | null): JobsSavedView[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+      .map((item) => {
+        const scope = parseScopeValue(item.scope)
+        const id = typeof item.id === 'string' ? item.id.trim() : ''
+        const name = typeof item.name === 'string' ? item.name.trim() : ''
+        if (!id || !name || !scope) return null
+        return {
+          id,
+          name,
+          scope,
+          q: typeof item.q === 'string' ? item.q : '',
+          status: typeof item.status === 'string' ? item.status : 'all',
+          schedule: typeof item.schedule === 'string' ? item.schedule : 'all',
+          includeArchived: item.includeArchived === true,
+          sort: typeof item.sort === 'string' ? item.sort : 'updated_desc',
+          createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+          updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : Date.now(),
+        }
+      })
+      .filter((item): item is JobsSavedView => !!item)
+  } catch {
+    return []
+  }
 }
 
 export const useUiStore = defineStore('ui', () => {
@@ -100,6 +144,7 @@ export const useUiStore = defineStore('ui', () => {
       return clampInt(raw, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MIN_PX, JOBS_WORKSPACE_SPLIT_LIST_WIDTH_MAX_PX)
     })(),
   )
+  const jobsSavedViews = ref<JobsSavedView[]>(parseJobsSavedViews(localStorage.getItem(JOBS_SAVED_VIEWS_KEY)))
   const themeMode = computed(() => (darkMode.value ? 'dark' : 'light'))
   let localeSwitchSeq = 0
 
@@ -183,6 +228,45 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(JOBS_WORKSPACE_SPLIT_LIST_WIDTH_KEY, String(v))
   }
 
+  function persistJobsSavedViews(): void {
+    localStorage.setItem(JOBS_SAVED_VIEWS_KEY, JSON.stringify(jobsSavedViews.value))
+  }
+
+  function upsertJobsSavedView(
+    value: Omit<JobsSavedView, 'createdAt' | 'updatedAt'> & Partial<Pick<JobsSavedView, 'createdAt' | 'updatedAt'>>,
+  ): void {
+    const now = Date.now()
+    const existingIndex = jobsSavedViews.value.findIndex((item) => item.id === value.id)
+    const next: JobsSavedView = {
+      id: value.id,
+      name: value.name.trim(),
+      scope: value.scope,
+      q: value.q,
+      status: value.status,
+      schedule: value.schedule,
+      includeArchived: value.includeArchived,
+      sort: value.sort,
+      createdAt: value.createdAt ?? now,
+      updatedAt: value.updatedAt ?? now,
+    }
+    if (existingIndex >= 0) {
+      const existing = jobsSavedViews.value[existingIndex]
+      jobsSavedViews.value.splice(existingIndex, 1, {
+        ...next,
+        createdAt: existing?.createdAt ?? next.createdAt,
+        updatedAt: now,
+      })
+    } else {
+      jobsSavedViews.value = [...jobsSavedViews.value, next]
+    }
+    persistJobsSavedViews()
+  }
+
+  function deleteJobsSavedView(id: string): void {
+    jobsSavedViews.value = jobsSavedViews.value.filter((item) => item.id !== id)
+    persistJobsSavedViews()
+  }
+
   return {
     darkMode,
     themeId,
@@ -193,6 +277,7 @@ export const useUiStore = defineStore('ui', () => {
     jobsWorkspaceLayoutMode,
     jobsWorkspaceListView,
     jobsWorkspaceSplitListWidthPx,
+    jobsSavedViews,
     themeMode,
     setDarkMode,
     setThemeId,
@@ -203,6 +288,8 @@ export const useUiStore = defineStore('ui', () => {
     setJobsWorkspaceLayoutMode,
     setJobsWorkspaceListView,
     setJobsWorkspaceSplitListWidthPx,
+    upsertJobsSavedView,
+    deleteJobsSavedView,
     toggleDarkMode,
   }
 })

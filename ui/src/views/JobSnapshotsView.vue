@@ -50,9 +50,9 @@ import {
   type PreferredEventDiagnostic,
 } from '@/lib/eventDiagnostics'
 import { formatBytes } from '@/lib/format'
+import { buildJobSectionPath, buildJobsCollectionLocation, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 import { useLatestRequest } from '@/lib/latest'
 import { createSingleSelectFilterField, createTextFilterField, useListFilters } from '@/lib/listFilters'
-import { nodeJobsPath, nodeScopedPath } from '@/lib/nodeRoute'
 
 const props = defineProps<{
   embedded?: boolean
@@ -104,11 +104,14 @@ const ignoreReason = ref('')
 function openRunDetail(runId: string): void {
   const job = jobId.value
   if (!job) return
-  void router.push(nodeScopedPath(nodeIdOrHub.value, `jobs/${encodeURIComponent(job)}/data/runs/${encodeURIComponent(runId)}`))
+  void router.push({
+    path: `${buildJobSectionPath(job, 'data')}/runs/${encodeURIComponent(runId)}`,
+    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
+  })
 }
 
 function goBackToJobs(): void {
-  void router.push(nodeJobsPath(nodeIdOrHub.value))
+  void router.push(buildJobsCollectionLocation(readJobsCollectionState(route.query)))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

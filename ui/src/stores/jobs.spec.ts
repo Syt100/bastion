@@ -17,6 +17,17 @@ function deferredResponse() {
 function buildJobsResponse(id: string, total = 1): Response {
   return new Response(
     JSON.stringify({
+      scope: {
+        requested: 'all',
+        effective: 'all',
+      },
+      filters: {
+        q: '',
+        latest_status: 'all',
+        schedule_mode: 'all',
+        include_archived: false,
+        sort: 'updated_desc',
+      },
       items: [
         {
           id,
@@ -54,7 +65,7 @@ describe('useJobsStore', () => {
     expect(jobs.items).toHaveLength(1)
     expect(jobs.total).toBe(1)
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/jobs',
+      '/api/jobs/workspace',
       expect.objectContaining({ credentials: 'include' }),
     )
   })

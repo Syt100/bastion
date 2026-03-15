@@ -1,8 +1,11 @@
 use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, StatusCode};
+use chrono::{DateTime, TimeZone as _, Utc};
+use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row};
+use std::str::FromStr;
 use tower_cookies::Cookies;
 
 use bastion_storage::hub_runtime_config_repo;
@@ -159,8 +162,98 @@ pub(in crate::http) struct ListJobsResponse {
     total: i64,
 }
 
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceCapabilities {
+    can_run_now: bool,
+    can_edit: bool,
+    can_archive: bool,
+    can_unarchive: bool,
+    can_delete: bool,
+    can_deploy: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobsWorkspaceScope {
+    requested: String,
+    effective: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobsWorkspaceFilters {
+    q: String,
+    latest_status: String,
+    schedule_mode: String,
+    include_archived: bool,
+    sort: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobsWorkspaceListResponse {
+    scope: JobsWorkspaceScope,
+    filters: JobsWorkspaceFilters,
+    items: Vec<JobWorkspaceListItem>,
+    page: i64,
+    page_size: i64,
+    total: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceListItem {
+    #[serde(flatten)]
+    job: JobListItem,
+    scope: String,
+    latest_success_at: Option<i64>,
+    latest_failure_at: Option<i64>,
+    next_run_at: Option<i64>,
+    health: String,
+    warnings: Vec<String>,
+    capabilities: JobWorkspaceCapabilities,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceSummary {
+    latest_success_at: Option<i64>,
+    latest_failure_at: Option<i64>,
+    latest_run_status: Option<runs_repo::RunStatus>,
+    latest_run_started_at: Option<i64>,
+    latest_run_ended_at: Option<i64>,
+    next_run_at: Option<i64>,
+    target_label: Option<String>,
+    target_type: Option<String>,
+    schedule_label: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceReadiness {
+    state: String,
+    last_success_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceRecentRun {
+    id: String,
+    status: runs_repo::RunStatus,
+    started_at: i64,
+    ended_at: Option<i64>,
+    cancel_requested_at: Option<i64>,
+    cancel_requested_by_user_id: Option<i64>,
+    cancel_reason: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(in crate::http) struct JobWorkspaceDetailResponse {
+    job: jobs_repo::Job,
+    summary: JobWorkspaceSummary,
+    readiness: JobWorkspaceReadiness,
+    recent_runs: Vec<JobWorkspaceRecentRun>,
+    warnings: Vec<String>,
+    capabilities: JobWorkspaceCapabilities,
+}
+
 #[derive(Debug, Deserialize)]
 pub(in crate::http) struct ListJobsQuery {
+    scope: Option<String>,
     include_archived: Option<bool>,
     node_id: Option<String>,
     q: Option<String>,
@@ -222,6 +315,27 @@ fn parse_node_filter(value: Option<&str>) -> JobNodeFilter {
     JobNodeFilter::Agent(value.to_string())
 }
 
+fn parse_scope_or_node_filter(scope: Option<&str>, node_id: Option<&str>) -> JobNodeFilter {
+    let Some(scope) = scope.map(str::trim).filter(|v| !v.is_empty()) else {
+        return parse_node_filter(node_id);
+    };
+
+    if scope == "all" {
+        return JobNodeFilter::Any;
+    }
+    if scope == "hub" {
+        return JobNodeFilter::Hub;
+    }
+    if let Some(agent_id) = scope.strip_prefix("agent:") {
+        let agent_id = agent_id.trim();
+        if !agent_id.is_empty() {
+            return JobNodeFilter::Agent(agent_id.to_string());
+        }
+    }
+
+    parse_node_filter(node_id)
+}
+
 fn parse_latest_status_filter(value: Option<&str>) -> Result<JobLatestStatusFilter, AppError> {
     let value = value
         .map(str::trim)
@@ -270,6 +384,143 @@ fn parse_jobs_sort(value: Option<&str>) -> Result<JobSort, AppError> {
         "name_desc" => Ok(JobSort::NameDesc),
         _ => Err(AppError::bad_request("invalid_sort", "Invalid sort")),
     }
+}
+
+fn format_scope(node_filter: &JobNodeFilter) -> String {
+    match node_filter {
+        JobNodeFilter::Any => "all".to_string(),
+        JobNodeFilter::Hub => "hub".to_string(),
+        JobNodeFilter::Agent(agent_id) => format!("agent:{agent_id}"),
+    }
+}
+
+fn scope_value_for_job(agent_id: Option<&str>) -> String {
+    match agent_id.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(agent_id) => format!("agent:{agent_id}"),
+        None => "hub".to_string(),
+    }
+}
+
+fn capabilities_for_job(archived_at: Option<i64>) -> JobWorkspaceCapabilities {
+    let archived = archived_at.is_some();
+    JobWorkspaceCapabilities {
+        can_run_now: !archived,
+        can_edit: !archived,
+        can_archive: !archived,
+        can_unarchive: archived,
+        can_delete: true,
+        can_deploy: !archived,
+    }
+}
+
+fn target_summary_from_spec(spec: &serde_json::Value) -> (Option<String>, Option<String>) {
+    let target = spec
+        .as_object()
+        .and_then(|spec| spec.get("target"))
+        .and_then(|target| target.as_object());
+
+    let target_type = target
+        .and_then(|target| target.get("type"))
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+
+    let target_label = match target_type.as_deref() {
+        Some("webdav") => target
+            .and_then(|target| target.get("base_url"))
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        Some("local_dir") => target
+            .and_then(|target| target.get("base_dir"))
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        Some(other) => Some(other.to_string()),
+        None => None,
+    };
+
+    (target_type, target_label)
+}
+
+fn health_for_job(
+    archived_at: Option<i64>,
+    latest_run_status: Option<runs_repo::RunStatus>,
+    latest_success_at: Option<i64>,
+) -> &'static str {
+    if archived_at.is_some() {
+        return "archived";
+    }
+    match latest_run_status {
+        Some(runs_repo::RunStatus::Failed) => "critical",
+        Some(runs_repo::RunStatus::Rejected) | Some(runs_repo::RunStatus::Canceled) => "warning",
+        Some(runs_repo::RunStatus::Queued) | Some(runs_repo::RunStatus::Running) => "warning",
+        Some(runs_repo::RunStatus::Success) => "healthy",
+        None if latest_success_at.is_some() => "healthy",
+        None => "warning",
+    }
+}
+
+fn warnings_for_job(
+    archived_at: Option<i64>,
+    latest_run_status: Option<runs_repo::RunStatus>,
+    latest_success_at: Option<i64>,
+    schedule: Option<&str>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    if archived_at.is_some() {
+        warnings.push("archived".to_string());
+        return warnings;
+    }
+
+    match latest_run_status {
+        Some(runs_repo::RunStatus::Failed) => warnings.push("latest_run_failed".to_string()),
+        Some(runs_repo::RunStatus::Rejected) => warnings.push("latest_run_rejected".to_string()),
+        Some(runs_repo::RunStatus::Canceled) => warnings.push("latest_run_canceled".to_string()),
+        Some(runs_repo::RunStatus::Queued) => warnings.push("run_queued".to_string()),
+        Some(runs_repo::RunStatus::Running) => warnings.push("run_in_progress".to_string()),
+        Some(runs_repo::RunStatus::Success) => {}
+        None => warnings.push("never_ran".to_string()),
+    }
+
+    if latest_success_at.is_none() {
+        warnings.push("no_successful_backup".to_string());
+    }
+
+    if schedule
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
+    {
+        warnings.push("manual_only".to_string());
+    }
+
+    warnings
+}
+
+fn normalize_cron(expr: &str) -> Result<String, anyhow::Error> {
+    let parts: Vec<&str> = expr.split_whitespace().collect();
+    match parts.len() {
+        5 => Ok(format!("0 {}", parts.join(" "))),
+        6 => {
+            if parts[0] != "0" {
+                anyhow::bail!("cron seconds must be 0");
+            }
+            Ok(parts.join(" "))
+        }
+        _ => Err(anyhow::anyhow!("invalid cron expression")),
+    }
+}
+
+fn next_run_at(schedule: Option<&str>, schedule_timezone: &str) -> Option<i64> {
+    let schedule = schedule.map(str::trim).filter(|value| !value.is_empty())?;
+    let normalized = normalize_cron(schedule).ok()?;
+    let parsed = Schedule::from_str(&normalized).ok()?;
+    let tz = schedule_timezone.parse::<chrono_tz::Tz>().ok()?;
+    let now = Utc::now();
+    let now_local: DateTime<chrono_tz::Tz> = tz.from_utc_datetime(&now.naive_utc());
+    parsed
+        .after(&now_local)
+        .next()
+        .map(|next| next.with_timezone(&Utc).timestamp())
 }
 
 fn push_jobs_list_filters(
@@ -352,7 +603,7 @@ pub(in crate::http) async fn list_jobs(
     let _session = require_session(&state, &cookies).await?;
 
     let include_archived = q.include_archived.unwrap_or(false);
-    let node_filter = parse_node_filter(q.node_id.as_deref());
+    let node_filter = parse_scope_or_node_filter(q.scope.as_deref(), q.node_id.as_deref());
     let search = normalize_search_query(q.q.as_deref());
     let latest_status_filter = parse_latest_status_filter(q.latest_status.as_deref())?;
     let schedule_mode_filter = parse_schedule_mode_filter(q.schedule_mode.as_deref())?;
@@ -493,6 +744,206 @@ pub(in crate::http) async fn list_jobs(
     }))
 }
 
+pub(in crate::http) async fn list_jobs_workspace(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Query(q): Query<ListJobsQuery>,
+) -> Result<Json<JobsWorkspaceListResponse>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+
+    let include_archived = q.include_archived.unwrap_or(false);
+    let node_filter = parse_scope_or_node_filter(q.scope.as_deref(), q.node_id.as_deref());
+    let search = normalize_search_query(q.q.as_deref());
+    let latest_status_filter = parse_latest_status_filter(q.latest_status.as_deref())?;
+    let schedule_mode_filter = parse_schedule_mode_filter(q.schedule_mode.as_deref())?;
+    let sort = parse_jobs_sort(q.sort.as_deref())?;
+
+    let pagination_requested = q.page.is_some() || q.page_size.is_some();
+    let page = q.page.unwrap_or(1);
+    if page < 1 {
+        return Err(invalid_page_error("must_be_positive", "Invalid page").with_param("min", 1));
+    }
+
+    let mut total_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        r#"
+        SELECT COUNT(*) AS total
+        FROM jobs j
+        LEFT JOIN runs r
+          ON r.id = (
+            SELECT id FROM runs
+            WHERE job_id = j.id
+            ORDER BY started_at DESC
+            LIMIT 1
+          )
+        "#,
+    );
+    push_jobs_list_filters(
+        &mut total_qb,
+        include_archived,
+        &node_filter,
+        search.as_deref(),
+        latest_status_filter,
+        schedule_mode_filter,
+    );
+
+    let total_row = total_qb.build().fetch_one(&state.db).await?;
+    let total = total_row.get::<i64, _>("total");
+
+    let page_size = if pagination_requested {
+        let page_size = q.page_size.unwrap_or(20);
+        if page_size < 1 {
+            return Err(
+                invalid_page_size_error("must_be_positive", "Invalid page_size")
+                    .with_param("min", 1),
+            );
+        }
+        page_size.clamp(1, 100)
+    } else {
+        total
+    };
+
+    let mut rows_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        r#"
+        SELECT
+          j.id,
+          j.name,
+          j.agent_id,
+          j.schedule,
+          j.schedule_timezone,
+          j.overlap_policy,
+          j.created_at,
+          j.updated_at,
+          j.archived_at,
+          json(j.spec_json) AS spec_json,
+          r.id AS latest_run_id,
+          r.status AS latest_run_status,
+          r.started_at AS latest_run_started_at,
+          r.ended_at AS latest_run_ended_at,
+          (
+            SELECT COALESCE(ended_at, started_at)
+            FROM runs
+            WHERE job_id = j.id AND status = 'success'
+            ORDER BY started_at DESC
+            LIMIT 1
+          ) AS latest_success_at,
+          (
+            SELECT COALESCE(ended_at, started_at)
+            FROM runs
+            WHERE job_id = j.id AND status IN ('failed', 'rejected', 'canceled')
+            ORDER BY started_at DESC
+            LIMIT 1
+          ) AS latest_failure_at
+        FROM jobs j
+        LEFT JOIN runs r
+          ON r.id = (
+            SELECT id FROM runs
+            WHERE job_id = j.id
+            ORDER BY started_at DESC
+            LIMIT 1
+          )
+        "#,
+    );
+    push_jobs_list_filters(
+        &mut rows_qb,
+        include_archived,
+        &node_filter,
+        search.as_deref(),
+        latest_status_filter,
+        schedule_mode_filter,
+    );
+
+    match sort {
+        JobSort::UpdatedDesc => rows_qb.push(" ORDER BY j.updated_at DESC, j.id ASC"),
+        JobSort::UpdatedAsc => rows_qb.push(" ORDER BY j.updated_at ASC, j.id ASC"),
+        JobSort::NameAsc => rows_qb.push(" ORDER BY j.name COLLATE NOCASE ASC, j.id ASC"),
+        JobSort::NameDesc => rows_qb.push(" ORDER BY j.name COLLATE NOCASE DESC, j.id ASC"),
+    };
+
+    if pagination_requested {
+        let offset = (page - 1).saturating_mul(page_size);
+        rows_qb.push(" LIMIT ");
+        rows_qb.push_bind(page_size);
+        rows_qb.push(" OFFSET ");
+        rows_qb.push_bind(offset);
+    }
+
+    let rows = rows_qb.build().fetch_all(&state.db).await?;
+    let mut out = Vec::with_capacity(rows.len());
+
+    for row in rows {
+        let overlap_policy = row
+            .get::<String, _>("overlap_policy")
+            .parse::<jobs_repo::OverlapPolicy>()?;
+        let latest_run_status = row
+            .get::<Option<String>, _>("latest_run_status")
+            .map(|s| s.parse::<runs_repo::RunStatus>())
+            .transpose()?;
+        let agent_id = row.get::<Option<String>, _>("agent_id");
+        let schedule = row.get::<Option<String>, _>("schedule");
+        let schedule_timezone = row.get::<String, _>("schedule_timezone");
+        let archived_at = row.get::<Option<i64>, _>("archived_at");
+        let latest_success_at = row.get::<Option<i64>, _>("latest_success_at");
+        let latest_failure_at = row.get::<Option<i64>, _>("latest_failure_at");
+        let spec_json = row.get::<String, _>("spec_json");
+        let spec = serde_json::from_str::<serde_json::Value>(&spec_json)?;
+        let warnings = warnings_for_job(
+            archived_at,
+            latest_run_status,
+            latest_success_at,
+            schedule.as_deref(),
+        );
+
+        out.push(JobWorkspaceListItem {
+            job: JobListItem {
+                id: row.get::<String, _>("id"),
+                name: row.get::<String, _>("name"),
+                agent_id: agent_id.clone(),
+                schedule: schedule.clone(),
+                schedule_timezone: schedule_timezone.clone(),
+                overlap_policy,
+                created_at: row.get::<i64, _>("created_at"),
+                updated_at: row.get::<i64, _>("updated_at"),
+                archived_at,
+                latest_run_id: row.get::<Option<String>, _>("latest_run_id"),
+                latest_run_status,
+                latest_run_started_at: row.get::<Option<i64>, _>("latest_run_started_at"),
+                latest_run_ended_at: row.get::<Option<i64>, _>("latest_run_ended_at"),
+            },
+            scope: scope_value_for_job(agent_id.as_deref()),
+            latest_success_at,
+            latest_failure_at,
+            next_run_at: next_run_at(schedule.as_deref(), &schedule_timezone),
+            health: health_for_job(archived_at, latest_run_status, latest_success_at).to_string(),
+            warnings,
+            capabilities: capabilities_for_job(archived_at),
+        });
+
+        let _ = target_summary_from_spec(&spec);
+    }
+
+    Ok(Json(JobsWorkspaceListResponse {
+        scope: JobsWorkspaceScope {
+            requested: format_scope(&node_filter),
+            effective: format_scope(&node_filter),
+        },
+        filters: JobsWorkspaceFilters {
+            q: search.unwrap_or_default(),
+            latest_status: q.latest_status.unwrap_or_else(|| "all".to_string()),
+            schedule_mode: q.schedule_mode.unwrap_or_else(|| "all".to_string()),
+            include_archived,
+            sort: q.sort.unwrap_or_else(|| "updated_desc".to_string()),
+        },
+        items: out,
+        page: if pagination_requested { page } else { 1 },
+        page_size: if pagination_requested {
+            page_size
+        } else {
+            total
+        },
+        total,
+    }))
+}
+
 pub(in crate::http) async fn create_job(
     state: axum::extract::State<AppState>,
     cookies: Cookies,
@@ -571,6 +1022,79 @@ pub(in crate::http) async fn get_job(
         .await?
         .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
     Ok(Json(job))
+}
+
+pub(in crate::http) async fn get_job_workspace(
+    state: axum::extract::State<AppState>,
+    cookies: Cookies,
+    Path(job_id): Path<String>,
+) -> Result<Json<JobWorkspaceDetailResponse>, AppError> {
+    let _session = require_session(&state, &cookies).await?;
+    let job = jobs_repo::get_job(&state.db, &job_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("job_not_found", "Job not found"))?;
+
+    let latest_runs = runs_repo::list_runs_for_job(&state.db, &job_id, 5).await?;
+    let latest_run = latest_runs.first();
+    let latest_success_at = sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT COALESCE(ended_at, started_at) FROM runs WHERE job_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(&job_id)
+    .fetch_one(&state.db)
+    .await?;
+    let latest_failure_at = sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT COALESCE(ended_at, started_at) FROM runs WHERE job_id = ? AND status IN ('failed', 'rejected', 'canceled') ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(&job_id)
+    .fetch_one(&state.db)
+    .await?;
+    let (target_type, target_label) = target_summary_from_spec(&job.spec);
+    let latest_run_status = latest_run.map(|run| run.status);
+    let latest_run_started_at = latest_run.map(|run| run.started_at);
+    let latest_run_ended_at = latest_run.and_then(|run| run.ended_at);
+    let warnings = warnings_for_job(
+        job.archived_at,
+        latest_run_status,
+        latest_success_at,
+        job.schedule.as_deref(),
+    );
+
+    let recent_runs = latest_runs
+        .into_iter()
+        .map(|run| JobWorkspaceRecentRun {
+            id: run.id,
+            status: run.status,
+            started_at: run.started_at,
+            ended_at: run.ended_at,
+            cancel_requested_at: run.cancel_requested_at,
+            cancel_requested_by_user_id: run.cancel_requested_by_user_id,
+            cancel_reason: run.cancel_reason,
+            error: run.error,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(JobWorkspaceDetailResponse {
+        job: job.clone(),
+        summary: JobWorkspaceSummary {
+            latest_success_at,
+            latest_failure_at,
+            latest_run_status,
+            latest_run_started_at,
+            latest_run_ended_at,
+            next_run_at: next_run_at(job.schedule.as_deref(), &job.schedule_timezone),
+            target_label,
+            target_type,
+            schedule_label: job.schedule.clone(),
+        },
+        readiness: JobWorkspaceReadiness {
+            state: health_for_job(job.archived_at, latest_run_status, latest_success_at)
+                .to_string(),
+            last_success_at: latest_success_at,
+        },
+        recent_runs,
+        warnings,
+        capabilities: capabilities_for_job(job.archived_at),
+    }))
 }
 
 pub(in crate::http) async fn update_job(

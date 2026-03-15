@@ -40,7 +40,9 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { createClipboardCopyAction } from '@/lib/clipboardFeedback'
 import { formatToastError } from '@/lib/errors'
 import { createDebouncedTask } from '@/lib/asyncControl'
-import { nodeJobsPath, nodeStoragePath } from '@/lib/nodeRoute'
+import { buildJobsCollectionLocation } from '@/lib/jobsRoute'
+import { nodeStoragePath } from '@/lib/nodeRoute'
+import { scopeFromNodeId } from '@/lib/scope'
 import {
   buildListRangeSummary,
   DEFAULT_LIST_PAGE_SIZE,
@@ -245,7 +247,7 @@ async function copyToClipboard(value: string): Promise<void> {
 }
 
 function openAgentJobs(agentId: string): void {
-  void router.push(nodeJobsPath(agentId))
+  void router.push(buildJobsCollectionLocation({ scope: scopeFromNodeId(agentId) }))
 }
 
 function openAgentStorage(agentId: string): void {

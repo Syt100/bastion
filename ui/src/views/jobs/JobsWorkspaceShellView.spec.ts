@@ -30,20 +30,40 @@ const agentsStore = reactive({
 })
 
 const uiStore = reactive({
+  preferredScope: 'all',
   jobsWorkspaceLayoutMode: 'split' as JobsWorkspaceLayoutMode,
   jobsWorkspaceListView: 'list' as JobsWorkspaceListView,
   jobsWorkspaceSplitListWidthPx: 360,
+  jobsSavedViews: [] as Array<{
+    id: string
+    name: string
+    scope: string
+    q: string
+    status: string
+    schedule: string
+    includeArchived: boolean
+    sort: string
+    createdAt: number
+    updatedAt: number
+  }>,
   setJobsWorkspaceLayoutMode: vi.fn(),
   setJobsWorkspaceListView: vi.fn(),
   setJobsWorkspaceSplitListWidthPx: vi.fn(),
+  upsertJobsSavedView: vi.fn(),
+  deleteJobsSavedView: vi.fn(),
 })
 
-const routeApi = reactive<{ params: Record<string, unknown>; path: string; query: Record<string, unknown> }>({
+const routeApi = reactive<{ params: Record<string, unknown>; path: string; query: Record<string, unknown>; hash: string }>({
   params: {},
   path: '',
   query: {},
+  hash: '',
 })
-const routerApi = { push: vi.fn() }
+const routerApi = { push: vi.fn().mockResolvedValue(undefined), replace: vi.fn().mockResolvedValue(undefined) }
+
+const pageHeaderStub = {
+  template: '<div data-stub="PageHeader"><slot name="titleSuffix" /><slot /></div>',
+}
 
 vi.mock('naive-ui', async () => {
   const vue = await import('vue')
@@ -209,18 +229,27 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     stubMatchMedia(true)
-    routeApi.path = '/n/hub/jobs'
-    routeApi.params = { nodeId: 'hub' }
+    routeApi.path = '/jobs'
+    routeApi.params = {}
     routeApi.query = {}
+    routeApi.hash = ''
 
+    uiStore.preferredScope = 'all'
     uiStore.jobsWorkspaceLayoutMode = 'split'
     uiStore.jobsWorkspaceListView = 'list'
+    uiStore.jobsSavedViews = []
     uiStore.setJobsWorkspaceLayoutMode = vi.fn((v: unknown) => {
       uiStore.jobsWorkspaceLayoutMode = v as JobsWorkspaceLayoutMode
     })
     uiStore.setJobsWorkspaceListView = vi.fn((v: unknown) => {
       uiStore.jobsWorkspaceListView = v as JobsWorkspaceListView
     })
+    uiStore.upsertJobsSavedView = vi.fn()
+    uiStore.deleteJobsSavedView = vi.fn()
+    routerApi.push.mockReset()
+    routerApi.push.mockResolvedValue(undefined)
+    routerApi.replace.mockReset()
+    routerApi.replace.mockResolvedValue(undefined)
 
     jobsStore.items = [
       {
@@ -264,7 +293,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -284,7 +313,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -305,7 +334,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -321,13 +350,14 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
   })
 
   it('maps persisted list layout back to workspace mode when table view is not active', () => {
-    routeApi.params = { nodeId: 'hub', jobId: 'job1' }
+    routeApi.path = '/jobs/job1/overview'
+    routeApi.params = { jobId: 'job1' }
     uiStore.jobsWorkspaceLayoutMode = 'list'
 
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -342,14 +372,15 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
   })
 
   it('keeps workspace list full width until a job is selected', () => {
-    routeApi.params = { nodeId: 'hub' }
+    routeApi.path = '/jobs'
+    routeApi.params = {}
     uiStore.jobsWorkspaceLayoutMode = 'split'
     uiStore.jobsWorkspaceListView = 'list'
 
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -367,6 +398,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           JobEditorModal: true,
@@ -387,7 +419,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           JobEditorModal: true,
@@ -418,7 +450,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           JobEditorModal: true,
@@ -445,7 +477,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           JobEditorModal: true,
@@ -466,7 +498,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -490,7 +522,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -504,7 +536,10 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(rowMain.exists()).toBe(true)
 
     await rowMain.trigger('click')
-    expect(routerApi.push).toHaveBeenCalledWith('/n/hub/jobs/job1/overview')
+    expect(routerApi.push).toHaveBeenCalledWith({
+      path: '/jobs/job1/overview',
+      query: {},
+    })
   })
 
   it('bulk run now skips archived jobs', async () => {
@@ -546,7 +581,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -613,7 +648,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -697,7 +732,7 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     const wrapper = mount(JobsWorkspaceShellView, {
       global: {
         stubs: {
-          PageHeader: true,
+          PageHeader: pageHeaderStub,
           NodeContextTag: true,
           AppEmptyState: true,
           ListToolbar: true,
@@ -721,8 +756,9 @@ describe('JobsWorkspaceShellView desktop scrolling', () => {
     expect(jobsStore.archiveJob).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('jobs.workspace.bulk.archiveConfirm')
 
-    const modal = wrapper.find('[data-stub=\"NModal\"]')
-    const confirm = modal.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
+    const modal = wrapper.findAll('[data-stub=\"NModal\"]').find((node) => node.text().includes('jobs.workspace.bulk.archiveConfirm'))
+    expect(modal).toBeTruthy()
+    const confirm = modal!.findAll('button').find((b) => b.text() === 'jobs.actions.archive')
     expect(confirm).toBeTruthy()
     await confirm!.trigger('click')
     await flushPromises()

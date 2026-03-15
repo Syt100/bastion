@@ -13,6 +13,12 @@ const jobsApi = {
   listRuns: vi.fn(),
 }
 
+const routeApi = {
+  path: '/jobs/job1/history',
+  query: {} as Record<string, unknown>,
+  hash: '',
+}
+
 const routerApi = {
   push: vi.fn(),
 }
@@ -99,8 +105,21 @@ vi.mock('@/stores/ui', () => ({
 }))
 
 vi.mock('vue-router', () => ({
+  useRoute: () => routeApi,
   useRouter: () => routerApi,
 }))
+
+vi.mock('@vicons/ionicons5', async () => {
+  const vue = await import('vue')
+  return {
+    RefreshOutline: vue.defineComponent({
+      name: 'RefreshOutline',
+      setup() {
+        return () => vue.h('i')
+      },
+    }),
+  }
+})
 
 function stubMatchMedia(matches: boolean): void {
   vi.stubGlobal(
@@ -126,6 +145,7 @@ function provideJobContext(): Record<symbol, JobDetailContext> {
       nodeId: computed(() => 'hub'),
       jobId: computed(() => 'job1'),
       job: ref(null),
+      workspace: ref(null),
       loading: ref(false),
       refresh: vi.fn().mockResolvedValue(undefined),
     },

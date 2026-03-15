@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NCard, NDataTable, NIcon, NSpace, NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
@@ -18,10 +18,11 @@ import { useUnixSecondsFormatter } from '@/lib/datetime'
 import { formatToastError } from '@/lib/errors'
 import { runStatusLabel } from '@/lib/runs'
 import { useJobDetailContext } from '@/lib/jobDetailContext'
-import { nodeScopedPath } from '@/lib/nodeRoute'
+import { buildJobSectionPath, buildJobsCollectionQuery, readJobsCollectionState } from '@/lib/jobsRoute'
 
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 const router = useRouter()
 
 const ctx = useJobDetailContext()
@@ -74,7 +75,10 @@ watch(
 function openRunDetail(runId: string): void {
   const jobId = ctx.jobId.value
   if (!jobId) return
-  void router.push(nodeScopedPath(ctx.nodeId.value, `jobs/${encodeURIComponent(jobId)}/history/runs/${encodeURIComponent(runId)}`))
+  void router.push({
+    path: `${buildJobSectionPath(jobId, 'history')}/runs/${encodeURIComponent(runId)}`,
+    query: buildJobsCollectionQuery(readJobsCollectionState(route.query)),
+  })
 }
 
 async function openRunEvents(runId: string): Promise<void> {
