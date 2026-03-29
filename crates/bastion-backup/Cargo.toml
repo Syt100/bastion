@@ -20,7 +20,7 @@ rusqlite = { version = "0.32.1", features = ["backup"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
-tar = "0.4.44"
+tar = "0.4.45"
 time = { workspace = true, features = ["formatting", "macros", "serde"] }
 tokio = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
