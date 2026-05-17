@@ -31,7 +31,7 @@ time = { workspace = true, features = ["formatting", "macros", "serde"] }
 tokio = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["io"] }
 tower-cookies = "0.11.0"
-tower-http = { version = "0.6.6", features = ["request-id", "trace"] }
+tower-http = { version = "0.6.10", features = ["request-id", "trace"] }
 tracing.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4"] }
