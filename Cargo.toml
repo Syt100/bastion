@@ -31,7 +31,7 @@ sqlx = { version = "0.8.6", default-features = false }
 tempfile = "3.26.0"
 time = "0.3.44"
 tokio = "1.50.0"
-tokio-tungstenite = "0.28.0"
+tokio-tungstenite = "0.29.0"
 tokio-util = "0.7.18"
 tracing = "0.1.41"
 url = "2.5.8"
