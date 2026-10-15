@@ -13,6 +13,14 @@ updates:
       - "dependencies"
       - "rust"
     groups:
+      # Security updates use separate groups from scheduled version updates.
+      cargo-security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
       cargo-non-major:
         patterns:
           - "*"
@@ -32,6 +40,13 @@ updates:
       - "dependencies"
       - "frontend"
     groups:
+      npm-ui-security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
       npm-ui-non-major:
         patterns:
           - "*"
@@ -51,6 +66,13 @@ updates:
       - "dependencies"
       - "docs"
     groups:
+      npm-docs-security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
       npm-docs-non-major:
         patterns:
           - "*"
@@ -69,3 +91,11 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      github-actions-security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
