@@ -69,7 +69,7 @@ echo "==> Docs: install"
 npm ci --prefix docs
 
 echo "==> Docs: generate reference"
-cargo run -p bastion --bin docgen -- --check
+cargo run --locked -p bastion --bin docgen -- --check
 
 echo "==> Docs: build"
 DOCS_BASE=/docs/ npm run build --prefix docs
@@ -78,19 +78,19 @@ echo "==> Rust: fmt"
 cargo fmt --check
 
 echo "==> Rust: clippy (default features)"
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --locked -- -D warnings
 
 echo "==> Rust: clippy (all features)"
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 echo "==> Rust: driver contract tests"
-cargo test -p bastion-driver-registry driver_contract
+cargo test -p bastion-driver-registry driver_contract --locked
 
 echo "==> Rust: planner matrix tests"
-cargo test -p bastion-core execution_planner_matrix
+cargo test -p bastion-core execution_planner_matrix --locked
 
 echo "==> Rust: test"
-cargo test --workspace
+cargo test --workspace --locked
 
 echo "==> UI: test"
 npm test --prefix ui
