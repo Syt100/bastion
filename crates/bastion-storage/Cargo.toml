@@ -9,7 +9,7 @@ bastion-core = { path = "../bastion-core" }
 anyhow.workspace = true
 argon2 = "0.5.3"
 base64.workspace = true
-chacha20poly1305 = "0.10.1"
+chacha20poly1305 = "0.11.0"
 hkdf = "0.12.4"
 rand.workspace = true
 serde.workspace = true
