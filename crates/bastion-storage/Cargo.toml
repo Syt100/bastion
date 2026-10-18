@@ -7,7 +7,7 @@ version.workspace = true
 [dependencies]
 bastion-core = { path = "../bastion-core" }
 anyhow.workspace = true
-argon2 = "0.5.3"
+argon2 = "0.6.0"
 base64.workspace = true
 chacha20poly1305 = "0.10.1"
 hkdf = "0.12.4"
