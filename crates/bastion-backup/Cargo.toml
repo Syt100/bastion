@@ -28,7 +28,7 @@ tracing.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }
 walkdir = "2.5.0"
-zstd = { version = "0.13.3", features = ["zstdmt"] }
+zstd = { version = "0.14.2", features = ["zstdmt"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31.2", default-features = false, features = ["fs", "user"] }
