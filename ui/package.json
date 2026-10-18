@@ -46,7 +46,7 @@
     "eslint-plugin-vue": "~10.11.1",
     "jiti": "^2.6.1",
     "jsdom": "^28.1.0",
-    "npm-run-all2": "^8.0.4",
+    "npm-run-all2": "^9.0.3",
     "postcss": "^8.5.30",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
