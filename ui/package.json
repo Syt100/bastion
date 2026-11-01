@@ -24,7 +24,7 @@
     "pinia": "^3.0.4",
     "vue": "^3.5.44",
     "vue-echarts": "^8.3.2",
-    "vue-i18n": "^11.4.14",
+    "vue-i18n": "^11.4.16",
     "vue-router": "^4.6.4"
   },
   "overrides": {
@@ -37,22 +37,22 @@
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.3.3",
     "@vitejs/plugin-vue": "^6.0.10",
-    "@vitest/eslint-plugin": "^1.6.27",
+    "@vitest/eslint-plugin": "^1.6.28",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",
-    "autoprefixer": "^10.6.1",
-    "eslint": "^10.12.0",
-    "eslint-plugin-vue": "~10.11.1",
+    "autoprefixer": "^10.6.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-vue": "~10.12.0",
     "jiti": "^2.6.1",
     "jsdom": "^28.1.0",
     "npm-run-all2": "^8.0.4",
-    "postcss": "^8.5.30",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
     "vite": "^7.3.7",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vitest": "^4.1.11",
-    "vue-tsc": "^3.3.13"
+    "vue-tsc": "^3.3.14"
   }
 }
